@@ -141,6 +141,7 @@ void render_list_remove(u32 pset_off)
  * Needed because a pset's layer can change while it is listed. */
 void render_list_sort(void)
 {
+    PR_SEAM0(0x1C3FCu);
     u32 head = DSD(RENDER_LIST_HEAD);
     if (head == 0) return;
     u32 prev = head;
@@ -174,6 +175,7 @@ int render_list_count(void)
  * the camera's clip fields; the camera's own x/y are the projection origin. */
 void render_list(void)
 {
+    PR_SEAM0(0x14328u);
     const struct RenderCamera *cam = &render_camera_default;
     int last_mode1_y = -1;
 
@@ -240,6 +242,7 @@ void render_list(void)
  * its bias never applies but the `/ 64` is kept for symmetry with the raw. */
 void render_scroll_edge(void)
 {
+    PR_SEAM0(0x389C4u);
     if ((s16)DSW(DS_00107A3C) < 1) {
         DSW(DS_00107A38) = (u16)((int)DSW(DS_00107A48) / 64);
         DSW(DS_00107A4C) = DSW(DS_00107A4E);
@@ -263,6 +266,7 @@ void render_scroll_edge(void)
  * dword read at 0x389D2, DS_00107A4A at 0x389FD). */
 void render_scroll_track(void)
 {
+    PR_SEAM0(0x38990u);
     DSW(DS_00107A3C) = (u16)(DSW(DS_000F0AEC) & 0xFFC0u);               /* 0x38999 */
     DSW(DS_00107A4A) = (u16)((s32)DSD(DS_000F0AEC) / 64
                              + (s32)DSW(DS_00107A4E));                  /* 0x389BC */
@@ -359,6 +363,7 @@ void render_scroll_scene_b(u32 i)
  * documents the same). */
 void render_scroll_setup(u32 i)
 {
+    PR_SEAM(0x38730u, i);
     DSW(DS_00107A4E) = DSW(DS_000BDE1C + i * 2u);       /* 0x38741 */
     DSW(DS_00107A42) = DSW(DS_000BDE2C + i * 2u);       /* 0x3874F */
     frontend_origin_zero();                             /* 0x38764 (0x4F1D0) */

@@ -78,6 +78,7 @@ u32 menu_entry_find(u32 base, u32 stride, s32 idx)
 /* 0x2F940 — record §49-X. */
 void menu_debug_lines(u32 row)
 {
+    PR_SEAM(0x2F940u, row);
     text_cursor_set(4, (s32)row, mem + MENU_STR_OS, 0x5000u);         /* 0x2F946..0x2F957 0x2F198 */
     text_cursor_next_line(mem + MENU_DEBUG_BUF, 0x5000u);             /* 0x2F95C..0x2F970 0x2F41C */
     text_cursor_set(4, (s32)row + 1, mem + MENU_STR_MAIN, 0x5000u);   /* 0x2F975..0x2F97D 0x2F198 */
@@ -87,6 +88,7 @@ void menu_debug_lines(u32 row)
 /* 0x2FE84 — record §49-X. */
 void menu_title_draw(u32 entry, u32 mode_a, u32 mode_b, u32 flags)
 {
+    PR_SEAM(0x2FE84u, entry, mode_a, mode_b, flags);
     u8 buf[0x30];
     frontend_input_reset();                                 /* 0x2FE96 0x4F1E4 */
     actors_reset();                                         /* 0x2FEA4 0x2BAF4 (eax = 1) */
@@ -288,6 +290,7 @@ L_poll:                                                     /* 0x2FD0C */
 /* 0x2FFC4 — record §49-X. */
 u32 menu_step(u32 table, u32 stride, u32 flags)
 {
+    PR_SEAM_RET(0x2FFC4u, table, stride, flags);
     u32 title = table;                                      /* 0x2FFC7 */
     if (DSB(MENU_ACTIVE) == 0u) {                           /* 0x2FFCD..0x2FFD4 */
         DSD(DS_00105F2C) = DSD(DS_00101500);                /* 0x2FFDA 0x500BB, 0x2FFDF */

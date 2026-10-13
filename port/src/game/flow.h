@@ -356,6 +356,14 @@ void flow_match_streak_update(void);
 void title_origin_reset(u32 idx);
 /* 0x418F4: exposed for the differential rows (record 2026-10-11-reverse-d2c). */
 void frontend_scoreboard_build(void);
+/* PORT: the front-end states 1, 2, 3, 4 and 6 (0x121A0, 0x11F6C, 0x12484,
+ * 0x11578, 0x11A8C), exposed for the differential rows (record
+ * 2026-10-12-reverse-d5a). */
+void game_state_title(void);
+void game_state_select(void);
+void game_state_3(void);
+void game_state_4(void);
+void game_state_6(void);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */
@@ -545,6 +553,8 @@ void flow_winner_pose_step(void);
  * confirmed by raw `read_memory` — its 8 call sites across the image
  * (including 0x41733) are all no-ops. */
 void game_mode_12_step(void);
+/* 0x416D4: exposed for the differential row (record 2026-10-12-reverse-d5d). */
+void frontend_mode12_darken_or_tally(void);
 
 /* Record §48-D, mode 0x13 (the challenge screen after a match). 0x424E8,
  * game_frame's case 0x13, steps DS_00104B25: 0 the actors (0x428B8), 1 the

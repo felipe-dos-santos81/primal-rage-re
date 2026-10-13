@@ -166,10 +166,13 @@ static void check_title_overlay(void)
 static void check_state9_countdown(void)
 {
     /* Save and restore every global this seeds: the following state-6 block
-     * asserts DS_000F0A64 == 7, and a leaked DS_000F0A71 == 1 would make
-     * game_state_step's two per-state tails short-circuit for it (they are gated
-     * on that flag), so the state-6 assertions could pass for the wrong reason. */
+     * asserts DS_000F0A64 == 7. The hold runs with DS_000F0A71 == 0 (no input):
+     * the raw's 0x11EF2/0x11EF6 runs the attract reset 0x10EE4 when that byte is
+     * set, which hands state 0, not DS_000F0A6C (the differential row
+     * game_state_step_high covers that arm). The held dword DS_001088D8 is
+     * zeroed instead, so the two per-state tails return at their input tests. */
     const u32 saved_rng = DSD(DS_000EF6D8);
+    const u32 saved_8d8 = DSD(DS_001088D8);
     const u8  saved_b1d = DSB(DS_00104B1D);
     const u8  saved_a71 = DSB(DS_000F0A71);
     const u16 saved_64  = DSW(DS_000F0A64);
@@ -177,7 +180,8 @@ static void check_state9_countdown(void)
     const u16 saved_6c  = DSW(DS_000F0A6C);
 
     DSB(DS_00104B1D) = 1;          /* skip the deferred coin poll */
-    DSB(DS_000F0A71) = 1;          /* both per-state tails return immediately */
+    DSB(DS_000F0A71) = 0;          /* the demo's hold: no reset at the exit (0x11EF2) */
+    DSD(DS_001088D8) = 0;          /* both per-state tails return at their input tests */
     DSW(DS_000F0A64) = 9;
     DSW(DS_000F0A6A) = 3;          /* pre 3 -> new 2: no transition */
     DSW(DS_000F0A6C) = 6;
@@ -194,6 +198,7 @@ static void check_state9_countdown(void)
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), (long)saved_rng);
 
     DSD(DS_000EF6D8) = saved_rng;
+    DSD(DS_001088D8) = saved_8d8;
     DSB(DS_00104B1D) = saved_b1d;
     DSB(DS_000F0A71) = saved_a71;
     DSW(DS_000F0A64) = saved_64;

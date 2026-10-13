@@ -63,12 +63,14 @@ u32 config_field_get(u32 field)
  * 2026-09-29-todo-verify-derivations.md). */
 void config_storage_touch(u32 kind)
 {
+    PR_SEAM(0x2D4ECu, kind);
     (void)kind;
 }
 
 /* 0x2DA0C. Inverse of config_field_get (spec §3). */
 u32 config_field_set(u32 field, u32 value)
 {
+    PR_SEAM_RET(0x2DA0Cu, field, value);
     if (field > 0x3Eu) return 0xFFFFFFFFu;
 
     u32 d = DSD(DS_0002D300 + field * 4u);
@@ -290,6 +292,7 @@ u32 hiscore_read(u32 rec, u32 table)
  * finds no record. */
 u32 hiscore_insert(u32 rec, u32 src, u32 table)
 {
+    PR_SEAM_RET(0x2DCA0u, rec, src, table);
     u32 left = 0u, size = 0u;
     u32 p = hiscore_locate(rec, table, &left, &size);        /* 0x2DCBB */
     if (p == 0u) return 0u;                                  /* 0x2DCC4 */
@@ -322,9 +325,8 @@ u32 hiscore_insert(u32 rec, u32 src, u32 table)
         DSB(p + 1u) = (u8)(w >> 8);                          /* 0x2DDB0 */
         p += 2u;
     }
-    /* PORT: 0x2DDCD 0x2D4EC(table + 6), run when rec is below the stored count,
-     * rewrites the storage image's check bytes; a no-op here, as in 0x2DA0C
-     * (spec §7). */
+    if ((u32)DSW(desc + 2u) > rec)                           /* 0x2DDBA..0x2DDC4 `jbe` */
+        config_storage_touch(table + 6u);                    /* 0x2DDC6..0x2DDCD 0x2D4EC */
     return 1u;                                               /* 0x2DDD2 */
 }
 
@@ -432,6 +434,7 @@ u32 config_credit_spend(u32 n)
 /* 0x2C06C. `mov byte [0x85c05], al`. */
 void config_set_credit_row(u8 row)
 {
+    PR_SEAM(0x2C06Cu, (u32)row);
     DSB(DS_00105C05) = row;
 }
 
@@ -445,6 +448,7 @@ void config_set_credit_row_init(void)
  * eax,0x10; inc eax; mov [0x105c00],eax`. */
 void config_credits_init(void)
 {
+    PR_SEAM0(0x2C304u);
     DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;  /* 0x2C309..0x2C317 */
 }
 
@@ -624,6 +628,7 @@ void config_screen_wait(s32 n)
  * service-menu sites of record §K5.3, ported by K11 (svcmenu.c). */
 void config_screen_wait_zero(void)
 {
+    PR_SEAM0(0x2EA74u);
     config_screen_wait(0);                                  /* falls into 0x2EA78 */
 }
 
@@ -725,6 +730,7 @@ u32 config_input_poll(u32 mask, u8 flag)
  * on a non-zero result (0x2EEF2..0x2EEFB). Caller: 0x2FFC4 (0x303D2). */
 u32 config_input_poll_clear(u32 mask, u8 flag)
 {
+    PR_SEAM_RET(0x2EEC8u, mask, (u32)flag);
     u32 r = input_select_bits(mask);                        /* 0x2EED2 */
     if (flag != 0u) r |= config_key_flags(mask);            /* 0x2EEDB..0x2EEE8 */
     DSD(CFG_KEY_LATCH) = 0u;                                /* 0x2EEEC */
@@ -748,6 +754,7 @@ u32 config_input_poll_clear(u32 mask, u8 flag)
  * at 0x2000. Callers: 0x2FA40 (0x2FE2A) and 0x2FFC4 (0x305E2). */
 void config_code_row(s32 col, s32 row)
 {
+    PR_SEAM(0x305FCu, (u32)col, (u32)row);
     if (DSB(CFG_CODE_BASE + 3u) != 0u) {                    /* 0x3061D */
         u32 text = CFG_CODE_BASE + 0xDu;                    /* 0x30625..0x30631 */
         text_cursor_set(col, row, mem + text, 0x1000u);     /* 0x30638 */

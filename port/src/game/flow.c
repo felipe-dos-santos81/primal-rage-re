@@ -200,6 +200,7 @@ static void run_process_table(u32 table, u32 mask)
  * body instead of inlining the byte store. */
 void frontend_input_reset(void)
 {
+    PR_SEAM0(0x4F1E4u);
     DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
 }
 
@@ -219,6 +220,7 @@ void frontend_origin_zero(void)
  * DS_000BDDFC. */
 void title_origin_reset(u32 idx)
 {
+    PR_SEAM(0x38910u, idx);
     frontend_origin_zero();                     /* 0x3891A 0x4F1D0 */
     DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */
     DSW(DS_00107A4C) = DSW(DS_00107A4E);        /* 0x3892B */
@@ -342,6 +344,7 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
  * machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
+    PR_SEAM(0x38B18u, (u32)((const u8 *)desc - mem), a2, a3);
     u32 slot = 0;
     while (slot < 7u && DSD(DS_00107A1C + slot * 4u) != 0) slot++;
     u32 at = slot < 7u ? DS_00107A1C + slot * 4u : DS_00107A1C - 4u;   /* 0x38B1F, 0x38B32 */
@@ -548,7 +551,7 @@ void frontend_mode12_advance(void)
  * 8 call sites across the image, none observable); then, when
  * DS_00108104[r] == 7, frontend_mode12_advance(), else
  * frontend_darken_marked(). EBX/EDX pushed and popped. */
-static void frontend_mode12_darken_or_tally(void)
+void frontend_mode12_darken_or_tally(void)
 {
     PR_SEAM0(0x416D4u);
     if (DSD(DS_00104AD4) == 2u) {                           /* 0x416DC/0x416DF */
@@ -561,7 +564,8 @@ static void frontend_mode12_darken_or_tally(void)
      * The original's EAX/EDX build (DS_0010782A[r^1] and DS_0010782A[r])
      * feeds only this no-op call, so the port drops the dead computation
      * too. */
-    if (DSB(DS_00108104 + r) == 7u) {                       /* 0x41738..0x4174B */
+    r = DSD(DS_00104AD4);                                   /* 0x41738: read again after 0x4660C */
+    if (DSB(DS_00108104 + r) == 7u) {                       /* 0x4173D..0x4174B */
         frontend_mode12_advance();                          /* 0x4174D 0x4160C */
         return;
     }
@@ -720,6 +724,7 @@ void flow_join_prompt_draw(void)
  * states 3/6/7. */
 void game_mode_12_step(void)
 {
+    PR_SEAM0(0x41C28u);
     if (DSB(DS_00104B25) > 8u) return;                       /* 0x41C36/0x41C38 */
     u32 r = DSD(DS_00104AD4);                                /* 0x41C3E */
     u32 rec = DS_001077B0 + r * 0x94u;                       /* 0x41C44..0x41C5E */
@@ -958,6 +963,7 @@ void game_mode_12_step(void)
  * DS_00104B00 = 0x1A (0x4F994, a word). EDX is pushed and popped. */
 void frontend_wipe_arm(u32 ret_mode)
 {
+    PR_SEAM(0x4F980u, ret_mode);
     DSB(DS_001088F5) = 0u;                              /* 0x4F983 */
     DSW(DS_00104AFA) = (u16)ret_mode;                   /* 0x4F98E */
     DSW(DS_00104B00) = 0x1Au;                           /* 0x4F994 */
@@ -994,6 +1000,7 @@ void frontend_char_screen_hook_voice(void)
  * gate DS_001088F4 = 1 and 1 returns. */
 u32 frontend_wipe_in(void)
 {
+    PR_SEAM_RET0(0x4F9E4u);
     if (DSD(DS_000C98F0) == 0u) {                       /* 0x4F9EE */
         DSD(DS_000C98F0) = actor_spawn((const u32 *)(mem + DS_000C98F4),
                                        0u, 0xFFu, 0u, 0u);  /* 0x4F9FF/0x4FA04 */
@@ -1046,6 +1053,7 @@ u32 frontend_wipe_out(void)
  * becomes 0x1B (a word). */
 void frontend_mode_1a_step(void)
 {
+    PR_SEAM0(0x4F9A0u);
     if (frontend_wipe_in() == 0u) return;               /* 0x4F9A1/0x4F9A8 */
     /* PORT: `call dword [0x104ae4]` goes through the registry and a miss is
      * skipped. A miss is a no-op only for 0x29D60 (a bare `ret`, stored by
@@ -1074,6 +1082,7 @@ void frontend_mode_1a_step(void)
  * DS_00104AFA that 0x4F980 saved. */
 void frontend_mode_1b_step(void)
 {
+    PR_SEAM0(0x4F9C8u);
     if (frontend_wipe_out() == 0u) return;              /* 0x4F9C8/0x4F9CF */
     /* PORT: the registry call of 0x4F9A0, with the same misses: only
      * 0x29D60/0x5D812 are no-ops, and every other value the image stores is
@@ -1143,6 +1152,7 @@ u32 frontend_skip_check(void)
  * shared tail 0x2540F; the port returns nothing, as for 0x4F318. */
 void frontend_mode_15_step(void)
 {
+    PR_SEAM0(0x4F24Cu);
     u16 dx = DSW(DS_001088EE);                          /* 0x4F24E */
     if (dx == 0u) {                                     /* 0x4F255/0x4F258 */
         u32 r = frontend_skip_check() & 0xFFu;          /* 0x4F25A 0x4F790, 0x4F25F */
@@ -1167,6 +1177,7 @@ void frontend_mode_15_step(void)
  * runs. The mode is left to the hook (unlike mode 0x16's 0x4F2B0). */
 void frontend_mode_17_step(void)
 {
+    PR_SEAM0(0x4F318u);
     u16 dx = DSW(DS_001088EE);                          /* 0x4F31A */
     if (dx == 0u) {                                     /* 0x4F321/0x4F324 */
         u32 r = frontend_skip_check() & 0xFFu;          /* 0x4F326 0x4F790, 0x4F32B */
@@ -1205,6 +1216,7 @@ void frontend_mode_17_step(void)
  * set DS_00104B00 = 0x16 with DS_00104AFA = 0x30 or 5). */
 void frontend_mode_16_step(void)
 {
+    PR_SEAM0(0x4F2B0u);
     u16 dx = DSW(DS_001088EE);                          /* 0x4F2B2 */
     if (dx == 0u) {                                     /* 0x4F2B9/0x4F2BC */
         u32 r = frontend_skip_check() & 0xFFu;          /* 0x4F2BE 0x4F790, 0x4F2C3 */
@@ -1239,6 +1251,7 @@ void frontend_mode_16_step(void)
  * instruction stores back. */
 void frontend_mode_18_step(void)
 {
+    PR_SEAM0(0x4F6E8u);
     if (DSB(DS_0009AF3D) != 0u) return;                 /* 0x4F6E8/0x4F6EF */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F6F1 */
@@ -1254,6 +1267,7 @@ void frontend_mode_18_step(void)
  * together in the game_frame gap list. */
 void frontend_mode_19_step(void)
 {
+    PR_SEAM0(0x4F704u);
     if (DSB(DS_0009AF3D) != 0u) return;                 /* 0x4F704/0x4F70B */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F70D */
@@ -1457,6 +1471,7 @@ void game_hook_270bc(void)
  * pushed and popped; EAX (DS_001082CC) is dead at 0x257FC. */
 void flow_1082c8_init(void)
 {
+    PR_SEAM0(0x46594u);
     if (DSB(DS_00108173) != 0u) {                       /* 0x46596/0x4659D */
         DSD(DS_001082C8) = 7u;                          /* 0x465A9 */
         DSD(DS_001082CC) = 4u;                          /* 0x465AF */
@@ -1485,6 +1500,7 @@ void flow_1082c8_init(void)
  * unentered stub 0x11CC8 (`jmp` at 0x11CD4). */
 void game_coin_divert(u32 players)
 {
+    PR_SEAM(0x257A4u, players);
     (void)sound_voice(0x100u);                          /* 0x257A8/0x257AD 0x2C3FC */
     actors_reset_al(0u);                                /* 0x257B2/0x257B4 0x2BAF4 */
     DSB(DS_00104B17) = 0u;                              /* 0x257C0 (AH) */
@@ -1584,6 +1600,7 @@ void flow_side_char_random(u32 side)
  * 0x78 and DS_001088EE = 0x1E. EBX/ECX/EDX/ESI are pushed and popped. */
 void flow_player_join(u32 side)
 {
+    PR_SEAM(0x28DA4u, side);
     /* PORT: 0x28DAC 0x32970(EAX = 0), the run clock, is out of scope (spec
      * §7); the host clock owns wall time. */
     DSD(DS_000F0A48) = 0u;                              /* 0x28DB8 */
@@ -1636,6 +1653,7 @@ void flow_player_join(u32 side)
  * minus one to 0x28DA4. */
 u32 flow_join_poll(void)
 {
+    PR_SEAM_RET0(0x28CC8u);
     for (u32 side = 0; side < 2u; side++) {             /* 0x28CCB, 0x28D56..0x28D5A */
         u32 bit = side + 1u;                            /* 0x28CCF */
         if ((DSB(DS_00104B1F) & bit) != 0u) continue;   /* 0x28CCD..0x28CD9 */
@@ -1675,6 +1693,7 @@ u32 flow_join_poll(void)
  * mode 9, record §48-Y). */
 void flow_match_result_text(void)
 {
+    PR_SEAM0(0x28130u);
     u32 r = DSD(DS_00104AD4);                           /* 0x28133 */
     if (r == 0xFFFFFFFFu) {                             /* 0x28139/0x2813C */
         u32 b = DSB(DS_00104B16);                       /* 0x28257 */
@@ -1769,6 +1788,7 @@ void flow_continue_open(void)
  * 0x274EC (0x27380). */
 void flow_arena_ko_check(void)
 {
+    PR_SEAM0(0x272DCu);
     s32 w = (s32)(s8)DSB(DS_0010810D);                  /* 0x272DD/0x272E3 */
     if (DSB(DS_0010780A + (u32)w * 0x94u) >= 0x78u) {   /* 0x272F4..0x27303 */
         (void)sound_voice(0xD3u);                       /* 0x27305/0x2730A 0x2C3FC */
@@ -1805,6 +1825,7 @@ void flow_arena_ko_check(void)
  * after its 0x1975C, has no counterpart here. */
 void game_mode_0c_step(void)
 {
+    PR_SEAM0(0x27380u);
     u32 slot = DS_001077B0 + (u32)DSB(DS_00104B12) * 0x94u; /* 0x27383..0x27399 */
     if ((DSB(slot + 0x41u) & 1u) != 0u                  /* 0x2739C/0x273A3 */
             && (DSB(slot + 0x42u) & 8u) == 0u) {        /* 0x273A5/0x273AC */
@@ -1855,6 +1876,7 @@ void game_mode_0c_step(void)
  * (0x27A2C) and 0x42CB4 (three sites). */
 u32 flow_continue_poll(u32 side)
 {
+    PR_SEAM_RET(0x42F60u, side);
     if (config_credit_ready() == 0u) return 0u;         /* 0x42F63 0x2C060, 0x42F6A */
     if ((DSD(DS_0009ACBC + side * 4u) & DSD(DS_001088E4)) == 0u)
         return 0u;                                      /* 0x42F6C..0x42F78, 0x42FAA */
@@ -1932,6 +1954,7 @@ void flow_continue_take(void)
  *   any use). Then DS_00104AEC |= 2. */
 void game_mode_0e_step(void)
 {
+    PR_SEAM0(0x27A2Cu);
     u32 tick;
     if (flow_continue_poll((u32)(s32)(s8)DSB(DS_0010810D)) != 0u) {  /* 0x27A2F..0x27A3E 0x42F60 */
         DSB(DS_00104B1F) = (u8)((DSB(DS_0010810D) != 0u ? 1u : 0u) + 1u);  /* 0x27A40..0x27A55 */
@@ -2002,6 +2025,7 @@ void game_mode_0e_step(void)
  *   0x2C3FC). */
 void game_mode_0d_step(void)
 {
+    PR_SEAM0(0x274FCu);
     s32 w;
     u32 s, ch;
     u8 n;
@@ -2108,6 +2132,7 @@ void game_mode_0d_step(void)
  * DS_00104B0A ^= 1 (the voice 0x25 + (the result != 0)) and mode 0x31. */
 void game_mode_32_step(void)
 {
+    PR_SEAM0(0x296B8u);
     s32 w;
     u32 s, ch;
     u8 n, wins;
@@ -2308,6 +2333,7 @@ void flow_round_hud_init(void)
  * Every path ends with DS_00104AEC |= 2. EBX..EDI are pushed and popped. */
 void game_mode_05_step(void)
 {
+    PR_SEAM0(0x25C88u);
     u32 s, ch;
     fight_slot_pass();                                  /* 0x25C8D 0x3CB68 */
     switch (DSB(DS_00104B25)) {                         /* 0x25C92..0x25CA6 */
@@ -2420,6 +2446,7 @@ void game_mode_05_step(void)
  * clobbered and EDX pushed and popped, so the fn() signature is exact. */
 void flow_card_ramp_step(void)
 {
+    PR_SEAM0(0x25FACu);
     u32 rec = DSD(DS_00104ACC);                         /* 0x25FAD */
     DSB(rec + 0x2Du) = (u8)(DSB(rec + 0x2Du) + 1u);     /* 0x25FB2 */
     if (DSW(rec + 0x2Cu) < 0x1000u) return;             /* 0x25FB7..0x25FC1 */
@@ -2451,6 +2478,7 @@ void flow_card_ramp_step(void)
  * EBX..EDI are pushed and popped. */
 void game_mode_30_step(void)
 {
+    PR_SEAM0(0x29328u);
     fight_slot_pass();                                  /* 0x2932D 0x3CB68 */
     switch (DSB(DS_00104B25)) {                         /* 0x29332..0x29346 */
     case 1u: {
@@ -2542,6 +2570,7 @@ void game_mode_30_step(void)
  * (mode 0x31, game_mode_31_step). */
 void flow_round_over_check(void)
 {
+    PR_SEAM0(0x29970u);
     if (DSB(DS_0010780A) >= 0x78u) {                    /* 0x29974..0x2997C */
         (void)sound_voice(0x27u);                       /* 0x2997E/0x29983 0x2C3FC */
         (void)sound_voice(0x22u);                       /* 0x29988/0x29992 0x2C3FC (EDX = 0x32, 0x2998D) */
@@ -2573,6 +2602,7 @@ void flow_round_over_check(void)
  * flow_arena_ko_check (0x272DC). EBX/ECX/EDX are pushed and popped. */
 void game_mode_31_step(void)
 {
+    PR_SEAM0(0x299E8u);
     u32 slot = DS_001077B0 + (u32)DSB(DS_00104B12) * 0x94u;  /* 0x299ED..0x29A01 */
     if ((DSB(slot + 0x41u) & 1u) != 0u                  /* 0x29A04/0x29A0B */
             && (DSB(slot + 0x42u) & 8u) == 0u) {        /* 0x29A0D/0x29A14 */
@@ -2624,6 +2654,7 @@ void game_mode_31_step(void)
  * ECX/EDX are pushed and popped. */
 void game_mode_33_step(void)
 {
+    PR_SEAM0(0x29638u);
     DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x2963A/0x2963F */
     DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x29644/0x29649 */
     fight_hud_pass(0u);                                 /* 0x2964E 0x35658 */
@@ -2673,6 +2704,7 @@ void game_mode_33_step(void)
  * (the init writes (v & 0xF) * 5 + 0x1E, so it is never zero). */
 void flow_round_timer_step(void)
 {
+    PR_SEAM0(0x4F4E8u);
     if (DSB(DS_00105B3B) != 0u) {                       /* 0x4F4ED */
         for (u32 i = 0; i < 2u; i++)                    /* 0x4F4FB..0x4F52A */
             text_number_draw((s32)(1u + i * 0x22u), 7,
@@ -2714,6 +2746,7 @@ void flow_round_timer_step(void)
  * 0x24B26..0x24B48). */
 void flow_bonus_count_step(void)
 {
+    PR_SEAM0(0x4F5C8u);
     u32 n;
     if (DSD(DS_001088D0) == 0u) return;
     if (((s32)(u32)DSW(DS_00104AF4) % (s32)DSD(DS_001088D0)) != 0)
@@ -2831,6 +2864,7 @@ void flow_bonus_card_a_step(void)
  * EBX/ECX/EDX are pushed and popped, so fn() is exact. */
 void flow_bonus_card_b_step(void)
 {
+    PR_SEAM0(0x26194u);
     u8 st = DSB(DS_00104B0F);                           /* 0x26197 */
     u32 rec;
     if (st == 0u) {                                     /* 0x2619C/0x2619E, 0x261AE */
@@ -3045,6 +3079,7 @@ void flow_round_over(void)
  *   0x263AF (0x26254) and 0x2669B (0x26540). */
 void flow_round_end_check(void)
 {
+    PR_SEAM0(0x27FA8u);
     u32 a = DSB(DS_0010780A), b = DSB(DS_0010789E);    /* 0x27FAE, 0x27FBA */
     if (a >= 0x78u || b >= 0x78u) {                     /* 0x27FB3/0x27FB6, 0x27FBF/0x27FC2 */
         s32 r;
@@ -3107,6 +3142,7 @@ void flow_round_end_check(void)
  * nudges its win pose (`fighter_392a0`, already ported). */
 void flow_winner_pose_step(void)
 {
+    PR_SEAM0(0x28C38u);
     u32 count = DSD(DS_00104AD8) + 1u;                  /* 0x28C3A/0x28C40 */
     DSD(DS_00104AD8) = count;                           /* 0x28C47 */
     if ((s32)count % (s32)DSD(DS_00104AA8) != 0) return;   /* 0x28C41..0x28C56 */
@@ -3134,6 +3170,7 @@ void flow_winner_pose_step(void)
  * reloaded before a read. */
 void game_mode_04_step(void)
 {
+    PR_SEAM0(0x26254u);
     fight_slot_clear();                                 /* 0x26257 0x3C5CC */
     camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x2625C..0x26266 0x16D58 */
     camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x2626B..0x26278 0x16D58 */
@@ -3195,6 +3232,7 @@ void game_mode_04_step(void)
  * 0x26254's. */
 void game_mode_21_step(void)
 {
+    PR_SEAM0(0x26540u);
     fight_slot_clear();                                 /* 0x26543 0x3C5CC */
     camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x26548..0x26552 0x16D58 */
     camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x26557..0x26564 0x16D58 */
@@ -3509,6 +3547,7 @@ void flow_challenge_fighters(void)
  * sites). */
 void flow_challenge_join(u32 side)
 {
+    PR_SEAM(0x42FE0u, side);
     if (side == 0u) {                                   /* 0x42FE7/0x42FE9 */
         actors_anim_begin(DSD(DS_001080FC), DS_000E8816,
                           0x40C00000u);                 /* 0x42FEB..0x42FFA 0x2BC30 */
@@ -3703,6 +3742,7 @@ void flow_challenge_poll(void)
  * §48-Y, §48-Z); no oracle path reaches them (all-gaps ledger §D). */
 void game_mode_13_step(void)
 {
+    PR_SEAM0(0x424E8u);
     u32 side;
     switch (DSB(DS_00104B25)) {                         /* 0x424EE..0x42500 */
     case 0u:
@@ -3823,6 +3863,7 @@ static void flow_results_darken_close(void)
  * fighter_46534(loser, 1) (0x2877A..0x2877E). */
 void flow_match_streak_update(void)
 {
+    PR_SEAM0(0x286BCu);
     u32 result = DSD(DS_00104AD4);                       /* 0x286BF */
     if (result == 2u) {                                  /* 0x286C5/0x286C8 */
         DSB(DS_00108106 + DSW(DS_00104AFC)) = 0u;         /* 0x286CA..0x286D4 */
@@ -3849,6 +3890,7 @@ void flow_match_streak_update(void)
 
 void game_mode_09_step(void)
 {
+    PR_SEAM0(0x28788u);
     fight_slot_clear();                                 /* 0x2878E 0x3C5CC */
     camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x28793..0x287A2 0x16D58 */
     camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x287A7..0x287B9 0x16D58 */
@@ -4046,6 +4088,7 @@ void game_hook_24b54(void)
  * and the hook becomes 0x10E80 when DS_00104B1D == 0, else 0x24B54. */
 void game_hook_25ae8(void)
 {
+    PR_SEAM0(0x25AE8u);
     (void)sound_voice(0x100u);                          /* 0x25AEC/0x25AF1 0x2C3FC */
     DSB(DS_00104B14) = 0u;                              /* 0x25AF8 */
     frontend_input_reset();                             /* 0x25B00 0x4F1E4 */
@@ -4076,6 +4119,7 @@ void game_hook_25ae8(void)
  * game_hook_259cc installs above. */
 void game_mode_08_step(void)
 {
+    PR_SEAM0(0x28468u);
     fight_slot_clear();                                 /* 0x2846D 0x3C5CC */
     camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x28476..0x28481 0x16D58 */
     camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x2848D..0x28498 0x16D58 */
@@ -4140,6 +4184,7 @@ void game_mode_08_step(void)
  * advance to 0xB. */
 void game_mode_0a_step(void)
 {
+    PR_SEAM0(0x28BD4u);
     DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x28BDA/0x28BDF */
     DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x28BE4/0x28BE9 */
     fight_hud_pass(0u);                                  /* 0x28BE9/0x28BEB 0x35658 */
@@ -4201,6 +4246,7 @@ void game_mode_0a_step(void)
  * load, omitted. EBX/ECX/EDX/EDI are pushed and popped. */
 void game_mode_07_step(void)
 {
+    PR_SEAM0(0x282C4u);
     DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x282CE/0x282D3 */
     DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x282D8/0x282DD */
     fight_slot_pass();                                   /* 0x282E2 0x3CB68 */
@@ -4286,6 +4332,7 @@ void game_mode_07_step(void)
  * EBX/ECX/EDX/ESI are pushed and popped. */
 void game_mode_0f_step(void)
 {
+    PR_SEAM0(0x277C0u);
     DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x277C4/0x277C9 */
     DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x277CE/0x277D3 */
     fight_hud_pass(0u);                                  /* 0x277D8/0x277DA 0x35658 */
@@ -4328,8 +4375,9 @@ void game_mode_0f_step(void)
  * state 3 past the sixth; phase 3 hands off. The jump table at 0x11F58 fixes
  * the boundaries: 0 -> 0x11F89, 1 -> 0x11FDA, 2 -> 0x1211C, 3 -> 0x12159,
  * 4 -> 0x1217B, default (ja) -> 0x1219A. */
-static void game_state_select(void)
+void game_state_select(void)
 {
+    PR_SEAM0(0x11F6Cu);
     /* 0x487BC is a link-time offset below the data object's base; the loader
      * fixes it to mem+0xC87BC. Config row 1, phase 0 and phase 1. */
     const u32 *desc = (const u32 *)(mem + 0xC87BCu);
@@ -4337,7 +4385,6 @@ static void game_state_select(void)
     switch (DSB(DS_000F0A6F)) {
     case 0:
     case 1: {
-        u32 n = DSB(DS_000F0A6E);
         if (DSB(DS_000F0A6F) == 0) {
             /* 0x29D60 is a ret-only no-op. */
             actors_reset();                         /* 0x2BAF4 (eax = 1) */
@@ -4347,11 +4394,11 @@ static void game_state_select(void)
             DSB(DS_000F0A6E) = 0;
             DSD(DS_000F0A44) = 0;
             if ((DSB(DS_00104528 + 1) & 2u) != 0u) DSD(DS_000F0A40) = 0;
-            n = 0;
         }
         actors_reset();                             /* 0x2BAF4 (eax = 1) */
         frontend_origin_zero();                     /* 0x4F1D0 */
         frontend_spawn_row(desc, 0u, 0u);           /* 0x38B18 */
+        u32 n = DSB(DS_000F0A6E);                   /* 0x11FFD */
         DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
             (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),   /* 0x9AEE0 */
             0u, 0xE0u + n, 0x600u, 0u);
@@ -4361,12 +4408,15 @@ static void game_state_select(void)
                 effects_spawn_pulse(node, 1u);      /* 0x13E28 (edx = 1) */
         }
         if ((DSB(DS_00104528 + 1) & 2u) != 0u) {
+            n = DSB(DS_000F0A6E);                   /* 0x1206C */
             DSD(DS_000F0A40) = actor_spawn(         /* 0x2AE14 */
                 (const u32 *)(mem + DSD(0x9AEC8u + 4u * n)),   /* 0x9AEC8 */
                 0x2A00u, 0xFFu, 0x3400u, 0u);
         } else {
+            n = DSB(DS_000F0A6E);                   /* 0x12090 */
             text_cursor_set(-1, 0x18,               /* 0x1C500 + 0x2F198 */
                 game_string_get(DSD(0x9AEE4u + 12u * n)), 0x4003u);  /* 0x9AEE4 */
+            n = DSB(DS_000F0A6E);                   /* 0x120C3 */
             u32 id2 = DSD(0x9AEE8u + 12u * n);
             if (id2 != 0)
                 text_cursor_set(-1, 0x1b,           /* 0x1C500 + 0x2F198 */
@@ -4474,8 +4524,9 @@ void game_attract_dump_frame(void)
 }
 
 /* 0x121A0: the title state. Phase counter DS_000F0A6F. */
-static void game_state_title(void)
+void game_state_title(void)
 {
+    PR_SEAM0(0x121A0u);
     if (DSB(DS_000F0A6F) == 0) {
         (void)sound_voice(0x41u);               /* 0x121C9/0x121CE 0x2C3FC: stop 0x40's loop */
         (void)sound_voice(0x43u);               /* 0x121D3/0x121D8 0x2C3FC: stop 0x42's loop */
@@ -4550,12 +4601,10 @@ static void game_state_title(void)
         }
         /* 0x12402: DS_00107A50 += (rec58+0x32 >> 16) / 2, and
          * 0x12429: rec58+0x2C = 0x40000 / DS_000F0A66. */
-        u32 logo = DSD(DS_000F0A58);
-        if (logo != 0) {
-            DSW(DS_00107A50) = (u16)(DSW(DS_00107A50) +
-                                     (u16)(((s32)DSD(logo + 0x32) >> 16) / 2));
-            DSW(logo + 0x2C) = (u16)(0x40000u / (u32)DSW(DS_000F0A66));
-        }
+        u32 logo = DSD(DS_000F0A58);                        /* 0x12402 (no null test) */
+        DSW(DS_00107A50) = (u16)(DSW(DS_00107A50) +
+                                 (u16)(((s32)DSD(logo + 0x32) >> 16) / 2));    /* 0x12408..0x12423 */
+        DSW(logo + 0x2C) = (u16)(0x40000u / (u32)DSW(DS_000F0A66));            /* 0x12429..0x1243E */
     } else if (DSB(DS_000F0A6F) == 2 && DSB(DS_0009AF3D) == 0) {
         DSB(DS_000F0A6F) = 0;       /* 0x12453 (0x1244E) */
         DSW(DS_000F0A64) = 2;       /* 0x12459 */
@@ -4572,6 +4621,7 @@ static void game_state_title(void)
  * resource. Called only from game_state_3 phase 0. */
 void game_state_3_handoff(void)
 {
+    PR_SEAM0(0x12658u);
     u32 first = actor_spawn((const u32 *)(mem + 0x9AC44u),
                             0x2A00u, 0xE0u, 0x5A00u, 0u);       /* 0x12672 */
     DSW(first + 0x36u) = 0xFFC0u;                               /* 0x12677 */
@@ -4600,8 +4650,9 @@ void game_state_3_handoff(void)
  * branch (text rows or an actor through 0x2AE14) and hands off through 0x12658.
  * Phase 1 tracks the handoff actor's offset and terminates into state 9 when it
  * reaches 0x1E00. `cam` is the record 0x12658 stores at DS_000F0A58. */
-static void game_state_3(void)
+void game_state_3(void)
 {
+    PR_SEAM0(0x12484u);
     if (DSB(DS_000F0A6F) == 0) {
         actors_reset();                                             /* 0x2BAF4 */
         frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0u);       /* 0x124A9 */
@@ -4657,8 +4708,9 @@ static void game_state_3(void)
  * phase DS_000F0A74, then enters phase 4. Phase 4 counts the timer down and
  * continues when the pre-decrement value is zero. Phase 3 hands to state 9.
  * 0x2C06C is called in case 0 only, as the raw does. */
-static void game_state_4(void)
+void game_state_4(void)
 {
+    PR_SEAM0(0x11578u);
     switch (DSW(DS_0009AD98)) {
     case 0:
         (void)sound_voice(0x100u);                              /* 0x1159A/0x1159F 0x2C3FC */
@@ -4754,6 +4806,7 @@ static void game_state_4(void)
  * 0x20ED5. EBX/ECX/EDX are pushed and popped. */
 void flow_list_105c0c_init(void)
 {
+    PR_SEAM0(0x2C390u);
     DSD(DS_00105C10) = DS_00105C0C;                     /* 0x2C3A2 */
     DSD(DS_00105C0C) = DS_00105C0C;                     /* 0x2C3A8 */
     DSD(DS_00105C18) = DS_00105C14;                     /* 0x2C3AE */
@@ -4766,6 +4819,7 @@ void flow_list_105c0c_init(void)
  * popped). Callers: 0x20E47 (in 0x20DF4) and 0x20EEE. */
 void flow_105bf0_clear(void)
 {
+    PR_SEAM0(0x2C074u);
     DSD(DS_00105BF4) = 0u;                              /* 0x2C077 */
     DSD(DS_00105BF0) = 0u;                              /* 0x2C07D */
 }
@@ -4916,6 +4970,7 @@ void prompt_side_erase(s32 side, s32 row)
  * and 0x24C5C's jump-table cases 1, 2 and 0x20 (0x2521A/0x25224/0x2522E). */
 void game_null_step(void)
 {
+    PR_SEAM0(0x29B70u);
 }
 
 /* 0x20DF4 — record §46-B. The fight reset. EAX = the stage (DS_00104AFC's
@@ -4936,6 +4991,7 @@ void game_null_step(void)
  * 0x270E0 (0x270BC) and 0x295E4. */
 void game_fight_reset(u32 stage, u32 full)
 {
+    PR_SEAM(0x20DF4u, stage, full);
     DSD(DS_000F0A48) = 0u;                              /* 0x20DFB */
     u32 s = (s32)stage < 7 ? stage : 7u;                /* 0x20DF7/0x20E01/0x20E06 */
     game_null_step();                                   /* 0x20E0B 0x29B70 */
@@ -4966,8 +5022,9 @@ void game_fight_reset(u32 stage, u32 full)
  * RNG DRAW ORDER (Task 7 pins the shared stream): draw1 = rng(7) at 0x11AAD also
  * sets DS_00104AFC and P0's character; draw2 = rng(6) at 0x11AE9 gives P1 the
  * character (draw1 + draw2) % 7. Exactly two draws, in that order. */
-static void game_state_6(void)
+void game_state_6(void)
 {
+    PR_SEAM0(0x11A8Cu);
     (void)sound_voice(0x100u);                          /* 0x11A8F/0x11A94 0x2C3FC */
     /* 0x11A99 0x29D60 is a ret-only no-op. */
     config_set_credit_row(0x1Du);                       /* 0x11AA3 0x2C06C */
@@ -4976,7 +5033,7 @@ static void game_state_6(void)
     DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
     /* 0x11ABA..0x11AC1: EAX = the zero-extended word of the draw, EDX = 1, so
      * 0x20DF4 takes its full-reset branch (record §46-B). */
-    game_fight_reset(draw1, 1u);                        /* 0x11AC4 0x20DF4 */
+    game_fight_reset((u32)(u16)draw1, 1u);              /* 0x11ABA/0x11AC1 `mov ax,bx`, 0x11AC4 0x20DF4 */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
     fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
     /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and
@@ -4986,7 +5043,7 @@ static void game_state_6(void)
 
     u32 draw2 = rng_next(6u);                           /* 0x11AE9 (draw 2) */
     u32 p1 = draw1 + draw2;                             /* 0x11AEE */
-    if (p1 >= 7u) p1 -= 7u;                             /* 0x11AF6 (single sub 7) */
+    if ((s32)p1 >= 7) p1 -= 7u;                         /* 0x11AF1/0x11AF4 `jl`, 0x11AF6 (single sub 7) */
     fight_char_select(1u, p1);                          /* 0x11AFE 0x41350 */
     fighter_spawn(1u);                                  /* 0x11B08 0x33EB4 */
 
@@ -4996,7 +5053,7 @@ static void game_state_6(void)
      * push/pops EDX), so the store below is the constant 1. */
     fight_hud_spawn(0u);                                /* 0x11B1E 0x1D890 */
     DSB(DS_00104B19 + 2u) = 1u;                         /* 0x11B23 */
-    DSW(DS_001082CC) = 3u;                              /* 0x11B2F */
+    DSD(DS_001082CC) = 3u;                              /* 0x11B2F (a dword: `mov [0x1082cc],ebx`) */
 
     if ((DSB(DS_00104528 + 1u) & 2u) == 0u) {           /* 0x11B35 */
         text_cursor_set(-1, 2, game_string_get(6u), 0x2000u);   /* 0x11B49/55 */
@@ -5006,7 +5063,7 @@ static void game_state_6(void)
 
     DSW(DS_000F0A64) = 7;                               /* 0x11BAB */
     DSW(DS_000F0A6A) = 900;                             /* 0x11BB2 */
-    DSW(DS_000F0A6C) = DSW(DS_000F0A72);                /* 0x11BB9 */
+    DSW(DS_000F0A6C) = DSB(DS_000F0A72);                /* 0x11B9F/0x11BA6/0x11BB9 (`xor ah,ah; mov al,..`) */
     DSB(DS_000F0A6F) = 0;                               /* 0x11BBF */
 }
 
@@ -5015,6 +5072,7 @@ static void game_state_6(void)
  * reads 0, or every record when forced. */
 void hiscore_fill_defaults(u32 force)
 {
+    PR_SEAM(0x1E918u, force);
     u32 src = 0xA7BBCu;                                         /* 0x1E920 */
     for (u32 i = 0u; i < 10u; i++) {                            /* 0x1E925..0x1E94C */
         u32 r = hiscore_read(i, 0u);                            /* 0x1E92D 0x2DBC4 */
@@ -5028,6 +5086,7 @@ void hiscore_fill_defaults(u32 force)
  * 0x26 >= 200 (both `jl`, signed). */
 u32 hiscore_audit_reset_due(void)
 {
+    PR_SEAM_RET0(0x1E988u);
     if ((s32)config_field_get(0x27u) < 0x7D0) return 0u;        /* 0x1E98D/0x1E992 */
     if ((s32)config_field_get(0x26u) < 0xC8) return 0u;         /* 0x1E99E/0x1E9A3 */
     return 1u;                                                  /* 0x1E9AA */
@@ -5049,7 +5108,7 @@ void hiscore_init(void)
         DSB(DS_001042C7 + i) = 0x20u;                           /* 0x1E85F */
     u8 ah = DSB(DS_00104528 + 1u);                              /* 0x1E86F */
     if ((ah & 0x40u) == 0u
-        && ((ah & 0x20u) == 0u || hiscore_audit_reset_due() != 1u)) {   /* 0x1E875..0x1E88C */
+        && ((ah & 0x20u) == 0u || (hiscore_audit_reset_due() & 0xFFu) != 1u)) {   /* 0x1E875..0x1E88C; AL alone: `and eax,0xff` 0x1E884 */
         hiscore_fill_defaults(0u);                              /* 0x1E8F0 0x1E918 */
         u32 r = hiscore_read(0u, 1u);                           /* 0x1E8F7 0x2DBC4 */
         if (DSD(r) != 0u) return;                               /* 0x1E8FC/0x1E8FF */
@@ -5078,6 +5137,7 @@ void hiscore_init(void)
  * wired. */
 void frontend_match_start(void)
 {
+    PR_SEAM0(0x1EA08u);
     u8 name[0x24];
 
     frontend_input_reset();                                     /* 0x1EA11 (0x4F1E4) */
@@ -5147,6 +5207,7 @@ void frontend_match_start(void)
  * (0x1ECA5); ECX (the rank) survives it (0x204F5 push/0x2070A pop). */
 u32 hiscore_rank_single(u32 score)
 {
+    PR_SEAM_RET(0x1EC38u, score);
     u32 rank = hiscore_rank_probe(score, 0u);                  /* 0x1EC3F */
     /* PORT: 0x1EC44..0x1EC6B — field 0x27's deferred audit add; see header. */
     if ((u16)rank >= 10u) {                                    /* 0x1EC75/0x1EC78 */
@@ -5174,6 +5235,7 @@ u32 hiscore_rank_single(u32 score)
  * (0x1ED26). */
 u32 hiscore_rank_pair(void)
 {
+    PR_SEAM_RET0(0x1ECC8u);
     u32 r0 = hiscore_rank_probe(DSD(DS_001077EC), 0u);          /* 0x1ECD0 */
     DSW(DS_001044C0) = (u16)r0;                                  /* 0x1ECD5 */
     if ((u16)r0 >= 10u) return 0u;                               /* 0x1ECE0/0x1ECE3 */
@@ -5197,10 +5259,11 @@ u32 hiscore_rank_pair(void)
  * and states 0xF/0x10, which re-arm the other side's entry. */
 void game_mode_1e_step(void)
 {
+    PR_SEAM0(0x1EEB0u);
     switch (DSB(DS_00104B25)) {
     case 0x00u:
         if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u    /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
-            && hiscore_rank_pair() != 0u) {                     /* 0x1EEE1/0x1EEE6/0x1EEE8 */
+            && (hiscore_rank_pair() & 0xFFu) != 0u) {           /* 0x1EEE1/0x1EEE6/0x1EEE8; AL alone: `test al,al` 0x1EEE6 */
             nameentry_reset();                                  /* 0x1EEEA 0x1ED2C */
             (void)sound_voice(0x100u);                          /* 0x1EEEF/0x1EEF4 0x2C3FC */
             (void)sound_voice(0xE1u);                           /* 0x1EEF9/0x1EEFE 0x2C3FC */
@@ -5242,7 +5305,7 @@ void game_mode_1e_step(void)
             DSB(DS_00104B25) = 7u;                                /* 0x1F2AA */
             break;
         }
-        if (hiscore_rank_single(DSD(DS_001077EC)) != 0u) {         /* 0x1F1A6/0x1F1AB/0x1F1B0/0x1F1B2 */
+        if ((hiscore_rank_single(DSD(DS_001077EC)) & 0xFFu) != 0u) {   /* 0x1F1A6/0x1F1AB/0x1F1B0/0x1F1B2; AL alone: `test al,al` 0x1F1B0 */
             u32 advance = (DSD(DS_00104AD4) != 0u)                  /* 0x1F1B8/0x1F1BF */
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F1C1/0x1F1C8/0x1F1CE/0x1F1D5 */
             if (advance) {
@@ -5283,7 +5346,7 @@ void game_mode_1e_step(void)
             DSB(DS_00104B25) = 0xAu;                              /* 0x1F3CC */
             break;
         }
-        if (hiscore_rank_single(DSD(DS_00107880)) != 0u) {          /* 0x1F2C4/0x1F2C9/0x1F2CE/0x1F2D0 */
+        if ((hiscore_rank_single(DSD(DS_00107880)) & 0xFFu) != 0u) {    /* 0x1F2C4/0x1F2C9/0x1F2CE/0x1F2D0; AL alone: `test al,al` 0x1F2CE */
             u32 advance = (DSD(DS_00104AD4) != 1u)                   /* 0x1F2D6/0x1F2DC/0x1F2DF */
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F2E1/0x1F2E8/0x1F2EE/0x1F2F4 */
             if (advance) {
@@ -5433,6 +5496,7 @@ void game_mode_1e_step(void)
  * reset to 0 for the next time mode 0x1F runs. */
 void game_mode_1f_step(void)
 {
+    PR_SEAM0(0x208F8u);
     u32 charid = DSB(DS_0010782A + DSD(DS_00104AD4) * 0x94u);  /* 0x20900..0x20921 */
 
     switch (DSB(DS_00104B25)) {                                 /* 0x2091b/0x20931 */
@@ -5459,7 +5523,7 @@ void game_mode_1f_step(void)
         u32 rec2 = actor_spawn((const u32 *)(mem + desc),
                                 0u, 0xF2u, 0u, frame_bits);      /* 0x20a00 0x2AE14 */
         DSD(DS_001044A4) = rec2;                                /* 0x20a05 */
-        DSW(rec1 + 0x36u) = 0xFFC0u;                             /* 0x20a17 */
+        DSW(DSD(DS_001044A0) + 0x36u) = 0xFFC0u;                 /* 0x20a10/0x20a17 */
         DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);         /* 0x20a0a/0x20a1d */
         break;
     }
@@ -5567,6 +5631,7 @@ void game_mode_1f_step(void)
  * EBX..EDI are pushed and popped. */
 void flow_26d4c(void)
 {
+    PR_SEAM0(0x26D4Cu);
     if ((s32)DSD(DS_00104AC4) > 0) return;                  /* 0x26D54/0x26D5B */
 
     text_cells_release_count(-1, 3, 0x2A);                  /* 0x26D70 0x2F388 */
@@ -5620,10 +5685,12 @@ void flow_26d4c(void)
  * 0x24C5C's jump table (record §47-B.1). */
 void game_mode_22_step(void)
 {
+    PR_SEAM0(0x26C8Cu);
     fight_slot_clear();                                     /* 0x26C90 0x3C5CC */
     u32 side = DSB(DS_00104B1A);                            /* 0x26C95 */
     u32 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x26CAE */
     camera_screen_base((s32)side, (s32)ch);                 /* 0x26CB7 0x16D58 */
+    side = DSB(DS_00104B1A);                                /* 0x26CBC: read again after 0x16D58 */
     DSD(DS_001077E8 + side * 0x94u) = DSD(DS_001077E4 + side * 0x94u);  /* 0x26CD1/0x26CD8 */
     camera_project(side,
                    DS_00100B08 + side * 4u,
@@ -5665,6 +5732,7 @@ void game_mode_22_step(void)
  * 0x24C5C's jump table (record §47-B.1). */
 void game_mode_23_step(void)
 {
+    PR_SEAM0(0x26A50u);
     switch (DSB(DS_00104B25)) {                             /* 0x26A55..0x26A69 */
     case 1u:
         DSB(DS_00104B1B) = 1u;                              /* 0x26A78 */
@@ -5745,10 +5813,12 @@ void game_mode_23_step(void)
  * §47-B.1). */
 void game_mode_24_step(void)
 {
+    PR_SEAM0(0x26F58u);
     fight_slot_clear();                                     /* 0x26F5D 0x3C5CC */
     u32 side = DSB(DS_00104B1A);                            /* 0x26F62 */
     u32 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x26F7B */
     camera_screen_base((s32)side, (s32)ch);                 /* 0x26F84 0x16D58 */
+    side = DSB(DS_00104B1A);                                /* 0x26F89: read again after 0x16D58 */
     DSD(DS_001077E8 + side * 0x94u) = DSD(DS_001077E4 + side * 0x94u);  /* 0x26F9E/0x26FA5 */
     camera_project(side,
                    DS_00100B08 + side * 4u,
@@ -5808,6 +5878,7 @@ void game_mode_24_step(void)
  * Only caller: 0x252B2 (0x24C5C case 0x25). */
 void game_mode_25_step(void)
 {
+    PR_SEAM0(0x266ACu);
     if (DSB(DS_001078F0) != 0u && DSB(DS_001078F1) != 0u) {  /* 0x266B0..0x266C0 */
         u16 old = DSW(DS_001088A6);                          /* 0x266C2 */
         DSW(DS_001088A6) = (u16)(old - 1u);                  /* 0x266C8..0x266CB */
@@ -5891,6 +5962,7 @@ void game_mode_25_step(void)
  * 0x252E1 (0x24C5C case 0x25, DS_001088BD == 8 arm). */
 void game_mode_25_reveal(void)
 {
+    PR_SEAM0(0x4EF8Cu);
     DSW(DS_0010889A) = 0xF0u;                                /* 0x4EF90/0x4EF9A */
     u32 node = DSD(DS_0010884C);
     while (node != DS_0010884C) {
@@ -5938,6 +6010,7 @@ void game_mode_25_reveal(void)
  * 0x25, DS_00104B25 == 1 arm, timer expiry). */
 void game_mode_25_exit(void)
 {
+    PR_SEAM0(0x4F0FCu);
     text_cursor_hold_font2(-1, 0xB, game_string_get(0x67u), 0x4000u); /* 0x4F0FF..0x4F11A */
     text_cursor_hold_font2(-1, 0xE, game_string_get(0x68u), 0x4000u); /* 0x4F11F..0x4F13A */
     text_cells_release_count(0xE, 6, 0xB);                           /* 0x4F13F..0x4F14E 0x2F388 */
@@ -6117,6 +6190,7 @@ static void title_music_start(void)
  * and the mixer renders on the virtual clock below; nothing is submitted. */
 void game_audio_service(void)
 {
+    PR_SEAM0(0x1CF20u);
     for (u32 i = 0; i < 4u; i++) sound_sample_start(i);    /* 0x1CF21..0x1CF2E 0x1CB18 */
     if (s_music_request) {
         s_music_request = 0;
@@ -6981,7 +7055,7 @@ void game_loop(void)
         const u16 state_before = DSW(DS_000F0A64);
         game_frame();                        /* 0x24C5C */
         run_process_table(DS_000A86C4, DSD(DS_00104AEC));  /* render table */
-        DSD(DS_00104AF4)++;                  /* 0x2563A */
+        DSW(DS_00104AF4) = (u16)(DSW(DS_00104AF4) + 1u);   /* 0x25632 `inc word`: no carry into DS_00104AF6 */
         effects_step();                      /* 0x134C0 (0x2563E) */
 
         /* 0x25643: the tick gate. The original presents only when the frame
@@ -7009,11 +7083,9 @@ void game_loop(void)
              * frame. */
             if (state_before == 0) game_attract_dump_frame();
             else if (state_before == 1) game_title_dump_frame();
-            DSD(DS_001014FC) = 0;            /* 0x2569D */
+            DSB(DS_001014FC) = 0;            /* 0x2569D `mov byte` */
             swap_buffers();                  /* 0x256AA 0x50188 */
         }
-        DSD(DS_0010150C)++;                  /* 0x256C0 */
-
         /* PORT: 0x256B1 (the master loop's body draw, `rng(0x7FFF)`) is pinned to
          * a non-advancing `mov eax,0` in the pinned original (tools/title_pin.py),
          * and the port draws nothing here, so both streams carry only the
@@ -7023,7 +7095,8 @@ void game_loop(void)
 
         /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
          * the music, render one frame of audio. */
-        game_audio_service();
+        game_audio_service();                /* 0x256B6 0x1CF20 */
+        DSD(DS_0010150C)++;                  /* 0x256C0, after the service */
 
         /* 0x256C5: the original spins while DS_0010150C-1 == DS_00101508, i.e.
          * until the timer ISR (0x1BDF4) advances DS_00101508 to the frame
@@ -7243,6 +7316,7 @@ void game_key_loop(void)
 
 void game_frame(void)
 {
+    PR_SEAM0(0x24C5Cu);
     /* PORT: 0x24C5C calls 0x4F644 at 0x24C6E (unless DAT_00104B00 == 0x27) as
      * its first action, before the frame counter and the process tables. */
     if (DSW(DS_00104B00) != 0x27u) input_state_update();   /* 0x4F644 (0x24C6E) */
@@ -7594,8 +7668,8 @@ void game_frame(void)
     case 0x23u: {
         /* 0x2554B: the camera dispatch and the DS_00104B1A slot alone. */
         camera_dispatch();                             /* 0x2554B 0x12D48 */
-        u32 side = DSB(DS_00104B1A);                   /* 0x25552 */
-        fighter_slot_latch(side);                      /* 0x25559 0x186D0 */
+        fighter_slot_latch(DSB(DS_00104B1A));          /* 0x25552/0x25559 0x186D0 */
+        u32 side = DSB(DS_00104B1A);                   /* 0x2555E, read again after the call */
         u32 rec = DSD(DS_001077B0 + side * 0x94u);     /* 0x25575 */
         if (rec != 0u) actor_pset_point(rec);          /* 0x25581 0x2A690 */
         fight_health_bars();                           /* 0x25586/0x255C0 0x33F08 */
@@ -7633,6 +7707,7 @@ u32 frontend_coin_poll(u32 code)
 
 void game_state_step(void)
 {
+    PR_SEAM0(0x11D04u);
     if (DSB(DS_00104B1D) == 0) {
         u32 accepted = 0u;
         if (frontend_coin_poll(0u)) accepted |= 1u;    /* 0x11D15 */
@@ -7705,8 +7780,11 @@ void game_state_step(void)
         case 9:
             DSW(DS_000F0A6A) = (u16)sVar1;
             if (sVar1 == 0) {
-                DSW(DS_000F0A64) = DSW(DS_000F0A6C);
-                /* PORT: 0x10EE4/0x29D60 transition helpers (menus). */
+                u8 reset = DSB(DS_000F0A71);            /* 0x11EE6, read before the store */
+                DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11EE0/0x11EEC */
+                /* PORT: 0x11F0E 0x29D60 (the clear byte's arm) is a ret-only
+                 * no-op, not called. */
+                if (reset != 0u) attract_state_reset(); /* 0x11EF2/0x11EF4, 0x11EF6 0x10EE4 */
             }
             break;
         default:
@@ -7732,6 +7810,7 @@ void game_state_step(void)
  * that gate belongs only to the DS_00105C00 == 0 fallback. */
 void game_overlay_step(void)
 {
+    PR_SEAM0(0x2BF08u);
     s32 row = (s32)DSB(DS_00105C05);
 
     if (DSB(DS_0009AD58) != 0) return;                  /* 0x2BF18: attract */

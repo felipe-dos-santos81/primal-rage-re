@@ -197,4 +197,11 @@ u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count);
 int camera_projectile_clash(void);
 void camera_box_clip(u32 side, u32 index, u8 *box);
 
+/* PORT: exported for the D5 d5b differential rows (linkage only; record
+ * 2026-10-12-reverse-d5b). */
+void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
+                          u32 b10, u32 b30, s32 arg2, u32 side);
+void camera_projectile_hit(u32 side);
+int camera_point_side(u32 side, s32 x, s32 y, u32 tall);
+
 #endif /* PRAGE_GAME_CAMERA_H */

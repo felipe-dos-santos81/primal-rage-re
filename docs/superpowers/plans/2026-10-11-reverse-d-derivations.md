@@ -6,7 +6,7 @@ Waves 1 and 2 (2026-10-11/12). Integration branch `reverse-d1` (off `main` `e53c
 (wave 2). This record is the track's ledger: why, how the batches were merged, the counters, the
 corrections, the named gaps and the gate evidence.
 Wave 3 (2026-10-12, integrated on `reverse-d3int`, per-batch records
-`2026-10-12-reverse-d3{a..e}-derivations.md`) is §D.7 and wave 4 (`reverse-d4int`) is §D.8; §D.1-§D.6 describe waves 1 and 2 as they were gated.
+`2026-10-12-reverse-d3{a..e}-derivations.md`) is §D.7, wave 4 (`reverse-d4int`) is §D.8 and the first eight batches of wave 5 (`reverse-d5int`) are §D.9; §D.1-§D.6 describe waves 1 and 2 as they were gated.
 
 ## §D.1 Why
 
@@ -422,4 +422,118 @@ the cause in a comment. The second `make verify` exits 0: 178 harness tests OK, 
 byte-identical, `symbols.h` idempotent, every oracle pin unchanged, and its 782 normalised lines before
 "== differential verification" equal the wave-3 gate's — 0 differing. So no capture distinguishes any wave-4
 correction, `camera_project`'s shift included: its evidence is the row and the audit's sprite count, not a replay.
+
+## §D.9 Wave 5, batches d5a..d5h (126 rows, 38 corrections)
+
+Eight batches in worktrees off `3790f323` (the wave-4 tree before d4e), merged on `reverse-d5int` (off `main`
+`3886d8ab`) by the additive composition with base `3790f323` and the list main, d5a..d5h. Per-batch records
+`2026-10-12-reverse-d5{a..h}-derivations.md`. Three `port/src` overlaps, each resolved by keeping both sides'
+intent: `fight_4b470` (main's reloads of the entry's actor, d4e, under d5d's seam), `fight_4e67c` (d5f's body
+under d5e's seam) and `fighter_think` (d4e and d5f made the same two AL tests). The wave's last batch (d5i, seven
+flow.c functions) and the functions `0x4BF18`, `0x49C78` are not in this section.
+
+| batch | scope | rows | cases | mutants |
+|---|---|---|---|---|
+| d5a | flow.c front end (`0x20E90`, `0x20DF4`, `0x257A4`, `0x12484`, `0x11F6C`, `0x121A0`, `0x208F8`, `0x11A8C`) | 13 (8 addresses) | 104 | 587 |
+| d5b | the camera overlap family, `render_list`, `sprite_blit`, `text_blit_string` | 19 (10) | 129 | 301 |
+| d5c | character select, `fight_health_sync`, `fight_hud_pass`, three flow handlers | 14 (11) | 137 | 452 |
+| d5d | small flow, attract, name entry, menu, config, four fight.c functions | 26 (19) | 162 | 423 |
+| d5e | the twelve per-frame match-mode handlers (`0x28788` included) | 25 (12) | 125 | 971 |
+| d5f | `fighter_think`, two camera dust functions, `fight_4e67c`, `fight_4d2d0` | 11 (5) | 197 | 293 |
+| d5g | `hiscore_init`, `menu_step`, `menu_run`, `game_mode_1e_step`, `nameentry_step` | 6 (5) | 204 | 268 |
+| d5h | the top of the call graph: `game_state_step`, the mode dispatcher `0x24C5C` (eight specs), `game_loop` | 12 (3) | 126 | 269 |
+| **total** | | **126** | **1184** | **3564** |
+
+`make diff-verify`: **`925/925 functions VERIFIED; 12849/12849 mutants detected; 1 named gaps; 572/758 rows
+with callees closed (167 have none)`**. 688 of the 731 have a row; of the 43 that do not, 6 are named non-rows,
+28 are named gaps (§D.8's 18 and, from this wave, `0x2EA78` — the VGA aperture and `int 0x16`; `0x249F0` —
+`int 0x16` inline at `0x24A64`; `0x2CADC` — the port omits three of the raw's ten calls by design; `0x305FC` —
+the raw's stack frame as the buffer; `0x2F9CC` — no C function, inlined in `game_init`; `0x2D6F8` — the only
+arm the port runs makes 3 of the raw's 9 `0x2D4EC` calls; `0x20C10` — the runtime `setjmp` `0x653FC`;
+`0x1B120`, `0x1B3AC` — the runtime open, `int` at `0x6F53A`; `0x1BEC4` — `int` at `0x4FBAD` in its first
+callee) and 9 are open: d5i's seven and `0x4BF18`, `0x49C78`.
+
+Two of d5h's rows run the original under a code poke, which the rows' claims name: `0x24C5C` with the two
+bytes of `int 0x16` at `0x24D0E` as `cmp eax,eax` — exact for the no-key path, the only thing the code takes
+from the BIOS there being ZF (audit #10); the key loop `0x24D26..0x24EE0` and the `longjmp` arm are named
+unhit — and `game_loop` under `tools/title_pin.py`'s two `mov eax,0` over the RNG draws at `0x256B1` and
+`0x256D6`, so those rows are blind to the port drawing nothing there (a documented `PORT:` deviation).
+
+Second specs are the rule in this wave: `_rr` (the stubs write what the raw reloads after a call), `_real`
+and `_sync` (a callee run on both sides instead of stubbed), `_al`, and a split of `fight_health_sync` in two
+because `diffrun` takes 16 stubs a case. `render_list_blit` runs `0x51E5C` and the six renderers of table
+`0x80C8C` on both sides and compares the back buffer: no pixel differs from `sprite.c`. `game_mode_09_step`
+(`0x28788`), corrected at `0x28A8D` in wave 1, verifies as the port stands (30/30 blocks, 174 mutants).
+
+**The corrections.** Each is its own commit `port: D5 <batch>: ...` with a mutant that is the old code and a
+row that was MISMATCH before it. Two read-only audits (#10: d5a, d5e, d5g, d5h; #11: d5b, d5c, d5d, d5f)
+re-derived all of them from the bytes: 18 + 21 CONFIRMED (39 with `fighter_think`'s two AL tests, which d5f
+made again and §D.8 already counts), none refuted or unclear.
+
+| batch | correction | raw |
+|---|---|---|
+| d5a | game_state_select reads the entry byte `0xF0A6E` at each site, not once | `0x11FFD`, `0x1206C`, `0x12090`, `0x120C3` |
+| d5a | game_state_title phase 1 stores without testing the logo dword | `0x12402/0x12408/0x1243E` |
+| d5a | game_mode_1f_step state 1 reads `0x1044A0` again after the second spawn | `0x20A10/0x20A17` |
+| d5a | game_state_6 stores `0x1082CC` as a dword, reads `0xF0A72` as a byte, compares the draw signed, passes the stage as a zero-extended word | `0x11B2F`, `0x11BA6`, `0x11AF1/0x11AF4`, `0x11ABA/0x11AC1` |
+| d5b | camera_projectile_hit, camera_point_side, camera_unfreeze, camera_decay, camera_point_hit take AL of their predicates | `0x1774D/0x17849/0x17883`, `0x179ED/0x17AB9/0x17B10`, `0x17367/0x17441/0x174EA`, `0x1769D`, `0x17E13/0x17E8B` |
+| d5c | fight_health_sync tests AL of `0x36E2C` and of `0x3BDDC` | `0x34B93`, `0x34D11` |
+| d5c | fight_health_sync reads the record once before the gate and again only for `+0x18` | `0x34B82`, `0x34BA7/0x34BB4` |
+| d5c | fight_hud_pass tests AL of `0x3C59C` | `0x356C3` |
+| d5d | frontend_mode12_darken_or_tally reads `0x104AD4` again before the column test | `0x41738` |
+| d5d | hiscore_insert calls `0x2D4EC(table + 6)` when the descriptor's `+2` word is above the record | `0x2DDBE..0x2DDCD` |
+| d5d | nameentry_finish reads the side's character byte again after `0x2DCA0` | `0x207B8` |
+| d5d | fight_4b69c and fight_4e5a4 read the entry's actor again after their calls | `0x4B719`, `0x4E619/0x4E633` |
+| d5e | game_mode_22_step and game_mode_24_step read the side byte `0x104B1A` again after `0x16D58` | `0x26CBC`, `0x26F89` |
+| d5f | camera_dust_hit reads the node's actor again for the burst | `0x12A99`, `0x12AF5`, `0x12B47`, `0x12B98` |
+| d5f | camera_impact_dust_spawn passes the draw's low word, sign-extended | `0x12941/0x12948/0x12956` |
+| d5f | fight_4e67c's last gate: on an odd round the call needs the processed count zero (the port had it inverted) | `0x4E97E test si,si`, `0x4E981 jne` |
+| d5f | fight_4e67c indexes `0x108894` by a 16-bit difference | `0x4E6DE/0x4E6E8/0x4E6ED` |
+| d5f | fight_4e67c reads the fighter record and the node's actor again after its calls | `0x4E6B8..`, `0x4E799..`, `0x4E758`, `0x4E8E4` |
+| d5g | hiscore_init takes the byte of `0x1E988` | `0x1E884 and eax,0xff` |
+| d5g | game_mode_1e_step states 0, 4, 7 test AL of `0x1ECC8` / `0x1EC38` | `0x1EEE6`, `0x1F1B0`, `0x1F2CE` |
+| d5h | game_state_step state 9 calls the attract reset `0x10EE4` when `0xF0A71` is set | `0x11EE6..0x11EF6` |
+| d5h | the modes 0x22/0x23 tail reads `0x104B1A` again after `0x186D0` | `0x2555E` |
+| d5h | game_loop increments `0x104AF4` as a word, clears `0x1014FC` as a byte, steps `0x10150C` after the audio service | `0x25632`, `0x2569D`, `0x256B6/0x256C0` |
+
+**Which change ordinary play** (the audits, by reading):
+- `fight_4e67c`'s gate (mode 0x25, the bowling minigame; no capture reaches it). The raw calls `0x4E350(0)`
+  and clears `0x1088B8` iff `[0x1088B8] != 0 && [0x1078F0] != 0 && [0x1078F1] != 0 && (([0x1088BD] & 1) == 0
+  || SI == 0)`, SI counting the nodes still in state 0 or 1 this pass. The port had the odd-round sense
+  reversed: it re-stood the set in the middle of the attempt.
+- `game_state_step` state 9. `0xF0A71` is set only behind held-input tests (`0x10DCD`, `0x10E35`); the idle
+  attract (3 -> 9 -> 6) is unchanged. After that chord the hold now ends in state 0; the old port went on to
+  the demo with the byte stuck at 1. `check_state9_countdown` seeded that byte only to quiet the two tails and
+  now seeds it clear (its six assertions unchanged); the set arm is covered by the row alone — a third unit
+  step is owed.
+- `game_loop`'s word increment: the dword carried into `0x104AF6` every 65536 iterations (about 18 minutes),
+  which the mode-0xC tail saves and reads back. And its increment order: the audio service's tree writes the
+  frame count (`0x1B464`, through `0x1B544` on a first read), so on such an iteration the raw waits one tick
+  the old order did not; d5h's record says nothing reads the count there, the audit's reading stands.
+- Not reached, where the batch records say otherwise: `game_state_6`'s dword store and byte read (every writer
+  leaves 0..255; `0xF0A73` is never referenced), `game_state_title` with a zero logo dword (phase 0 already
+  dereferences the same pointer). `fight_4e67c`'s 16-bit index differs only for a word in `0x8000..0x80DF`.
+The rest are equivalent while the C callees return 0 or 1 and do not write the re-read value.
+
+**Open, seen by the audits:** `res.c` stores `DSD(0x1014FC) = 1` where the raw has a byte store (`0x1B3F8`);
+`attract.c` tests the byte of `0xF0A5C` where the raw tests the dword (`0x114E4`); `game_loop`'s row never
+executes `0x2569D` (no mutant drops the store); the C passes `0x4E99C` the 32-bit count where the raw passes
+the word (`0x4E91E`); `config_validate`'s defaults arm omits two fills (`0x2D83A..0x2D875`).
+
+**Harness changes outside the rows.** `_CALLEE_CLOBBER_FIXES`: `0x51E5C` clobbers nothing (d5b); `0x3962C`
+and `0x396AC` clobber EDX only and `0x49444` nothing (d5f: the scan's ESI/EDI/EBP come from the fatal exit
+under `0x3AFC4` and from `0x2B150`'s uncorrected set) — d3c's and P7's declarations and pins follow, their
+rows unchanged. `RESOLVED_JUMPS` gains `0x20931` and `0x4C687` with their `WINDOWS` pins;
+`FLAT_SEGMENT_CALLEES` gains the runtime memmove `0x653A1`.
+
+**Gate evidence.** Self-check on the merged tree `925/925; 12849/12849; 1; 572/758 (167)`, rc 0; all
+559 stub clobber sets equal the image's and the pinned dictionary; no row reads outside the image unnamed (926
+specs); the real-function tests under a soft assertion report no moved pin (run before the gate, as §D.8's
+lesson asks). `make verify` exits 0 on the first run: 178 harness tests OK, the counter above, entry-triage
+byte-identical, `symbols.h` idempotent, every oracle pin unchanged, and its 782 normalised lines before
+"== differential verification" equal the wave-4 gate's — 0 differing. So no capture distinguishes any of the 38
+corrections, `game_loop`'s increment order and `game_state_step`'s state 9 included: their evidence is the rows
+and the audits. One thing a merge must know: the composition rebuilds the harness files from the base and the
+listed branches, so an integration edit made on the integration branch itself (here the three stub clobbers
+and the counter pin) is dropped by the next composed merge and has to be applied again.
 

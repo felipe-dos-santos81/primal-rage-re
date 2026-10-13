@@ -78,6 +78,11 @@ FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the privat
 # reaches, saves and loads ES (0x6C8ED `push es`, 0x6C94E `les edx,[ecx-8]`, 0x6CA21 `mov es,edx`, 0x6CB68
 # `pop es`). A row that allows it runs under the same flat descriptors.
 FLAT_SEGMENT_CALLEES |= {0x6C8EB}
+# D5 d5d (record 2026-10-12-reverse-d5d §2): the runtime memmove 0x653A1 loads ES from DS on both of its
+# copy arms (0x653BB `mov edx,ds`, 0x653BD `push es`, 0x653BE `mov es,edx`; the same at 0x653D5..0x653DA) and
+# pops it back. Without the flat descriptors its `ret` pops through a 16-bit stack (the run stopped `int3 at
+# 0x10000`). No row before this batch names 0x653A1.
+FLAT_SEGMENT_CALLEES |= {0x653A1}
 
 
 def flat_segments(mu):
@@ -588,6 +593,14 @@ RESOLVED_JUMPS = {
 # lea ecx,[edx*8]; add ecx,edx; shl ecx,2; and eax,0xff; add ecx,edx; lea ebx,[eax*4]; shl ecx,2;
 # jmp cs:[ebx+0x41c04] (the side's slot offset is built in ECX between the guard and the jump)
 RESOLVED_JUMPS[0x41C61] = (0x41C36, 0x41C04, 9)
+# 0x208F8 (track D5 batch d5a, record 2026-10-12-reverse-d5a §4): cmp dl,4; ja; xor eax,eax; mov al,dl;
+# jmp cs:[eax*4+0x208e4] (the guard compares DL, the index is the EAX the next two instructions build from it)
+RESOLVED_JUMPS[0x20931] = (0x20924, 0x208E4, 5)
+
+# 0x4C60C (track D5 batch d5d, record 2026-10-12-reverse-d5d §2): the character byte is saved at [esp]
+# (0x4C678 `mov [esp],al`) and read back for the index: cmp al,6; ja; xor eax,eax; mov al,[esp]; shl eax,2;
+# jmp cs:[eax+0x4c5f0]
+RESOLVED_JUMPS[0x4C687] = (0x4C67B, 0x4C5F0, 7)
 
 
 def resolved_cases(image, entry):
@@ -725,6 +738,38 @@ _CALLEE_CLOBBER_FIXES[0x46C78] = ()
 # keeps EDI live across the call (set at 0x47B0B, read at 0x47BCE and 0x47BEF: `mov byte
 # [edi+0x57],3`), so 0x36870 preserves EDI; ESI and EBP stay in the set (no caller shown to read them).
 _CALLEE_CLOBBER_FIXES[0x36870] = ("esi", "ebp")
+# D5 d5b (record 2026-10-12-reverse-d5b section 1): 0x51E5C tests two node fields first (0x51E5C, 0x51E65:
+# no register written; both `je` go to the `ret` at 0x51ED4), then pushes EBX, ECX, EDX, ESI, EDI, EBP
+# (0x51E6E..0x51E73) and pops all six (0x51ECE..0x51ED3) around its body and its indirect renderer call
+# (`call [edx*4+0x80c8c]` 0x51EBF), which is what makes the scan assume every register written; the pushes
+# are not at the entry, so the scan credits none. The raw caller 0x14328 keeps EBP (the camera) and EDI
+# (the clip record) live across the call (set 0x1432F/0x14331, read 0x1439C and 0x144E4 for the next node).
+_CALLEE_CLOBBER_FIXES[0x51E5C] = ()
+# D5 d5f (record 2026-10-12-reverse-d5f section 4): 0x3962C saves EBX (0x3962C `push ebx`; `pop ebx`
+# 0x396A1, 0x396A8) and its own instructions write only EAX, EBX and EDX; 0x396AC saves EBX and ECX
+# (0x396AC/0x396AD; `pop ecx; pop ebx` 0x39734) and writes only EAX, EBX, ECX and EDX. Their callees are
+# 0x33950 (EDX alone) and 0x3AFC4, which saves ECX and writes EAX, ECX and EDX: the scan's
+# (esi, edi, ebp) comes only from 0x3AFC4's direct target 0x62003, the runtime's fatal exit (>= 0x5D000,
+# taken to clobber everything), which does not return (as 0x46C78 above). The raw caller 0x1975C keeps
+# ESI = 2 live across both calls (0x1976D `mov esi,2`; calls 0x1979B, 0x197BF; read at 0x197FD
+# `mov eax,esi` and at the second pass's 0x19780 `cmp esi,[eax*4+0x100ad0]`).
+_CALLEE_CLOBBER_FIXES[0x3962C] = ("edx",)
+_CALLEE_CLOBBER_FIXES[0x396AC] = ("edx",)
+# D5 d5f (record section 4): 0x49444 pushes EBX, ECX, EDX and ESI (0x49444..0x49447) and pops them
+# before its one `ret` (0x494A0..0x494A3); its own instructions write only EAX, EBX, ECX, EDX and ESI.
+# Its callees 0x249B0 and 0x249D0 clobber nothing and 0x2B150 preserves ESI/EDI/EBP (the entry above):
+# the scan's (edi, ebp) is 0x2B150's uncorrected set, which the fixpoint uses for an inner callee. The
+# raw caller 0x4E67C keeps the next list node in EDI across the call (0x4E730 `mov edi,[ebx]`; call
+# 0x4E8EE; 0x4E8F3 `mov ebx,edi`).
+_CALLEE_CLOBBER_FIXES[0x49444] = ()
+# D5 d5g (record 2026-10-12-reverse-d5g section 2): 0x2EA74 is `xor eax,eax; mov eax,eax` with no `ret`: it
+# falls into 0x2EA78, whose own leading `push ebx; push ecx; push edx; push esi` (0x2EA78..0x2EA7B) the
+# scan cannot credit to the entry two instructions above it, so it reports every register. Its raw
+# callers keep all six live across the call: 0x2FFC4 loads EBX before it (0x2FFE7 `mov ebx,0xfffffffe`)
+# and stores it after (0x30017), and reads EDI (0x30086 `mov eax,[edi+8]`), ESI (0x30094 `add edi,esi`)
+# and EBP (0x300BB `mov eax,ebp`) after the call at 0x2FFF1; 0x2FA40 loads EDX, EBX and ECX before the
+# call at 0x2FA61 (0x2FA4E..0x2FA58) and stores them after (0x2FA72, 0x2FA76, 0x2FA7D).
+_CALLEE_CLOBBER_FIXES[0x2EA74] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
@@ -737,3 +782,8 @@ def decode_at(image, addr):
 def disasm_range(image, start, end):
     """Linear decode of [start, end): the capstone instructions, stopping at the first undecodable byte."""
     return list(_md.disasm(image.bytes_at(start, end - start), start))
+
+# D5 d5h (record 2026-10-12-reverse-d5h §2): 0x11D04's state switch. cmp ax,9; ja; and eax,0xffff;
+# lea edx,[eax*4]; mov ax,[0xf0a6a]; dec eax; jmp cs:[edx+0x11cdc] (the index is pre-scaled into EDX,
+# and EAX is reloaded with the timer word between the guard and the jump)
+RESOLVED_JUMPS[0x11D69] = (0x11D50, 0x11CDC, 10)

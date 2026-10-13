@@ -32,6 +32,10 @@ void fight_arena_frame(void);
  * (record §49-A); the §7.8 gap is closed. */
 void fight_hud_pass(u32 side);
 
+/* PORT: exported for the D5 d5c differential rows (linkage only; record
+ * 2026-10-12-reverse-d5c). */
+void fight_health_sync(u32 side);                       /* 0x34B6C */
+
 /* 0x1A978. The per-side stance/command pass, reached from 0x34B6C. It calls the
  * command mapper 0x3B134 behind the 0x5f/0x62 gate and maintains the stance
  * bytes +0x61/+0x60/+0x54/+0x53. It calls 0x1A6AC and 0x1A8F4 (fighter.c,
@@ -529,6 +533,10 @@ void fight_4aad0(u32 entry, u32 index);
 /* 0x4B470 — demo-pose record §29, §42-C. The trample. EAX = entry, EDX = si;
  * exported for its differential row (track D3 d3b). */
 void fight_4b470(u32 entry, u32 index);
+/* 0x4B69C and 0x4E5A4: exported for their differential rows (track D5 d5d,
+ * record 2026-10-12-reverse-d5d). */
+void fight_4b69c(u32 entry, u32 index);
+void fight_4e5a4(u32 node, u32 idx);
 
 /* 0x4D224 — demo-pose record §43-A. The mode-0x22 pass's handler for types 0,
  * 7 and above 8. EAX = entry, EDX = si; exported for its differential row

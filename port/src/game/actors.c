@@ -1109,6 +1109,7 @@ void actor_cursor_reset(void)
  * (0x2BBF6..0x2BC14), and neither 0x52106 nor 0x336C0. */
 void actors_reset_al(u32 al)
 {
+    PR_SEAM(0x2BAF4u, al);
     /* PORT: the original assumes its loader ran; without the pool the free-list
      * rebuild would walk mem[0..0xEBA0]. Return when actors_init would fail. */
     if (pool_base() == 0) return;
@@ -3326,6 +3327,7 @@ static u8 actor_type_2901C(u32 rec, u32 slot)
  * 0x20DF4 calls it at 0x20E3D. */
 void actor_type_0a19_list_init(void)
 {
+    PR_SEAM0(0x28E98u);
     DSD(DS_00104884) = DS_00104880;                     /* 0x28EAA */
     DSD(DS_00104880) = DS_00104880;                     /* 0x28EB0 */
     DSD(DS_0010488C) = DS_00104888;                     /* 0x28EB6 */
@@ -3729,6 +3731,7 @@ void actor_sync(u32 rec)
  * then walk the active list and sync each record. */
 void actors_update(void)
 {
+    PR_SEAM0(0x2A31Cu);
     if (DSB(DS_00104B24) != 0) return;
     if (DSB(DS_00104B26) == 0) {
         u8 c = (u8)(DSB(DS_00105BEC) - 1);
@@ -4056,6 +4059,7 @@ void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode)
  * no caller reads it. */
 static void text_blit_glyph(u32 ch, s32 *col, s32 *row)
 {
+    PR_SEAM(0x1C5E8u, ch, (u32)*col, (u32)*row);
     u32 e = 0xbcd7cu + (ch & 0xffu) * 4u;
     SpriteNode n;
     sprite_node_build(&n, DSW(e));                    /* 0x1C5FB/0x1C60B */

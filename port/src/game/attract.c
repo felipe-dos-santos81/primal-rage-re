@@ -25,6 +25,7 @@
  * and clears the bit (the raw's 0x4F7FD `jz 0x4F830`). */
 void attract_palette_advance(void)
 {
+    PR_SEAM0(0x4F7F4u);
     if (DSD(DS_000F0A48) != 0u) {
         u32 handle = DSD(DS_000C98A0 + (u32)DSB(DS_001088F1) * 4u);  /* 0x4F810 */
         DSB(DS_001088F1) = (u8)(DSB(DS_001088F1) + 1u);              /* 0x4F817 */
@@ -68,6 +69,7 @@ static void attract_register(void)
  * address at DS_000A8744 + i*4, where i is the byte offset (0, 4, 8, ...). */
 void attract_scene_tick(void)
 {
+    PR_SEAM0(0x292ACu);
     attract_register();
     u32 mask = DSD(DS_00104AD0);
     for (u32 i = 0; mask != 0; i += 4u, mask >>= 1) {
@@ -85,6 +87,7 @@ void attract_scene_tick(void)
 /* 0x10EE4. The attract state reset. */
 void attract_state_reset(void)
 {
+    PR_SEAM0(0x10EE4u);
     /* PORT: 0x32970(eax = 0), the run-clock/tick update, is out of scope
      * (spec §7); the host clock owns wall time. */
     /* 0x4F1E4: the raw calls the shared input-latch clear. flow.c's
@@ -116,6 +119,7 @@ void attract_voice_tick(void)
 /* 0x10DB0. The per-state pause tail (state 4). */
 void frontend_pause_tail(void)
 {
+    PR_SEAM0(0x10DB0u);
     if (DSB(DS_000F0A71) != 0u) return;
     if ((DSB(DS_001088D8 + 3u) & 0x20u) == 0u) return;
     if ((DSB(DS_001088D8 + 1u) & 0x10u) == 0u) return;
@@ -135,6 +139,7 @@ void frontend_pause_tail(void)
 /* 0x10E18. The per-state continue tail (state 5). */
 void frontend_continue_tail(void)
 {
+    PR_SEAM0(0x10E18u);
     if (DSB(DS_000F0A71) != 0u) return;
     if ((DSB(DS_001088D8 + 3u) & 0x10u) == 0u) return;
     if ((DSB(DS_001088D8 + 1u) & 0x20u) == 0u) return;
@@ -207,6 +212,7 @@ void attract_set_media_dir(const char *dir) { s_media_dir = dir; }
 
 void attract_step(void)
 {
+    PR_SEAM0(0x11000u);
     switch (DSB(DS_000F0A6F)) {
     case 0:
         (void)sound_voice(0x100u);                  /* 0x1101F/0x11024 0x2C3FC */

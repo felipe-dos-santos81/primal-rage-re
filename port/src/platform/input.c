@@ -54,6 +54,7 @@ int input_check_key(void)
 /* 0x50146 — record §49-X. EAX = mask, DX = first, BX = next. */
 void input_repeat_set(u32 mask, u32 first, u32 next)
 {
+    PR_SEAM(0x50146u, mask, first, next);
     DSD(DS_000E1C3C) = mask;                            /* 0x50146 */
     DSW(DS_000E1C42) = (u16)first;                      /* 0x5014B */
     DSW(DS_000E1C40) = (u16)first;                      /* 0x50152 */
@@ -86,6 +87,7 @@ u32 input_select_bits(u32 mask)
  * this frame - the raw's one-frame debounce. */
 u32 input_pump(void)
 {
+    PR_SEAM_RET0(0x500C4u);
     const u8 *k = mem + DSD(DS_00101514);
     u32 cur = ((u32)k[0x2d8] << 24) | ((u32)k[0x2d9] << 8);
     u32 changed = DSD(DS_000E1C30) ^ cur;
@@ -111,6 +113,7 @@ u32 input_pump(void)
  * Both share the DAT_000E1C38 latch, in this order. */
 void input_state_update(void)
 {
+    PR_SEAM0(0x4F644u);
     DSD(DS_001088E4) = input_select_bits(0xFF00FF00u);              /* 0x4F64A */
     DSD(DS_001088D8) = input_select_bits(0x00FF00FFu) & 0xFF00FF00u;/* 0x4F659 */
     DSD(DS_001088DC) = input_joystick_device(0xFFu);                /* 0x4F66D */
