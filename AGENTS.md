@@ -348,7 +348,8 @@ consolidation gate).
   record why they moved. The harness runs its rows on a process pool
   (`PR_DIFF_JOBS`, default the CPU count; 1 is the sequential loop), one job per function: `diffrun`
   loads the EXE once and forks a child for the function and for each of its mutants, and the original is
-  emulated once and shared. A full `--self-check` is about half a minute and `make verify` about seven.
+  emulated once and shared. A full `--self-check` is about half a minute and the differential step of `make verify` about three
+  (it was about 33); the whole gate is about 26 minutes, most of it the oracles.
   `diffrun` finds a case's writes outside the image from the pages a write fault marked (they are
   read-only until written), not from a scan of the 63 MB; `PR_DIFF_FULLSCAN=1 make verify` runs the
   full scans instead (several times slower), the form to use before a push. Both printed the same bytes
