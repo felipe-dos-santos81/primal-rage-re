@@ -4307,6 +4307,8 @@ void fight_4cd98(void)
     actor_set_dead(DSD(DS_0010886C));                               /* 0x4CE45/0x4CE4A */
 }
 
+#define DS_0010889B 0x0010889Bu   /* no symbols.h name: DS_0010889C - 1, indexed by DS_00108898 (1 or 2) */
+
 /* 0x4BF18 — record §49-S. The attract loop's volleyball mini-game's
  * per-frame driver, called by mode 0x21's frame handler (0x26540/
  * game_mode_21_step, flow.c) in place of fight_effects_pass. The raw returns
@@ -4373,9 +4375,9 @@ void fight_4cd98(void)
  *   DS_00108898 = idx + 1; actors_anim_begin(DS_0010886C, idx's branch chose
  *   0xEF6AC or 0xEF680, 3.0); actors_anim_begin(rec, DS_000C973C[index],
  *   2.0); type = 8; DS_001088AC = 0x69 (fight_4C784's own end-of-rally hold,
- *   record §43-A, the same constant). DS_0010889B[DS_00108898] (0x4C332) is
- *   algebraically DS_0010889C[idx] — 0x10889B + (idx+1) == 0x10889C + idx —
- *   read directly here as the just-incremented score: reaching 3 zeroes
+ *   record §43-A, the same constant). DS_0010889B[DS_00108898] (0x4C332),
+ *   the word loaded again after the two stream calls (0x4C321), is the
+ *   just-incremented score DS_0010889C[idx]: reaching 3 zeroes
  *   entry+0x1F and, when DS_001088A0 (the "match already ending" timer) is
  *   0, calls fight_4CC0C(); either way the raw's `jmp 0x4C5AF` then abandons
  *   the rest of the entry list for this frame (a plain function return, the
@@ -4562,10 +4564,7 @@ void fight_4bf18(void)
 
                                 DSB(entry + 0x1Eu) = 8u;                                             /* 0x4C327 */
                                 DSW(DS_001088AC) = 0x0069u;                                          /* 0x4C32B */
-                                /* DS_0010889B[DS_00108898] (0x4C332) is algebraically
-                                 * DS_0010889C[idx]: 0x10889B + (idx+1) == 0x10889C + idx.
-                                 * Read directly as the just-incremented score. */
-                                if (DSB(DS_0010889C + idx) >= 3u) {                                   /* 0x4C33D/0x4C340 `jl` */
+                                if (DSB(DS_0010889B + (u32)DSW(DS_00108898)) >= 3u) {                 /* 0x4C321/0x4C332..0x4C340 `jl` */
                                     DSB(entry + 0x1Fu) = 0;                                            /* 0x4C349 */
                                     if (DSW(DS_001088A0) == 0u)                                        /* 0x4C34D/0x4C350 */
                                         fight_4cc0c();                                                 /* 0x4C356 */
