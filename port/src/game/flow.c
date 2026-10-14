@@ -6992,6 +6992,7 @@ void game_init_resume(void)
  * AIL_shutdown's own seq_stop. */
 void sound_shutdown(void)
 {
+    PR_SEAM0(0x1D018u);
     if (DSB(DS_000A2CB1) == 0u) return;                    /* 0x1D01C/0x1D023 */
     DSB(DS_000A2CB1) = 0u;                                 /* 0x1D029/0x1D02B */
     if (DSD(DS_001028C4) != 0u) {                          /* 0x1D031 */

@@ -30367,6 +30367,25 @@ I_CASES = [
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
 D1_CASES.extend(I_CASES)
+# track N batch n2 (record 2026-10-14-reverse-n section N.2): the teardown 0x1BE30, a poked partial row
+N2_MASKS = {
+    "game_shutdown": 0x0,
+}   # N2_MASKS end
+N2_KINDS = {
+    "game_shutdown@noshut": {'call #0', 'call #1'},
+    "game_shutdown@nosave": {'call #1'},
+    "game_shutdown@order": {'call #0', 'call #1'},
+    "game_shutdown@free": {'byte', 'call #1 memory'},
+}   # N2_KINDS end
+N2_CASES = [
+    ("game_shutdown@noshut", ['t0', 't1']),
+    ("game_shutdown@nosave", ['t0', 't1']),
+    ("game_shutdown@order", ['t0', 't1']),
+    ("game_shutdown@free", ['t1']),
+]   # N2_CASES end
+D1_MASKS.update(N2_MASKS)
+D1_KINDS.update(N2_KINDS)
+D1_CASES.extend(N2_CASES)
 
 
 @needs_unicorn
@@ -31435,6 +31454,9 @@ class RealFunctionTests(unittest.TestCase):
         # I (record 2026-10-13-reverse-i sections I.4 and I.5): the stubs the 0x2F9CC and 0x1D018 rows add
         0x1AFE8: ("edi", "ebp"), 0x2D6F8: (), 0x2C9B8: (), 0x5D86A: ("ebx", "ecx", "edx"),
         # I end
+        # N n2 (record 2026-10-14-reverse-n section N.2): the stubs the 0x1BE30 row adds
+        0x1D018: (), 0x1B084: ("edi", "ebp"),
+        # N n2 end
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
@@ -31696,8 +31718,10 @@ class RealFunctionTests(unittest.TestCase):
         # 0x2F920 and 0x11BCC, open on the runtime memset 0x61A70 and the ret-only 0x29D60, and the
         # row of 0x2F9CC, closed: each of its ten callees has a VERIFIED row); the 169 without are
         # counted apart (0x12CD4's row is one)
-        self.assertIn("diff-verify: 995/995 functions VERIFIED; 14825/14825 mutants detected; 1 named gaps; "
-                      "636/826 rows with callees closed (169 have none).", out.getvalue())
+        # track N batch n2: 0x1BE30's row adds one function, four mutants and one open row (open on
+        # 0x4FB98 and 0x10D34, run from their bytes with no row of their own)
+        self.assertIn("diff-verify: 996/996 functions VERIFIED; 14829/14829 mutants detected; 1 named gaps; "
+                      "636/827 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
