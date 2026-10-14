@@ -430,9 +430,11 @@ output.
 
 **The mechanism** (a temporary print in `res_resolve`, removed): the descriptor `0x9AD84` holds the
 handle `0x0396EB68` at `+0x10`, entry 7 of the INDEX (`0x0396EB68 >> 23`), `s16title.gra`, a lazy
-entry. Its first resolve presents the loader screen (`res_load_present`: the `- LOADING -` string
-through `0x1C65C`, whose glyphs acquire the font palette `0x80997C`, then the read's tick stall and the
-gate re-sync `0x1B45F/0x1B464`) and marks the entry read (`0x1B47A`). Before the change that first
+entry. Its first resolve presents the loader screen and marks the entry read (`0x1B47A`). In the
+original the screen is the `- LOADING -` string (`0x1B3DE mov eax,0x1e9; 0x1B3EA call 0x1C500; 0x1B3EF
+call 0x1C65C`), whose glyphs acquire the font palette `0x80997C`, then the read's tick stall and the gate
+re-sync `0x1B45F/0x1B464`. In the port (`res_load_present`) the boot draw had no text until the
+final-review fix below: the string table was not loaded yet. Before the change that first
 resolve was in master-loop iteration 3 (the frame word `0xEF6DC` = 3; its caller was not traced); with the spawn
 at `0x2F9FC` it is at boot (the frame word 0), inside `game_master_init`. In iteration 3 no loader
 screen is drawn any more, the font palette does not take its slot before the attract's palettes, and
@@ -590,6 +592,37 @@ PR_GAME_DIR=data/game/C ./build/run_tests` and restored:
 | A2 | the spawn's `a2 = 1` | `:5064` | call 5 is `0x38B18(0x9AD84, 1, 0)` |
 | A3 | `config_voice_gate(-1)` | `:5064` | call 8 is `0x2C9B8(-1)` |
 | A4 | the two `0x2C8F0` calls swapped | `:5064` | call 9 is `0x2C8F0(-2)` |
+
+### The final-review fix: the string table before the master init (2026-10-14)
+
+**The audit's finding** (final review A1). The original's boot chain `0x1BEC4` loads the string table
+before it calls `0x20C10`: `0x1C0B1 call 0x1d0bc; 0x1C0B6 xor eax,eax; 0x1C0B8 call 0x47370; 0x1C0BD
+call 0x20c10` (the tail loads it again at `0x20C7F`). The port loaded it only in `game_init_resume`,
+after `game_master_init`. So from `7113e155` to this fix the master init's entry-7 resolve (`0x2F9FC`)
+ran `res_load_present` with the string handle `DS_001082DC` still 0 (its image dword):
+`game_string_get(0x1E9)` decoded through handle 0 and gave "", `text_blit_string` returned at once (no
+glyph, no font-palette flush), and `string_unlock(0)` wrote `mem[0x10..0x13]` and `mem[0x15]`, which the
+original never writes. The paragraph "The mechanism" above described the original's draw as the port's.
+No dumped frame showed it: `game_state_init`'s `actors_reset` (`0x10E9C`) blanks the screen and resets
+the palette list before the first present.
+
+**The fix.** `game_init` calls `game_string_table_load(s_game_dir)` after `sound_buffers_alloc()`
+(`0x1C0B1`) and before `game_master_init()` (`0x20C15`), where `0x1C0B8` is. The port's loader is
+English-only (`0x47370`'s AL = 0 is index 0, `english.txt`) and returns at once on a second call, so the
+tail's call (`0x20C7F`) stays. A probe in `res_load_present` (removed) shows the boot resolve at the frame
+word 0 now decodes `- LOADING -`, and `mem[0x10]` and `mem[0x15]` are 0 after it.
+
+**Assertion.** The `PR_RESTART` driver's seam hook keeps `DS_001082DC` as it is at the first `0x1AFE8`
+call, the master init's first step, and the driver asserts that it equals the handle after the boot and
+that the handle is not 0 (`test_game.c:13931`, `:13932`; the kept value is seeded `0xFEEDFACE`).
+Mutation: the new call removed gives `test_game.c:13932: 0 != 58720256` and no other failure.
+
+**Measured.** `--check 820`: the 820 frames (`.ppm`, `.idx`, `.pal`) and `fn_miss.txt` are
+byte-identical to task 2's tree (the HEAD `5a30eac8` without the fix, `/tmp/pr_i_frames_t2_820`), and the
+stdout too: the boot's draw and its palette flush are wiped by the `0x10E9C` reset before any dump.
+Against the pre-track-I baseline the difference is task 2's, unchanged (frames 3..690, `.idx`/`.pal`
+only). The `PR_RESTART` driver's output is unchanged. The front-end, demo-fight and attract cycle-2
+oracles print what task 2's green gate printed.
 
 ## §I.5 `0x1D018` — `sound_shutdown` (`flow.c`)
 

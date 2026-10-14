@@ -357,3 +357,11 @@ seeding: `fe_cyc2_n` 2308 -> 2307, the named splice `cycle-2 2192/2193/2194` -> 
 same bytes, `ld_loop[0]`/`ld_frame[0]` removed, as the table above predicted; every other line of the
 front-end, demo-fight and attract cycle-2 oracles is unchanged. No DOSBox-X run was made: the f 0 is the
 old poll's, as §45-A.3 reported it.
+
+**Dated note (2026-10-14, track I final review; record `2026-10-13-reverse-i-derivations.md` §I.4).** The
+note above says where the port reads entry 7, not what it draws. From track I's master init (`7113e155`)
+to its final-review fix, the port's boot resolve drew no `- LOADING -`: the string table was loaded only
+in the tail, after the master init, so `0x1E9` decoded through a null handle to "" and the decode wrote
+`mem[0x10..0x13]` and `mem[0x15]`. The original loads the table first (`0x1C0B8 call 0x47370`, before
+`0x1C0BD call 0x20C10`). Since the fix the port does too, and its boot resolve draws `- LOADING -` with
+the font palette, as the original's. No dumped frame or oracle line changed either way.
