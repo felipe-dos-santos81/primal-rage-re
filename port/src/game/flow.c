@@ -6997,12 +6997,19 @@ void sound_shutdown(void)
     AIL_shutdown();                                        /* 0x1D0AF 0x5D86A */
 }
 
-/* 0x1BE30 teardown. */
+/* 0x1BE30 — record 2026-10-14-reverse-n §N.2. The teardown: 0x1D018, the three real-mode vector
+ * restores, 0x4FB98 with AL = [0x101504], 0x1B084, 0x10D34.
+ * PORT: 0x1BE38..0x1BEA6 are not memory frees: each restores a real-mode interrupt vector that
+ * 0x1ADAC (DPMI 0x200) saved in the init, through 0x1ADE4 (DPMI 0x201, set real-mode vector:
+ * `mov ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, 0x61564), when its segment word is non-zero:
+ * vector 9 from [0x101514]+0x14/+0x16 (0x1BE44, saved at 0x1C017), 0x23 from 0x10151A/0x10151C
+ * (0x1BE61, saved at 0x1C02B) and 0x1B from 0x101518/0x10151E (0x1BE87, saved at 0x1C03F). The
+ * port has no real mode and never sets those words (GAME_BIOS_BASE is zeroed at init), so in a run
+ * of the port the raw's own tests skip all three. 0x1BEB0 0x4FB98 (int 10h set mode) and 0x1BEBA
+ * 0x10D34 (the CD-drive restore) are the host's. */
 void game_shutdown(void)
 {
     sound_shutdown();                                      /* 0x1BE33 0x1D018 */
-    /* PORT: the memory frees (0x1BE38..0x1BEA6 0x1ADE4) are no-ops under flat mem[]; 0x1BEB0 0x4FB98
-     * (int 10h set mode) and 0x1BEBA 0x10D34 (the CD-drive restore) are the host's. */
     (void)config_file_save();   /* 0x1BEB5 0x1B084; AL is not read (0x1BEBA calls on) */
 }
 
