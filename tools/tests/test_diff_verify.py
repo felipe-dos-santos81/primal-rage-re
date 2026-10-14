@@ -29109,13 +29109,13 @@ D6A_KINDS = {
     "config_screen_wait@swapearly": {'call #2 memory'},
     "config_screen_wait@noflush": {'call #10', 'call #10 memory', 'call #11', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
     "config_screen_wait@flushfirst": {'call #3 memory'},
-    "config_screen_wait@m1": {'call #4', 'call #5'},
+    "config_screen_wait@m1": {'byte', 'call #4', 'call #5', 'keys'},
     "config_screen_wait@passes": {'call #10', 'call #11', 'call #6', 'call #7'},
     "config_screen_wait@ge": {'call #12', 'call #13', 'call #8', 'call #9'},
     "config_screen_wait@pumpfirst": {'byte', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
     "config_screen_wait_zero@n1": {'call #8', 'call #9'},
-    "config_screen_wait_zero@m1": {'call #4', 'call #5', 'call #6', 'call #7'},
-    "config_screen_wait_zero@eax": {'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "config_screen_wait_zero@m1": {'byte', 'call #4', 'call #5', 'call #6', 'call #7', 'keys'},
+    "config_screen_wait_zero@eax": {'byte', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9', 'keys'},
     "game_quit_prompt@hard32": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4 memory'},
     "game_quit_prompt@id": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
     "game_quit_prompt@noflag": {'call #0 memory', 'call #1 memory', 'call #2 memory'},
@@ -29230,22 +29230,22 @@ D6A_CASES = [
     ("config_set_defaults@f2a", ['t0', 't1', 't2']),
     ("config_set_defaults@nokeys", ['t0', 't1', 't2']),
     ("config_set_defaults@keysfirst", ['t0', 't1', 't2']),
-    ("config_screen_wait@nolatch", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@latchw", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@noupdate", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@nosort", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@nolist", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@order", ['w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nolatch", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@latchw", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@noupdate", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nosort", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nolist", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@order", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
     ("config_screen_wait@flagkeep", ['w1', 'w3']),
     ("config_screen_wait@flagw", ['w1', 'w3']),
-    ("config_screen_wait@noswap", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@swapearly", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@noflush", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@flushfirst", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@m1", ['w0', 'w1']),
-    ("config_screen_wait@passes", ['w2', 'w3']),
-    ("config_screen_wait@ge", ['w2', 'w3']),
-    ("config_screen_wait@pumpfirst", ['w2', 'w3', 'w4']),
+    ("config_screen_wait@noswap", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@swapearly", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@noflush", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@flushfirst", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@m1", ['k2', 'w0', 'w1']),
+    ("config_screen_wait@passes", ['k0', 'k1', 'w2', 'w3']),
+    ("config_screen_wait@ge", ['k0', 'k1', 'w2', 'w3']),
+    ("config_screen_wait@pumpfirst", ['k0', 'k1', 'k3', 'w2', 'w3', 'w4']),
     ("config_screen_wait_zero@n1", ['z0', 'z1']),
     ("config_screen_wait_zero@m1", ['z0', 'z1']),
     ("config_screen_wait_zero@eax", ['z0', 'z1']),
@@ -30446,6 +30446,29 @@ D1_MASKS.update(N3_MASKS)
 D1_KINDS.update(N3_KINDS)
 D1_CASES.extend(N3_CASES)
 # N n3 end
+
+# ---- track H batch h1 (record 2026-10-14-reverse-h §H.2): the keyboard rows' new mutants; measured pins ----
+H1_KINDS = {
+    "config_screen_wait@nokeys": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "config_screen_wait@klatchw": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kscan": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kwordw": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@ktime": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kone": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "config_screen_wait@kany": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+}
+H1_CASES = [
+    ("config_screen_wait@nokeys", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@klatchw", ['k0', 'k3']),
+    ("config_screen_wait@kscan", ['k1']),
+    ("config_screen_wait@kwordw", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@ktime", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@kone", ['k1', 'k3']),
+    ("config_screen_wait@kany", ['k1']),
+]   # H1_CASES end
+D1_KINDS.update(H1_KINDS)
+D1_CASES.extend(H1_CASES)
+# h1 end
 
 
 @needs_unicorn

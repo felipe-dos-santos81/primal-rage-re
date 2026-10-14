@@ -32163,39 +32163,42 @@ D6A_SPECS += [
 D6A_DEFAULTS = E.Call(0x2CADC, (), clobbers=("edi",))                       # config_set_defaults, seamed here
 
 # ---- 0x2EA78 / 0x2EA74: one frame without the game logic, then the tick wait --------------------------
-# Rows under one code poke, 0x24C5C's: the BIOS keyboard peek `int 0x16` (AH = 1) at 0x2EB15 is `cmp
-# eax,eax` (39 C0) in every case: ZF = 1, the BIOS's "no keystroke" answer, after which the code zeroes EAX
-# itself (0x2EB17..0x2EB20) and leaves the key loop (`je 0x2eb6e` 0x2EB27). Exact for the no-key path, the
-# only thing taken from the BIOS there being ZF. Unpoked, the original stops there (`unmodeled: int at
-# 0x2EB15`, measured). The stubs model what the loop waits on, as game_loop's do: the audio service stores
+# No code poke since track H h1 (record 2026-10-14-reverse-h §H.2; d6a ran these rows with the BIOS peek
+# `int 0x16` at 0x2EB15 poked to `cmp eax,eax`). Both `int 0x16` sites take the case's key queue from the
+# machine model: the peek (AH = 1, 0x2EB11..0x2EB27: ZF and AX, `and eax,0xffff`, so a queued word 0 ends
+# the drain as an empty queue does) and the read (AH = BL = 0, EBX zeroed at 0x2EAEE and written nowhere in
+# the loop, 0x2EB29..0x2EB3A: AX). The keys are all queued before the call, so the first pass drains them.
+# The stubs model what the loop waits on, as game_loop's do: the audio service stores
 # the frame word 0xEF6DE = 0x2222 (the timer ISR 0x1BDF4 steps it; the emulator has none) and the key pump
 # stores 0x1111 back, so every pass waits through one audio call. The back buffer 0xE87A4 is 0xA0000, the
 # aperture itself, so the full copy 0x655FF and the dirty blit 0x501A3 (both run from the original's
 # bytes) rewrite the bytes they read: the row is blind to the present (the port's is gfx_present, the
 # aperture rule) and to the camera and clip records handed to 0x1C3FC and 0x14328, whose port functions
-# take none (render.c).
-D6A_WAIT_NOKEY = {0x0002EB15: b"\x39\xc0"}
+# take none (render.c). 0x500BB (`mov eax,[0x101500]; ret`, the key time) runs on the original's side.
 D6A_WAIT_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x000EF6DE, le16(0x2222)),))
 D6A_WAIT_PUMP = E.Call(0x500C4, (), writes=((None, 0x000EF6DE, le16(0x1111)),))
 D6A_WAIT_CALLS = (D5H_UPDATE, D5H_SORT, D5H_LIST, D5H_FLUSH, D6A_WAIT_AUDIO, D6A_WAIT_PUMP)
-D6A_WAIT_REAL = (0x655FF, 0x501A3, 0x50188)
-D6A_WAIT_UNHIT = {a: "the key loop: reached only on a keystroke from the BIOS (int 16h at 0x2EB15 and 0x2EB2D); "
-                     "a static poke cannot drain a queue, a named gap (record section 4)"
-                  for a in (0x2EB29, 0x2EB31, 0x2EB38, 0x2EB3A, 0x2EB4D, 0x2EB52, 0x2EB61, 0x2EB64)}
+D6A_WAIT_REAL = (0x655FF, 0x501A3, 0x50188, 0x500BB)
+D6A_WAIT_UNHIT = {
+    0x2EB31: "the read's ZF = 1 arm: the flags before `int 0x16` (AH = 0) at 0x2EB2D are those of `and "
+             "eax,0xffff` 0x2EB22 on a non-zero word (ZF = 0), which the BIOS read returns unchanged; either "
+             "way it joins 0x2EB3A with AX kept (record 2026-10-14-reverse-h section H.2)",
+    0x2EB38: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x2EB36 always jumps)",
+    0x2EB4D: "the key word 0x2400 (Alt-J): 0x5004A, the joystick calibration (the PIT and the game port "
+             "0x201), which the port leaves out (config.c, PORT); a named gap (record section H.2)"}
 
 
-def d6a_wait(cid, n, flag=0, word=0x1111, latch=0x5A5A5A5A, regs=None):
-    """0x2EA78: the poke; the key word, the key time and the latch 0x105F28..0x105F33 seeded; the copy
+def d6a_wait(cid, n, flag=0, word=0x1111, latch=0x5A5A5A5A, regs=None, keys=()):
+    """0x2EA78: the BIOS key queue `keys` (track H); the key word, the key time and the latch 0x105F28..0x105F33 seeded; the copy
     flag 0x1014FC before three seeded bytes; the front buffer 0xE87A0 = 0xB0000 and the back buffer
     0xE87A4 = 0xA0000; the frame word 0xEF6DE between seeded words; the ISR gate byte 0x104B22 = 1 (the
     port's own tick model in the wait, PORT, is off) and the two tick dwords 0x101500/0x101508 seeded."""
-    p = {**D6A_WAIT_NOKEY,
-         0x00105F28: le32(0x28282828) + le32(0x2C2C2C2C) + le32(latch),
+    p = {0x00105F28: le32(0x28282828) + le32(0x2C2C2C2C) + le32(latch),
          0x001014FC: bytes([flag, 0xFD, 0xFE, 0xFF]),
          0x000E87A0: le32(0x000B0000) + le32(0x000A0000),
          0x000EF6DC: le16(0xDCDC) + le16(word) + le16(0xE0E0),
          0x00104B22: b"\x01", 0x00101500: le32(0x15001500), 0x00101508: le32(0x15081508)}
-    return Case(cid, {**(regs or {}), "eax": n}, p)
+    return Case(cid, {**(regs or {}), "eax": n}, p, machine=E.Machine(keys=tuple(keys)))
 
 
 D6A_SPECS += [
@@ -32204,7 +32207,13 @@ D6A_SPECS += [
     # blit; the swap 0x50188 (run); 0x1C470. n = -1 returns there (`cmp ecx,-1; je` 0x2EAE0: w0, w1). Else,
     # for ECX = n down while the value before the decrement is above -1, signed (`mov eax,ecx; dec ecx; cmp
     # eax,-1; jg` 0x2EB6E..0x2EB74: n + 2 passes for n >= 0, w2 and w3; one for n = -2, w4): the wait on the
-    # frame word (0x1CF20 while it is unchanged, a word compare), 0x500C4, the peek. Mask 0, and EAX is not
+    # frame word (0x1CF20 while it is unchanged, a word compare), 0x500C4, and the key drain: while the
+    # peek gives a non-zero word, read it into the dword 0x105F28 (zero-extended, `xor edx,edx; mov dx,ax`),
+    # the dword 0x105F2C = 0x500BB() (the dword 0x101500, seeded apart from 0x101508), and the dword
+    # 0x105F30 = its ASCII byte, or its scan code when the ASCII byte is 0 (`and edx,esi`, ESI = 0xFF). k0: a
+    # key whose scan byte is not 0 (0xE048); k1: a key, a scan-only key, then a queued word 0 that ends the
+    # drain in both passes (two words left); k2: n = -1 returns before the drain (its key left); k3: three
+    # keys in one pass with n = -2 (one pass). Mask 0, and EAX is not
     # compared: the port's function is void. The raw's EAX is -1 after the loop, which two callers hand on
     # (0x313FA..0x31403, 0x32F32..0x32F52, menu callbacks; the port restates it there, svcmenu.c); the
     # other sites load EAX first (0x24A41, 0x2CB64, 0x31FC4, `call 0x2ebbc` 0x1A391) or have the BIOS's AX
@@ -32215,15 +32224,20 @@ D6A_SPECS += [
         d6a_wait("w2", 0, word=0x3333),
         d6a_wait("w3", 2, flag=0x80, regs=D2E_DIRTY),
         d6a_wait("w4", 0xFFFFFFFE, latch=0x00010000),
+        d6a_wait("k0", 0, keys=(0xE048,)),
+        d6a_wait("k1", 0, keys=(0x1559, 0x4800, 0x0000, 0x1E61), regs=D2E_DIRTY),
+        d6a_wait("k2", 0xFFFFFFFF, keys=(0x1E61,)),
+        d6a_wait("k3", 0xFFFFFFFE, keys=(0x3062, 0x00E0, 0x2D78)),
     ], unhit_named=D6A_WAIT_UNHIT, allow_calls=D6A_WAIT_REAL, calls=D6A_WAIT_CALLS, eax_mask=0,
        mutants=tuple("@" + m for m in "nolatch latchw noupdate nosort nolist order flagkeep flagw noswap swapearly "
-                                      "noflush flushfirst m1 passes ge pumpfirst".split())),
+                                      "noflush flushfirst m1 passes ge pumpfirst nokeys klatchw kscan kwordw ktime "
+                                      "kone kany".split())),
     # 0x2EA74 config_screen_wait_zero: `xor eax,eax; mov eax,eax` and no `ret`: it falls into 0x2EA78 with
-    # n = 0 whatever EAX held (z1 enters with 0xFFFFFFFF). The same poke, stubs and blindness; mask 0 for
-    # the same reason (its 18 call sites: record section 1).
+    # n = 0 whatever EAX held (z1 enters with 0xFFFFFFFF, and its key is drained: n = -1 would leave it).
+    # The same key model, stubs and blindness; mask 0 for the same reason (its 18 call sites: record section 1).
     Spec("config_screen_wait_zero", 0x2EA74, [
         d6a_wait("z0", 0x00000005),
-        d6a_wait("z1", 0xFFFFFFFF, flag=1),
+        d6a_wait("z1", 0xFFFFFFFF, flag=1, keys=(0x4800,)),
     ], unhit_named=D6A_WAIT_UNHIT, allow_calls=D6A_WAIT_REAL, calls=D6A_WAIT_CALLS, eax_mask=0,
        mutants=("@n1", "@m1", "@eax")),
 ]

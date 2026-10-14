@@ -41552,9 +41552,10 @@ D6A_SD_MUT(table, 1u) D6A_SD_MUT(f29, 2u)  D6A_SD_MUT(v29, 3u)   D6A_SD_MUT(orde
 D6A_SD_MUT(get, 6u)   D6A_SD_MUT(al, 7u)   D6A_SD_MUT(mask, 8u)  D6A_SD_MUT(or, 9u)
 D6A_SD_MUT(f2a, 11u)  D6A_SD_MUT(nokeys, 12u) D6A_SD_MUT(keysfirst, 13u)
 
-/* 0x2EA78 config_screen_wait: EAX = n. The raw's BIOS peek `int 0x16` (0x2EB15) is `cmp eax,eax` in every
- * case (no key); the port's key queue is empty (input_clear). The mutants restate config.c's body with the
- * ISR gate byte 0x104B22 at 1 (the port's tick model, PORT, is off). */
+/* 0x2EA78 config_screen_wait: EAX = n. The raw's two `int 0x16` (0x2EB15, 0x2EB2D) take the case's key queue
+ * from the machine model (track H h1, record 2026-10-14-reverse-h §H.2), which h0_start loads into the port's
+ * key queue before the binding. The mutants restate config.c's body with the ISR gate byte 0x104B22 at 1
+ * (the port's tick model, PORT, is off); @nokeys is the d6a restatement, with no key drain. */
 #include "platform/input.h"
 static void d6a_2ea78_core(s32 n, u32 mut)
 {
@@ -41583,23 +41584,36 @@ static void d6a_2ea78_core(s32 n, u32 mut)
         u16 seen = DSW(0x000EF6DEu);
         while (DSW(0x000EF6DEu) == seen) game_audio_service();
         if (mut != 17u) (void)input_pump();
+        while (mut != 18u) {                                                     /* @nokeys */
+            u32 key = (u32)input_check_key() & 0xFFFFu;
+            if (mut == 24u ? !input_has_key() : key == 0u) break;                /* @kany */
+            key = (u32)input_get_key();
+            if (mut == 21u) DSW(0x00105F28u) = (u16)key; else DSD(0x00105F28u) = key;   /* @kwordw */
+            DSD(0x00105F2Cu) = DSD((mut == 22u) ? 0x00101508u : 0x00101500u);   /* @ktime */
+            u32 latch = key;
+            if ((latch & 0xFFu) == 0u && mut != 20u) latch >>= 8;                /* @kscan */
+            DSD(0x00105F30u) = (mut == 19u) ? latch : latch & 0xFFu;             /* @klatchw */
+            if (mut == 23u) break;                                               /* @kone */
+        }
         s32 prev = ecx;
         ecx--;
         if (!((mut == 14u) ? (prev > 0) : (mut == 15u) ? (prev >= -1) : (prev > -1))) break;   /* @passes @ge */
         if (mut == 15u && prev < -1) break;
     }
 }
-static void b_d6a_2ea78(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
-static void b_d6a_2ea74(const u32 *r, u32 *eax) { (void)r; input_clear(); config_screen_wait_zero(); *eax = 0u; }
+static void b_d6a_2ea78(const u32 *r, u32 *eax) { config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+static void b_d6a_2ea74(const u32 *r, u32 *eax) { (void)r; config_screen_wait_zero(); *eax = 0u; }
 #define D6A_SW_MUT(name, n) \
-    static void m_d6a_sw_##name(const u32 *r, u32 *eax) { input_clear(); d6a_2ea78_core((s32)r[R_EAX], n); *eax = 0u; }
+    static void m_d6a_sw_##name(const u32 *r, u32 *eax) { d6a_2ea78_core((s32)r[R_EAX], n); *eax = 0u; }
 D6A_SW_MUT(nolatch, 1u) D6A_SW_MUT(latchw, 2u)  D6A_SW_MUT(noupdate, 3u) D6A_SW_MUT(nosort, 4u)  D6A_SW_MUT(nolist, 5u)
 D6A_SW_MUT(order, 6u)   D6A_SW_MUT(flagkeep, 7u) D6A_SW_MUT(flagw, 8u)   D6A_SW_MUT(noswap, 9u)  D6A_SW_MUT(swapearly, 10u)
 D6A_SW_MUT(noflush, 11u) D6A_SW_MUT(flushfirst, 12u) D6A_SW_MUT(m1, 13u) D6A_SW_MUT(passes, 14u) D6A_SW_MUT(ge, 15u)
 D6A_SW_MUT(pumpfirst, 17u)
-static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(1); *eax = 0u; }
-static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(-1); *eax = 0u; }
-static void m_d6a_swz_eax(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+D6A_SW_MUT(nokeys, 18u) D6A_SW_MUT(klatchw, 19u) D6A_SW_MUT(kscan, 20u) D6A_SW_MUT(kwordw, 21u) D6A_SW_MUT(ktime, 22u)
+D6A_SW_MUT(kone, 23u)   D6A_SW_MUT(kany, 24u)
+static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; config_screen_wait(1); *eax = 0u; }
+static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; config_screen_wait(-1); *eax = 0u; }
+static void m_d6a_swz_eax(const u32 *r, u32 *eax) { config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
 
 /* 0x249F0 game_quit_prompt: AL = hard_quit. The raw's blocking BIOS read `int 0x16` (AH = 0, 0x24A64) is
  * `mov al,K` (B0 K) in every case; the binding feeds the same K, read from the poked byte 0x24A65, to
@@ -57643,6 +57657,13 @@ static const binding_t k_bindings[] = {
     { "config_screen_wait@passes", m_d6a_sw_passes, 0x00000000u },
     { "config_screen_wait@ge", m_d6a_sw_ge, 0x00000000u },
     { "config_screen_wait@pumpfirst", m_d6a_sw_pumpfirst, 0x00000000u },
+    { "config_screen_wait@nokeys", m_d6a_sw_nokeys, 0x00000000u },
+    { "config_screen_wait@klatchw", m_d6a_sw_klatchw, 0x00000000u },
+    { "config_screen_wait@kscan", m_d6a_sw_kscan, 0x00000000u },
+    { "config_screen_wait@kwordw", m_d6a_sw_kwordw, 0x00000000u },
+    { "config_screen_wait@ktime", m_d6a_sw_ktime, 0x00000000u },
+    { "config_screen_wait@kone", m_d6a_sw_kone, 0x00000000u },
+    { "config_screen_wait@kany", m_d6a_sw_kany, 0x00000000u },
     { "config_screen_wait_zero",         b_d6a_2ea74, 0x00000000u },
     { "config_screen_wait_zero@n1", m_d6a_swz_n1, 0x00000000u },
     { "config_screen_wait_zero@m1", m_d6a_swz_m1, 0x00000000u },
