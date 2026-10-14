@@ -624,7 +624,7 @@ F1_SEED = {0x80000: b"cmos\0\0\0\0\0", 0x80010: b"rb\0\0\0\0\0", 0x81000: bytes(
 
 
 def f1_image(code):
-    """An image from 0x10000 to 0x81100 (`F1_SHADOW` 0x74000 inside it) with `code` at the entry. The
+    """An image from 0x10000 to 0x81100 (the `F1_SHADOW` span inside it) with `code` at the entry. The
     file functions' real bytes are never reached: the model answers the call at the entry address."""
     data = bytearray(0x81100 - 0x10000)
     b = bytes.fromhex(code)
@@ -678,7 +678,8 @@ class F1FilesTests(unittest.TestCase):
             self.assertEqual(r.outcome, "ok")                                         # je took the skip
             self.assertEqual(r.file_opens, [(b"cmos", b"rb")])                         # the open is recorded
             self.assertEqual(r.writes.get(0x80020), 0)                                 # the NULL handle (0x1B002)
-            self.assertNotIn(0x74000, r.writes)                                        # no fclose: nothing mirrored
+            mirrored = [a for a in r.writes if E.F1_SHADOW <= a < E.F1_SHADOW + 2 * E.F1_SLOT]
+            self.assertEqual(mirrored, [])              # no fclose: the mirror's whole span stays unwritten
 
     def test_fwrite_creates_a_new_file_and_fclose_mirrors_it(self):
         r = E.run_original(f1_image(F1_WRITE_CLOSE), 0x10000,
@@ -689,7 +690,8 @@ class F1FilesTests(unittest.TestCase):
         self.assertEqual(r.writes.get(0x80024), 4)                                     # fwrite returns the count
         self.assertEqual(self.slot(r), (b"cmos\0", b"wb\0", 4, b"WXYZ"))
 
-    def test_fwrite_truncates_an_existing_file(self):
+    def test_fopen_w_replaces_the_stale_file_model_side(self):
+        # the model rule (OPEN Q1): a write-mode open starts the file at offset 0
         r = E.run_original(f1_image(F1_WRITE_CLOSE), 0x10000,
                            pokes={**F1_SEED, **{0x80010: b"wb\0\0\0\0\0", 0x81000: b"WXYZ\xEE\xEE\xEE\xEE"}},
                            machine=E.Machine(files={b"cmos": b"0123456789"}))

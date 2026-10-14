@@ -77,7 +77,8 @@ the rows never do stops the run as `unmodeled`, never a guess:
 **The mirror — how the two sides' files get compared.** fclose writes the file's final state
 into `mem[]` at `F1_SHADOW`, one slot per declared name in declaration order, stride 0x840: name +
 NUL at +0, mode + NUL at +0x10, the byte count as a dword at +0x20, the content at +0x24. The span:
-`F1_SHADOW = 0x79000`, two slots reaching 0x79880. The choice, with its evidence (a review caught
+`F1_SHADOW = 0x79000`, two slots reaching 0x7A080 (content at +0x24 of 0x800 bytes or less: the
+most used byte is 0x7A064). The choice, with its evidence (a review caught
 the first pick): the image's gap between the objects, `[0x73B15, 0x80000)`, holds **no loaded
 bytes** — verified, every byte of that span in `/tmp/pr_f1_img.bin` reads 0 — but it is NOT free:
 the track-D4D span-writer rows park their pset pool there, `D4D_PSETS = 0x00074000` with 0x4880
@@ -88,7 +89,7 @@ and the rest of `tools/*.py` finds only: D4D's pool base; the fighter rows' recp
 0x77000/0x78000 (inside the pool range, records poked by those rows); `D5B_HEIGHT_RR`'s stored
 **value** 0x0007F000 (a dword at 0x100B54, not an address claim); title-pin's 0x78505/0x7852A/
 0x7E289 (EXE **file** offsets, not linear addresses); and the object-bound comments 0x73B14/0x73B15/
-0x80000. The span `[0x79000, 0x79880)` — above the pool's end with a 0x780 margin, below the data
+0x80000. The span `[0x79000, 0x7A080)` — above the pool's end with a 0x780 margin, below the data
 object — is claimed by none of them. No case both declares files and seeds the pool (no row that
 uses `files` passes a pset base), and rows run in isolated children, but the claim recorded here is
 the stronger one: the two owners' spans are disjoint.
