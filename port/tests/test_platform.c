@@ -690,11 +690,12 @@ int test_res(void)
     CHECK(mem_in_range(DSD(DS_001014E0), 69 * 20), "table pointer is in range");
     CHECK_EQ_INT(DSD(DS_001014F0), 69);
 
-    /* Every entry got a data block, and DS_001014F8 is the largest size. */
+    /* Every entry got a data block, and DS_001014F8 is the largest size of
+     * the entries that are not preloaded (0x1B26F..0x1B289). */
     u32 biggest = 0, have_data = 0;
     for (u32 i = 0; i < res_count(); i++) {
         if (DSD(DSD(DS_001014E0) + i * 20 + 16) != 0) have_data++;
-        if (res_size(i) > biggest) biggest = res_size(i);
+        if ((res_flags(i) & 1u) == 0u && res_size(i) > biggest) biggest = res_size(i);
     }
     CHECK_EQ_INT(have_data, 69);
     CHECK_EQ_INT(DSD(DS_001014F8), biggest);

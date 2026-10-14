@@ -28,6 +28,10 @@ int res_load_file(const char *game_dir, const char *name, u32 *out_off, u32 *out
 /* The port's 0x1C308 (res.c's bump allocator): a mem[] offset, 0 if it does not fit. */
 u32 res_block_alloc(u32 size);
 
+/* 0x1B3AC's presentation head for the INDEX entry at mem[] offset `entry`;
+ * `draw` is the original's BL (res.c). */
+void res_load_present(u32 entry, u32 draw);
+
 /* PORT: the allocation-failure test seam (record
  * 2026-09-30-named-gaps-c-derivations.md §C.1), not original state (the
  * pattern of res_set_screen_hook). res_fail_alloc_nth(n) makes the n-th
