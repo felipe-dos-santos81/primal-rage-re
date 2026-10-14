@@ -308,3 +308,180 @@ mutants detected; 1 named gaps; 635/824 rows with callees closed (169 have none)
 callees and stay open (`0x2F920` on the runtime memset, `0x11BCC` on the ret-only `0x29D60`, a named
 non-row); `0x12CD4` has none. No existing row's verdict or pin moved; the three callers' rows stay open
 on their other callees. No seam was added.
+
+## §I.4 `0x2F9CC` — `game_master_init` (`flow.c`)
+
+**State: the function, four seams and the unit case are in (commit `7113e155`); the differential row,
+the `PR_RESTART` assertion and the counter are not.** The eight added calls moved the boot output, and
+the plan's risk rule stops the task there for the controller's gate. What moved is under "The boot
+comparison" below.
+
+```
+02F9CC  push ebx
+02F9CD  push ecx
+02F9CE  push edx
+02F9CF  call 0x1afe8
+02F9D4  call 0x13adc
+02F9D9  xor eax, eax
+02F9DB  call 0x4f1e4
+02F9E0  xor ecx, ecx
+02F9E2  mov eax, 1
+02F9E7  xor ebx, ebx
+02F9E9  call 0x2baf4
+02F9EE  xor eax, eax
+02F9F0  xor edx, edx
+02F9F2  call 0x4f1d0
+02F9F7  mov eax, 0x9ad84
+02F9FC  call 0x38b18
+02FA01  mov dword ptr [0x10740c], 0x1d2d0
+02FA0B  call 0x2d6f8
+02FA10  mov eax, 0x2a
+02FA15  call 0x2d974
+02FA1A  and al, 0xfc
+02FA1C  mov dword ptr [0x107410], eax
+02FA21  xor eax, eax
+02FA23  call 0x2c9b8
+02FA28  mov eax, 0xffffffff
+02FA2D  call 0x2c8f0
+02FA32  mov eax, 0xfffffffe
+02FA37  call 0x2c8f0
+02FA3C  pop edx
+02FA3D  pop ecx
+02FA3E  pop ebx
+02FA3F  ret
+```
+
+One block, no branch. Callers: `0x20C15` alone (`call rel32`; no `jmp rel32`, no dword in the image),
+before `0x20C1A mov eax,0x1044f4; 0x20C1F call 0x653fc` (the `setjmp`). The brief's table of twelve
+steps is confirmed, with one addition (step 6's EDX and EBX).
+
+| # | Address | Raw | What the callee reads of it | Port |
+|---|---|---|---|---|
+| 1 | `0x2F9CF` | `0x1AFE8()` | no argument; its EAX is not read (`0x2F9D4` calls on, `0x2F9D9 xor eax,eax`) | `(void)config_file_load()` |
+| 2 | `0x2F9D4` | `0x13ADC()` | no argument | `effects_init()` |
+| 3 | `0x2F9DB` | `0x4F1E4`, EAX = 0 | nothing: `0x4F1E5 mov eax,0x2700` loads EAX before any read | `frontend_input_reset()` |
+| 4 | `0x2F9E9` | `0x2BAF4`, EAX = 1, ECX = EBX = 0 | AL alone (`0x2BAFD mov [esp],al`); it pushes EBX, ECX, EDX, ESI, EDI, EBP (`0x2BAF4..0x2BAF9`) and loads EBX and ECX before reading them (`0x2BB05`, `0x2BB7E`) | `actors_reset()` (= `actors_reset_al(1)`) |
+| 5 | `0x2F9F2` | `0x4F1D0`, EAX = EDX = 0 | nothing: `push edx; xor edx,edx; two word stores; pop edx` | `frontend_origin_zero()` |
+| 6 | `0x2F9FC` | `0x38B18`, EAX = `0x9AD84`, EDX = 0, EBX = 0 | EAX (`0x38B1B mov esi,eax`), EDX (`0x38B1D mov ebp,edx`), EBX (`0x38B51 shl ebx,3`); ECX is loaded from `[0x107A1C]` (`0x38B24`) | `frontend_spawn_row(mem + 0x9AD84, 0, 0)` |
+| 7 | `0x2FA01` | `[0x10740C] = 0x1D2D0` | | `DSD(DS_0010740C) = 0x1D2D0` |
+| 8 | `0x2FA0B` | `0x2D6F8()` | no argument; its EAX is not read (`0x2FA10 mov eax,0x2a`) | `config_validate()` |
+| 9 | `0x2FA15`..`0x2FA1C` | `[0x107410] = 0x2D974(0x2A)` with `and al,0xfc` | EAX = the field | `DSD(DS_00107410) = config_field_get(0x2A) & 0xFFFFFFFC` |
+| 10 | `0x2FA23` | `0x2C9B8`, EAX = 0 | EAX, signed (`0x2C9B8 test eax,eax; 0x2C9BA jge`): 0 takes the `jge`, no voice; its EAX is not read (`0x2FA28`) | `(void)config_voice_gate(0)` |
+| 11 | `0x2FA2D` | `0x2C8F0`, EAX = −1 | EAX (`0x2C8F3 cmp eax,-1`); its EAX is not read (`0x2FA32`) | `(void)attract_config_volumes_unscaled()` |
+| 12 | `0x2FA37` | `0x2C8F0`, EAX = −2 | EAX (`0x2C939 cmp eax,-2`) | `attract_config_volumes()` |
+
+**Step 6's EDX and EBX (not in the brief's table).** `0x38B18` reads three registers, and the brief's
+row names EAX only. EDX is the 0 of `0x2F9F0`: `0x4F1D0` pushes and pops it. EBX is the 0 of `0x2F9E7`:
+`0x2BAF4` pushes and pops it and `0x4F1D0` does not touch it. So the two `xor`s the brief lists under
+calls 4 and 5 are call 6's arguments, not theirs; `0x2F9E0 xor ecx,ecx` is read by nothing (`0x2BAF4`
+and `0x38B18` each load ECX first). The port's `frontend_spawn_row(desc, a2, a3)` takes all three.
+
+**EAX at the return** is `0x2C8F0`'s (EDX, `0x2C9B1`), and the one caller loads EAX next (`0x20C1A`):
+`void`, mask 0 for the row.
+
+**The port before.** `game_init` held steps 1, 7, 8 and 9 inline. Step 2 ran only earlier, inside
+`actors_init` (the raw's own `0x2BBB8` call, which stays). Steps 3 to 6 and 10 to 12 were missing.
+`svcmenu_register()` (`PORT:`) stays in `game_init`, after the call.
+
+**Seams added** (inert while `pr_seam` is NULL; the hook of `diffrun` answers 0 for an address the case
+does not stub, so no existing row changed): `PR_SEAM_RET0(0x1AFE8u)` in `config_file_load`,
+`PR_SEAM0(0x2D6F8u)` in `config_validate`, `PR_SEAM_RET(0x2C9B8u, (u32)v)` in `config_voice_gate`,
+`PR_SEAM_RET(0x2C8F0u, 0xFFFFFFFFu)` in `attract_config_volumes_unscaled` (the −2 function already had
+`PR_SEAM(0x2C8F0u, 0xFFFFFFFEu)`). Measured after them: the full `--self-check` prints the same counter
+(`993/993`, `14757/14757`, 1, `635/824`, 169) and the harness suite passes (180 tests).
+
+**For the row** (not written): `E.callee_clobbers` over the image gives `0x1AFE8` (`edi`, `ebp`),
+`0x2D6F8` (), `0x2C9B8` () for the three new stub addresses, and the existing constants cover the rest
+(`0x13ADC` (), `0x4F1E4` (), `0x2BAF4` (), `0x4F1D0` (), `0x38B18` (`ebx`, `ecx`, `edx`), `0x2D974` (),
+`0x2C8F0` (`esi`, `edi`)).
+
+### The boot comparison
+
+Baseline on `62a1f5a8`, before any source change: `make check frames=60`, the 60 frames copied to
+`/tmp/pr_i_frames_before`; `./build/prageport --game-dir data/game/C --check 820`, `frames/` copied to
+`/tmp/pr_i_frames_before_820`; `PR_RESTART=1 PR_GAME_DIR=data/game/C ./build/run_tests`. After the
+change, the same three commands:
+
+| Output | Result |
+|---|---|
+| `--check 60`, `diff -rq` | `frame_0003`..`frame_0060`: every `.idx` and `.pal` differs; every `.ppm` is identical |
+| `--check 820`, `diff -rq` | `frame_0003`..`frame_0690`: 688 `.idx` and 688 `.pal` differ; all 820 `.ppm` are identical; frames 1, 2 and 691..820 are identical in all three files; `fn_miss.txt` identical |
+| `--check` stdout | `fn-miss check 0x5D812 actor_spawn hits=523` -> `524` (60 frames), `7504` -> `7505` (820) |
+| `PR_RESTART` driver | passes (`all checks passed`); `fn-miss PR_RESTART 0x5D812 actor_spawn hits=891` -> `892`; the line `restart after 1198 menu iterations (stamp 3E, clock 4EF)` is unchanged |
+| `PR_ORACLE_REQUIRED=1 ./build/run_tests` | `all checks passed` on the old `frames/` and on the regenerated one |
+
+**What the difference is.** In frames 3..690 the index of each pixel is a one-to-one renaming of the
+baseline's and the DAC colour under it is the same (the renaming checked on frames 3, 60, 300 and 690,
+the colour per pixel on frames 3 and 690; the `.ppm` equality covers all 820): index 1 becomes 219 and
+the others are one lower (63 of them at frame 3, 124 at frame 690, where ten more keep their value).
+The same colours sit in other palette slots.
+
+**Which call.** Each of the eight calls removed alone, and each added alone to the four old steps
+(`--check 820` and the `PR_RESTART` driver each time):
+
+| Variant | `.idx`/`.pal`/`.ppm` differing | miss count |
+|---|---|---|
+| all eight (the change) | 688 / 688 / 0 | +1 |
+| none of the eight | 0 / 0 / 0 | same |
+| without `0x2BAF4` (`0x2F9E9`) | 0 / 0 / 0 | same |
+| without `0x38B18` (`0x2F9FC`) | 0 / 0 / 0 | same |
+| without any one of `0x13ADC`, `0x4F1E4`, `0x4F1D0`, `0x2C9B8`, `0x2C8F0(-1)`, `0x2C8F0(-2)` | 688 / 688 / 0 | +1 |
+| any one of the eight alone | 0 / 0 / 0 | same |
+| `0x2BAF4` and `0x38B18` alone | 688 / 688 / 0 | +1 |
+
+So the two calls `0x2F9E9` (`0x2BAF4(1)`) and `0x2F9FC` (`0x38B18(0x9AD84, 0, 0)`) together are the
+whole cause, and neither alone changes anything: without the reset the actor pool's free list is not
+built yet at boot, `actor_alloc` returns 0 and the spawn does nothing. The other six calls change no
+output.
+
+**The mechanism** (a temporary print in `res_resolve`, removed): the descriptor `0x9AD84` holds the
+handle `0x0396EB68` at `+0x10`, entry 7 of the INDEX (`0x0396EB68 >> 23`), `s16title.gra`, a lazy
+entry. Its first resolve presents the loader screen (`res_load_present`: the `- LOADING -` string
+through `0x1C65C`, whose glyphs acquire the font palette `0x80997C`, then the read's tick stall and the
+gate re-sync `0x1B45F/0x1B464`) and marks the entry read (`0x1B47A`). Before the change that first
+resolve was in master-loop iteration 3 (the frame word `0xEF6DC` = 3; its caller was not traced); with the spawn
+at `0x2F9FC` it is at boot (the frame word 0), inside `game_master_init`. In iteration 3 no loader
+screen is drawn any more, the font palette does not take its slot before the attract's palettes, and
+those sit one slot lower until frame 690. The one new `0x5D812` miss is the spawned record's.
+
+**Not measured** (not the implementer's to run): every oracle, `make verify`. Two things the gate may
+show, from the code alone: (1) the K11, gameplay and front-end drivers install their loader-screen dump
+hook (`res_set_screen_hook`, `test_game.c` `k11_loader`, `gp_loader`, `fe_cyc2_loader`) after
+`game_init()`, so the loader screen of entry 7, which they could dump in iteration 3, is now presented
+before the hook exists; (2) the tail's `0x2BAF4(1)` (`0x20C58`), which the port leaves out (record
+named-gaps-b §B.11), is the raw's reset after this spawn; in the port the spawned record lives until
+`game_state_init`'s `actors_reset` (`0x10E9C`), across `hiscore_init`, `config_run_clock` and
+`game_string_table_load`.
+
+### The unit case `master` (`test_inlined_functions`)
+
+Every callee is stubbed through the call seam (`if_mi_probe`): it records the address, the arguments
+and the dwords `0x10740C` and `0x107410` as they are when the call arrives, and answers `0x12345677`
+for `0x2D974` and `0x5A5A5A5A` for the others. The two dwords are seeded `0x0C0C0C0C` and `0x10101010`.
+Assertions: the count is 11 (`test_game.c:5056`); each of the eleven records equals the table's
+(`:5064`: the pointer is still the seed at `0x38B18` and `0x1D2D0` at `0x2D6F8`; the field dword is
+still the seed at `0x2D974` and `0x12345674` at `0x2C9B8`); `0x10740C == 0x1D2D0` (`:5066`);
+`0x107410 == 0x12345674` (`:5067`). It failed first on the four-step function (`3 != 11` and ten
+records). Mutations of `game_master_init`, each built, run with `PR_ORACLE_REQUIRED=1
+PR_GAME_DIR=data/game/C ./build/run_tests` and restored:
+
+| # | mutation | failing lines | first differing record |
+|---|---|---|---|
+| D1 | drop `0x13ADC` | `:5056`, `:5064` | call 1 is `0x4F1E4` |
+| D2 | drop `0x4F1E4` | `:5056`, `:5064` | call 2 is `0x2BAF4(1)` |
+| D3 | drop `0x2BAF4` | `:5056`, `:5064` | call 3 is `0x4F1D0` |
+| D4 | drop `0x4F1D0` | `:5056`, `:5064` | call 4 is `0x38B18` |
+| D5 | drop `0x38B18` | `:5056`, `:5064` | call 5 is `0x2D6F8` |
+| D6 | drop `0x2C9B8` | `:5056`, `:5064` | call 8 is `0x2C8F0(-1)` |
+| D7 | drop `0x2C8F0(-1)` | `:5056`, `:5064` | call 9 is `0x2C8F0(-2)` |
+| D8 | drop `0x2C8F0(-2)` | `:5056`, `:5064` | call 10 is missing |
+| P1 | drop the `0x10740C` store | `:5064`, `:5066` | call 6 sees the seed |
+| P2 | the `0x10740C` store after `0x2D6F8` | `:5064` | call 6 sees the seed |
+| P3 | `0x10740C = 0x1D2D4` | `:5064`, `:5066` | call 6 sees `0x1D2D4` |
+| F1 | no `& ~3` | `:5064`, `:5067` | call 8 sees `0x12345677` |
+| F2 | field `0x29` | `:5064` | call 7 is `0x2D974(0x29)` |
+| F3 | drop the `0x107410` store | `:5064`, `:5067` | call 8 sees the seed |
+| A1 | `actors_reset_al(0)` | `:5064` | call 3 is `0x2BAF4(0)` |
+| A2 | the spawn's `a2 = 1` | `:5064` | call 5 is `0x38B18(0x9AD84, 1, 0)` |
+| A3 | `config_voice_gate(-1)` | `:5064` | call 8 is `0x2C9B8(-1)` |
+| A4 | the two `0x2C8F0` calls swapped | `:5064` | call 9 is `0x2C8F0(-2)` |
