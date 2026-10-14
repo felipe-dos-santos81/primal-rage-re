@@ -223,7 +223,7 @@ class Machine:
     exits: the runtime's exit chain answers DOS Terminate Process (track G, record
       2026-10-14-reverse-g §G1). The chain 0x62003..0x62723 (record §S.7.1; the bytes re-verified over
       the fixup-applied image and in Ghidra on 2026-10-14) keeps the caller's EAX, the exit code,
-      through the cleanups (`mov edx,eax` 0x62005 / `mov eax,edx` 0x62016, and again in 0x6201B),
+      through the cleanups (`mov edx,eax` 0x62004 / `mov eax,edx` 0x62012, and again in 0x6201B),
       tail-jumps 0x6202C -> 0x626EB -> 0x62710, saves the code (`push eax`), destroys EAX for the flush
       (`mov eax,0; mov edx,0xff; call 0x6C4CF`), restores it (`pop eax` 0x62720), selects the function
       without touching AL (`mov ah,0x4C` 0x62721) and ends the process at `int 0x21` 0x62723. With

@@ -729,7 +729,7 @@ class F1FilesTests(unittest.TestCase):
 # ---- track G batch g1 (record 2026-10-14-reverse-g §G1): the terminal exit --------------------------------
 # The runtime's exit chain 0x62003..0x62723 (record 2026-10-13-reverse-s §S.7.1, the bytes re-verified
 # over the fixup-applied image and in Ghidra on 2026-10-14): 0x62003 keeps the caller's EAX, the exit
-# code (`mov edx,eax` 0x62005, restored `mov eax,edx` 0x62016), calls the cleanup vectors, and 0x6201B
+# code (`mov edx,eax` 0x62004, restored `mov eax,edx` 0x62012), calls the cleanup vectors, and 0x6201B
 # does the same again and tail-jumps (0x6202C -> 0x626EB -> 0x62710), where `push eax` saves the code,
 # `mov eax,0; mov edx,0xff; call 0x6C4CF` flushes with EAX destroyed, `pop eax` 0x62720 restores the
 # code, `mov ah,0x4C` 0x62721 replaces only the high byte, and `int 0x21` 0x62723 — DOS Terminate
