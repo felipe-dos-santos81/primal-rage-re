@@ -30367,6 +30367,71 @@ I_CASES = [
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
 D1_CASES.extend(I_CASES)
+# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row
+N1_MASKS = {
+    "sprite_blit_aperture": 0x0,
+}   # N1_MASKS end
+N1_KINDS = {
+    "sprite_blit_aperture@nostore": {'byte'},
+    "sprite_blit_aperture@clipt": {'byte'},
+    "sprite_blit_aperture@nowidth": {'byte'},
+    "sprite_blit_aperture@norows": {'byte'},
+}   # N1_KINDS end
+N1_CASES = [
+    ("sprite_blit_aperture@nostore", ['a2', 'a3']),
+    ("sprite_blit_aperture@clipt", ['a2', 'a3']),
+    ("sprite_blit_aperture@nowidth", ['a0']),
+    ("sprite_blit_aperture@norows", ['a1']),
+]   # N1_CASES end
+D1_MASKS.update(N1_MASKS)
+D1_KINDS.update(N1_KINDS)
+D1_CASES.extend(N1_CASES)
+# track N batch n2 (record 2026-10-14-reverse-n section N.2): the teardown 0x1BE30, a poked partial row
+N2_MASKS = {
+    "game_shutdown": 0x0,
+}   # N2_MASKS end
+N2_KINDS = {
+    "game_shutdown@noshut": {'call #0', 'call #1'},
+    "game_shutdown@nosave": {'call #1'},
+    "game_shutdown@order": {'call #0', 'call #1'},
+    "game_shutdown@free": {'byte', 'call #1 memory'},
+}   # N2_KINDS end
+N2_CASES = [
+    ("game_shutdown@noshut", ['t0', 't1']),
+    ("game_shutdown@nosave", ['t0', 't1']),
+    ("game_shutdown@order", ['t0', 't1']),
+    ("game_shutdown@free", ['t1']),
+]   # N2_CASES end
+D1_MASKS.update(N2_MASKS)
+D1_KINDS.update(N2_KINDS)
+D1_CASES.extend(N2_CASES)
+# N n3 (record 2026-10-14-reverse-n §N.3): the row of 0x1C740, under code pokes; measured pins (0x1B120's
+# row was withdrawn at integration, §N.4)
+N3_MASKS = {
+    "movie_play": 0x0,
+}   # N3_MASKS end
+N3_KINDS = {
+    "movie_play@noreset": {'call #0'},
+    "movie_play@reset1": {'call #0'},
+    "movie_play@nokey": {'byte'},
+    "movie_play@noquit": {'byte'},
+    "movie_play@quitw": {'byte'},
+    "movie_play@exitblank": {'call #1'},
+    "movie_play@noopen": {'byte'},
+}   # N3_KINDS end
+N3_CASES = [
+    ("movie_play@noreset", ['k0', 'k1', 'o0', 'o1', 'q0', 'q1']),
+    ("movie_play@reset1", ['k0', 'k1', 'o0', 'o1', 'q0', 'q1']),
+    ("movie_play@nokey", ['k0']),
+    ("movie_play@noquit", ['q0', 'q1']),
+    ("movie_play@quitw", ['o0']),
+    ("movie_play@exitblank", ['k0', 'k1', 'o0', 'o1', 'q0', 'q1']),
+    ("movie_play@noopen", ['o0', 'o1']),
+]   # N3_CASES end
+D1_MASKS.update(N3_MASKS)
+D1_KINDS.update(N3_KINDS)
+D1_CASES.extend(N3_CASES)
+# N n3 end
 
 
 @needs_unicorn
@@ -31435,6 +31500,9 @@ class RealFunctionTests(unittest.TestCase):
         # I (record 2026-10-13-reverse-i sections I.4 and I.5): the stubs the 0x2F9CC and 0x1D018 rows add
         0x1AFE8: ("edi", "ebp"), 0x2D6F8: (), 0x2C9B8: (), 0x5D86A: ("ebx", "ecx", "edx"),
         # I end
+        # N n2 (record 2026-10-14-reverse-n section N.2): the stubs the 0x1BE30 row adds
+        0x1D018: (), 0x1B084: ("edi", "ebp"),
+        # N n2 end
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
@@ -31695,9 +31763,14 @@ class RealFunctionTests(unittest.TestCase):
         # the closed-row count is over the rows that have callees (825 after track I: the rows of
         # 0x2F920 and 0x11BCC, open on the runtime memset 0x61A70 and the ret-only 0x29D60, and the
         # row of 0x2F9CC, closed: each of its ten callees has a VERIFIED row); the 169 without are
-        # counted apart (0x12CD4's row is one)
-        self.assertIn("diff-verify: 995/995 functions VERIFIED; 14825/14825 mutants detected; 1 named gaps; "
-                      "636/826 rows with callees closed (169 have none).", out.getvalue())
+        # counted apart (0x12CD4's row is one). Track N batch n1: 0x51ED8's partial row (four mutants), open
+        # on 0x1B544 (a named non-row) and 0x51E58
+        # Track N batch n2: 0x1BE30's row adds one function, four mutants and one open row (open on
+        # 0x4FB98 and 0x10D34, run from their bytes with no row of their own). Track N batch n3: the row
+        # of 0x1C740 (closed: 0x52106 is VERIFIED), which also closes attract_step's (0x11000 stubs 0x1C740);
+        # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge.
+        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14840/14840 mutants detected; 1 named gaps; "
+                      "638/829 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

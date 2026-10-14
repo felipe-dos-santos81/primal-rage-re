@@ -6053,7 +6053,13 @@ void game_state_init(void)
  * and the single sequence handle live in ail.c; only the sequence is kept here
  * because the title state needs it to start music. The 60 Hz timer is registered
  * and started as in the original, but its callback is never fired: the port has
- * no PIT/ISR and the frame loop owns pacing (see game_audio_service). */
+ * no PIT/ISR and the frame loop owns pacing (see game_audio_service).
+ * PORT: the raw stores its handles in mem[] (record 2026-10-14-reverse-n §N.2): the DIG driver at
+ * 0x1028C8 (0x1CF8E; the port stores 1, below), each slot's sample handle at 0x102860 + 0x18 * i
+ * (0x1CFAC), the MDI driver at 0x1028C4 (0x1CFD6) and the sequence at 0x1028C0 (0x1CFE8); the port
+ * stores none of the last three (the sound-module comment below). It also calls 0x5DC0F on every
+ * slot (0x1CFB2, the port only on a non-NULL handle), registers the ISR 0x1BDF4 (0x1CFED, the port
+ * none), and adds mixer_reset, the 0xA2CB4 store and the FAT.OPL load, which the raw has not. */
 void game_audio_init(void)
 {
     /* PORT: FUN_0001cf40 gates the DIG install and its preferences behind
@@ -6161,7 +6167,15 @@ const u8 *game_music_bank_find(const u8 *base, u32 size)
     return NULL;
 }
 
-/* 0x1C930 (reached from 0x1CF20): loads and starts the pending song. */
+/* 0x1C930 (reached from 0x1CF20): loads and starts the pending song.
+ * PORT: a host replacement (record 2026-10-14-reverse-n §N.2): the raw runs when the pending song
+ * dword 0x1028CC is non-zero (0x1CF30, the call at 0x1CF39) and compares it with the last one
+ * 0x1028DC (0x1C93B); a new song is stored there (0x1C943), resolved by 0x1B544 (0x1C948) and its
+ * size-prefixed bytes copied to the buffer [0x1028D0] (0x1C961..0x1C977); either arm stops the
+ * sequence [0x1028C0] (0x5DEAF, 0x1C956/0x1C9BD), then 0x5DE48 init, 0x5DECA volume [0xA2CB8]
+ * over 500 ms, 0x5DE79 start, and 0x1028CC = 0 (0x1CA08). The port's request is s_music_request
+ * and its bank is S16TITLE's, read in place; it reads and writes none of those dwords, makes no
+ * stop and no copy, and returns early with no bank or no sequence (both host objects). */
 static void title_music_start(void)
 {
     const u8 *bank = title_music_bank();
@@ -6847,7 +6861,9 @@ void game_init(void)
     mem_fill(GAME_BIOS_BASE, 0, GAME_BIOS_LEN);
     DSD(DS_000A2CAC) = DSD(DS_00101514);
     /* PORT: no DPMI — the 0x109A0 region locks are no-ops. */
-    /* PORT: 0x1B3AC resource-file setup is replaced by res_load_index(). */
+    /* PORT: 0x1BF51's 0x1B3AC(0xA2C9C) loads the real-mode driver RM.DRV
+     * (preloaded, 0xC00 bytes) into the DOS block [0x101514] (0x1BF47); the
+     * port has no real mode, so nothing loads it (track N §N.4). */
     game_audio_init();      /* 0x1CF40: AIL_startup, prefs, handles, timer */
     /* PORT: extended-memory block list (0x1E2A0/0x1C0F0) unused under flat mem[]. */
     /* PORT: 0x4FB98 (int 10h set mode) — the SDL host owns the window. */
@@ -6855,8 +6871,10 @@ void game_init(void)
     if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return; }
 
     /* PORT: 0x10C30/0x10D34/0x10D0C (CD-ROM drive locate and restore) and the
-     * DPMI locks 0x1ADAC/0x1ADE4 have no flat-memory or host equivalent (record
-     * §50-E). */
+     * DPMI real-mode vector get/set 0x1ADAC/0x1ADE4 (INT 31h AX=0x200/0x201:
+     * the saved interrupt vectors, then RM.DRV's handlers installed for 9, 0x23
+     * and 0x1B at 0x1C05B/0x1C077/0x1C093; record §50-C, track N §N.2, §N.4)
+     * have no flat-memory or host equivalent (record §50-E). */
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
         return;
@@ -6978,6 +6996,7 @@ void game_init_resume(void)
  * AIL_shutdown's own seq_stop. */
 void sound_shutdown(void)
 {
+    PR_SEAM0(0x1D018u);
     if (DSB(DS_000A2CB1) == 0u) return;                    /* 0x1D01C/0x1D023 */
     DSB(DS_000A2CB1) = 0u;                                 /* 0x1D029/0x1D02B */
     if (DSD(DS_001028C4) != 0u) {                          /* 0x1D031 */
@@ -6997,12 +7016,19 @@ void sound_shutdown(void)
     AIL_shutdown();                                        /* 0x1D0AF 0x5D86A */
 }
 
-/* 0x1BE30 teardown. */
+/* 0x1BE30 — record 2026-10-14-reverse-n §N.2. The teardown: 0x1D018, the three real-mode vector
+ * restores, 0x4FB98 with AL = [0x101504], 0x1B084, 0x10D34.
+ * PORT: 0x1BE38..0x1BEA6 are not memory frees: each restores a real-mode interrupt vector that
+ * 0x1ADAC (DPMI 0x200) saved in the init, through 0x1ADE4 (DPMI 0x201, set real-mode vector:
+ * `mov ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, 0x61564), when its segment word is non-zero:
+ * vector 9 from [0x101514]+0x14/+0x16 (0x1BE44, saved at 0x1C017), 0x23 from 0x10151A/0x10151C
+ * (0x1BE61, saved at 0x1C02B) and 0x1B from 0x101518/0x10151E (0x1BE87, saved at 0x1C03F). The
+ * port has no real mode and never sets those words (GAME_BIOS_BASE is zeroed at init), so in a run
+ * of the port the raw's own tests skip all three. 0x1BEB0 0x4FB98 (int 10h set mode) and 0x1BEBA
+ * 0x10D34 (the CD-drive restore) are the host's. */
 void game_shutdown(void)
 {
     sound_shutdown();                                      /* 0x1BE33 0x1D018 */
-    /* PORT: the memory frees (0x1BE38..0x1BEA6 0x1ADE4) are no-ops under flat mem[]; 0x1BEB0 0x4FB98
-     * (int 10h set mode) and 0x1BEBA 0x10D34 (the CD-drive restore) are the host's. */
     (void)config_file_save();   /* 0x1BEB5 0x1B084; AL is not read (0x1BEBA calls on) */
 }
 

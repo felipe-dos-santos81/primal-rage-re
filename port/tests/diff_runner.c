@@ -42634,6 +42634,107 @@ I_SD_MUT(nostopsmp, 21u) I_SD_MUT(three, 22u)   I_SD_MUT(five, 23u)     I_SD_MUT
 I_SD_MUT(handle4, 26u)  I_SD_MUT(early, 27u)    I_SD_MUT(nodig, 28u)    I_SD_MUT(digfirst, 29u) I_SD_MUT(noshut, 30u)
 I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
 /* ---- track I task 3 bindings end ---- */
+/* ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ---- */
+/* 0x51ED8 sprite_blit_aperture: EAX = the raw node. The binding writes every field of the C node back to
+ * the raw offsets (+0x24 is not in the C node). The mutants restate sprite.c's body, one choice flipped per
+ * number; the cases draw nothing (the table's `ret` entries), so the draw is sprite_blit_at itself. */
+static void n1_51ed8_store(u32 at, const SpriteNode *n)
+{
+    DSD(at) = (u32)n->x;            DSD(at + 4u) = (u32)n->y;
+    DSD(at + 8u) = (u32)n->xorg;    DSD(at + 0x0Cu) = (u32)n->yorg;
+    DSD(at + 0x10u) = n->type;      DSD(at + 0x14u) = (u32)n->rows;
+    DSD(at + 0x18u) = (u32)n->width; DSD(at + 0x1Cu) = n->pal_ptr;
+    DSD(at + 0x20u) = n->pixel_handle;
+    DSD(at + 0x28u) = (u32)n->clip_l; DSD(at + 0x2Cu) = (u32)n->clip_r;
+    DSD(at + 0x30u) = (u32)n->clip_t; DSD(at + 0x34u) = (u32)n->clip_b;
+    DSD(at + 0x38u) = (u32)n->stride; DSD(at + 0x3Cu) = (u32)n->row;
+}
+static void n1_51ed8_run(const u32 *r, u32 mut)
+{
+    SpriteNode n;
+    d5b_51e5c_load(r[R_EAX], &n);
+    if (mut == 0u) sprite_blit_aperture(&n);
+    else if (!((n.width == 0 && mut != 3u) || (n.rows == 0 && mut != 4u))) {   /* @nowidth @norows */
+        sprite_blit_at(&n, gfx_aperture());
+        if (mut != 1u) n.rows -= (mut == 2u) ? n.clip_t : n.clip_b;           /* @nostore @clipt */
+    }
+    n1_51ed8_store(r[R_EAX], &n);
+}
+static void b_n1_51ed8(const u32 *r, u32 *eax) { n1_51ed8_run(r, 0u); *eax = 0u; }
+#define N1_BA_MUT(name, n) \
+    static void m_n1_ba_##name(const u32 *r, u32 *eax) { n1_51ed8_run(r, n); *eax = 0u; }
+N1_BA_MUT(nostore, 1u)  N1_BA_MUT(clipt, 2u)    N1_BA_MUT(nowidth, 3u)  N1_BA_MUT(norows, 4u)
+/* ---- track N batch n1 bindings end ---- */
+
+/* ---- track N batch n2 bindings (record 2026-10-14-reverse-n §N.2) ---- */
+/* 0x1BE30 game_shutdown: no argument; 0x1D018 and 0x1B084 are stubs (their seams). The raw's three
+ * vector restores (0x1BE4B, 0x1BE6B, 0x1BE93) are named unhit, 0x4FB98 runs under the int 0x10 poke
+ * and 0x10D34 with the byte 0x101520 set: the port makes neither (PORT). No call site reads EAX
+ * (0x1C0CC `xor eax,eax`, 0x1C1C9 and 0x1D298 push and call on, 0x1C2C2 `mov eax,edx`). */
+static void b_n2_1be30(const u32 *r, u32 *eax) { (void)r; game_shutdown(); *eax = 0u; }
+/* @noshut: 0x1D018 dropped; @nosave: 0x1B084 dropped; @order: 0x1B084 before 0x1D018 */
+static void m_n2_1be30_noshut(const u32 *r, u32 *eax) { (void)r; (void)config_file_save(); *eax = 0u; }
+static void m_n2_1be30_nosave(const u32 *r, u32 *eax) { (void)r; sound_shutdown(); *eax = 0u; }
+static void m_n2_1be30_order(const u32 *r, u32 *eax) { (void)r; (void)config_file_save(); sound_shutdown(); *eax = 0u; }
+/* @free: the old PORT note's reading (0x1BE38..0x1BEA6 as frees of the DOS block) made code: the
+ * block pointer 0x101514 dropped after 0x1D018 */
+static void m_n2_1be30_free(const u32 *r, u32 *eax)
+{
+    (void)r; sound_shutdown(); DSD(DS_00101514) = 0u; (void)config_file_save(); *eax = 0u;
+}
+/* ---- track N batch n2 bindings end ---- */
+/* ---- track N batch n3 (record 2026-10-14-reverse-n §N.3): 0x1C740 under code pokes (0x1B120's row was
+ * withdrawn at integration, §N.4) ---- */
+#include "game/movie.h"
+#include "platform/input.h"
+/* 0x1C740 movie_play: EAX = the name. The raw's kbhit is `mov eax,<result>` (the dword at 0x1C753): the
+ * port's key queue holds one key when it is not 0, none otherwise. The raw's open stores 1 at N3_MARK and
+ * fails; the port's game directory holds both names as two-byte files that are not movies, so a reached
+ * open reads one into the bump heap (res_load_file) and smk_open rejects it. When the heap moved the
+ * binding clears what was read (mem[] above the image is zero) and stores 1 at N3_MARK. The mutants
+ * restate movie.c's prefix up to the open. */
+#define N3_MARK 0x0010AF00u
+enum { N3_MV_NONE, N3_MV_noreset, N3_MV_reset1, N3_MV_nokey, N3_MV_noquit, N3_MV_quitw, N3_MV_exitblank,
+       N3_MV_noopen };
+static void n3_1c740_core(const char *dir, const char *name, u32 mut)
+{
+    u32 off, size;
+    if (mut != N3_MV_noreset) gfx_screen_reset((mut == N3_MV_reset1) ? 1u : 0u);   /* @noreset @reset1 */
+    if (input_has_key() && mut != N3_MV_nokey) goto out;                          /* @nokey */
+    if (((mut == N3_MV_quitw) ? (u32)DSW(DS_000A81A8) : (u32)DSB(DS_000A81A8)) != 0u   /* @quitw */
+        && mut != N3_MV_noquit) goto out;                                         /* @noquit */
+    if (mut != N3_MV_noopen) (void)res_load_file(dir, name, &off, &size);        /* @noopen */
+out:
+    if (mut == N3_MV_exitblank) gfx_screen_reset(0u);                             /* @exitblank */
+}
+static void n3_1c740_run(const u32 *r, u32 *eax, u32 mut)
+{
+    static const u8 k_not_a_movie[2] = { 'n', '3' };
+    char dir[40], a[64], b[64];
+    const char *name = (const char *)(mem + r[R_EAX]);
+    snprintf(dir, sizeof dir, "/tmp/pr_n3_XXXXXX");
+    if (mkdtemp(dir) == NULL) { perror("diffrun: mkdtemp"); exit(2); }
+    snprintf(a, sizeof a, "%s/twi5.smk", dir);
+    snprintf(b, sizeof b, "%s/twg.smk", dir);
+    (void)host_write_file(a, k_not_a_movie, sizeof k_not_a_movie);
+    (void)host_write_file(b, k_not_a_movie, sizeof k_not_a_movie);
+    input_clear();
+    if (DSD(0x0001C753u) != 0u) input_push(0x1Cu, 0x0Du);
+    const u32 h0 = res_block_alloc(0u);
+    if (mut == 0u) (void)movie_play(dir, name);
+    else n3_1c740_core(dir, name, mut);
+    const u32 h1 = res_block_alloc(0u);
+    if (h1 != h0) { mem_fill(h0, 0u, h1 - h0); DSB(N3_MARK) = 1u; }
+    input_clear();
+    (void)unlink(a); (void)unlink(b); (void)rmdir(dir);
+    *eax = 0u;
+}
+static void b_n3_1c740(const u32 *r, u32 *eax) { n3_1c740_run(r, eax, 0u); }
+#define N3_MV_MUT(name) \
+    static void m_n3_mv_##name(const u32 *r, u32 *eax) { n3_1c740_run(r, eax, N3_MV_##name); }
+N3_MV_MUT(noreset) N3_MV_MUT(reset1) N3_MV_MUT(nokey) N3_MV_MUT(noquit) N3_MV_MUT(quitw) N3_MV_MUT(exitblank)
+N3_MV_MUT(noopen)
+/* ---- n3 bindings end ---- */
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -58102,6 +58203,28 @@ static const binding_t k_bindings[] = {
     { "sound_shutdown@noshut", m_i_sd_noshut, 0x00000000u },
     { "sound_shutdown@shutfirst", m_i_sd_shutfirst, 0x00000000u },
     { "sound_shutdown@order", m_i_sd_order, 0x00000000u },
+    /* track N batch n1 */
+    { "sprite_blit_aperture",            b_n1_51ed8, 0x00000000u },
+    { "sprite_blit_aperture@nostore",    m_n1_ba_nostore, 0x00000000u },
+    { "sprite_blit_aperture@clipt",      m_n1_ba_clipt, 0x00000000u },
+    { "sprite_blit_aperture@nowidth",    m_n1_ba_nowidth, 0x00000000u },
+    { "sprite_blit_aperture@norows",     m_n1_ba_norows, 0x00000000u },
+    /* track N batch n2 */
+    { "game_shutdown",            b_n2_1be30, 0x00000000u },
+    { "game_shutdown@noshut", m_n2_1be30_noshut, 0x00000000u },
+    { "game_shutdown@nosave", m_n2_1be30_nosave, 0x00000000u },
+    { "game_shutdown@order", m_n2_1be30_order, 0x00000000u },
+    { "game_shutdown@free", m_n2_1be30_free, 0x00000000u },
+    /* track N batch n3 */
+    { "movie_play", b_n3_1c740, 0x00000000u },
+    { "movie_play@noreset", m_n3_mv_noreset, 0x00000000u },
+    { "movie_play@reset1", m_n3_mv_reset1, 0x00000000u },
+    { "movie_play@nokey", m_n3_mv_nokey, 0x00000000u },
+    { "movie_play@noquit", m_n3_mv_noquit, 0x00000000u },
+    { "movie_play@quitw", m_n3_mv_quitw, 0x00000000u },
+    { "movie_play@exitblank", m_n3_mv_exitblank, 0x00000000u },
+    { "movie_play@noopen", m_n3_mv_noopen, 0x00000000u },
+    /* track N batch n3 end */
 };
 
 static const binding_t *find_binding(const char *name)

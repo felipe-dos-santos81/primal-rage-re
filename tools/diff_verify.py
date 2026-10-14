@@ -33383,6 +33383,164 @@ I_SPECS = [
                                       "nohandle handlew handle4 early nodig digfirst noshut shutfirst order".split())),
 ]
 D1_SPECS += I_SPECS
+
+# ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ----
+# 0x51ED8 sprite_blit_aperture: EAX = the node. 0x51E5C's shape with the aperture as the base: a zero
+# width (+0x18, `je` 0x51EDF) or zero rows (+0x14, `je` 0x51EE8) returns; else six pushes, 0x1B544(+0x20)
+# (run), the bank dword 0x81310[byte [[+0x1C] + 8]], EDI = [0x1088F8 + y * 4] + 0xA0000 + x (`add
+# edi,0xa0000` 0x51F1B), +0x14 = +0x14 - +0x34 (0x51F2F, never restored), ECX = +0x18 and `call [(+0x10 &
+# 0x7F) * 4 + 0x80C8C]` (0x51F35), EAX = the node (0x51F3C) and six pops.
+# A partial row: the two guards and the +0x14 store, on the table's `ret` entries (0x51E58), where nothing
+# is drawn and the immediate 0xA0000 is never used for a store (no poke). Every live renderer the one
+# caller 0x1C5E8 reaches (types 1, 2, 9: 0x5D218, 0x58CBD, 0x57F80) uses the node as its scratch: `mov
+# [ebp+0x38],edx` (0x5D21F, 0x58CDD, 0x57F8B) and `dec dword [ebp+0x14]` per row down to 0 (0x5D262,
+# 0x5D289, 0x57FCE, 0x57FF5; 0x58CBD's measured), and 0x58CBD also `sub [ebp+0x14],eax` (0x58CC4) and `mov
+# [ebp+0x18],ecx` (0x58CD3); the port's renderers take the fields by value and store nothing back
+# (sprite.c PORT). With the imm32 at 0x51F1D poked to a scratch in mem[] and the binding mapping the
+# port's host aperture onto it, the drawn pixels of the three agreed and the node's +0x14 and +0x38
+# differed (measured, record §N.1): a difference this row cannot hide, so the draw, the aperture base and
+# the live renderers are not compared here. The node is a frame local of 0x1C5E8 that it reads again only
+# at +0x1C (0x1C64F).
+N1_NODE = 0x0010A900
+
+
+def n1_blit(cid, typ, w=8, rows=4, clips=(0, 0, 0, 0), pix=0x00800100):
+    """A raw node (x, y, origins, type, rows, width, palette, pixel handle, the descriptor handle +0x24,
+    the four clips, +0x38 and +0x3C seeded) between seeded dwords; the palette entry and the two sprites
+    (0x1B544 resolves the pixel handle on both sides)."""
+    node = (le32(10) + le32(2) + le32(0x08080808) + le32(0x0C0C0C0C) + le32(typ) + le32(rows) + le32(w)
+            + le32(D5B_PAL) + le32(pix) + le32(0x24242424) + b"".join(le32(c) for c in clips)
+            + le32(0x38383838) + le32(0x3C3C3C3C))
+    p = {**d4b_res(), N1_NODE - 4: le32(0xFCFCFCFC), N1_NODE: node, N1_NODE + 0x40: le32(0x40404040),
+         D5B_PAL: le32(0x11111111) + le32(0x22222222) + bytes([6, 0x33, 0x33, 0x33]) + le32(0x44444444),
+         d4b_at(0x800100) - 4: b"\xbf" * 4 + D5B_RLE + b"\xbf" * 16,
+         d4b_at(0x800180) - 8: bytes(range(0xE0, 0xE8)) + D5B_RAWPIX + bytes(range(0xF0, 0xFC))}
+    return Case(cid, {**D2E_DIRTY, "eax": N1_NODE}, p)
+
+
+N1_SPECS = [
+    # Mask 0: 0x1C5E8 does not read EAX after the call (`mov eax,[esp+0x1c]` 0x1C64F). a0: zero width
+    # (clip_b 2: the store is skipped with the draw); a1: zero rows (clip_b 1); a2: type 0xA (raw,
+    # mirrored: 0x1C528 builds it), the table's `ret`, clip_b 1: +0x14 = 3; a3: type 5, a `ret` entry
+    # 0x1C5E8 does not build, with clip_t 5 and clip_b 2 (the store subtracts +0x34, not +0x30).
+    Spec("sprite_blit_aperture", 0x51ED8, [
+        n1_blit("a0", 1, w=0, clips=(0, 0, 0, 2)),
+        n1_blit("a1", 2, rows=0, clips=(0, 0, 0, 1), pix=0x00800180),
+        n1_blit("a2", 0x0A, clips=(0, 0, 0, 1), pix=0x00800180),
+        n1_blit("a3", 0x05, clips=(1, 1, 5, 2)),
+    ], allow_calls=(0x1B544, 0x51E58), eax_mask=0,
+       mutants=tuple("@" + m for m in "nostore clipt nowidth norows".split())),
+]
+D1_SPECS += N1_SPECS
+
+# ---- track N batch n2 (record 2026-10-14-reverse-n §N.2): the teardown 0x1BE30 --------------------------
+# A row under one code poke and a partial row (the weaker class). 0x1BE30: 0x1D018; with the dword
+# 0x101514 non-zero (`test edx,edx; je` 0x1BE3E) three word tests, each guarding 0x1ADE4 (DPMI 0x201,
+# set real-mode vector: `mov ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, the runtime's int386 0x61564):
+# vector 9 from [0x101514]+0x14/+0x16 (0x1BE44), 0x23 from 0x10151A/0x10151C (0x1BE61), 0x1B from
+# 0x101518/0x10151E (0x1BE87); then 0x4FB98 with EAX = [0x101504] (0x1BEAB), 0x1B084, 0x10D34. The port
+# (flow.c game_shutdown) makes 0x1D018 and 0x1B084 and leaves the rest to the host (PORT).
+# - The poke: `int 0x10` at 0x4FB9E is `cmp eax,eax` (39 C0). 0x4FB98 is `pushad; and eax,0xff; int
+#   0x10; popad; ret`: the popad restores all eight registers and no flag is read after it (0x1BEB5 is a
+#   call), so the poke is exact for every path but the BIOS's mode set itself, which the row does not
+#   see (and with it the mode byte [0x101504]). Unpoked, the original stops there (`unmodeled: int`).
+# - 0x10D34 runs from its bytes with the -f byte 0x101520 = 1 (`cmp byte [0x101520],0; jne` 0x10D38),
+#   which returns at once keeping EAX and EDX, as in the rows of 0x1AFE8 and 0x1B084 (track S, SC_NO_CD).
+#   Its other path, the runtime's drive calls 0x61984/0x61A22, is not seen.
+# - The three restores are named unhit: with a segment word set the original reaches 0x1ADE4 -> 0x61564
+#   -> int 0x31, which a stub of 0x1ADE4 would record and the port does not make. In a run of the port
+#   no restore is reached by the raw's own tests: [0x101514] is GAME_BIOS_BASE, zeroed at init and never
+#   written at +0x14..+0x17, and 0x101518..0x10151F are written only by 0x1ADAC at 0x1C017..0x1C03F,
+#   which the port does not make (PORT, game_init).
+N2_TEARDOWN_INT10 = {0x0004FB9E: b"\x39\xc0"}
+N2_SHUT = E.Call(0x1D018, ())                                  # sound_shutdown, seamed here
+N2_SAVE = E.Call(0x1B084, (), clobbers=("edi", "ebp"))          # config_file_save, seamed here
+N2_PTR = 0x0010A900                                            # a [0x101514] inside the image
+N2_UNHIT = {
+    0x1BE4B: "0x1ADE4(9, [0x101514]+0x14, +0x16): the keyboard vector's real-mode restore (DPMI 0x201 through "
+             "the runtime's int386 0x61564, int 0x31); the port has no real mode and its word is zero "
+             "(GAME_BIOS_BASE, zeroed at init), a named part of a partial row (record 2026-10-14-reverse-n N.2)",
+    0x1BE6B: "0x1ADE4(0x23, 0x10151A, 0x10151C): the Ctrl-C vector's real-mode restore (DPMI 0x201, int 0x31); "
+             "the port never writes 0x10151C (0x1ADAC at 0x1C02B is not made), a named part of a partial row",
+    0x1BE93: "0x1ADE4(0x1B, 0x101518, 0x10151E): the Ctrl-Break vector's real-mode restore (DPMI 0x201, "
+             "int 0x31); the port never writes 0x10151E (0x1ADAC at 0x1C03F is not made), a named part of a "
+             "partial row"}
+
+
+def n2_teardown(cid, regs, ptr, shut=0, save=0):
+    """0x1BE30: the poke; the -f byte; the mode dword 0x101504; [0x101514] = `ptr`, then the two
+    vectors' offset words 0x101518/0x10151A seeded and both segment words 0x10151C/0x10151E zero (with
+    `ptr` = 0, seeded too: the `je` 0x1BE40 skips their tests); at `ptr` + 0x12..+0x1B every byte seeded
+    but the segment word +0x16/+0x17. The stubs of 0x1D018 and 0x1B084 answer `shut` and `save`."""
+    words = le32(ptr) + le32(0x5A5A1A1A) + (le32(0x1C1C1E1E) if ptr == 0 else le32(0))
+    p = {**N2_TEARDOWN_INT10, **SC_NO_CD, 0x00101504: le32(0x00000003), 0x00101514: words}
+    if ptr:
+        p[ptr + 0x12] = bytes([0x12, 0x13, 0x14, 0x15, 0, 0, 0x18, 0x19, 0x1A, 0x1B])
+    return Case(cid, regs, p, {0x1D018: shut, 0x1B084: save})
+
+
+N2_SPECS = [
+    # 0x1BE30 game_shutdown: no argument. t0: [0x101514] = 0 (the `je` 0x1BE40), every register dirty,
+    # both segment words set (their tests are not reached). t1: a pointer whose segment word is zero
+    # between seeded bytes, both DOS segment words zero with their offset words seeded: every test is
+    # made and none restores. The calls, in order: 0x1D018, 0x1B084, with the memory at each. The
+    # original's EAX is 0x1B084's stub's (0x10D34's fast path keeps it); none of the four call sites
+    # reads it (0x1C0CC `xor eax,eax`; 0x1C1C9 and 0x1D298 push and call 0x62734; 0x1C2C2 `mov eax,edx`
+    # after 0x1C2AF): mask 0.
+    Spec("game_shutdown", 0x1BE30, [
+        n2_teardown("t0", D2E_DIRTY, 0, shut=0x11111111, save=0x12345678),
+        n2_teardown("t1", {}, N2_PTR, shut=0xFFFFFFFF, save=1),
+    ], unhit_named=N2_UNHIT, allow_calls=(0x4FB98, 0x10D34), calls=(N2_SHUT, N2_SAVE), eax_mask=0,
+       mutants=("@noshut", "@nosave", "@order", "@free")),
+]
+D1_SPECS += N2_SPECS
+
+# ---- track N batch n3 (record 2026-10-14-reverse-n §N.3): the boot logos' player 0x1C740, a row under code
+# pokes. 0x1B120, 0x1B3AC and 0x47370 stay named gaps (0x1B120's row was withdrawn at integration, §N.4).
+# 0x1C740: the key test 0x62756 (the runtime's kbhit: [0xEF910], then `int 0x21` AH = 0Bh at 0x62767) is
+# `mov eax,<result>`, which the binding gives the port's key queue (a key when it is not 0). The Smacker open
+# (0x1C76C..0x1C778: `push esi; push 0xfe00; push -1; call 0x6345C`, which pops its 12 bytes, `ret 0xc` 0x635EC)
+# is `mov byte [N3_MARK],1; xor eax,eax` and four nops: the open is reached and fails. On the port side the
+# binding's game directory holds both names as two-byte files that are not movies: res_load_file reads one
+# into the bump heap and smk_open rejects it, and when the heap moved the binding clears what was read and
+# stores 1 at N3_MARK. So the row sees whether the open is reached, not its arguments (the name, 0xFE00, -1)
+# or a movie that opens: a non-zero open enters the play loop, whose first call 0x649B0 is the Smacker
+# library's, not exercisable.
+N3_KBHIT, N3_OPEN, N3_MARK = 0x0001C752, 0x0001C76C, 0x0010AF00
+N3_LOOP = "the play loop from 0x1C785: the Smacker library (runtime: 0x649B0, 0x65340, 0x64130, 0x64ED8, 0x643CC, " \
+          "0x65240, 0x63CE8), the retrace `in al,dx` 0x1C7CA, the host-owned blit 0x50D23, the key and pad tests " \
+          "and the exit blank 0x1C873; the port plays through its own decoder (movie.c, smacker.c, PORT)"
+
+
+def n3_movie_case(cid, key, quit_, name=0x00080038, above=0, regs=None):
+    """0x1C740: EAX = the name; kbhit answers `key`; the quit byte 0xA81A8 between a seeded byte and
+    `above`; the open's mark byte seeded 0x5A."""
+    return Case(cid, {**(regs or {}), "eax": name},
+                {N3_KBHIT: b"\xb8" + le32(key), N3_OPEN: b"\xc6\x05" + le32(N3_MARK) + b"\x01\x31\xc0\x90\x90\x90\x90",
+                 0x000A81A7: bytes([0xA7, quit_, above]), N3_MARK: b"\x5a"})
+
+
+N3_SPECS = [
+    # 0x1C740 movie_play: EAX = the name (0x80038, 0x80044 at the two calls 0x11050, 0x1105A). 0x52106(0)
+    # (0x1C74D), then a key (`test eax,eax` 0x1C757: k0 1, k1 -1, the BIOS's AL 0xFF widened by `cbw; cwde`
+    # 0x62769) or the quit byte 0xA81A8 (`cmp byte` 0x1C75F: q0 1, q1 0x80, k1 both) leaves for the
+    # epilogue 0x1C878 without the exit blank; else the open is reached (the mark) and fails (`jz` 0x1C77F),
+    # which leaves the same way (o0 with the byte above the quit byte set, o1 the second name). Mask 0: the first call site loads EAX
+    # (0x11055 `mov eax,0x80044`) and the second's is attract_step's, whose row's mask is 0.
+    Spec("movie_play", 0x1C740, [
+        n3_movie_case("k0", 1, 0),
+        n3_movie_case("k1", 0xFFFFFFFF, 1),
+        n3_movie_case("q0", 0, 1),
+        n3_movie_case("q1", 0, 0x80, regs=D2E_DIRTY),
+        n3_movie_case("o0", 0, 0, above=0xFF),
+        n3_movie_case("o1", 0, 0, name=0x00080044, regs=D2E_DIRTY),
+    ], unhit_named={a: N3_LOOP for a in (0x1C785, 0x1C7B0, 0x1C7BD, 0x1C7C3, 0x1C7C8, 0x1C7CF, 0x1C7D5, 0x1C7DB, 0x1C7DD,
+                                                 0x1C7E6, 0x1C7EC, 0x1C7F9, 0x1C834, 0x1C839, 0x1C83F, 0x1C848, 0x1C856,
+                                                 0x1C861, 0x1C86B)}, calls=(D4D_SCREEN,), eax_mask=0,
+       mutants=tuple("@" + m for m in "noreset reset1 nokey noquit quitw exitblank noopen".split())),
+]
+D1_SPECS += N3_SPECS
+# ---- n3 end ----
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
