@@ -29138,14 +29138,22 @@ D6A_KINDS = {
     "game_quit_prompt@noresume": {'call #3', 'call #4'},
     "gfx_flush_palette@noclamp": {'byte'},
     "gfx_flush_palette@unsigned": {'byte'},
-    "gfx_flush_palette@clampby": {'byte'},
-    "gfx_flush_palette@clampcount": {'byte'},
+    # track H h0: the DAC writes are compared (record 2026-10-14-reverse-h §H.1): a clamp that leaves another low
+    # byte in +0xC changes the handle test 0x1C4AD, and an empty or shortened walk sends fewer entries
+    "gfx_flush_palette@clampby": {'byte', 'out'},
+    "gfx_flush_palette@clampcount": {'byte', 'out'},
     "gfx_flush_palette@nomark": {'byte'},
     "gfx_flush_palette@markw": {'byte'},
     "gfx_flush_palette@mark0": {'byte'},
-    "gfx_flush_palette@headfirst": {'byte'},
+    "gfx_flush_palette@headfirst": {'byte', 'out'},
     "gfx_flush_palette@nohead": {'byte'},
-    "gfx_flush_palette@one": {'byte'},
+    "gfx_flush_palette@one": {'byte', 'out'},
+    "gfx_flush_palette@shift": {'out'},
+    "gfx_flush_palette@idx": {'out'},
+    "gfx_flush_palette@while": {'out'},
+    "gfx_flush_palette@noskip": {'out'},
+    "gfx_flush_palette@noresolve": {'out'},
+    "gfx_flush_palette@chan": {'out'},
     "gfx_screen_reset@no508": {'byte'},
     "gfx_screen_reset@no50c": {'byte'},
     "gfx_screen_reset@one": {'byte'},
@@ -29271,6 +29279,12 @@ D6A_CASES = [
     ("gfx_flush_palette@headfirst", ['f1', 'f2', 'f3']),
     ("gfx_flush_palette@nohead", ['f1', 'f2', 'f3']),
     ("gfx_flush_palette@one", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@shift", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@idx", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@while", ['f1']),
+    ("gfx_flush_palette@noskip", ['f2', 'f3']),
+    ("gfx_flush_palette@noresolve", ['f2', 'f3']),
+    ("gfx_flush_palette@chan", ['f1', 'f2', 'f3']),
     ("gfx_screen_reset@no508", ['s0', 's1', 's2']),
     ("gfx_screen_reset@no50c", ['s0', 's1', 's2']),
     ("gfx_screen_reset@one", ['s0', 's1', 's2']),
@@ -31768,8 +31782,9 @@ class RealFunctionTests(unittest.TestCase):
         # Track N batch n2: 0x1BE30's row adds one function, four mutants and one open row (open on
         # 0x4FB98 and 0x10D34, run from their bytes with no row of their own). Track N batch n3: the row
         # of 0x1C740 (closed: 0x52106 is VERIFIED), which also closes attract_step's (0x11000 stubs 0x1C740);
-        # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge.
-        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14840/14840 mutants detected; 1 named gaps; "
+        # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge. Track H batch h0: 0x1C470's
+        # row runs unpoked under the machine model and gains six DAC mutants (record 2026-10-14-reverse-h §H.1).
+        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14846/14846 mutants detected; 1 named gaps; "
                       "638/829 rows with callees closed (169 have none).", out.getvalue())
 
 
@@ -32393,6 +32408,18 @@ class H0DiffrunMachineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"), text.replace("aperture\n", ""))["a"]
         self.assertEqual(out.aperture, {})
+
+    def test_the_ports_outs_are_reported_only_for_a_case_that_records_them(self):
+        spec = next(x for x in V.SPECS if x.name == "gfx_flush_palette")
+        f1 = next(c for c in spec.cases if c.id == "f1")
+        bare = dataclasses.replace(f1, id="bare", machine=None)
+        with tempfile.TemporaryDirectory() as d:
+            out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"),
+                             V.cases_text(dataclasses.replace(spec, cases=[f1, bare]), spec.name))
+        # f1's three records: colours 0x00FCA850 + 0x01010101 i from 0x10A300, entries 0x10.. 0xFE and 0x00
+        self.assertEqual(E.dac_effects(out["f1"].outs)[:2], [("dac", 0x10, 0x14, 0x2A, 0x3F), ("dac", 0x11, 0x14, 0x2A, 0x3F)])
+        self.assertEqual(len(out["f1"].outs), 4 * 5)
+        self.assertEqual(out["bare"].outs, [])
 # h0 end
 
 

@@ -41647,9 +41647,26 @@ D6A_QP_MUT(row, 6u)     D6A_QP_MUT(mode, 7u)   D6A_QP_MUT(wait0, 8u)   D6A_QP_MU
 D6A_QP_MUT(lo, 11u)     D6A_QP_MUT(hi, 12u)    D6A_QP_MUT(order, 13u)  D6A_QP_MUT(flagkeep, 14u) D6A_QP_MUT(noquit, 15u)
 D6A_QP_MUT(quitw, 16u)  D6A_QP_MUT(norelease, 17u) D6A_QP_MUT(relid, 18u) D6A_QP_MUT(relmode, 19u) D6A_QP_MUT(noresume, 20u)
 
-/* 0x1C470 gfx_flush_palette: no argument. The raw runs with its retrace read `in al,dx` as `mov al,8` and
- * its four DAC writes `out dx,al` as nops: only the dirty list's own bookkeeping is compared (the port's
- * DAC is the host's gfx_dac). The mutants restate that bookkeeping. */
+/* 0x1C470 gfx_flush_palette: no argument. The raw runs unpoked under the machine model (track H h0, record
+ * §H.1): its retrace read takes the case's bytes and its DAC writes are compared, through the DAC's view,
+ * with the PR_OUTs of gfx.c's palette path. The mutants restate the bookkeeping and the DAC writes. */
+static void d6a_1c470_dac(u32 rec, u32 mut)
+{
+    u32 ptr = DSD(rec), first = (u8)DSD(rec + 4u);
+    s32 count = (s32)DSD(rec + 8u), i = 0;
+    if (DSB(rec + 12u) != 0u && mut != 15u) {                                    /* @noresolve */
+        const u8 *rp = res_resolve(ptr);
+        ptr = rp ? (u32)(rp - mem) + ((mut == 14u) ? 0u : 4u) : 0u;              /* @noskip */
+    }
+    if (mut == 13u && count < 1) return;                                         /* @while */
+    do {
+        u32 w = DSD(ptr + (u32)i * 4u) >> ((mut == 11u) ? 0u : 2u);              /* @shift */
+        PR_OUT(0x3C8u, (u8)(first + ((mut == 12u) ? 0u : (u32)i)));             /* @idx */
+        PR_OUT(0x3C9u, ((mut == 16u) ? w >> 16 : w) & 0x3Fu);                    /* @chan */
+        PR_OUT(0x3C9u, (w >> 8) & 0x3Fu);
+        PR_OUT(0x3C9u, ((mut == 16u) ? w : w >> 16) & 0x3Fu);
+    } while (++i < count);
+}
 static void d6a_1c470_core(u32 mut)
 {
     u32 rec = 0x00107498u, head = DSD(0x00107798u);
@@ -41661,6 +41678,7 @@ static void d6a_1c470_core(u32 mut)
             if (mut == 4u) DSD(rec + 8u) -= (u32)(sum - 0x100);                  /* @clampcount */
             else DSD(rec + 12u) -= (u32)(sum - ((mut == 3u) ? 0xFF : 0x100));    /* @clampby */
         }
+        d6a_1c470_dac(rec, mut);
         if (mut == 6u) DSW(rec + 4u) = 0xFFFFu;                                  /* @markw */
         else if (mut != 5u) DSD(rec + 4u) = (mut == 7u) ? 0u : 0xFFFFFFFFu;      /* @nomark @mark0 */
         rec += 16u;
@@ -41673,6 +41691,8 @@ static void b_d6a_1c470(const u32 *r, u32 *eax) { (void)r; gfx_flush_palette(); 
     static void m_d6a_fp_##name(const u32 *r, u32 *eax) { (void)r; d6a_1c470_core(n); *eax = 0u; }
 D6A_FP_MUT(noclamp, 1u) D6A_FP_MUT(unsigned, 2u) D6A_FP_MUT(clampby, 3u) D6A_FP_MUT(clampcount, 4u) D6A_FP_MUT(nomark, 5u)
 D6A_FP_MUT(markw, 6u)   D6A_FP_MUT(mark0, 7u)    D6A_FP_MUT(headfirst, 8u) D6A_FP_MUT(nohead, 9u)  D6A_FP_MUT(one, 10u)
+D6A_FP_MUT(shift, 11u)  D6A_FP_MUT(idx, 12u)     D6A_FP_MUT(while, 13u)    D6A_FP_MUT(noskip, 14u) D6A_FP_MUT(noresolve, 15u)
+D6A_FP_MUT(chan, 16u)
 
 /* 0x52106 gfx_screen_reset: EAX = ticks. The raw runs with its retrace read as `mov al,8`, its four DAC
  * writes as nops and its third 0x51F72 call, the fill of the aperture 0xA0000, as nops: the two tick
@@ -57659,6 +57679,12 @@ static const binding_t k_bindings[] = {
     { "gfx_flush_palette@headfirst", m_d6a_fp_headfirst, 0x00000000u },
     { "gfx_flush_palette@nohead", m_d6a_fp_nohead, 0x00000000u },
     { "gfx_flush_palette@one", m_d6a_fp_one, 0x00000000u },
+    { "gfx_flush_palette@shift", m_d6a_fp_shift, 0x00000000u },
+    { "gfx_flush_palette@idx", m_d6a_fp_idx, 0x00000000u },
+    { "gfx_flush_palette@while", m_d6a_fp_while, 0x00000000u },
+    { "gfx_flush_palette@noskip", m_d6a_fp_noskip, 0x00000000u },
+    { "gfx_flush_palette@noresolve", m_d6a_fp_noresolve, 0x00000000u },
+    { "gfx_flush_palette@chan", m_d6a_fp_chan, 0x00000000u },
     { "gfx_screen_reset",                b_d6a_52106, 0x00000000u },
     { "gfx_screen_reset@no508", m_d6a_sr_no508, 0x00000000u },
     { "gfx_screen_reset@no50c", m_d6a_sr_no50c, 0x00000000u },

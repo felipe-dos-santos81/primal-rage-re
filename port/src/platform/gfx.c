@@ -160,6 +160,16 @@ void gfx_flush_palette(void)
             gfx_dac[index][0] = (u8)((r << 2) | (r >> 4));
             gfx_dac[index][1] = (u8)((g << 2) | (g >> 4));
             gfx_dac[index][2] = (u8)((b << 2) | (b >> 4));
+            /* PORT: the harness's view of the DAC writes (mem.h PR_OUT; record
+             * 2026-10-14-reverse-h §H.1): the index and the three six-bit
+             * channels this entry stores. The original sets the index once a
+             * record (0x1C4AA) and lets the DAC advance it after each third
+             * byte (0x1C4CA, 0x1C4CE, 0x1C4D5); the port sets it per entry,
+             * which the DAC takes as the same writes. */
+            PR_OUT(0x3C8u, index);
+            PR_OUT(0x3C9u, r);
+            PR_OUT(0x3C9u, g);
+            PR_OUT(0x3C9u, b);
         } while (++i < count);                           /* 0x1C4D6 dec esi; jg */
         DSD(rec + 4) = 0xFFFFFFFFu;   /* the original marks the record consumed */
         rec += 16;

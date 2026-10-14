@@ -32285,31 +32285,33 @@ D6A_SPECS += [
 ]
 
 # ---- 0x1C470: the palette dirty list's flush ------------------------------------------------------------
-# A partial row under five code pokes. The retrace read `mov edx,0x3da; in al,dx` (0x1C481..0x1C486) is
-# `mov al,8` and four nops: bit 3 set at the first read, the only thing the code takes from the port
-# (`test al,8; je` 0x1C487; AL is loaded again at 0x1C4A7). The four DAC writes `out dx,al` (0x1C4AA the
-# index; 0x1C4CA, 0x1C4CE and 0x1C4D5 the three colour bytes) are nops. Unpoked, the original stops
-# `unmodeled: in at 0x1C486` (measured). The row compares the list's bookkeeping only and is blind to
-# every byte sent to the DAC: the index, the count, the colour dwords and their shifts, and so to whether
-# 0x1B544 resolved the handle (it runs on both sides, unrecorded). The port's DAC is the host's gfx_dac.
-D6A_FLUSH_PINS = {0x0001C481: b"\xb0\x08\x90\x90\x90\x90", 0x0001C4AA: b"\x90", 0x0001C4CA: b"\x90",
-                  0x0001C4CE: b"\x90", 0x0001C4D5: b"\x90"}
+# No code poke since track H h0 (record 2026-10-14-reverse-h §H.1; d6a ran it under five). The retrace read
+# `mov edx,0x3da; in al,dx` (0x1C481..0x1C486) takes the case's bytes from the machine model: the code
+# keeps bit 3 alone (`test al,8; je 0x1c486` 0x1C487, AL loaded again at 0x1C4A7), so a byte with bit 3
+# clear spins once more (f1 reads three, f2 and f3 one). The four DAC writes `out dx,al` (0x1C4AA the
+# index from AL = the dword +4; 0x1C4CA, 0x1C4CE and 0x1C4D5 the colour dword shifted right by 2, 10 and
+# 18) are recorded and compared through the DAC's view (E.dac_effects: six bits a channel, the index
+# advancing after the third) against the PR_OUTs of gfx.c's palette path: so the index, the count, each
+# colour dword and its shifts, and whether 0x1B544 resolved the handle and its count dword was skipped, are
+# compared, besides the list's bookkeeping. What the port's gfx_dac holds is not compared (the PR_OUTs
+# report the values it stores), nor whether the port waits for the retrace (gfx_wait_vblank, a PORT).
+D6A_FLUSH_MACHINE = E.Machine(outs=(0x3C8, 0x3C9))
 D6A_DIRTY, D6A_DIRTY_HEAD = 0x00107498, 0x00107798
 D6A_COLOURS = 0x0010A300                        # eight colour dwords (zero BSS)
 D6A_PAL_HANDLE = 0x00800040                     # a resident handle (d4b_res): a count dword, then colours
 
 
-def d6a_flush(cid, recs, regs=None):
-    """0x1C470: the pokes; `recs` = [(ptr, first, count, flag dword)] at 0x107498 after a seeded dword and
+def d6a_flush(cid, recs, regs=None, retrace=(0x08,)):
+    """0x1C470: the machine (`retrace`: the bytes 0x3DA returns, in order); `recs` = [(ptr, first, count, flag dword)] at 0x107498 after a seeded dword and
     before one more seeded record (not in the list); the head 0x107798 between seeded dwords; eight colour
     dwords at D6A_COLOURS and, behind the handle, a count dword and eight more."""
     body = le32(0x94949494) + b"".join(le32(a) + le32(b) + le32(c) + le32(d) for a, b, c, d in recs)
     body += le32(D6A_COLOURS) + le32(0x00000011) + le32(0x00000022) + le32(0x00000033)
     cols = b"".join(le32(0x00FCA850 + 0x01010101 * i) for i in range(8))
-    p = {**d4b_res(), **D6A_FLUSH_PINS, D6A_COLOURS: cols, d4b_at(D6A_PAL_HANDLE): le32(8) + cols[::-1],
+    p = {**d4b_res(), D6A_COLOURS: cols, d4b_at(D6A_PAL_HANDLE): le32(8) + cols[::-1],
          D6A_DIRTY_HEAD - 4: le32(0x97979797) + le32(D6A_DIRTY + 16 * len(recs)) + le32(0x9C9C9C9C)}
     p.update(d1d_chunks(D6A_DIRTY - 4, body))
-    return Case(cid, regs or {}, p)
+    return Case(cid, regs or {}, p, machine=dataclasses.replace(D6A_FLUSH_MACHINE, ins=((0x3DA, retrace),)))
 
 
 D6A_SPECS += [
@@ -32324,14 +32326,14 @@ D6A_SPECS += [
     Spec("gfx_flush_palette", 0x1C470, [
         d6a_flush("f0", []),
         d6a_flush("f1", [(D6A_COLOURS, 0x10, 3, 0), (D6A_COLOURS + 4, 0xFE, 0, 0),
-                         (D6A_COLOURS + 8, 0x00, 0xFFFFFFFB, 0)], regs=D2E_DIRTY),
+                         (D6A_COLOURS + 8, 0x00, 0xFFFFFFFB, 0)], regs=D2E_DIRTY, retrace=(0xF7, 0x37, 0x0C)),
         d6a_flush("f2", [(D6A_PAL_HANDLE, 0xF0, 4, 0x10), (D6A_PAL_HANDLE, 0xF0, 2, 0x11),
                          (D6A_COLOURS, 0x100, 1, 0x100)]),
         d6a_flush("f3", [(D6A_PAL_HANDLE, 0x7FFFFFFF, 2, 1), (D6A_COLOURS, 0x00000200, 1, 0x00000100),
-                         (D6A_PAL_HANDLE, 0x80, 8, 0x80000181)]),
+                         (D6A_PAL_HANDLE, 0x80, 8, 0x80000181)], retrace=(0xFF,)),
     ], allow_calls=(0x1B544,), eax_mask=0,
        mutants=tuple("@" + m for m in "noclamp unsigned clampby clampcount nomark markw mark0 headfirst nohead "
-                                      "one".split())),
+                                      "one shift idx while noskip noresolve chan".split())),
 ]
 
 # ---- 0x52106: the screen reset --------------------------------------------------------------------------
