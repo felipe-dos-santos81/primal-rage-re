@@ -232,3 +232,157 @@ NOT DETECTED on both rows; every d5h pin is unchanged.
   VERIFIED; 14873/14873 mutants detected; 1 named gaps; 638/831 rows with callees closed (169 have none)` (the
   two new rows are open on `0x500BB` and `0x65431`, named non-rows).
 - Harness suite: 192 tests OK. `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed.
+
+## §H.3 Batch h2: the VGA and aperture rows
+
+Branch `reverse-h2`, on `h0` (`7930eada`). Two rows converted, both leave the weaker-row list. One harness
+addition (a declared difference, `H2Case`); no change to `tools/diff_emu.py`. No port correction.
+
+| row | pokes before | pokes after | cases | blocks | mutants | leaves the weaker list |
+|---|---|---|---|---|---|---|
+| `0x52106` `gfx_screen_reset` | 4 (6 instructions: the retrace read `0x52129`, `out` `0x5213F`, `0x52145..0x52147`, the aperture fill `call 0x51f72` `0x52151`) | 0 | s0..s2 (same inputs, retrace bytes added, the screen's ends seeded) | 5/5 -> 5/5 | 7 -> 14 | yes |
+| `0x51ED8` `sprite_blit_aperture` | 0 (partial: no draw compared) | 0 | a0..a3 (now on the screen) + d1, d2, d9, d3 | 4/4 -> 4/4 | 4 -> 8 | yes, with one declared difference (below) |
+
+### §H.3.1 `0x52106`: the bytes and the row
+
+`push ecx; push edx`; `[0x101508] = [0x10150C] = EAX` (`0x52108`, `0x5210D`); `mov edx,eax` (`0x52112`);
+`0x51F72([0x1014E8], EDX)` and `0x51F72([0x1014E4], EDX)` (`0x52114..0x52123`; `0x51F72` keeps EDX: it pushes
+ECX alone and stores EDX); `push edx` (`0x52128`); `mov edx,0x3da; in al,dx; test al,8; je 0x5212e`
+(`0x52129..0x52131`); `mov ecx,0x100; mov edx,0x3c8; xor eax,eax; out dx,al` (`0x52133..0x5213F`); `mov
+edx,0x3c9; out dx,al` three times (`0x52140..0x52147`); `dec ecx; jg 0x52145` (`0x52148`); `pop edx`
+(`0x5214B`); `mov eax,0xa0000; call 0x51f72` (`0x5214C`, `0x52151`); `pop edx; pop ecx; ret`.
+
+What the model answers, and why it is exact for these paths:
+
+- **The retrace read.** The code keeps bit 3 of the byte alone (`test al,8` `0x5212F`; AL is set to 0 by `xor
+  eax,eax` `0x5213D` before its next use), so the case's bytes are all the hardware's answer can matter for.
+  s0 `(0x08,)`, s1 `(0xF7, 0x00, 0x08)` (two spins: the back edge `je 0x5212e`, never taken under the poke, is
+  taken twice), s2 `(0xFF,)`.
+- **The DAC.** AL = 0 at every `out` (`xor eax,eax` `0x5213D`, nothing writes EAX before `0x52148`): the index
+  0, then 0x100 entries of three zero channels (`dec ecx; jg` from ECX = 0x100: a do-while of 256). Through
+  `E.dac_effects`: 256 `("dac", i, 0, 0, 0)` for i = 0..255 and `("dac-at", 0, ())` (the index wraps).
+- **The screen.** The third fill is `0x51F72(0xA0000, ticks)`: 0xFA00 bytes, exactly `E.APERTURE`. With
+  `aperture`, those bytes leave `writes` for `OrigResult.aperture` and are compared with `gfx_aperture()`,
+  which the runner seeds from the same image bytes after the pokes. The screen bytes equal to the image's
+  bytes before the fill do not show on either side; so the first and last 0x40 screen bytes are poked to
+  0x5A (`D6A_RESET_SEED`), which none of the three tick dwords holds (0x00000000, 0xA1B2C3D4, 0x00000100):
+  the fill's two ends show in every case (measured: 38152, 63879 and 43873 screen bytes compared in s0, s1,
+  s2). The offscreen buffers (0xC0000..0xD0802 + 0xFA00) do not overlap the screen (h0's caution).
+- EAX: the raw now returns 0xAFA00 (the third fill's advanced EAX, measured; it was 0xA0000 under the poke).
+  Mask 0 kept: the port's function is void and the callers are as before (`0x1C873` hands it to the movie
+  player's host replacement, the other sites call on).
+
+**Port side.** `gfx_screen_reset` (gfx.c) reports the DAC writes with `PR_OUT(0x3C8, 0)` and 768 `PR_OUT(0x3C9,
+0)` under a `PORT:` note naming `0x5213D/0x5213F`, `0x52145..0x52147`, `0x52148`, `0x52133`. Nothing else in
+`port/src` changed: the aperture fill was already the port's `g_aperture` fill (record §K2.4). Before the
+`PR_OUT`s the unpoked row was a MISMATCH only by the missing stream (`s0: out #0: original dac[0x00] = 0x00
+0x00 0x00, port none (257 and 0 effects)`, and the same in s1, s2); the screen and every byte already agreed.
+
+**Mutants.** The binding core `d6a_52106_core` now also makes the DAC writes and the screen fill, so the seven
+old mutants are caught exactly as before (same kinds, same cases). Seven new ones:
+
+| mutant | the wrong code | caught by | cases |
+|---|---|---|---|
+| `@nodac` | no DAC write | out | s0 s1 s2 |
+| `@dacidx` | the index 1 | out | s0 s1 s2 |
+| `@dac255` | 255 entries | out | s0 s1 s2 |
+| `@dacval` | the channels from the ticks (`xor eax,eax` dropped) | out | s1 |
+| `@noap` | no screen fill | aperture | s0 s1 s2 |
+| `@apbyte` | the screen filled with the ticks' low byte | aperture | s1 s2 |
+| `@apshort` | the screen fill one dword short | aperture | s0 s1 s2 (the seeded end) |
+
+**Mutation proofs on the port** (gfx.c changed, rebuilt, the row run, restored): the screen fill from `i = 4`
+-> `s0: aperture 0xA0000: original 0x00, port unchanged`; `PR_OUT(0x3C8u, 2u)` -> `out #0: original dac[0x00]
+..., port dac[0x02] ...`; the channels `ticks` -> `s1: out #0: ... port dac[0x00] = 0x14 0x14 0x14`.
+
+### §H.3.2 A declared difference (`H2Case`, commit `9cfadba9`)
+
+`tools/diff_verify.py` (the `h2_` block): `H2Case(Case)` adds `declared = {addr: (the original's final byte,
+the port's)}`, None for a byte the run leaves unchanged; a pair with no difference is refused (a stale
+declaration). `h2_compare(case, orig, port, mask)`, called by `verify_spec` in place of `compare` (one-line
+hook), checks each declared byte against its declared pair, reports any other value as `byte 0x...: declared
+original X, port Y; the run gives original X', port Y'` (counted as a difference: it detects a mutant), and
+then leaves the declared bytes out of `compare`. A case that is not an `H2Case` is `compare` itself: the full
+`--self-check` printed byte-identical output before and after the commit. The declaration covers the bytes at
+return, not the memory at a recorded call (no `H2Case` row records a call). Tests: `H2DeclaredTests`
+(`tools/tests/test_diff_verify.py`); each fails under a mutation: the hook reverted to `compare` (1 failure),
+the values not checked (3), the stale-declaration check dropped (1), the declared bytes not left out (5).
+
+### §H.3.3 `0x51ED8`: the drawing cases
+
+The bytes are §N.1.1's. The aperture base needs no poke now: `add edi,0xa0000` (`0x51F1B`) points the
+renderer at the machine's screen, and the port draws into `gfx_aperture()` seeded from the same bytes. The
+three renderers the one caller reaches run on the original's side (allowed with the copy routines they call on
+these run lengths, measured: `0x58564`, `0x5859C`, `0x58D2C`, `0x58D4C`, `0x58D90`, `0x521F0`, `0x5222C`,
+`0x529A0`, `0x529C4`, `0x52A18`; another length reaches another routine and stops the run, it cannot pass
+silently).
+
+**The declared difference, and only it.** The renderers use the node as their scratch; the port's take its
+fields by value (`sprite.c` `PORT:`, §N.1.1). From the bytes: `+0x14` ends at 0 (`dec dword [ebp+0x14]; jne`
+`0x5D262/0x5D289`, `0x57FCE/0x57FF5`; `0x58CBD`'s loop measured) where the port keeps `0x51F2F`'s `rows -
+clip_b`; `+0x38 = 0x140 - ECX` (`0x5D218..0x5D21F`, `0x58CD6..0x58CDD`) or `0x140 + ECX` (`0x57F80..0x57F8B`),
+ECX the width (`0x51F26`), where the port leaves the node. `h2_scratch` derives each case's declaration from
+those values and the seeds (`+0x14` = rows, `+0x38` = 0x38383838): the bytes of the two dwords where the sides
+end apart, with both values. Measured with no declaration (the experiment before the mechanism), the only
+differences were exactly those bytes: `0x10A914`, `0x10A939..0x10A93B` (and `0x10A938` for type 9: 0x48);
+every screen byte agreed. The cases keep `clip_l`, `clip_r` and `clip_t` 0, the caller's (`0x1C620..0x1C62C`):
+with `clip_t` set `0x58CBD` would also `sub [ebp+0x14],eax` (`0x58CC4`), and with `clip_l`/`clip_r` set its
+`mov [ebp+0x18],ecx` (`0x58CD3`) would change `+0x18`, a byte outside the declaration; with them 0 it stores the
+width back unchanged (measured: no `+0x18` difference).
+
+| case | node | renderer | screen bytes compared | declared (original, port) |
+|---|---|---|---|---|
+| `d1` | type 1, 8x4, x 10, y 2 | `0x5D218` | 27 (a transparent run of 2 and of 3) | `+0x14` 0 / unchanged (4); `+0x38` 0x138 / unchanged |
+| `d2` | type 2 | `0x58CBD` | 32 | the same |
+| `d9` | type 9 | `0x57F80` | 27 | `+0x14` as d1; `+0x38` 0x148 / unchanged |
+| `d3` | type 1, clip_b 1 | `0x5D218` | 19 (three rows) | `+0x14` 0 / 3; `+0x38` 0x138 / unchanged |
+
+Each drawing case seeds the row table for rows 1..3 (0x3C0, 0x80, 0x500: a wrong row index draws elsewhere)
+and the screen under the node's rows (x 0..31, four rows, `d5b_bytes`), so a transparent run must leave the
+seed. `d3` is outside the caller's domain (it zeroes `clip_b` too) and inside the function's: the renderer
+draws `rows - clip_b` rows. a0..a3 are unchanged but run on the screen too, so the `ret` entries' "nothing
+drawn" is now compared (it catches `@nomirror` in a2).
+
+**Mutants** (the binding draws through `sprite_blit_at` on a copy of the node, one choice flipped):
+
+| mutant | the wrong code | caught by | cases |
+|---|---|---|---|
+| `@nodraw` | no draw (the store kept) | aperture | d1 d2 d3 d9 |
+| `@noclipb` | all rows drawn (clip_b ignored) | aperture | d3 |
+| `@nomirror` | the mirror bit dropped | aperture | a2 d9 |
+| `@xoff` | one pixel right | aperture | d1 d2 d3 d9 |
+
+The old four keep their kinds; `@nostore` and `@clipt` are now caught in d3 as well (its declared port value 3
+is not what they leave). **Mutation proofs on the port** (sprite.c changed, rebuilt, the row run, restored):
+`sprite_blit_at(n, gfx_aperture() + 320)` -> `d1: aperture 0xA008A: original 0x16, port unchanged`; the store
+`n->rows -= 0` -> `a2: byte 0x10A914: original 0x03, port unchanged`.
+
+**What the row claims, and not.** The pixels of the caller's three live types, unclipped (and type 1 with
+`clip_b`), with the d5b sprites and bank 6; the guards and the store as before. Not claimed: the clipped types
+and the shear types, which the one caller never builds (`render_list_blit` runs them through `0x51E5C` on the
+same table); the renderers have no rows of their own (the self-check prints them `allow unverified`): they are
+compared only through the screen bytes of this row and `render_list_blit`'s. The node's `+0x14`/`+0x38` after
+a live renderer is the declared, documented difference: the one caller reads its frame again only at `+0x1C`
+(`0x1C64F`).
+
+### §H.3.4 The other weak rows
+
+None other has a VGA poke. `game_loop`'s two pokes are `call 0x5d7dc` (`0x256B1`, `0x256D6`), the runtime's
+`rand` (`0x5D7DC`: the LCG over `0xEF6D8`), not hardware. Its named unhit block `0x25680` is the full copy to
+the screen (`mov edi,0xa0000` `0x255E9`, `rep movs` `0x25693`); the screen model could reach it, but the port
+presents the whole back buffer on both paths where the original's flag-clear path is the dirty blit `0x501A3`
+(a `PORT:`), so it is left to a later batch, unconverted. `0x1BE30`'s poke is `int 0x10` (the BIOS mode set at
+`0x4FB9E`), which the machine does not model (h0's model has `int 0x16` alone, and this batch does not change
+`tools/diff_emu.py`): it stays. `0x1C740`'s retrace read (`0x1C7CA`) belongs to the Smacker loop, out of scope.
+
+### §H.3.5 Measurements
+
+- Full `--self-check` after `0x52106` (`3e74939e`) against `h0`'s tools on the same build: the seven new mutant
+  rows and the counter differ, nothing else. After the declaration (`9cfadba9`): byte-identical to `3e74939e`.
+  After `0x51ED8` (`4e7ebf2c`): only `sprite_blit_aperture`'s rows (8 cases, the allowed renderers, four new
+  mutants) and the counter differ.
+- Final: `998/998 functions VERIFIED; 14857/14857 mutants detected; 1 named gaps; 638/829 rows with callees
+  closed (169 have none)` (both rows' callee status unchanged: `0x52106`'s is closed, `0x51ED8`'s open on
+  `0x1B544`, a named non-row).
+- Harness suite: 196 tests OK. `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed.
+  `tools/port_progress.py` unchanged (no new function).

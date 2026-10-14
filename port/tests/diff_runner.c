@@ -41764,10 +41764,9 @@ D6A_FP_MUT(markw, 6u)   D6A_FP_MUT(mark0, 7u)    D6A_FP_MUT(headfirst, 8u) D6A_F
 D6A_FP_MUT(shift, 11u)  D6A_FP_MUT(idx, 12u)     D6A_FP_MUT(while, 13u)    D6A_FP_MUT(noskip, 14u) D6A_FP_MUT(noresolve, 15u)
 D6A_FP_MUT(chan, 16u)
 
-/* 0x52106 gfx_screen_reset: EAX = ticks. The raw runs with its retrace read as `mov al,8`, its four DAC
- * writes as nops and its third 0x51F72 call, the fill of the aperture 0xA0000, as nops: the two tick
- * stores and the two offscreen fills are compared (the port's DAC and aperture are the host's). The
- * mutants restate that part of gfx.c's body. */
+/* 0x52106 gfx_screen_reset: EAX = ticks. The raw runs unpoked under the machine model (track H h2, record
+ * §H.3): the tick stores, the two offscreen fills, the DAC writes (compared through the DAC's view with
+ * gfx.c's PR_OUTs) and the screen fill (compared with gfx_aperture()). The mutants restate gfx.c's body. */
 static void d6a_52106_core(u32 ticks, u32 mut)
 {
     if (mut != 1u) DSD(0x00101508u) = ticks;                                     /* @no508 */
@@ -41780,12 +41779,22 @@ static void d6a_52106_core(u32 ticks, u32 mut)
         gfx_fill_screen(DSD((mut == 4u) ? 0x001014E4u : 0x001014E8u), v);        /* @e4twice */
     }
     if (mut != 3u) gfx_fill_screen(DSD(0x001014E4u), v);                         /* @one */
+    if (mut != 8u) {                                                             /* @nodac */
+        PR_OUT(0x3C8u, (mut == 9u) ? 1u : 0u);                                   /* @dacidx */
+        u32 n = (mut == 10u) ? 0xFFu * 3u : 0x100u * 3u;                         /* @dac255 */
+        for (u32 i = 0u; i < n; i++) PR_OUT(0x3C9u, (mut == 11u) ? ticks & 0x3Fu : 0u);   /* @dacval */
+    }
+    if (mut == 12u) return;                                                      /* @noap */
+    u32 a = (mut == 13u) ? (ticks & 0xFFu) * 0x01010101u : ticks;                /* @apbyte */
+    for (u32 k = 0u; k < ((mut == 14u) ? 0xFA00u - 4u : 0xFA00u); k += 4u)        /* @apshort */
+        memcpy(gfx_aperture() + k, &a, 4u);
 }
 static void b_d6a_52106(const u32 *r, u32 *eax) { gfx_screen_reset(r[R_EAX]); *eax = 0u; }
 #define D6A_SR_MUT(name, n) \
     static void m_d6a_sr_##name(const u32 *r, u32 *eax) { d6a_52106_core(r[R_EAX], n); *eax = 0u; }
 D6A_SR_MUT(no508, 1u) D6A_SR_MUT(no50c, 2u) D6A_SR_MUT(one, 3u) D6A_SR_MUT(e4twice, 4u) D6A_SR_MUT(byte, 5u)
-D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u)
+D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u) D6A_SR_MUT(nodac, 8u) D6A_SR_MUT(dacidx, 9u) D6A_SR_MUT(dac255, 10u)
+D6A_SR_MUT(dacval, 11u) D6A_SR_MUT(noap, 12u) D6A_SR_MUT(apbyte, 13u) D6A_SR_MUT(apshort, 14u)
 /* ---- d6a bindings end ---- */
 /* ---- track S batch sa (record 2026-10-13-reverse-s section S.5): the storage image and its validators ---- */
 
@@ -42727,7 +42736,8 @@ I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
 /* ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ---- */
 /* 0x51ED8 sprite_blit_aperture: EAX = the raw node. The binding writes every field of the C node back to
  * the raw offsets (+0x24 is not in the C node). The mutants restate sprite.c's body, one choice flipped per
- * number; the cases draw nothing (the table's `ret` entries), so the draw is sprite_blit_at itself. */
+ * number; the draw is sprite_blit_at itself, on gfx_aperture() (the machine's screen since track H h2,
+ * record §H.3), on a copy of the node for the draw's mutants. */
 static void n1_51ed8_store(u32 at, const SpriteNode *n)
 {
     DSD(at) = (u32)n->x;            DSD(at + 4u) = (u32)n->y;
@@ -42745,7 +42755,10 @@ static void n1_51ed8_run(const u32 *r, u32 mut)
     d5b_51e5c_load(r[R_EAX], &n);
     if (mut == 0u) sprite_blit_aperture(&n);
     else if (!((n.width == 0 && mut != 3u) || (n.rows == 0 && mut != 4u))) {   /* @nowidth @norows */
-        sprite_blit_at(&n, gfx_aperture());
+        SpriteNode d = n;
+        if (mut == 6u) d.clip_b = 0;                                           /* @noclipb */
+        if (mut == 7u) d.type &= ~8u;                                          /* @nomirror */
+        if (mut != 5u) sprite_blit_at(&d, gfx_aperture() + ((mut == 8u) ? 1u : 0u));   /* @nodraw @xoff */
         if (mut != 1u) n.rows -= (mut == 2u) ? n.clip_t : n.clip_b;           /* @nostore @clipt */
     }
     n1_51ed8_store(r[R_EAX], &n);
@@ -42754,6 +42767,7 @@ static void b_n1_51ed8(const u32 *r, u32 *eax) { n1_51ed8_run(r, 0u); *eax = 0u;
 #define N1_BA_MUT(name, n) \
     static void m_n1_ba_##name(const u32 *r, u32 *eax) { n1_51ed8_run(r, n); *eax = 0u; }
 N1_BA_MUT(nostore, 1u)  N1_BA_MUT(clipt, 2u)    N1_BA_MUT(nowidth, 3u)  N1_BA_MUT(norows, 4u)
+N1_BA_MUT(nodraw, 5u)   N1_BA_MUT(noclipb, 6u)  N1_BA_MUT(nomirror, 7u) N1_BA_MUT(xoff, 8u)
 /* ---- track N batch n1 bindings end ---- */
 
 /* ---- track N batch n2 bindings (record 2026-10-14-reverse-n §N.2) ---- */
@@ -57792,6 +57806,13 @@ static const binding_t k_bindings[] = {
     { "gfx_screen_reset@byte", m_d6a_sr_byte, 0x00000000u },
     { "gfx_screen_reset@short", m_d6a_sr_short, 0x00000000u },
     { "gfx_screen_reset@w50c", m_d6a_sr_w50c, 0x00000000u },
+    { "gfx_screen_reset@nodac", m_d6a_sr_nodac, 0x00000000u },
+    { "gfx_screen_reset@dacidx", m_d6a_sr_dacidx, 0x00000000u },
+    { "gfx_screen_reset@dac255", m_d6a_sr_dac255, 0x00000000u },
+    { "gfx_screen_reset@dacval", m_d6a_sr_dacval, 0x00000000u },
+    { "gfx_screen_reset@noap", m_d6a_sr_noap, 0x00000000u },
+    { "gfx_screen_reset@apbyte", m_d6a_sr_apbyte, 0x00000000u },
+    { "gfx_screen_reset@apshort", m_d6a_sr_apshort, 0x00000000u },
     /* d6a table end */
     /* track S batch sa */
     { "config_image_store",              b_sa_2d498, 0x00000000u },
@@ -58334,6 +58355,10 @@ static const binding_t k_bindings[] = {
     { "sprite_blit_aperture@clipt",      m_n1_ba_clipt, 0x00000000u },
     { "sprite_blit_aperture@nowidth",    m_n1_ba_nowidth, 0x00000000u },
     { "sprite_blit_aperture@norows",     m_n1_ba_norows, 0x00000000u },
+    { "sprite_blit_aperture@nodraw", m_n1_ba_nodraw, 0x00000000u },
+    { "sprite_blit_aperture@noclipb", m_n1_ba_noclipb, 0x00000000u },
+    { "sprite_blit_aperture@nomirror", m_n1_ba_nomirror, 0x00000000u },
+    { "sprite_blit_aperture@xoff", m_n1_ba_xoff, 0x00000000u },
     /* track N batch n2 */
     { "game_shutdown",            b_n2_1be30, 0x00000000u },
     { "game_shutdown@noshut", m_n2_1be30_noshut, 0x00000000u },

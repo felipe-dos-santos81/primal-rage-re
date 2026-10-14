@@ -391,7 +391,7 @@ def verify_spec(spec, image, port_results, port_name=None, original=None):
         port = port_results[c.id]
         if port.error:
             port_errors.append("%s: %s" % (c.id, port.error))
-        for d in compare(orig, port, spec.eax_mask):
+        for d in h2_compare(c, orig, port, spec.eax_mask):
             problems.append("%s: %s" % (c.id, d))
             if d.startswith(("eax ", "byte ", "call #") + H0_DIFFS):   # the strings compare() emits for a real difference
                 diffs += 1
@@ -32445,39 +32445,45 @@ D6A_SPECS += [
 ]
 
 # ---- 0x52106: the screen reset --------------------------------------------------------------------------
-# A partial row under six code pokes. The retrace read `mov edx,0x3da; in al,dx` (0x52129..0x5212E) is
-# `mov al,8` and four nops (bit 3 set at the first read: `test al,8; je` 0x5212F is all the code takes
-# from the port); the four DAC writes `out dx,al` (0x5213F the index 0; 0x52145..0x52147 the 256 black
-# entries) are nops; and the third fill, `call 0x51f72` 0x52151 with EAX = 0xA0000, the VGA aperture, is
-# five nops (the aperture rule: the port fills its host aperture, gfx.c PORT). Unpoked, the original
-# stops `unmodeled: in at 0x5212E` (measured). The row compares the two tick stores and the two offscreen
-# fills and is blind to the DAC and to the aperture fill.
-D6A_RESET_PINS = {0x00052129: b"\xb0\x08\x90\x90\x90\x90", 0x0005213F: b"\x90", 0x00052145: b"\x90\x90\x90",
-                  0x00052151: D6A_NOP5}
+# No code poke since track H h2 (record 2026-10-14-reverse-h §H.3; d6a ran it under six). The retrace read
+# `mov edx,0x3da; in al,dx` (0x52129..0x5212E) takes the case's bytes from the machine model: the code keeps
+# bit 3 alone (`test al,8; je 0x5212e` 0x5212F), so a byte with bit 3 clear spins once more (s1 reads three,
+# s0 and s2 one). The DAC writes, `out dx,al` with AL = 0 (`xor eax,eax` 0x5213D): the index 0 (0x5213F)
+# and 0x100 entries of three channels (0x52145..0x52147, `dec ecx; jg` 0x52148 from ECX = 0x100 0x52133),
+# are compared through the DAC's view with the PR_OUTs of gfx.c. The third fill, `call 0x51f72` 0x52151
+# with EAX = 0xA0000 (0x5214C) and EDX = the ticks (pushed 0x52128, popped 0x5214B), writes the screen:
+# the machine's aperture, compared byte by byte with gfx_aperture() (seeded from the same image bytes; the
+# first and last 0x40 screen bytes are poked to 0x5A, which no case's tick dword holds, so the fill's two
+# ends show in every case).
+D6A_RESET_SEED = {0x000A0000: b"\x5a" * 0x40, 0x000AF9C0: b"\x5a" * 0x40}
 
 
-def d6a_reset(cid, eax, buf_a, buf_b, regs=None):
-    """0x52106: the pokes; the two tick dwords 0x101508/0x10150C seeded between seeded dwords; the
-    offscreen buffer pointers 0x1014E4 (`buf_b`) and 0x1014E8 (`buf_a`) between seeded dwords, each
-    0xFA00 bytes of the image's own data."""
-    p = {**D6A_RESET_PINS,
+def d6a_reset(cid, eax, buf_a, buf_b, regs=None, retrace=(0x08,)):
+    """0x52106: the machine (`retrace`: the bytes 0x3DA returns, in order; the DAC ports; the screen, its
+    two ends seeded); the two tick dwords 0x101508/0x10150C seeded between seeded dwords; the offscreen
+    buffer pointers 0x1014E4 (`buf_b`) and 0x1014E8 (`buf_a`) between seeded dwords, each 0xFA00 bytes of
+    the image's own data."""
+    p = {**D6A_RESET_SEED,
          0x00101504: le32(0x04040404) + le32(0x08080808) + le32(0x0C0C0C0C) + le32(0x10101010),
          0x001014E0: le32(0xE0E0E0E0) + le32(buf_b) + le32(buf_a) + le32(0xECECECEC)}
-    return Case(cid, {**(regs or {}), "eax": eax}, p)
+    return Case(cid, {**(regs or {}), "eax": eax}, p,
+                machine=E.Machine(ins=((0x3DA, retrace),), outs=(0x3C8, 0x3C9), aperture=True))
 
 
 D6A_SPECS += [
     # 0x52106 gfx_screen_reset: EAX = ticks. The dwords 0x101508 and 0x10150C = EAX; 0x51F72([0x1014E8],
-    # EAX) and 0x51F72([0x1014E4], EAX) (run on both sides: 0xFA00 bytes each, the dword EAX). Mask 0, and
-    # EAX is not compared: the port's function is void and the third fill, which leaves EAX = 0xAFA00, is
-    # poked out (the raw returns 0xA0000 here); 0x1C873's return hands it to the movie player's callers
-    # (a host replacement), the other sites call on (0x62756, 0x336C0, 0x2F99C).
+    # EAX) and 0x51F72([0x1014E4], EAX) (run on both sides: 0xFA00 bytes each, the dword EAX); the DAC's 256
+    # black entries from index 0; 0x51F72(0xA0000, EAX), the screen. Mask 0, and EAX is not compared: the
+    # port's function is void (the raw returns 0xAFA00, the third fill's advanced EAX, measured); 0x1C873's
+    # return hands it to the movie player's callers (a host replacement), the other sites call on (0x62756,
+    # 0x336C0, 0x2F99C).
     Spec("gfx_screen_reset", 0x52106, [
         d6a_reset("s0", 0x00000000, 0x000C0000, 0x000D0000),
-        d6a_reset("s1", 0xA1B2C3D4, 0x000C0001, 0x000D0802, regs=D2E_DIRTY),
-        d6a_reset("s2", 0x00000100, 0x000C8000, 0x000C0000),
+        d6a_reset("s1", 0xA1B2C3D4, 0x000C0001, 0x000D0802, regs=D2E_DIRTY, retrace=(0xF7, 0x00, 0x08)),
+        d6a_reset("s2", 0x00000100, 0x000C8000, 0x000C0000, retrace=(0xFF,)),
     ], allow_calls=(0x51F72,), eax_mask=0,
-       mutants=tuple("@" + m for m in "no508 no50c one e4twice byte short w50c".split())),
+       mutants=tuple("@" + m for m in "no508 no50c one e4twice byte short w50c nodac dacidx dac255 dacval noap "
+                                      "apbyte apshort".split())),
 ]
 
 D1_SPECS += D6A_SPECS
@@ -33572,6 +33578,76 @@ I_SPECS = [
 ]
 D1_SPECS += I_SPECS
 
+# ---- track H batch h2 (record 2026-10-14-reverse-h §H.3): a declared difference ----------------------------
+@dataclass
+class H2Case(Case):
+    """A case that declares a difference the port keeps by a documented PORT: deviation (track H h2,
+    record §H.3): `declared` = {addr: (the original's final byte, the port's)}, None for a byte the run
+    leaves unchanged. Each declared byte must differ between the two (a declaration of no difference is
+    stale). h2_compare exempts a declared byte from the byte comparison only when both sides hold exactly
+    the declared values; any other value is a discrepancy. The declaration covers the bytes at return,
+    not the memory at a recorded call."""
+    declared: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        same = sorted(a for a, (o, p) in self.declared.items() if o == p)
+        if same:
+            raise ValueError("case %s: 0x%X is declared with no difference" % (self.id, same[0]))
+
+
+def h2_compare(case, orig, port, mask):
+    """compare() with the case's declared bytes (H2Case) checked against their declared values and then
+    left out; a case with no declaration is compare() itself."""
+    decl = getattr(case, "declared", None)
+    if not decl:
+        return compare(orig, port, mask)
+    out = []
+    for a in sorted(decl):
+        got = (orig.writes.get(a), port.writes.get(a))
+        if got != tuple(decl[a]):
+            out.append("byte 0x%X: declared original %s, port %s; the run gives original %s, port %s" % (
+                a, _byte_text(decl[a][0]), _byte_text(decl[a][1]), _byte_text(got[0]), _byte_text(got[1])))
+    rest = lambda w: {a: v for a, v in w.items() if a not in decl}
+    return out + compare(dataclasses.replace(orig, writes=rest(orig.writes)),
+                         dataclasses.replace(port, writes=rest(port.writes)), mask)
+
+
+# 0x51ED8's drawing cases (the N1 row): the caller's node (0x1C5E8: types 1, 2, 9, 0xA, zero clips) on the
+# screen of the machine model. The renderers the table sends it to (0x5D218 type 1, 0x58CBD type 2, 0x57F80
+# type 9) use the node as their scratch, which the port's by-value renderers do not (sprite.c PORT): +0x14
+# ends at 0 (`dec dword [ebp+0x14]; jne` 0x5D262/0x5D289, 0x57FCE/0x57FF5; 0x58CBD's loop measured) where
+# the port keeps 0x51F2F's rows - clip_b, and +0x38 = 0x140 - ECX (0x5D218..0x5D21F, 0x58CD6..0x58CDD) or
+# 0x140 + ECX (0x57F80..0x57F8B), ECX the width (0x51F26), where the port leaves the node. Those two dwords
+# are the declaration; the cases keep clip_l, clip_r and clip_t 0 (the caller's), so 0x58CBD neither
+# subtracts +0x30 from +0x14 (0x58CC0 `je`) nor changes +0x18 (0x58CD3 stores the width back).
+H2_SCREEN_ROWS = (0x3C0, 0x80, 0x500)          # the 0x1088F8 offsets of rows 1, 2 and 3: the node's y is 2
+
+
+def h2_scratch(rows, clip_b, w, typ, seed38=0x38383838):
+    """The declaration of a drawing case: the bytes of the node's +0x14 and +0x38 (seeded `rows` and
+    `seed38`) where the original's renderer and the port end apart."""
+    d = {}
+    for off, seed, o, p in ((0x14, rows, 0, rows - clip_b),
+                            (0x38, seed38, 0x140 + w if typ & 8 else 0x140 - w, seed38)):
+        for i in range(4):
+            sb, ob, pb = (seed >> 8 * i) & 0xFF, (o >> 8 * i) & 0xFF, (p >> 8 * i) & 0xFF
+            pair = (None if ob == sb else ob, None if pb == sb else pb)
+            if pair[0] != pair[1]:
+                d[N1_NODE + off + i] = pair
+    return d
+
+
+def h2_draw(cid, typ, pix, clip_b=0, w=8, rows=4):
+    """n1_blit's node (x 10, y 2) with zero clips but clip_b, its row offsets, the machine's screen seeded
+    under the four rows it can draw (x 0..31), and the renderers' scratch declared."""
+    c = n1_blit(cid, typ, w=w, rows=rows, clips=(0, 0, 0, clip_b), pix=pix)
+    p = {**c.pokes, 0x1088F8 + 4: b"".join(le32(o) for o in H2_SCREEN_ROWS)}
+    for r in range(4):
+        p[0xA0000 + H2_SCREEN_ROWS[1] + r * 320] = d5b_bytes(0x9A0 + r, 32)
+    return H2Case(cid, c.regs, p, machine=E.Machine(aperture=True), declared=h2_scratch(rows, clip_b, w, typ))
+# ---- h2 end ----
+
+
 # ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ----
 # 0x51ED8 sprite_blit_aperture: EAX = the node. 0x51E5C's shape with the aperture as the base: a zero
 # width (+0x18, `je` 0x51EDF) or zero rows (+0x14, `je` 0x51EE8) returns; else six pushes, 0x1B544(+0x20)
@@ -33587,8 +33663,9 @@ D1_SPECS += I_SPECS
 # (sprite.c PORT). With the imm32 at 0x51F1D poked to a scratch in mem[] and the binding mapping the
 # port's host aperture onto it, the drawn pixels of the three agreed and the node's +0x14 and +0x38
 # differed (measured, record §N.1): a difference this row cannot hide, so the draw, the aperture base and
-# the live renderers are not compared here. The node is a frame local of 0x1C5E8 that it reads again only
-# at +0x1C (0x1C64F).
+# the live renderers were not compared here. The node is a frame local of 0x1C5E8 that it reads again only
+# at +0x1C (0x1C64F). Track H h2 (record 2026-10-14-reverse-h §H.3): the draw runs unpoked on the machine's
+# screen and the renderers' +0x14/+0x38 is the cases' one declared difference (H2Case, h2_draw).
 N1_NODE = 0x0010A900
 
 
@@ -33610,14 +33687,25 @@ N1_SPECS = [
     # Mask 0: 0x1C5E8 does not read EAX after the call (`mov eax,[esp+0x1c]` 0x1C64F). a0: zero width
     # (clip_b 2: the store is skipped with the draw); a1: zero rows (clip_b 1); a2: type 0xA (raw,
     # mirrored: 0x1C528 builds it), the table's `ret`, clip_b 1: +0x14 = 3; a3: type 5, a `ret` entry
-    # 0x1C5E8 does not build, with clip_t 5 and clip_b 2 (the store subtracts +0x34, not +0x30).
+    # 0x1C5E8 does not build, with clip_t 5 and clip_b 2 (the store subtracts +0x34, not +0x30). Since
+    # track H h2 (record 2026-10-14-reverse-h §H.3) every case runs on the machine's screen (a0..a3 draw
+    # nothing) and d1, d2, d9 draw the caller's three live types through their renderers, unpoked (the
+    # immediate 0xA0000 at 0x51F1B is the screen), the pixels compared byte by byte with gfx_aperture();
+    # d3 draws type 1 with clip_b 1 (three rows: the renderer's +0x14). The one declared difference is the
+    # renderers' node scratch (h2_scratch), named by its bytes and both sides' values.
     Spec("sprite_blit_aperture", 0x51ED8, [
-        n1_blit("a0", 1, w=0, clips=(0, 0, 0, 2)),
-        n1_blit("a1", 2, rows=0, clips=(0, 0, 0, 1), pix=0x00800180),
-        n1_blit("a2", 0x0A, clips=(0, 0, 0, 1), pix=0x00800180),
-        n1_blit("a3", 0x05, clips=(1, 1, 5, 2)),
-    ], allow_calls=(0x1B544, 0x51E58), eax_mask=0,
-       mutants=tuple("@" + m for m in "nostore clipt nowidth norows".split())),
+        dataclasses.replace(n1_blit("a0", 1, w=0, clips=(0, 0, 0, 2)), machine=E.Machine(aperture=True)),
+        dataclasses.replace(n1_blit("a1", 2, rows=0, clips=(0, 0, 0, 1), pix=0x00800180),
+                            machine=E.Machine(aperture=True)),
+        dataclasses.replace(n1_blit("a2", 0x0A, clips=(0, 0, 0, 1), pix=0x00800180), machine=E.Machine(aperture=True)),
+        dataclasses.replace(n1_blit("a3", 0x05, clips=(1, 1, 5, 2)), machine=E.Machine(aperture=True)),
+        h2_draw("d1", 1, 0x00800100),
+        h2_draw("d2", 2, 0x00800180),
+        h2_draw("d9", 9, 0x00800100),
+        h2_draw("d3", 1, 0x00800100, clip_b=1),
+    ], allow_calls=(0x1B544, 0x51E58, 0x5D218, 0x58CBD, 0x57F80, 0x58564, 0x5859C, 0x58D2C, 0x58D4C, 0x58D90,
+                    0x521F0, 0x5222C, 0x529A0, 0x529C4, 0x52A18), eax_mask=0,
+       mutants=tuple("@" + m for m in "nostore clipt nowidth norows nodraw noclipb nomirror xoff".split())),
 ]
 D1_SPECS += N1_SPECS
 

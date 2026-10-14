@@ -29161,6 +29161,13 @@ D6A_KINDS = {
     "gfx_screen_reset@byte": {'byte'},
     "gfx_screen_reset@short": {'byte'},
     "gfx_screen_reset@w50c": {'byte'},
+    "gfx_screen_reset@nodac": {'out'},
+    "gfx_screen_reset@dacidx": {'out'},
+    "gfx_screen_reset@dac255": {'out'},
+    "gfx_screen_reset@dacval": {'out'},
+    "gfx_screen_reset@noap": {'aperture'},
+    "gfx_screen_reset@apbyte": {'aperture'},
+    "gfx_screen_reset@apshort": {'aperture'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29292,6 +29299,13 @@ D6A_CASES = [
     ("gfx_screen_reset@byte", ['s1', 's2']),
     ("gfx_screen_reset@short", ['s0', 's1', 's2']),
     ("gfx_screen_reset@w50c", ['s1']),
+    ("gfx_screen_reset@nodac", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dacidx", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dac255", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dacval", ['s1']),
+    ("gfx_screen_reset@noap", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@apbyte", ['s1', 's2']),
+    ("gfx_screen_reset@apshort", ['s0', 's1', 's2']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)
@@ -30381,7 +30395,8 @@ I_CASES = [
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
 D1_CASES.extend(I_CASES)
-# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row
+# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row; track H batch h2 (record
+# 2026-10-14-reverse-h section H.3): the drawing cases d1, d2, d9, d3 and four mutants; @nostore and @clipt also in d3
 N1_MASKS = {
     "sprite_blit_aperture": 0x0,
 }   # N1_MASKS end
@@ -30390,12 +30405,20 @@ N1_KINDS = {
     "sprite_blit_aperture@clipt": {'byte'},
     "sprite_blit_aperture@nowidth": {'byte'},
     "sprite_blit_aperture@norows": {'byte'},
+    "sprite_blit_aperture@nodraw": {'aperture'},
+    "sprite_blit_aperture@noclipb": {'aperture'},
+    "sprite_blit_aperture@nomirror": {'aperture'},
+    "sprite_blit_aperture@xoff": {'aperture'},
 }   # N1_KINDS end
 N1_CASES = [
-    ("sprite_blit_aperture@nostore", ['a2', 'a3']),
-    ("sprite_blit_aperture@clipt", ['a2', 'a3']),
+    ("sprite_blit_aperture@nostore", ['a2', 'a3', 'd3']),
+    ("sprite_blit_aperture@clipt", ['a2', 'a3', 'd3']),
     ("sprite_blit_aperture@nowidth", ['a0']),
     ("sprite_blit_aperture@norows", ['a1']),
+    ("sprite_blit_aperture@nodraw", ['d1', 'd2', 'd3', 'd9']),
+    ("sprite_blit_aperture@noclipb", ['d3']),
+    ("sprite_blit_aperture@nomirror", ['a2', 'd9']),
+    ("sprite_blit_aperture@xoff", ['d1', 'd2', 'd3', 'd9']),
 ]   # N1_CASES end
 D1_MASKS.update(N1_MASKS)
 D1_KINDS.update(N1_KINDS)
@@ -32495,6 +32518,50 @@ class H0DiffrunMachineTests(unittest.TestCase):
         self.assertEqual(len(out["f1"].outs), 4 * 5)
         self.assertEqual(out["bare"].outs, [])
 # h0 end
+
+
+# ---- track H batch h2 (record 2026-10-14-reverse-h §H.3): a declared difference ----
+class H2DeclaredTests(unittest.TestCase):
+    A, B = 0x10A914, 0x10A938
+    DECL = {A: (0x00, None), B: (0x01, None)}
+
+    def run_both(self, owrites, pwrites):
+        c = V.H2Case("d", {}, declared=self.DECL)
+        return V.h2_compare(c, orig(0, owrites), V.PortResult(0, 0xFFFFFFFF, writes=pwrites), 0xFFFFFFFF)
+
+    def test_a_declared_byte_with_its_declared_values_is_left_out_and_no_other(self):
+        self.assertEqual(self.run_both({self.A: 0, self.B: 1}, {}), [])
+        self.assertEqual(self.run_both({self.A: 0, self.B: 1, 0x10A900: 5}, {}),
+                         ["byte 0x10A900: original 0x05, port unchanged"])
+
+    def test_a_declared_byte_with_another_value_on_either_side_is_a_discrepancy(self):
+        for ow, pw, want in [
+                ({self.A: 0, self.B: 1}, {self.A: 3},
+                 "byte 0x10A914: declared original 0x00, port unchanged; the run gives original 0x00, port 0x03"),
+                ({self.A: 0, self.B: 2}, {},
+                 "byte 0x10A938: declared original 0x01, port unchanged; the run gives original 0x02, port unchanged"),
+                ({self.B: 1}, {},      # the declared difference absent: both sides leave the byte
+                 "byte 0x10A914: declared original 0x00, port unchanged; the run gives original unchanged, port unchanged")]:
+            with self.subTest(want):
+                d = self.run_both(ow, pw)
+                self.assertEqual(d, [want])
+                self.assertTrue(d[0].startswith("byte "))     # counted as a difference: it detects a mutant
+
+    def test_a_plain_case_is_compare_itself_and_a_declaration_of_no_difference_is_refused(self):
+        o, p = orig(0, {self.A: 0}), V.PortResult(0, 0xFFFFFFFF)
+        self.assertEqual(V.h2_compare(V.Case("c", {}), o, p, 0xFFFFFFFF), V.compare(o, p))
+        with self.assertRaises(ValueError):
+            V.H2Case("d", {}, declared={self.A: (0x00, 0x00)})
+
+    def test_verify_spec_applies_the_declaration(self):
+        spec = V.Spec("f", 0x10000, [V.H2Case("d", {}, declared=self.DECL), V.Case("e", {})])
+        info = type("Info", (), {"leaders": [], "indirect": [], "truncated": False})()
+        o = orig(0, {self.A: 0, self.B: 1})
+        port = {"d": V.PortResult(0, 0xFFFFFFFF), "e": V.PortResult(0, 0xFFFFFFFF)}
+        r = V.verify_spec(spec, None, port, original=(info, [o, o]))
+        self.assertEqual((r.verdict, r.problems), ("MISMATCH", ["e: byte 0x10A914: original 0x00, port unchanged",
+                                                                "e: byte 0x10A938: original 0x01, port unchanged"]))
+# h2 end
 
 
 if __name__ == "__main__":
