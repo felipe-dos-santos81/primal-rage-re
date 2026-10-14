@@ -42634,6 +42634,37 @@ I_SD_MUT(nostopsmp, 21u) I_SD_MUT(three, 22u)   I_SD_MUT(five, 23u)     I_SD_MUT
 I_SD_MUT(handle4, 26u)  I_SD_MUT(early, 27u)    I_SD_MUT(nodig, 28u)    I_SD_MUT(digfirst, 29u) I_SD_MUT(noshut, 30u)
 I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
 /* ---- track I task 3 bindings end ---- */
+/* ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ---- */
+/* 0x51ED8 sprite_blit_aperture: EAX = the raw node. The binding writes every field of the C node back to
+ * the raw offsets (+0x24 is not in the C node). The mutants restate sprite.c's body, one choice flipped per
+ * number; the cases draw nothing (the table's `ret` entries), so the draw is sprite_blit_at itself. */
+static void n1_51ed8_store(u32 at, const SpriteNode *n)
+{
+    DSD(at) = (u32)n->x;            DSD(at + 4u) = (u32)n->y;
+    DSD(at + 8u) = (u32)n->xorg;    DSD(at + 0x0Cu) = (u32)n->yorg;
+    DSD(at + 0x10u) = n->type;      DSD(at + 0x14u) = (u32)n->rows;
+    DSD(at + 0x18u) = (u32)n->width; DSD(at + 0x1Cu) = n->pal_ptr;
+    DSD(at + 0x20u) = n->pixel_handle;
+    DSD(at + 0x28u) = (u32)n->clip_l; DSD(at + 0x2Cu) = (u32)n->clip_r;
+    DSD(at + 0x30u) = (u32)n->clip_t; DSD(at + 0x34u) = (u32)n->clip_b;
+    DSD(at + 0x38u) = (u32)n->stride; DSD(at + 0x3Cu) = (u32)n->row;
+}
+static void n1_51ed8_run(const u32 *r, u32 mut)
+{
+    SpriteNode n;
+    d5b_51e5c_load(r[R_EAX], &n);
+    if (mut == 0u) sprite_blit_aperture(&n);
+    else if (!((n.width == 0 && mut != 3u) || (n.rows == 0 && mut != 4u))) {   /* @nowidth @norows */
+        sprite_blit_at(&n, gfx_aperture());
+        if (mut != 1u) n.rows -= (mut == 2u) ? n.clip_t : n.clip_b;           /* @nostore @clipt */
+    }
+    n1_51ed8_store(r[R_EAX], &n);
+}
+static void b_n1_51ed8(const u32 *r, u32 *eax) { n1_51ed8_run(r, 0u); *eax = 0u; }
+#define N1_BA_MUT(name, n) \
+    static void m_n1_ba_##name(const u32 *r, u32 *eax) { n1_51ed8_run(r, n); *eax = 0u; }
+N1_BA_MUT(nostore, 1u)  N1_BA_MUT(clipt, 2u)    N1_BA_MUT(nowidth, 3u)  N1_BA_MUT(norows, 4u)
+/* ---- track N batch n1 bindings end ---- */
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -58102,6 +58133,12 @@ static const binding_t k_bindings[] = {
     { "sound_shutdown@noshut", m_i_sd_noshut, 0x00000000u },
     { "sound_shutdown@shutfirst", m_i_sd_shutfirst, 0x00000000u },
     { "sound_shutdown@order", m_i_sd_order, 0x00000000u },
+    /* track N batch n1 */
+    { "sprite_blit_aperture",            b_n1_51ed8, 0x00000000u },
+    { "sprite_blit_aperture@nostore",    m_n1_ba_nostore, 0x00000000u },
+    { "sprite_blit_aperture@clipt",      m_n1_ba_clipt, 0x00000000u },
+    { "sprite_blit_aperture@nowidth",    m_n1_ba_nowidth, 0x00000000u },
+    { "sprite_blit_aperture@norows",     m_n1_ba_norows, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

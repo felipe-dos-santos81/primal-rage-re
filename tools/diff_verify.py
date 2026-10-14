@@ -33383,6 +33383,55 @@ I_SPECS = [
                                       "nohandle handlew handle4 early nodig digfirst noshut shutfirst order".split())),
 ]
 D1_SPECS += I_SPECS
+
+# ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ----
+# 0x51ED8 sprite_blit_aperture: EAX = the node. 0x51E5C's shape with the aperture as the base: a zero
+# width (+0x18, `je` 0x51EDF) or zero rows (+0x14, `je` 0x51EE8) returns; else six pushes, 0x1B544(+0x20)
+# (run), the bank dword 0x81310[byte [[+0x1C] + 8]], EDI = [0x1088F8 + y * 4] + 0xA0000 + x (`add
+# edi,0xa0000` 0x51F1B), +0x14 = +0x14 - +0x34 (0x51F2F, never restored), ECX = +0x18 and `call [(+0x10 &
+# 0x7F) * 4 + 0x80C8C]` (0x51F35), EAX = the node (0x51F3C) and six pops.
+# A partial row: the two guards and the +0x14 store, on the table's `ret` entries (0x51E58), where nothing
+# is drawn and the immediate 0xA0000 is never used for a store (no poke). Every live renderer the one
+# caller 0x1C5E8 reaches (types 1, 2, 9: 0x5D218, 0x58CBD, 0x57F80) uses the node as its scratch: `mov
+# [ebp+0x38],edx` (0x5D21F, 0x58CDD, 0x57F8B) and `dec dword [ebp+0x14]` per row down to 0 (0x5D262,
+# 0x5D289, 0x57FCE, 0x57FF5; 0x58CBD's measured), and 0x58CBD also `sub [ebp+0x14],eax` (0x58CC4) and `mov
+# [ebp+0x18],ecx` (0x58CD3); the port's renderers take the fields by value and store nothing back
+# (sprite.c PORT). With the imm32 at 0x51F1D poked to a scratch in mem[] and the binding mapping the
+# port's host aperture onto it, the drawn pixels of the three agreed and the node's +0x14 and +0x38
+# differed (measured, record §N.1): a difference this row cannot hide, so the draw, the aperture base and
+# the live renderers are not compared here. The node is a frame local of 0x1C5E8 that it reads again only
+# at +0x1C (0x1C64F).
+N1_NODE = 0x0010A900
+
+
+def n1_blit(cid, typ, w=8, rows=4, clips=(0, 0, 0, 0), pix=0x00800100):
+    """A raw node (x, y, origins, type, rows, width, palette, pixel handle, the descriptor handle +0x24,
+    the four clips, +0x38 and +0x3C seeded) between seeded dwords; the palette entry and the two sprites
+    (0x1B544 resolves the pixel handle on both sides)."""
+    node = (le32(10) + le32(2) + le32(0x08080808) + le32(0x0C0C0C0C) + le32(typ) + le32(rows) + le32(w)
+            + le32(D5B_PAL) + le32(pix) + le32(0x24242424) + b"".join(le32(c) for c in clips)
+            + le32(0x38383838) + le32(0x3C3C3C3C))
+    p = {**d4b_res(), N1_NODE - 4: le32(0xFCFCFCFC), N1_NODE: node, N1_NODE + 0x40: le32(0x40404040),
+         D5B_PAL: le32(0x11111111) + le32(0x22222222) + bytes([6, 0x33, 0x33, 0x33]) + le32(0x44444444),
+         d4b_at(0x800100) - 4: b"\xbf" * 4 + D5B_RLE + b"\xbf" * 16,
+         d4b_at(0x800180) - 8: bytes(range(0xE0, 0xE8)) + D5B_RAWPIX + bytes(range(0xF0, 0xFC))}
+    return Case(cid, {**D2E_DIRTY, "eax": N1_NODE}, p)
+
+
+N1_SPECS = [
+    # Mask 0: 0x1C5E8 does not read EAX after the call (`mov eax,[esp+0x1c]` 0x1C64F). a0: zero width
+    # (clip_b 2: the store is skipped with the draw); a1: zero rows (clip_b 1); a2: type 0xA (raw,
+    # mirrored: 0x1C528 builds it), the table's `ret`, clip_b 1: +0x14 = 3; a3: type 5, a `ret` entry
+    # 0x1C5E8 does not build, with clip_t 5 and clip_b 2 (the store subtracts +0x34, not +0x30).
+    Spec("sprite_blit_aperture", 0x51ED8, [
+        n1_blit("a0", 1, w=0, clips=(0, 0, 0, 2)),
+        n1_blit("a1", 2, rows=0, clips=(0, 0, 0, 1), pix=0x00800180),
+        n1_blit("a2", 0x0A, clips=(0, 0, 0, 1), pix=0x00800180),
+        n1_blit("a3", 0x05, clips=(1, 1, 5, 2)),
+    ], allow_calls=(0x1B544, 0x51E58), eax_mask=0,
+       mutants=tuple("@" + m for m in "nostore clipt nowidth norows".split())),
+]
+D1_SPECS += N1_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

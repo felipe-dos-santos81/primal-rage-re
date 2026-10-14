@@ -30367,6 +30367,25 @@ I_CASES = [
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
 D1_CASES.extend(I_CASES)
+# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row
+N1_MASKS = {
+    "sprite_blit_aperture": 0x0,
+}   # N1_MASKS end
+N1_KINDS = {
+    "sprite_blit_aperture@nostore": {'byte'},
+    "sprite_blit_aperture@clipt": {'byte'},
+    "sprite_blit_aperture@nowidth": {'byte'},
+    "sprite_blit_aperture@norows": {'byte'},
+}   # N1_KINDS end
+N1_CASES = [
+    ("sprite_blit_aperture@nostore", ['a2', 'a3']),
+    ("sprite_blit_aperture@clipt", ['a2', 'a3']),
+    ("sprite_blit_aperture@nowidth", ['a0']),
+    ("sprite_blit_aperture@norows", ['a1']),
+]   # N1_CASES end
+D1_MASKS.update(N1_MASKS)
+D1_KINDS.update(N1_KINDS)
+D1_CASES.extend(N1_CASES)
 
 
 @needs_unicorn
@@ -31695,9 +31714,10 @@ class RealFunctionTests(unittest.TestCase):
         # the closed-row count is over the rows that have callees (825 after track I: the rows of
         # 0x2F920 and 0x11BCC, open on the runtime memset 0x61A70 and the ret-only 0x29D60, and the
         # row of 0x2F9CC, closed: each of its ten callees has a VERIFIED row); the 169 without are
-        # counted apart (0x12CD4's row is one)
-        self.assertIn("diff-verify: 995/995 functions VERIFIED; 14825/14825 mutants detected; 1 named gaps; "
-                      "636/826 rows with callees closed (169 have none).", out.getvalue())
+        # counted apart (0x12CD4's row is one). Track N batch n1: 0x51ED8's partial row (four mutants), open
+        # on 0x1B544 (a named non-row) and 0x51E58
+        self.assertIn("diff-verify: 996/996 functions VERIFIED; 14829/14829 mutants detected; 1 named gaps; "
+                      "636/827 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
