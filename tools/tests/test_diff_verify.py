@@ -31880,8 +31880,9 @@ class RealFunctionTests(unittest.TestCase):
         # row runs unpoked under the machine model and gains six DAC mutants (record 2026-10-14-reverse-h §H.1).
         # Track H batch h1: 0x2EA78, 0x2EA74, 0x249F0 and 0x24C5C's eight rows run unpoked under the key model;
         # two rows for 0x24C5C's key loop (game_frame_keys, game_frame_keys2, open on 0x500BB and 0x65431) and
-        # 27 mutants (7 + 3 + 14 + 3; record §H.2).
-        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14873/14873 mutants detected; 1 named gaps; "
+        # 27 mutants (7 + 3 + 14 + 3; record §H.2). Track H batch h2: 0x52106's row runs unpoked and gains seven
+        # DAC and screen mutants, and 0x51ED8's drawing cases four (record §H.3). Measured on the merge.
+        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14884/14884 mutants detected; 1 named gaps; "
                       "638/831 rows with callees closed (169 have none).", out.getvalue())
 
 
