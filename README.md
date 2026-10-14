@@ -41,7 +41,7 @@ and the game-over/high-score flows. Two claims back that:
   bytes in unicorn against the port's C functions from the same image,
   comparing every changed byte, the return register, the ordered calls (with
   the memory changed so far at each) and the block coverage:
-  **1000/1000 functions VERIFIED; 14884/14884 mutants detected**. C3g closed the
+  **1000/1000 functions VERIFIED; 14885/14885 mutants detected**. C3g closed the
   callee-row frontier at 322 rows; track D is rowing every ported function the
   callee scan never reached (732 of 747 have a row after its sixth wave and tracks S, I, N and H — 723 a full one (`0x51ED8` with one declared difference), and 9 a row that runs the original under code pokes or leaves reachable blocks out: `0x24C5C`, `game_loop`, `0x2CADC`, `0x2EA78`, `0x2EA74`, `0x1AFE8`, `0x1B084`, `0x1BE30`, `0x1C740`; the other 15 are named gaps or non-rows, none is open;
   record `2026-10-11-reverse-d-derivations.md`), and its rows have found 174

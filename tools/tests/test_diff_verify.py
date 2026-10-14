@@ -30058,7 +30058,10 @@ D1_MASKS.update(SA_MASKS)
 D1_KINDS.update(SA_KINDS)
 D1_CASES.extend(SA_CASES)
 # S sa end
-# S sc (record 2026-10-13-reverse-s §S.7): the save file's two rows; measured pins
+# S sc (record 2026-10-13-reverse-s §S.7, the rows converted by 2026-10-14-reverse-f §F.1): the
+# save file's two rows; measured pins. The load row's sets are unchanged by the conversion; the save
+# row gains s4 (the existing file whose open truncates), which every write-path mutant also catches,
+# and @wmode (append instead of truncate) is caught by s4 alone (track F f1, jobs=1).
 SC_MASKS = {
     "config_file_load": 0xFF,
     "config_file_save": 0xFF,
@@ -30094,6 +30097,7 @@ SC_KINDS = {
     "config_file_save@writefirst": {'byte'},
     "config_file_save@wlen": {'byte'},
     "config_file_save@wsrc": {'byte'},
+    "config_file_save@wmode": {'byte'},
 }   # SC_KINDS end
 SC_CASES = [
     ("config_file_load@noread", ['l0', 'l1', 'l4', 'l5']),
@@ -30110,22 +30114,23 @@ SC_CASES = [
     ("config_file_load@flag", ['l0', 'l1', 'l2', 'l3', 'l4', 'l5']),
     ("config_file_save@gatelate", ['s0']),
     ("config_file_save@nogate", ['s0']),
-    ("config_file_save@sumfirst", ['s1', 's2', 's3']),
-    ("config_file_save@summid", ['s1', 's2', 's3']),
-    ("config_file_save@notouch1", ['s1', 's2', 's3']),
-    ("config_file_save@notouch2", ['s1', 's2', 's3']),
-    ("config_file_save@touchorder", ['s1', 's2', 's3']),
-    ("config_file_save@touch0", ['s1', 's2', 's3']),
-    ("config_file_save@nosum", ['s1', 's2', 's3']),
+    ("config_file_save@sumfirst", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@summid", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@notouch1", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@notouch2", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@touchorder", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@touch0", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@nosum", ['s1', 's2', 's3', 's4']),
     ("config_file_save@len6", ['s1', 's2']),
     ("config_file_save@len8", ['s1', 's2']),
-    ("config_file_save@add", ['s1', 's2', 's3']),
-    ("config_file_save@sumat", ['s1', 's2', 's3']),
-    ("config_file_save@flag", ['s0', 's1', 's2', 's3']),
-    ("config_file_save@nowrite", ['s1', 's2', 's3']),
-    ("config_file_save@writefirst", ['s1', 's2', 's3']),
-    ("config_file_save@wlen", ['s1', 's2', 's3']),
-    ("config_file_save@wsrc", ['s1', 's2', 's3']),
+    ("config_file_save@add", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@sumat", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@flag", ['s0', 's1', 's2', 's3', 's4']),
+    ("config_file_save@nowrite", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@writefirst", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@wlen", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@wsrc", ['s1', 's2', 's3', 's4']),
+    ("config_file_save@wmode", ['s4']),
 ]   # SC_CASES end
 D1_MASKS.update(SC_MASKS)
 D1_KINDS.update(SC_KINDS)
@@ -31881,8 +31886,10 @@ class RealFunctionTests(unittest.TestCase):
         # Track H batch h1: 0x2EA78, 0x2EA74, 0x249F0 and 0x24C5C's eight rows run unpoked under the key model;
         # two rows for 0x24C5C's key loop (game_frame_keys, game_frame_keys2, open on 0x500BB and 0x65431) and
         # 27 mutants (7 + 3 + 14 + 3; record §H.2). Track H batch h2: 0x52106's row runs unpoked and gains seven
-        # DAC and screen mutants, and 0x51ED8's drawing cases four (record §H.3). Measured on the merge.
-        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14884/14884 mutants detected; 1 named gaps; "
+        # DAC and screen mutants, and 0x51ED8's drawing cases four (record §H.3). Track F batch f1: the
+        # two save rows (0x1AFE8, 0x1B084) run unpoked under the file model, the save row gains the @wmode
+        # append mutant and the case s4 (record 2026-10-14-reverse-f §F.1). Measured on the merge.
+        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps; "
                       "638/831 rows with callees closed (169 have none).", out.getvalue())
 
 

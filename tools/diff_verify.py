@@ -252,12 +252,17 @@ def f1_machine_text(c):
         return []
     out = ["files"]
     for name, v in m.files.items():
-        state = "gone" if v is E.F1_GONE else ("absent" if v is E.F1_ABSENT else "present")
-        out.append("fdec %s %s" % (name.hex(), state))
+        # isinstance, not `is`: a pool worker holds its own unpickled sentinel instances (§F.1)
+        if isinstance(v, E._F1Gone):
+            out.append("fdec %s gone" % name.hex())
+        elif isinstance(v, E._F1Absent):
+            out.append("fdec %s absent" % name.hex())
+        else:
+            out.append("fdec %s present" % name.hex())
         mode = next((mo for (n, mo) in (c.opens or ()) if n == name), None)
         if mode is not None:
             out.append("fmode %s" % mode.hex())
-        if state == "present":
+        if isinstance(v, bytes):
             out += ["fd %s" % v[o:o + F1_CHUNK].hex() for o in range(0, len(v), F1_CHUNK)]
     return out
 
@@ -33305,23 +33310,26 @@ SB_SPECS += [
 ]
 
 D1_SPECS += SB_SPECS
-# ---- track S, batch sc (record 2026-10-13-reverse-s §S.7): the save file ---------------------------------
-# Rows under code pokes. The runtime's file calls (0x61C60 fopen, 0x61CF6 fread, 0x62031 fwrite, 0x61EC0
-# fclose: DOS `int 0x21` under them) are the host's in the port (host.c host_save_read/_writable/_write,
-# no seam), so each `call` is `mov eax,<its result>` (B8 imm32, five bytes for five) with the case's
-# value, and the binding (diff_runner.c sc_*) reads the same dwords from the poked bytes and puts the
-# host's save file in the state that gives the port that result. Nothing the remaining instructions read
-# comes from the calls but EAX (0x61CF6 and 0x62031 preserve no argument register and none is read again;
-# 0x61EC0 keeps EDX, the count, E.callee_clobbers). The rows are blind to the file calls' arguments (the
-# name 0xA2C5C, the modes 0x80598/0x8059C, the buffer 0x100CE4, the size 1, the count 0x7F8, the handle):
-# they are read from the bytes in the record. The CD-drive wrappers 0x10D34/0x10D0C, which the port leaves
-# out (config.c, PORT), run from their bytes with the `-f` byte 0x101520 set (0x1BEDC): `cmp byte
-# [0x101520],0; jne` (0x10D38, 0x10D10) then skips their DOS calls.
+# ---- track S, batch sc (record 2026-10-13-reverse-s §S.7), with the track F f1 conversion
+#      (record 2026-10-14-reverse-f §F.1): the save file ------------------------------------
+# Rows under the file model. The runtime's file calls (0x61C60 fopen, 0x61CF6 fread, 0x62031 fwrite,
+# 0x61EC0 fclose) answer from the case's Machine.files on the original's side (record §F.1: arguments
+# and results read from the callees' bytes), and the port's real host calls (host.c
+# host_save_read/_writable/_write, no seam) run on a scratch directory seeded from the same
+# declarations (diff_runner.c f1_*); after the call each side mirrors its file's final name, mode,
+# length and bytes into the image's gap at F1_SHADOW, so the byte comparison compares the real file
+# bytes, not a verdict byte, and no call's result is poked. A case states the fopens the original
+# makes (Case.opens) and the model checks them against the strings it read from memory. The load
+# buffer starts every byte XOR 0x5A (the pokes, both sides), so the original's modelled fread and the
+# port's host_save_read each must move the file's bytes. The CD-drive wrappers 0x10D34/0x10D0C, which
+# the port leaves out (config.c, PORT), run from their bytes with the `-f` byte 0x101520 set
+# (0x1BEDC): `cmp byte [0x101520],0; jne` (0x10D38, 0x10D10) then skips their DOS calls.
 SC_IMAGE, SC_LEN = 0x00100CE4, 0x7F8            # the stored image; its last byte 0x1014DB is the XOR of the others
 SC_NO_CD = {0x00101520: b"\x01"}
 SC_REAL = (0x10D34, 0x10D0C, 0x61A70, 0x65490, 0x654C7)
 SC_SC_UNHIT = "the runtime's exit, `call 0x62003` with EAX = 1 (0x62003..0x62723 `mov ah,0x4c; int 0x21`), which " \
-              "does not return: the port takes the failed open's result instead (config.c, PORT)"
+              "does not return: a case reaching it would stop the original's run, so no case does (the port takes " \
+              "the failed call's result instead, config.c, PORT)"
 
 
 def sc_image(mul, add, bad=0):
@@ -33333,25 +33341,23 @@ def sc_image(mul, add, bad=0):
     return body + bytes([x ^ bad])
 
 
-def sc_pokes(image, calls):
-    """The image between four seeded bytes on each side; the `-f` byte; `calls` = {the address of a `call`:
-    the EAX it becomes a `mov` of}."""
+def sc_load(cid, content, image, regs=None):
+    """0x1AFE8: the directory holds `content` (E.F1_ABSENT for the missing file whose fopen the model
+    answers 0); the buffer starts as the image XOR 0x5A, so only the read puts the file's bytes in
+    place on both sides."""
+    p = d1d_chunks(SC_IMAGE - 4, b"\xc1\xc2\xc3\xc4" + bytes(b ^ 0x5A for b in image) + b"\xd1\xd2\xd3\xd4")
+    p.update(SC_NO_CD)
+    return Case(cid, regs or {}, p, machine=E.Machine(files={b"cmos": content}), opens=((b"cmos", b"rb"),))
+
+
+def sc_save(cid, content, image, regs=None, touch=None):
+    """0x1B084: `content` = the directory's state (E.F1_GONE for the missing directory whose fopen the
+    model answers 0, E.F1_ABSENT for a write that creates the file, bytes for one that truncates it);
+    the buffer holds the image the original's fwrite copies; `touch` = the EAX of the 0x2D4EC stub."""
     p = d1d_chunks(SC_IMAGE - 4, b"\xc1\xc2\xc3\xc4" + image + b"\xd1\xd2\xd3\xd4")
     p.update(SC_NO_CD)
-    p.update({a: b"\xb8" + le32(v) for a, v in calls.items()})
-    return p
-
-
-def sc_load(cid, handle, image, closed=0, regs=None):
-    """0x1AFE8: fopen's EAX is `handle`, fread's the count 0x7F8, fclose's `closed`."""
-    return Case(cid, regs or {}, sc_pokes(image, {0x0001AFFB: handle, 0x0001B017: SC_LEN, 0x0001B020: closed}))
-
-
-def sc_save(cid, handle, image, closed=0, touch=None, regs=None):
-    """0x1B084: fopen's EAX is `handle`, fwrite's the count 0x7F8, fclose's `closed`; `touch` = the EAX of
-    the 0x2D4EC stub."""
-    return Case(cid, regs or {}, sc_pokes(image, {0x0001B097: handle, 0x0001B0E1: SC_LEN, 0x0001B0EA: closed}),
-                {} if touch is None else {0x2D4EC: touch})
+    return Case(cid, regs or {}, p, {} if touch is None else {0x2D4EC: touch},
+                machine=E.Machine(files={b"cmos": content}), opens=((b"cmos", b"wb"),))
 
 
 # 0x2D4EC as 0x1B084's stub: it stores two bytes at the image's offset 0x20 + kind (kind 1: 0x21 and 0x22,
@@ -33359,45 +33365,54 @@ def sc_save(cid, handle, image, closed=0, touch=None, regs=None):
 SC_TOUCH = dataclasses.replace(D5D_TOUCH, writes=((0, SC_IMAGE + 0x20, b"\x3c\x5a"),))
 
 SC_SPECS = [
-    # 0x1AFE8 config_file_load: no argument. fopen's EAX zero (`test eax,eax; je` 0x1B002: l0, whose image
-    # is a valid one that must not be consulted) sets the flag; else the count 0x7F8 (`cmp edx,0x7f8`
-    # 0x1B025; fclose's EAX is not read: l1 has -1, l5 0x100), the XOR of bytes 0..0x7F6 (`cmp eax,0x7f7;
-    # jl` 0x1B03A) against the byte 0x1014DB: equal (l1; l4, the captures' zero image; l5, whose handle is
-    # 0x100, AL zero) clears the flag, else (l2 one bit off; l3 the sum of the first 0x7F6 bytes stored)
-    # sets it. The flag fills the image with 0xFF (0x61A70(0x100CE4, 0xFF, 0x7F8), run) and is AL. On the
-    # port side the file holds the case's image and the buffer every byte XOR 0x5A before the call, so
-    # only the read gives the bytes the original holds. Mask 0xFF: `mov al,cl` 0x1B07A over an EAX the
-    # code before left (0x7F7 from the loop in l1); the one call site 0x2F9CF does not read it (`call
-    # 0x13adc` follows, which loads AH and no AL, 0x13ADF).
+    # 0x1AFE8 config_file_load: no argument. A missing file (l0: F1_ABSENT, `test eax,eax; je` 0x1B002)
+    # sets the flag and no further call runs; else the fread's count is the file's bytes (0x1B025
+    # `cmp edx,0x7f8` against the real read), the XOR of bytes 0..0x7F6 (`cmp eax,0x7f7; jl` 0x1B03A)
+    # against the byte 0x1014DB: equal (l1; l4, the captures' zero image; l5, a second valid image, AL
+    # zero) clears the flag, else (l2 one bit off; l3 the sum of the first 0x7F6 bytes stored) sets it.
+    # The flag fills the image with 0xFF (0x61A70, run) and is AL. The file itself never changes: both
+    # sides mirror its name, mode, length and bytes at the fclose (the model from memory and its own
+    # read, the binding from the scratch directory), so a read past the file's end, of another name, or
+    # with another mode than the case states is a difference. The handle is model-internal (never
+    # compared: it lives in ESI and the mask keeps it out of EAX); fclose's result is not read (0x1B02D
+    # and 0x1B04D load EAX, §S.7.1), the model answers 0 for a stream it opened. Mask 0xFF: `mov al,cl`
+    # 0x1B07A over an EAX the code before left (0x7F7 from the loop in l1); the one call site 0x2F9CF
+    # does not read it (`call 0x13adc` follows, which loads AH and no AL, 0x13ADF).
     Spec("config_file_load", 0x1AFE8, [
-        sc_load("l0", 0, sc_image(7, 3)),
-        sc_load("l1", 0x0010A040, sc_image(7, 3), closed=0xFFFFFFFF),
-        sc_load("l2", 0x0010A040, sc_image(7, 3, bad=0x10), regs=D2E_DIRTY),
-        sc_load("l3", 0x0010A040, sc_image(5, 0x81, bad=(0x7F6 * 5 + 0x81) & 0xFF)),
-        sc_load("l4", 1, bytes(SC_LEN), regs=D2E_DIRTY),
-        sc_load("l5", 0x00000100, sc_image(5, 0x81), closed=0x100),
-    ], unhit_named={0x1B04D: "a count other than 0x7F8: " + SC_SC_UNHIT}, allow_calls=SC_REAL, eax_mask=0xFF,
+        sc_load("l0", E.F1_ABSENT, sc_image(7, 3)),
+        sc_load("l1", sc_image(7, 3), sc_image(7, 3)),
+        sc_load("l2", sc_image(7, 3, bad=0x10), sc_image(7, 3, bad=0x10), regs=D2E_DIRTY),
+        sc_load("l3", sc_image(5, 0x81, bad=(0x7F6 * 5 + 0x81) & 0xFF),
+                 sc_image(5, 0x81, bad=(0x7F6 * 5 + 0x81) & 0xFF)),
+        sc_load("l4", bytes(SC_LEN), bytes(SC_LEN), regs=D2E_DIRTY),
+        sc_load("l5", sc_image(5, 0x81), sc_image(5, 0x81)),
+    ], unhit_named={0x1B04D: "a count other than 0x7F8: the model answers one for a short file, but " + SC_SC_UNHIT},
+       allow_calls=SC_REAL, eax_mask=0xFF,
        mutants=tuple("@" + m for m in "noread dst readlen len6 len8 add sumbyte nofill fill0 filllen fillall "
                                       "flag".split())),
-    # 0x1B084 config_file_save: no argument. fopen's EAX zero (`test eax,eax; je` 0x1B09E: s0) sets the
-    # flag and does nothing else (the seeded last byte stays). Else (s1; s2, whose handle is 0x100; s3, the
-    # zero image) 0x2D4EC(1) and 0x2D4EC(2) (stubs: their EAX is not read, `mov eax,2` 0x1B0AC and `xor
-    # eax,eax` 0x1B0B8 follow; s1 has 0x12345678), the XOR of bytes 0..0x7F6 (`cmp eax,0x7f7; jl` 0x1B0C3)
-    # stored in the byte 0x1014DB (seeded with another value), and the count 0x7F8 (`cmp edx,0x7f8; je`
-    # 0x1B0EF; fclose's EAX is not read: s1 has -1) clears the flag, which is AL. On the port side the
-    # binding reads the file the host wrote back and stores a non-zero byte at 0x3900200, where the
-    # original writes nothing, unless it is the image's 0x7F8 bytes as they are at return (or, in s0,
-    # unless there is no file). Mask 0xFF: `mov al,dl` 0x1B110; no call site reads it (`call 0x10d34`
-    # 0x1BEBA, `mov edx,1; mov eax,0x1044f4` 0x24AA6, `call 0x2c304` 0x2CBB4, which loads EAX).
+    # 0x1B084 config_file_save: no argument. The missing directory (s0: F1_GONE, `test eax,eax; je`
+    # 0x1B09E) sets the flag and does nothing else (the seeded last byte stays, no file appears); else
+    # (s1, a file created; s2, created with dirty registers; s3, the zero image; s4, an existing file
+    # the open truncates) 0x2D4EC(1) and 0x2D4EC(2) (stubs: their EAX is not read, `mov eax,2` 0x1B0AC
+    # and `xor eax,eax` 0x1B0B8 follow; s1 has 0x12345678), the XOR of bytes 0..0x7F6 (`cmp eax,0x7f7;
+    # jl` 0x1B0C3) stored in the byte 0x1014DB (seeded with another value), and the real fwrite's count
+    # 0x7F8 (`cmp edx,0x7f8; je` 0x1B0EF) clears the flag, which is AL. The file the port wrote is
+    # compared byte for byte against the bytes the original's fwrite recorded (the fclose mirror, §F.1):
+    # a port write of another length, from another address, before the XOR store, into another file, or
+    # in append instead of truncate mode differs there. Mask 0xFF: `mov al,dl` 0x1B110; no call site
+    # reads it (`call 0x10d34` 0x1BEBA, `mov edx,1; mov eax,0x1044f4` 0x24AA6, `call 0x2c304` 0x2CBB4).
     Spec("config_file_save", 0x1B084, [
-        sc_save("s0", 0, sc_image(7, 3, bad=0x5A)),
-        sc_save("s1", 0x0010A040, sc_image(7, 3, bad=0xFF), closed=0xFFFFFFFF, touch=0x12345678),
-        sc_save("s2", 0x00000100, sc_image(5, 0x81, bad=0x01), closed=0x100, regs=D2E_DIRTY),
-        sc_save("s3", 1, bytes(SC_LEN), regs=D2E_DIRTY),
-    ], unhit_named={0x1B0F7: "a count other than 0x7F8: " + SC_SC_UNHIT}, allow_calls=SC_REAL, calls=(SC_TOUCH,),
+        sc_save("s0", E.F1_GONE, sc_image(7, 3, bad=0x5A)),
+        sc_save("s1", E.F1_ABSENT, sc_image(7, 3, bad=0xFF), touch=0x12345678),
+        sc_save("s2", E.F1_ABSENT, sc_image(5, 0x81, bad=0x01), regs=D2E_DIRTY),
+        sc_save("s3", E.F1_ABSENT, bytes(SC_LEN), regs=D2E_DIRTY),
+        sc_save("s4", b"stale cmos!!", bytes(SC_LEN)),
+    ], unhit_named={0x1B0F7: "a count other than 0x7F8: the modelled fwrite never comes back short (a "
+                             "memory-backed file has no full disk) and " + SC_SC_UNHIT},
+       allow_calls=SC_REAL, calls=(SC_TOUCH,),
        eax_mask=0xFF,
        mutants=tuple("@" + m for m in "gatelate nogate sumfirst summid notouch1 notouch2 touchorder touch0 nosum "
-                                      "len6 len8 add sumat flag nowrite writefirst wlen wsrc".split())),
+                                      "len6 len8 add sumat flag nowrite writefirst wlen wsrc wmode".split())),
 ]
 
 D1_SPECS += SC_SPECS

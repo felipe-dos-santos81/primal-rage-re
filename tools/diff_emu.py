@@ -298,8 +298,19 @@ F1_FILE_FUNCS = (F1_FOPEN, F1_FREAD, F1_FWRITE, F1_FCLOSE)
 # Machine.files values: F1_ABSENT names a file that is not there in a directory that is (fopen rb fails,
 # fopen wb creates); F1_GONE names a missing directory (every fopen of the name fails, the shape the
 # save row's s0 needs, which the port's binding gives with a path under a subdirectory it never makes).
-F1_ABSENT = type("F1Absent", (), {"__repr__": lambda s: "F1_ABSENT"})()
-F1_GONE = type("F1Gone", (), {"__repr__": lambda s: "F1_GONE"})()
+# Named classes (not type(...) results) so the process pool's pickles can find them.
+class _F1Absent:
+    __slots__ = ()
+    def __repr__(self): return "F1_ABSENT"
+
+
+class _F1Gone:
+    __slots__ = ()
+    def __repr__(self): return "F1_GONE"
+
+
+F1_ABSENT = _F1Absent()
+F1_GONE = _F1Gone()
 # The mirrored directory: one slot per declared name, in declaration order, in the image's gap between
 # the objects (the code object ends 0x73B14, the data object starts 0x80000: nothing is loaded there and
 # the rows' code and the port's host calls never touch it). Slot: name + NUL at +0 (16 bytes), the mode
@@ -333,9 +344,10 @@ class _F1Files:
         self.content = {}                       # name -> bytearray: the files that exist
         self.gone = set()                       # declared F1_GONE: no directory, every open fails
         for name, v in m.files.items():
-            if v is F1_GONE:
+            # class checks, not `is`: a pool worker gets its own sentinel instances back from the pickle
+            if isinstance(v, _F1Gone):
                 self.gone.add(name)
-            elif v is not F1_ABSENT:
+            elif not isinstance(v, _F1Absent):
                 self.content[name] = bytearray(v)
         self.streams = {}                       # handle -> [name, "r"/"w", mode, pos]
         self.handles = 0
