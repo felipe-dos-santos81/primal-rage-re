@@ -553,7 +553,7 @@ class H0MachineTests(unittest.TestCase):
         m = E.Machine(ins=((0x3DA, (0xF7, 0x08)),), outs=(0x3C8, 0x3C9))
         r = E.run_original(program(H0_PORTS), 0x10000, machine=m)
         self.assertEqual(r.outcome, "ok")
-        self.assertEqual(r.outs, [(0x3C8, 0x10), (0x3C9, 0x05)])    # 0xC5: the DAC keeps six bits
+        self.assertEqual(r.outs, [(0x3C8, 0x10), (0x3C9, 0xC5)])    # AL as written
         # one value with bit 3 clear: the spin reads again, past the case's values
         r = E.run_original(program(H0_PORTS), 0x10000, machine=E.Machine(ins=((0x3DA, (0xF7,)),), outs=(0x3C8,)))
         self.assertEqual((r.outcome, r.detail), ("unmodeled", "in from 0x3DA at 0x10005: its values are spent"))
@@ -577,6 +577,16 @@ class H0MachineTests(unittest.TestCase):
         self.assertEqual(r.call_mem, [dict(r.writes)])
         r = E.run_original(h0_screen_image(), 0x10000, regs={"eax": 0x11223344}, pokes=seed, calls=stub)
         self.assertEqual((r.aperture, len(r.writes), len(r.call_mem[0])), ({}, 8, 8))
+
+    def test_the_dac_keeps_six_bits_per_channel_and_advances_its_index_after_three(self):
+        outs = [(0x3C8, 0xFF), (0x3C9, 0xC5), (0x3C9, 0x41), (0x3C9, 0x02), (0x43, 0x34),
+                (0x3C9, 1), (0x3C9, 2), (0x3C9, 3), (0x3C9, 4)]
+        self.assertEqual(E.dac_effects(outs), [("dac", 0xFF, 5, 1, 2), ("out", 0x43, 0x34), ("dac", 0, 1, 2, 3),
+                                               ("dac-at", 1, (4,))])
+        # an index the stream never set; an index set again restarts the channels; no DAC write: nothing
+        self.assertEqual(E.dac_effects([(0x3C9, 1), (0x3C9, 2), (0x3C9, 3), (0x3C8, 7), (0x3C9, 9), (0x3C8, 7)]),
+                         [("dac", None, 1, 2, 3), ("dac-at", 7, ())])
+        self.assertEqual(E.dac_effects([(0x40, 1)]), [("out", 0x40, 1)])
 
     def test_a_machine_declaration_is_checked(self):
         for kw in ({"keys": (0x10000,)}, {"ins": ((0x3DA, ()),)}, {"ins": ((0x3DA, (0x100,)),)},

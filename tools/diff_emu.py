@@ -166,10 +166,30 @@ class Call:
 
 
 APERTURE = (0xA0000, 0xAFA00)     # the 320x200 bytes the game writes at the literal 0xA0000 (gfx.c, the aperture rule)
-# The bits a device keeps of a byte written to its port: the VGA DAC data register 0x3C9 holds six bits
-# per channel (mode 13h, the game's mode; the port's gfx_dac comment), so a write is recorded as what the
-# DAC latched. Every other port is recorded as written.
-DEVICE_BITS = {0x3C9: 0x3F}
+DAC_INDEX, DAC_DATA = 0x3C8, 0x3C9
+
+
+def dac_effects(outs):
+    """What the VGA DAC (mode 13h, the game's mode) makes of an `out` stream: `out 0x3C8` sets the
+    write index and restarts the channel count; each `out 0x3C9` latches the low six bits of one channel
+    (the DAC's registers are six bits wide), and the third writes the entry, ("dac", index, r, g, b), and
+    advances the index modulo 256. A stream with a DAC write ends with ("dac-at", index, the channels
+    latched): the state a later write continues from. An index never set in the stream is None (the
+    hardware's, unknown here). Any other port: ("out", port, value), in place. Two streams that write the
+    same entries in the same order and leave the DAC in the same state are the same to the screen."""
+    eff, idx, comp, dac = [], None, [], False
+    for port, v in outs:
+        if port == DAC_INDEX:
+            idx, comp, dac = v & 0xFF, [], True
+        elif port == DAC_DATA:
+            comp.append(v & 0x3F)
+            dac = True
+            if len(comp) == 3:
+                eff.append(("dac", idx) + tuple(comp))
+                idx, comp = None if idx is None else (idx + 1) & 0xFF, []
+        else:
+            eff.append(("out", port, v))
+    return eff + ([("dac-at", idx, tuple(comp))] if dac else [])
 
 
 @dataclass(frozen=True)
@@ -186,7 +206,8 @@ class Machine:
     ins: ((port, (byte, ...)), ...): `in al,dx` / `in al,imm8` from a listed port returns its bytes in
       order; past the last, or from a port not listed, the run stops (`unmodeled`).
     outs: the ports whose `out dx,al` / `out imm8,al` are recorded, in order, in OrigResult.outs as
-      (port, AL & DEVICE_BITS); an `out` to another port stops the run.
+      (port, AL); an `out` to another port stops the run. The comparison sees the DAC ports through
+      dac_effects, the device's view.
     aperture: the bytes changed in APERTURE are the screen's, not mem[]'s: they leave OrigResult.writes
       and the call memory for OrigResult.aperture. A case seeds the screen by poking that range.
     Only the byte forms of in/out are modelled; the word and dword forms stay unmodeled."""
@@ -242,7 +263,7 @@ class _Devices:
             port = ins.bytes[1] if op == 0xE6 else uc.reg_read(ux.UC_X86_REG_EDX) & 0xFFFF
             if port not in self.m.outs:
                 return stop
-            self.outs.append((port, uc.reg_read(ux.UC_X86_REG_EAX) & DEVICE_BITS.get(port, 0xFF)))
+            self.outs.append((port, uc.reg_read(ux.UC_X86_REG_EAX) & 0xFF))
         else:
             return stop
         uc.reg_write(ux.UC_X86_REG_EIP, addr + ins.size)

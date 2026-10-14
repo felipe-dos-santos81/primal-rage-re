@@ -32345,10 +32345,14 @@ class H0MachineTextTests(unittest.TestCase):
         o.outs, o.keys_left, o.aperture = [(0x3C8, 0x10), (0x3C9, 5)], 1, {0xA0000: 0x44}
         same = V.PortResult(0, 0xFFFFFFFF, outs=[(0x3C8, 0x10), (0x3C9, 5)], keys_left=1, aperture={0xA0000: 0x44})
         self.assertEqual(V.compare(o, same), [])
+        self.assertEqual(V.compare(o, dataclasses.replace(same, outs=[(0x3C8, 0x10), (0x3C9, 0x45)])), [])   # six bits
         for port, want in [
                 (dataclasses.replace(same, outs=[(0x3C8, 0x10), (0x3C9, 6)]),
-                 "out #1: original 0x3C9 <- 0x05, port 0x3C9 <- 0x06 (2 and 2 outs)"),
-                (dataclasses.replace(same, outs=[(0x3C8, 0x10)]), "out #1: original 0x3C9 <- 0x05, port none (2 and 1 outs)"),
+                 "out #0: original dac at 0x10 with 0x05 latched, port dac at 0x10 with 0x06 latched (1 and 1 effects)"),
+                (dataclasses.replace(same, outs=[(0x3C8, 0x11), (0x3C9, 0x45)]),
+                 "out #0: original dac at 0x10 with 0x05 latched, port dac at 0x11 with 0x05 latched (1 and 1 effects)"),
+                (dataclasses.replace(same, outs=[(0x3C8, 0x10), (0x3C9, 5), (0x40, 1)]),
+                 "out #0: original dac at 0x10 with 0x05 latched, port out 0x40 <- 0x01 (1 and 2 effects)"),
                 (dataclasses.replace(same, keys_left=0), "keys left: original 1, port 0"),
                 (dataclasses.replace(same, keys_left=None), "keys left: original 1, port None"),
                 (dataclasses.replace(same, aperture={}), "aperture 0xA0000: original 0x44, port unchanged")]:

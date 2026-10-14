@@ -201,17 +201,29 @@ def h0_parse_line(cur, t, got):
     return True
 
 
+def _h0_effect(e):
+    if e is None:
+        return "none"
+    if e[0] == "out":
+        return "out 0x%X <- 0x%02X" % e[1:]
+    at = "?" if e[1] is None else "0x%02X" % e[1]
+    if e[0] == "dac":
+        return "dac[%s] = %s" % (at, " ".join("0x%02X" % c for c in e[2:]))
+    return "dac at %s with %s latched" % (at, " ".join("0x%02X" % c for c in e[2]) or "nothing")
+
+
 def h0_compare(orig, port):
-    """The machine's discrepancies: the recorded outs in order, the keys left, the screen bytes. A case
-    with no machine has none on either side (the emulator records nothing, the runner prints nothing)."""
+    """The machine's discrepancies: the outs in order, the DAC's through its device view (E.dac_effects),
+    the keys left, the screen bytes. A case with no machine has none on either side (the emulator records
+    nothing, the runner prints nothing)."""
     out = []
-    for i in range(max(len(orig.outs), len(port.outs))):
-        o = orig.outs[i] if i < len(orig.outs) else None
-        p = port.outs[i] if i < len(port.outs) else None
+    oe, pe = E.dac_effects(orig.outs), E.dac_effects(port.outs)
+    for i in range(max(len(oe), len(pe))):
+        o = oe[i] if i < len(oe) else None
+        p = pe[i] if i < len(pe) else None
         if o != p:
-            out.append("out #%d: original %s, port %s (%d and %d outs)" % (
-                i, "none" if o is None else "0x%X <- 0x%02X" % o, "none" if p is None else "0x%X <- 0x%02X" % p,
-                len(orig.outs), len(port.outs)))
+            out.append("out #%d: original %s, port %s (%d and %d effects)" % (i, _h0_effect(o), _h0_effect(p),
+                                                                              len(oe), len(pe)))
             break
     if orig.keys_left != port.keys_left:
         out.append("keys left: original %s, port %s" % (orig.keys_left, port.keys_left))
