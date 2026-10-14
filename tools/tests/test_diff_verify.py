@@ -32474,6 +32474,38 @@ class H0MachineTextTests(unittest.TestCase):
                 self.assertEqual(d, [want])
                 self.assertTrue(d[0].startswith(V.H0_DIFFS))
 
+# ---- track F batch f1 (record 2026-10-14-reverse-f §F.1): the file model's case text and open check ----
+
+
+class F1WiringTests(unittest.TestCase):
+    def test_files_adds_its_case_lines_and_absent_model_adds_none(self):
+        m = E.Machine(files={b"cmos": bytes(33), b"nope": E.F1_ABSENT})
+        c = V.Case("a", {}, machine=m, opens=((b"nope", b"wb"), (b"cmos", b"rb")))   # slot order is the dict's
+        self.assertEqual(V.f1_machine_text(c),
+                         ["files", "fdec 636d6f73 present", "fmode 7262", "fd " + "00" * 32, "fd 00",
+                          "fdec 6e6f7065 absent", "fmode 7762"])
+        for c in (V.Case("a", {}), V.Case("b", {}, machine=E.Machine(keys=())),
+                  V.Case("c", {}, machine=E.Machine(files=None))):
+            self.assertEqual(V.f1_machine_text(c), [])
+        # a case with no stated opens gets no fmode line; a present file with content gets one `fd` line
+        c = V.Case("d", {}, machine=E.Machine(files={b"e": b"1"}))
+        self.assertEqual(V.f1_machine_text(c), ["files", "fdec 65 present", "fd 31"])
+
+    def test_the_open_check_states_a_discrepancy_the_case_sees_but_the_model_read_otherwise(self):
+        o = orig(0)
+        o.file_opens = [(b"cmos", b"rb")]
+        self.assertEqual(V.f1_opens_diff(V.Case("a", {}, machine=E.Machine(files={b"cmos": b"1"})), o), [])
+        self.assertEqual(V.f1_opens_diff(V.Case("a", {}, opens=((b"cmos", b"rb"),)), o), [])
+        self.assertEqual(V.f1_opens_diff(V.Case("a", {}, opens=((b"cmos", b"wb"),)), o),
+                         ["opens: original b'cmos' b'rb', the case states b'cmos' b'wb'"])
+        self.assertEqual(V.f1_opens_diff(V.Case("a", {}, opens=((b"cmos", b"rb"), (b"cmos", b"wb"))), o),
+                         ["opens: original b'cmos' b'rb', the case states b'cmos' b'rb', b'cmos' b'wb'"])
+        self.assertEqual(V.f1_opens_diff(V.Case("a", {}, opens=()), orig(0)), [])   # the model opened none
+
+    def test_files_is_a_machine_part_the_other_lines_ignore(self):
+        # the DAC/keys text of a files-only Machine is empty (no keys, no outs, no aperture)
+        self.assertEqual(V.h0_machine_text(E.Machine(files={b"cmos": b"1"})), [])
+
 
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")

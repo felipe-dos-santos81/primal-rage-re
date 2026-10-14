@@ -37,6 +37,7 @@ class Case:
     pokes: dict = field(default_factory=dict)      # addr -> bytes
     stub_eax: dict = field(default_factory=dict)   # callee addr -> this case's stub EAX (record E3 §E3.12)
     machine: object = None                         # an E.Machine: the keys, ports and screen the case models (§H.1)
+    opens: tuple = None                            # ((name, mode), ...): the fopens the original must make (§F.1)
 
 
 @dataclass
@@ -103,6 +104,7 @@ def cases_text(spec, port_name):
             for base, off, data in k.writes:
                 out.append("swrite %s 0x%X %s" % ("abs" if base is None else "arg%d" % base, off, bytes(data).hex()))
         out += h0_machine_text(c.machine)
+        out += f1_machine_text(c)
         out.append("end")
     return "\n".join(out) + "\n"
 
@@ -233,6 +235,47 @@ def h0_compare(orig, port):
                 a, _byte_text(orig.aperture.get(a)), _byte_text(port.aperture.get(a))))
     return out
 # ---- h0 end ----
+
+# ---- track F batch f1 (record 2026-10-14-reverse-f §F.1): the file model's case text and open check ----
+F1_CHUNK = 32                    # bytes per `fd` line: diffrun reads 512-byte lines with <= 6 tokens
+
+
+def f1_machine_text(c):
+    """The case-file lines of a Machine.files model's port side: `files` (the scratch directory is
+    the case's), a `fdec <hexname> <present|absent|gone>` per declared name in its slot order, its
+    `fmode <hex>` from the case's expected opens (the binding mirrors it as the mode the original
+    states it passed), and the content in `fd <hex>` chunks. The case's files then arrive in mem[]
+    at F1_SHADOW as ordinary byte writes on both sides (the record's mirror): this text is the only
+    new channel."""
+    m = c.machine
+    if m is None or m.files is None:
+        return []
+    out = ["files"]
+    for name, v in m.files.items():
+        state = "gone" if v is E.F1_GONE else ("absent" if v is E.F1_ABSENT else "present")
+        out.append("fdec %s %s" % (name.hex(), state))
+        mode = next((mo for (n, mo) in (c.opens or ()) if n == name), None)
+        if mode is not None:
+            out.append("fmode %s" % mode.hex())
+        if state == "present":
+            out += ["fd %s" % v[o:o + F1_CHUNK].hex() for o in range(0, len(v), F1_CHUNK)]
+    return out
+
+
+def f1_opens_diff(c, orig):
+    """The case's expected fopen arguments against the ones the model read from memory (a blind row
+    before: the name and mode were poked away). A case that states none checks nothing; a file the
+    original opened is on this list whether or not it succeeded, and the mirror compares carries the
+    name and mode bytes again for every file it closes."""
+    if c.opens is None:
+        return []
+    want, got = tuple(c.opens), tuple(orig.file_opens)
+    if want == got:
+        return []
+    return ["opens: original %s, the case states %s" % (
+        ", ".join("%r %r" % o for o in got) or "none",
+        ", ".join("%r %r" % o for o in want) or "none")]
+# ---- f1 wiring end ----
 
 
 def run_port_many(diffrun, exe, image_path, texts, timeout=60):
@@ -395,6 +438,8 @@ def verify_spec(spec, image, port_results, port_name=None, original=None):
             problems.append("%s: %s" % (c.id, d))
             if d.startswith(("eax ", "byte ", "call #") + H0_DIFFS):   # the strings compare() emits for a real difference
                 diffs += 1
+        for d in f1_opens_diff(c, orig):    # the model read the arguments from memory (§F.1): not port-attributable
+            problems.append("%s: %s" % (c.id, d))
     hit, unhit = E.coverage(info, executed)
     res = SpecResult(port_name or spec.name, spec.entry, "VERIFIED", len(spec.cases), len(hit),
                      len(info.leaders), problems, [a for a in unhit if a not in spec.unhit_named],
