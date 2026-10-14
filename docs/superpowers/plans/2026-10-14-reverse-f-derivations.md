@@ -68,8 +68,8 @@ the rows never do stops the run as `unmodeled`, never a guess:
   stub writes do, since unicorn fires no hooks for them), EAX = the count; short at end of
   file. A read on a stream the model opened for writing stops the run (the real callee checks
   the stream's flag byte; the rows never read a write stream). The size == 0 answer of 0 is
-  modelled for fidelity to the callee's total-0 shape (`0x61D23..0x61D29`), not because a row
-  uses it: both rows call fread with size 1, count 0x7F8 (`0x1B00B/0x1B006`).
+  modelled for fidelity to the callee's total-0 shape (`0x61D23..0x61D29`), unused by the row
+  (size 1, count 0x7F8 at `0x1B00B/0x1B006`).
 - **fwrite**: `count * size` bytes copied from the buffer into the file at its position,
   EAX = the count. A memory-backed file never comes back short — that is the model's one place
   where the hardware could disagree, and the record says so where it matters to the rows. The
