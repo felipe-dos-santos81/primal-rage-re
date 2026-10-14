@@ -42666,7 +42666,8 @@ I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
 /* ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ---- */
 /* 0x51ED8 sprite_blit_aperture: EAX = the raw node. The binding writes every field of the C node back to
  * the raw offsets (+0x24 is not in the C node). The mutants restate sprite.c's body, one choice flipped per
- * number; the cases draw nothing (the table's `ret` entries), so the draw is sprite_blit_at itself. */
+ * number; the draw is sprite_blit_at itself, on gfx_aperture() (the machine's screen since track H h2,
+ * record §H.3), on a copy of the node for the draw's mutants. */
 static void n1_51ed8_store(u32 at, const SpriteNode *n)
 {
     DSD(at) = (u32)n->x;            DSD(at + 4u) = (u32)n->y;
@@ -42684,7 +42685,10 @@ static void n1_51ed8_run(const u32 *r, u32 mut)
     d5b_51e5c_load(r[R_EAX], &n);
     if (mut == 0u) sprite_blit_aperture(&n);
     else if (!((n.width == 0 && mut != 3u) || (n.rows == 0 && mut != 4u))) {   /* @nowidth @norows */
-        sprite_blit_at(&n, gfx_aperture());
+        SpriteNode d = n;
+        if (mut == 6u) d.clip_b = 0;                                           /* @noclipb */
+        if (mut == 7u) d.type &= ~8u;                                          /* @nomirror */
+        if (mut != 5u) sprite_blit_at(&d, gfx_aperture() + ((mut == 8u) ? 1u : 0u));   /* @nodraw @xoff */
         if (mut != 1u) n.rows -= (mut == 2u) ? n.clip_t : n.clip_b;           /* @nostore @clipt */
     }
     n1_51ed8_store(r[R_EAX], &n);
@@ -42693,6 +42697,7 @@ static void b_n1_51ed8(const u32 *r, u32 *eax) { n1_51ed8_run(r, 0u); *eax = 0u;
 #define N1_BA_MUT(name, n) \
     static void m_n1_ba_##name(const u32 *r, u32 *eax) { n1_51ed8_run(r, n); *eax = 0u; }
 N1_BA_MUT(nostore, 1u)  N1_BA_MUT(clipt, 2u)    N1_BA_MUT(nowidth, 3u)  N1_BA_MUT(norows, 4u)
+N1_BA_MUT(nodraw, 5u)   N1_BA_MUT(noclipb, 6u)  N1_BA_MUT(nomirror, 7u) N1_BA_MUT(xoff, 8u)
 /* ---- track N batch n1 bindings end ---- */
 
 /* ---- track N batch n2 bindings (record 2026-10-14-reverse-n §N.2) ---- */
@@ -58251,6 +58256,10 @@ static const binding_t k_bindings[] = {
     { "sprite_blit_aperture@clipt",      m_n1_ba_clipt, 0x00000000u },
     { "sprite_blit_aperture@nowidth",    m_n1_ba_nowidth, 0x00000000u },
     { "sprite_blit_aperture@norows",     m_n1_ba_norows, 0x00000000u },
+    { "sprite_blit_aperture@nodraw", m_n1_ba_nodraw, 0x00000000u },
+    { "sprite_blit_aperture@noclipb", m_n1_ba_noclipb, 0x00000000u },
+    { "sprite_blit_aperture@nomirror", m_n1_ba_nomirror, 0x00000000u },
+    { "sprite_blit_aperture@xoff", m_n1_ba_xoff, 0x00000000u },
     /* track N batch n2 */
     { "game_shutdown",            b_n2_1be30, 0x00000000u },
     { "game_shutdown@noshut", m_n2_1be30_noshut, 0x00000000u },

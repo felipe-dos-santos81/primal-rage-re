@@ -33502,6 +33502,41 @@ def h2_compare(case, orig, port, mask):
     rest = lambda w: {a: v for a, v in w.items() if a not in decl}
     return out + compare(dataclasses.replace(orig, writes=rest(orig.writes)),
                          dataclasses.replace(port, writes=rest(port.writes)), mask)
+
+
+# 0x51ED8's drawing cases (the N1 row): the caller's node (0x1C5E8: types 1, 2, 9, 0xA, zero clips) on the
+# screen of the machine model. The renderers the table sends it to (0x5D218 type 1, 0x58CBD type 2, 0x57F80
+# type 9) use the node as their scratch, which the port's by-value renderers do not (sprite.c PORT): +0x14
+# ends at 0 (`dec dword [ebp+0x14]; jne` 0x5D262/0x5D289, 0x57FCE/0x57FF5; 0x58CBD's loop measured) where
+# the port keeps 0x51F2F's rows - clip_b, and +0x38 = 0x140 - ECX (0x5D218..0x5D21F, 0x58CD6..0x58CDD) or
+# 0x140 + ECX (0x57F80..0x57F8B), ECX the width (0x51F26), where the port leaves the node. Those two dwords
+# are the declaration; the cases keep clip_l, clip_r and clip_t 0 (the caller's), so 0x58CBD neither
+# subtracts +0x30 from +0x14 (0x58CC0 `je`) nor changes +0x18 (0x58CD3 stores the width back).
+H2_SCREEN_ROWS = (0x3C0, 0x80, 0x500)          # the 0x1088F8 offsets of rows 1, 2 and 3: the node's y is 2
+
+
+def h2_scratch(rows, clip_b, w, typ, seed38=0x38383838):
+    """The declaration of a drawing case: the bytes of the node's +0x14 and +0x38 (seeded `rows` and
+    `seed38`) where the original's renderer and the port end apart."""
+    d = {}
+    for off, seed, o, p in ((0x14, rows, 0, rows - clip_b),
+                            (0x38, seed38, 0x140 + w if typ & 8 else 0x140 - w, seed38)):
+        for i in range(4):
+            sb, ob, pb = (seed >> 8 * i) & 0xFF, (o >> 8 * i) & 0xFF, (p >> 8 * i) & 0xFF
+            pair = (None if ob == sb else ob, None if pb == sb else pb)
+            if pair[0] != pair[1]:
+                d[N1_NODE + off + i] = pair
+    return d
+
+
+def h2_draw(cid, typ, pix, clip_b=0, w=8, rows=4):
+    """n1_blit's node (x 10, y 2) with zero clips but clip_b, its row offsets, the machine's screen seeded
+    under the four rows it can draw (x 0..31), and the renderers' scratch declared."""
+    c = n1_blit(cid, typ, w=w, rows=rows, clips=(0, 0, 0, clip_b), pix=pix)
+    p = {**c.pokes, 0x1088F8 + 4: b"".join(le32(o) for o in H2_SCREEN_ROWS)}
+    for r in range(4):
+        p[0xA0000 + H2_SCREEN_ROWS[1] + r * 320] = d5b_bytes(0x9A0 + r, 32)
+    return H2Case(cid, c.regs, p, machine=E.Machine(aperture=True), declared=h2_scratch(rows, clip_b, w, typ))
 # ---- h2 end ----
 
 
@@ -33520,8 +33555,9 @@ def h2_compare(case, orig, port, mask):
 # (sprite.c PORT). With the imm32 at 0x51F1D poked to a scratch in mem[] and the binding mapping the
 # port's host aperture onto it, the drawn pixels of the three agreed and the node's +0x14 and +0x38
 # differed (measured, record §N.1): a difference this row cannot hide, so the draw, the aperture base and
-# the live renderers are not compared here. The node is a frame local of 0x1C5E8 that it reads again only
-# at +0x1C (0x1C64F).
+# the live renderers were not compared here. The node is a frame local of 0x1C5E8 that it reads again only
+# at +0x1C (0x1C64F). Track H h2 (record 2026-10-14-reverse-h §H.3): the draw runs unpoked on the machine's
+# screen and the renderers' +0x14/+0x38 is the cases' one declared difference (H2Case, h2_draw).
 N1_NODE = 0x0010A900
 
 
@@ -33543,14 +33579,25 @@ N1_SPECS = [
     # Mask 0: 0x1C5E8 does not read EAX after the call (`mov eax,[esp+0x1c]` 0x1C64F). a0: zero width
     # (clip_b 2: the store is skipped with the draw); a1: zero rows (clip_b 1); a2: type 0xA (raw,
     # mirrored: 0x1C528 builds it), the table's `ret`, clip_b 1: +0x14 = 3; a3: type 5, a `ret` entry
-    # 0x1C5E8 does not build, with clip_t 5 and clip_b 2 (the store subtracts +0x34, not +0x30).
+    # 0x1C5E8 does not build, with clip_t 5 and clip_b 2 (the store subtracts +0x34, not +0x30). Since
+    # track H h2 (record 2026-10-14-reverse-h §H.3) every case runs on the machine's screen (a0..a3 draw
+    # nothing) and d1, d2, d9 draw the caller's three live types through their renderers, unpoked (the
+    # immediate 0xA0000 at 0x51F1B is the screen), the pixels compared byte by byte with gfx_aperture();
+    # d3 draws type 1 with clip_b 1 (three rows: the renderer's +0x14). The one declared difference is the
+    # renderers' node scratch (h2_scratch), named by its bytes and both sides' values.
     Spec("sprite_blit_aperture", 0x51ED8, [
-        n1_blit("a0", 1, w=0, clips=(0, 0, 0, 2)),
-        n1_blit("a1", 2, rows=0, clips=(0, 0, 0, 1), pix=0x00800180),
-        n1_blit("a2", 0x0A, clips=(0, 0, 0, 1), pix=0x00800180),
-        n1_blit("a3", 0x05, clips=(1, 1, 5, 2)),
-    ], allow_calls=(0x1B544, 0x51E58), eax_mask=0,
-       mutants=tuple("@" + m for m in "nostore clipt nowidth norows".split())),
+        dataclasses.replace(n1_blit("a0", 1, w=0, clips=(0, 0, 0, 2)), machine=E.Machine(aperture=True)),
+        dataclasses.replace(n1_blit("a1", 2, rows=0, clips=(0, 0, 0, 1), pix=0x00800180),
+                            machine=E.Machine(aperture=True)),
+        dataclasses.replace(n1_blit("a2", 0x0A, clips=(0, 0, 0, 1), pix=0x00800180), machine=E.Machine(aperture=True)),
+        dataclasses.replace(n1_blit("a3", 0x05, clips=(1, 1, 5, 2)), machine=E.Machine(aperture=True)),
+        h2_draw("d1", 1, 0x00800100),
+        h2_draw("d2", 2, 0x00800180),
+        h2_draw("d9", 9, 0x00800100),
+        h2_draw("d3", 1, 0x00800100, clip_b=1),
+    ], allow_calls=(0x1B544, 0x51E58, 0x5D218, 0x58CBD, 0x57F80, 0x58564, 0x5859C, 0x58D2C, 0x58D4C, 0x58D90,
+                    0x521F0, 0x5222C, 0x529A0, 0x529C4, 0x52A18), eax_mask=0,
+       mutants=tuple("@" + m for m in "nostore clipt nowidth norows nodraw noclipb nomirror xoff".split())),
 ]
 D1_SPECS += N1_SPECS
 

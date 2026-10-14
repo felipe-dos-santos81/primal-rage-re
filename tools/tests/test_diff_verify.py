@@ -30395,7 +30395,8 @@ I_CASES = [
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
 D1_CASES.extend(I_CASES)
-# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row
+# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row; track H batch h2 (record
+# 2026-10-14-reverse-h section H.3): the drawing cases d1, d2, d9, d3 and four mutants; @nostore and @clipt also in d3
 N1_MASKS = {
     "sprite_blit_aperture": 0x0,
 }   # N1_MASKS end
@@ -30404,12 +30405,20 @@ N1_KINDS = {
     "sprite_blit_aperture@clipt": {'byte'},
     "sprite_blit_aperture@nowidth": {'byte'},
     "sprite_blit_aperture@norows": {'byte'},
+    "sprite_blit_aperture@nodraw": {'aperture'},
+    "sprite_blit_aperture@noclipb": {'aperture'},
+    "sprite_blit_aperture@nomirror": {'aperture'},
+    "sprite_blit_aperture@xoff": {'aperture'},
 }   # N1_KINDS end
 N1_CASES = [
-    ("sprite_blit_aperture@nostore", ['a2', 'a3']),
-    ("sprite_blit_aperture@clipt", ['a2', 'a3']),
+    ("sprite_blit_aperture@nostore", ['a2', 'a3', 'd3']),
+    ("sprite_blit_aperture@clipt", ['a2', 'a3', 'd3']),
     ("sprite_blit_aperture@nowidth", ['a0']),
     ("sprite_blit_aperture@norows", ['a1']),
+    ("sprite_blit_aperture@nodraw", ['d1', 'd2', 'd3', 'd9']),
+    ("sprite_blit_aperture@noclipb", ['d3']),
+    ("sprite_blit_aperture@nomirror", ['a2', 'd9']),
+    ("sprite_blit_aperture@xoff", ['d1', 'd2', 'd3', 'd9']),
 ]   # N1_CASES end
 D1_MASKS.update(N1_MASKS)
 D1_KINDS.update(N1_KINDS)
@@ -31798,8 +31807,9 @@ class RealFunctionTests(unittest.TestCase):
         # of 0x1C740 (closed: 0x52106 is VERIFIED), which also closes attract_step's (0x11000 stubs 0x1C740);
         # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge. Track H batch h0: 0x1C470's
         # row runs unpoked under the machine model and gains six DAC mutants (record 2026-10-14-reverse-h §H.1).
-        # Track H batch h2: 0x52106's row runs unpoked and gains seven DAC and screen mutants (record §H.3).
-        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14853/14853 mutants detected; 1 named gaps; "
+        # Track H batch h2: 0x52106's row runs unpoked and gains seven DAC and screen mutants, and 0x51ED8's
+        # drawing cases four (record §H.3).
+        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14857/14857 mutants detected; 1 named gaps; "
                       "638/829 rows with callees closed (169 have none).", out.getvalue())
 
 
