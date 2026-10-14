@@ -44,19 +44,21 @@ function is `void`; the row's mask is 0.
 **Port.** `void actors_table_clear(void)` is `mem_fill(DS_00105F38, 0, 0x14D4u)`. `actors_reset_al`
 calls it at `0x2BBDF`'s place (it held the same `mem_fill`).
 
-**The second caller, `0x20C42`.** It is in the post-`setjmp` tail of `0x20C10`, the port's
+**The second caller, `0x20C42`: not wired.** It is in the post-`setjmp` tail of `0x20C10`, the port's
 `game_init_resume`: `0x20C37 mov [0x104b1d],dl; 0x20C3D call 0x38b70; 0x20C42 call 0x2f920; 0x20C47 xor
 eax,eax; 0x20C49 call 0x4f228; 0x20C4E mov eax,1; 0x20C53 mov ebx,0xabcd; 0x20C58 call 0x2baf4`. The
-port left out `0x38B70`, `0x2F920` and `0x2BAF4(1)` there as unobservable (record named-gaps-b §B.11:
-`0x10E80` runs `0x2BAF4(1)` again at `0x10E9C`, and nothing between the two reads what they reset).
-Task 1 wires `actors_table_clear()` at `0x20C42`'s place, between the `0x20C37` store and the `0x4F228`
-call; this supersedes §B.11's row for `0x2F920` alone. `0x38B70` and `0x2BAF4(1)` stay out, under a
-`PORT:` note at the call. The call is unobservable for the reason §B.11 gives: the grid's readers are
-the text-cell functions of `actors.c` (`text_glyph_emit`, the `text_cells_release*` family), none of
-which runs between `0x20C42` and `game_state_init`'s `actors_reset`, which clears the grid again. So no
-assertion can tell the tail with the call from the tail without it. Measured: the `PR_RESTART` driver's
-output is byte-identical before and after (it compares the frames and state words of the boot with
-those after a soft restart); `--check` and the oracles were not run by this task.
+port leaves out `0x38B70`, `0x2F920` and `0x2BAF4(1)` there as unobservable (record named-gaps-b §B.11:
+`0x10E80` runs `0x2BAF4(1)` again at `0x10E9C`, and nothing between the two reads what they reset), and
+that omission set stands: `game_init_resume` does not call `actors_table_clear()`, whose one caller in
+the port is `actors_reset_al`. Task 1 first wired the call at `0x20C42`'s place (commit `82d93467`);
+the controller reverted it (`3947c81a`) because the tail's omissions are one documented set, and the
+call alone, with `0x38B70` before it and `0x2BAF4(1)` after it still out, would have split it. What
+that commit showed is kept as evidence for §B.11: the grid's readers are the text-cell functions of
+`actors.c` (`text_glyph_emit`, the `text_cells_release*` family), none of which runs between `0x20C42`
+and `game_state_init`'s `actors_reset`, which clears the grid again, so no assertion can tell the tail
+with the call from the tail without it; and the `PR_RESTART` driver's output was byte-identical with
+the call and without it (it compares the frames and state words of the boot with those after a soft
+restart). `--check` and the oracles were not run by this task.
 
 **Row.**
 

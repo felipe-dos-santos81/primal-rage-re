@@ -33245,8 +33245,9 @@ I_SPECS = [
     # and 0x654C7, and keeps EAX and ECX: `push eax; push ecx` 0x61A70, `pop ecx; pop eax` 0x61A85) of
     # 0x14D4 zero bytes at 0x105F38. The three cases seed every byte of the range between them (t0
     # the first byte and the byte below, t2 the last byte and the byte above); t1 enters with every
-    # register dirty. Its two callers load EAX before reading it (0x2BBE8 `xor eax,eax` and 0x2BC08
-    # `mov eax,ecx` after 0x2BBDF; 0x20C47 `xor eax,eax` after 0x20C42): mask 0.
+    # register dirty. The original's two callers load EAX before reading it (0x2BBE8 `xor eax,eax`
+    # and 0x2BC08 `mov eax,ecx` after 0x2BBDF; 0x20C47 `xor eax,eax` after 0x20C42, a call the port
+    # leaves out, record named-gaps-b §B.11): mask 0.
     Spec("actors_table_clear", 0x2F920, [
         i_tc_case("t0", {}, 0, lambda i: 0xA5),
         i_tc_case("t1", D2E_DIRTY, 1, lambda i: 1 + i % 255),
