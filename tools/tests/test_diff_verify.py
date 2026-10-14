@@ -30152,12 +30152,13 @@ SI_CASES = [
 D1_MASKS.update(SI_MASKS)
 D1_KINDS.update(SI_KINDS)
 D1_CASES.extend(SI_CASES)
-# track I (record 2026-10-13-reverse-i sections I.1-I.4): 0x2F920, 0x11BCC, 0x12CD4 and 0x2F9CC as functions
+# track I (record 2026-10-13-reverse-i sections I.1-I.5): 0x2F920, 0x11BCC, 0x12CD4, 0x2F9CC and 0x1D018 as functions
 I_MASKS = {
     "actors_table_clear": 0x0,
     "game_state_timer_exit": 0x0,
     "camera_y_step": 0x0,
     "game_master_init": 0x0,
+    "sound_shutdown": 0x0,
 }   # I_MASKS end
 I_KINDS = {
     "actors_table_clear@short": {'byte'},
@@ -30228,6 +30229,38 @@ I_KINDS = {
     "game_master_init@ptrw": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
     "game_master_init@fieldw": {'byte', 'call #10 memory', 'call #8 memory', 'call #9 memory'},
     "game_master_init@nostore": {'byte', 'call #10 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@noret": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "sound_shutdown@flagw": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "sound_shutdown@noclear": {'byte', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@clearw": {'byte', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@mdigate": {'byte', 'call #0', 'call #1', 'call #10', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9'},
+    "sound_shutdown@mdiw": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5'},
+    "sound_shutdown@seqne": {'call #1', 'call #1 memory', 'call #10', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9', 'call #9 memory'},
+    "sound_shutdown@seqal": {'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6'},
+    "sound_shutdown@nostopseq": {'call #1', 'call #1 memory', 'call #10', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9', 'call #9 memory'},
+    "sound_shutdown@noc4": {'byte', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@noc0": {'byte', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@c4w": {'byte', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@c0w": {'byte', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@c0always": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
+    "sound_shutdown@diggate": {'byte', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "sound_shutdown@digw": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8'},
+    "sound_shutdown@smpeq": {'call #1', 'call #1 memory', 'call #10', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #9'},
+    "sound_shutdown@smpal": {'call #1', 'call #1 memory', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7', 'call #8'},
+    "sound_shutdown@smp4": {'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "sound_shutdown@smpgt": {'call #2', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "sound_shutdown@nostopsmp": {'call #1', 'call #1 memory', 'call #10', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #9'},
+    "sound_shutdown@three": {'byte', 'call #10', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9'},
+    "sound_shutdown@five": {'byte', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #5', 'call #5 memory', 'call #6', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "sound_shutdown@nohandle": {'byte', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@handlew": {'byte', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@handle4": {'byte', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@early": {'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@nodig": {'byte', 'call #10 memory', 'call #5 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@digfirst": {'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "sound_shutdown@noshut": {'call #1', 'call #10', 'call #5', 'call #8', 'call #9'},
+    "sound_shutdown@shutfirst": {'call #0', 'call #1', 'call #1 memory', 'call #10', 'call #10 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "sound_shutdown@order": {'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
 }   # I_KINDS end
 I_CASES = [
     ("actors_table_clear@short", ['t2']),
@@ -30298,6 +30331,38 @@ I_CASES = [
     ("game_master_init@ptrw", ['m0', 'm1', 'm2', 'm3']),
     ("game_master_init@fieldw", ['m0', 'm1', 'm2', 'm3']),
     ("game_master_init@nostore", ['m0', 'm1', 'm2', 'm3']),
+    ("sound_shutdown@noret", ['s0']),
+    ("sound_shutdown@flagw", ['s0']),
+    ("sound_shutdown@noclear", ['s1', 's2', 's3', 's4', 's5']),
+    ("sound_shutdown@clearw", ['s1', 's2', 's3', 's4', 's5']),
+    ("sound_shutdown@mdigate", ['s3']),
+    ("sound_shutdown@mdiw", ['s2', 's4']),
+    ("sound_shutdown@seqne", ['s1', 's2', 's4', 's5']),
+    ("sound_shutdown@seqal", ['s2']),
+    ("sound_shutdown@nostopseq", ['s1']),
+    ("sound_shutdown@noc4", ['s1', 's2', 's4', 's5']),
+    ("sound_shutdown@noc0", ['s1', 's2', 's4', 's5']),
+    ("sound_shutdown@c4w", ['s1', 's2', 's4', 's5']),
+    ("sound_shutdown@c0w", ['s1', 's2', 's4', 's5']),
+    ("sound_shutdown@c0always", ['s3']),
+    ("sound_shutdown@diggate", ['s4']),
+    ("sound_shutdown@digw", ['s2', 's3']),
+    ("sound_shutdown@smpeq", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@smpal", ['s3']),
+    ("sound_shutdown@smp4", ['s3', 's5']),
+    ("sound_shutdown@smpgt", ['s5']),
+    ("sound_shutdown@nostopsmp", ['s1', 's3', 's5']),
+    ("sound_shutdown@three", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@five", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@nohandle", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@handlew", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@handle4", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@early", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@nodig", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@digfirst", ['s1', 's2', 's3', 's5']),
+    ("sound_shutdown@noshut", ['s1', 's2', 's3', 's4', 's5']),
+    ("sound_shutdown@shutfirst", ['s1', 's2', 's3', 's4', 's5']),
+    ("sound_shutdown@order", ['s1', 's2', 's5']),
 ]   # I_CASES end
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
@@ -31367,8 +31432,8 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
-        # I (record 2026-10-13-reverse-i section I.4): the stubs the 0x2F9CC row adds
-        0x1AFE8: ("edi", "ebp"), 0x2D6F8: (), 0x2C9B8: (),
+        # I (record 2026-10-13-reverse-i sections I.4 and I.5): the stubs the 0x2F9CC and 0x1D018 rows add
+        0x1AFE8: ("edi", "ebp"), 0x2D6F8: (), 0x2C9B8: (), 0x5D86A: ("ebx", "ecx", "edx"),
         # I end
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
@@ -31631,8 +31696,8 @@ class RealFunctionTests(unittest.TestCase):
         # 0x2F920 and 0x11BCC, open on the runtime memset 0x61A70 and the ret-only 0x29D60, and the
         # row of 0x2F9CC, closed: each of its ten callees has a VERIFIED row); the 169 without are
         # counted apart (0x12CD4's row is one)
-        self.assertIn("diff-verify: 994/994 functions VERIFIED; 14793/14793 mutants detected; 1 named gaps; "
-                      "636/825 rows with callees closed (169 have none).", out.getvalue())
+        self.assertIn("diff-verify: 995/995 functions VERIFIED; 14825/14825 mutants detected; 1 named gaps; "
+                      "636/826 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

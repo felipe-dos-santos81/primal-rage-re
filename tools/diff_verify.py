@@ -33257,6 +33257,25 @@ def i_mi_case(cid, regs, field, **eax):
     return Case(cid, regs, {0x00107408: le32(0x08080808) + le32(0xC0C0C0C0) + le32(0xEDEDEDED) + le32(0x14141414)}, se)
 
 
+# 0x1D018's callees: the five library wrappers, stubbed through ail.c's seams. A wrapper's seam passes no
+# argument (the handle the raw pushes is a mem[] dword, the port's a host pointer: record C3b §C3b.5), so
+# the calls record none. 0x5D86A had no stub before this row.
+I_SD_SHUT = E.Call(0x5D86A, (), clobbers=("ebx", "ecx", "edx"))
+I_SD_CALLS = (E.Call(0x5DEED, (), eax=0), E.Call(0x5DEAF, (), clobbers=("ebx", "ecx", "edx")),
+              E.Call(0x5DD03, (), eax=0), E.Call(0x5DC8B, (), clobbers=("ebx", "ecx", "edx")), I_SD_SHUT)
+
+
+def i_sd_case(cid, regs, flag, mdi, dig, seq=4, smp=2, shut=0):
+    """0x1D018: the flag byte 0xA2CB1 between two seeded bytes; the dword below the slots, the four
+    0x18-byte slot records (a handle that differs per slot, every other byte seeded non-zero), then
+    the dwords 0x1028C0 (the sequence handle), 0x1028C4 (`mdi`), 0x1028C8 (`dig`) and 0x1028CC. The
+    stubs of 0x5DEED, 0x5DD03 and 0x5D86A answer `seq`, `smp` and `shut`."""
+    slots = b"".join(le32(0x0010C000 + k * 0x18) + bytes(0x64 + k * 0x18 + i for i in range(0x14)) for k in range(4))
+    buf = le32(0x5C5C5C5C) + slots + le32(0x0010B0C0) + le32(mdi) + le32(dig) + le32(0xCCCCCCCC)
+    return Case(cid, regs, {0x000A2CB0: bytes([0xB0, flag, 0xB2]), **d1d_chunks(0x0010285C, buf)},
+                {0x5DEED: seq, 0x5DD03: smp, 0x5D86A: shut})
+
+
 I_SPECS = [
     # 0x2F920 actors_table_clear: no argument. `push ebx; push edx; mov ebx,0x14d4; mov eax,0x105f38;
     # xor edx,edx; call 0x61a70; pop edx; pop ebx; ret`: the runtime memset 0x61A70 (it runs 0x65490
@@ -33335,6 +33354,33 @@ I_SPECS = [
                                       "novolu novols swap12 swap34 swap56 ptrearly ptrlate fieldearly storelate "
                                       "gatelate volswap reset0 desc a2 a3 field29 gatearg volu2 vols1 nomask mask8 "
                                       "mask1 ptrval ptrw fieldw nostore".split())),
+    # 0x1D018 sound_shutdown: no argument. The flag byte 0xA2CB1 zero returns at once (`je` 0x1D023), else
+    # it is cleared (0x1D02B). With the dword 0x1028C4: 0x5DEED and, when its whole EAX is 4 (`cmp eax,4`
+    # 0x1D049), 0x5DEAF; then 0x1028C4 and 0x1028C0 = 0. With the dword 0x1028C8: for each of the four
+    # slots 0x5DD03 and, when its whole EAX is not 2 (`cmp eax,2` 0x1D085), 0x5DC8B, then the slot's
+    # handle dword = 0 (0x1D09E, before the next slot's status call); then 0x1028C8 = 0 (0x1D0A9). Then
+    # 0x5D86A. The handle each of the four calls takes ([0x1028C0] at 0x1D03A and 0x1D04E, [esi+0x102860]
+    # at 0x1D076 and 0x1D08A, pushed and popped by the caller) is not compared: the port passes its host
+    # objects. s0: the flag clear between two set bytes, every register dirty, both drivers set: nothing.
+    # s1: both drivers, every status playing. s2: a flag of 0x80, driver dwords whose low word is zero,
+    # the statuses 0x104 and 2 (no stop). s3: no MDI driver (0x1028C0 is kept), a DIG driver dword whose
+    # low three bytes are zero, the status 0x102 (stopped: the whole EAX). s4: an MDI driver dword whose
+    # low three bytes are zero, the status 3, no DIG driver (the handles are kept). s5: the statuses 2
+    # (the sequence is not stopped) and 0 (the slots are). The stub of 0x5D86A answers a value per case
+    # that nothing reads; the function's EAX is that or, in s0, the caller's: the one caller loads EAX
+    # before reading it on both paths (0x1BE40 `je`: 0x1BE42 `mov eax,edx`, 0x1BEAB `mov eax,[0x101504]`):
+    # mask 0.
+    Spec("sound_shutdown", 0x1D018, [
+        i_sd_case("s0", D2E_DIRTY, 0x00, 0x0010B100, 0x0010B200),
+        i_sd_case("s1", {}, 0x01, 0x0010B100, 0x0010B200, seq=4, smp=4, shut=0x12345678),
+        i_sd_case("s2", {"esi": 0x18}, 0x80, 0x00010000, 0x00010000, seq=0x104, smp=2),
+        i_sd_case("s3", {}, 0x01, 0, 0x01000000, smp=0x102, shut=0xFFFFFFFF),
+        i_sd_case("s4", D2E_DIRTY, 0x01, 0x01000000, 0, seq=3, smp=4),
+        i_sd_case("s5", {}, 0xFF, 0x0010B100, 0x0010B200, seq=2, smp=0, shut=1),
+    ], calls=I_SD_CALLS, eax_mask=0,
+       mutants=tuple("@" + m for m in "noret flagw noclear clearw mdigate mdiw seqne seqal nostopseq noc4 noc0 c4w "
+                                      "c0w c0always diggate digw smpeq smpal smp4 smpgt nostopsmp three five "
+                                      "nohandle handlew handle4 early nodig digfirst noshut shutfirst order".split())),
 ]
 D1_SPECS += I_SPECS
 SPECS = [

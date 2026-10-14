@@ -42570,6 +42570,71 @@ I_MI_MUT(mask8, 31u)     I_MI_MUT(mask1, 32u)     I_MI_MUT(ptrval, 33u)   I_MI_M
 I_MI_MUT(nostore, 36u)
 /* ---- track I task 2 bindings end ---- */
 
+/* 0x1D018 sound_shutdown: no argument; the five library calls are stubs (ail.c's seams, which
+ * fire before the handle is read, so the mutants pass the slot's host handle or none). One
+ * restatement with one choice flipped per mutant number. No caller reads EAX (0x1BE42 `mov
+ * eax,edx` or 0x1BEAB `mov eax,[0x101504]` after 0x1BE33). */
+static void i_1d018_slots(u32 mut)
+{
+    const u32 n = (mut == 22u) ? 3u : (mut == 23u) ? 5u : 4u;                    /* @three @five */
+    if (mut == 29u) DSD(DS_001028C8) = 0u;                                       /* @digfirst */
+    for (u32 k = 0u; k < n; k++) {
+        const u32 h = DS_00102860 + k * 0x18u;
+        s32 st;
+        if (mut == 27u) DSD(h) = 0u;                                             /* @early */
+        st = AIL_sample_status(sound_slot_handle(k));
+        if ((mut == 17u) ? st == 2                                               /* @smpeq */
+          : (mut == 18u) ? (u8)st != 2u                                          /* @smpal */
+          : (mut == 19u) ? st == 4                                               /* @smp4 */
+          : (mut == 20u) ? st > 2                                                /* @smpgt */
+          : (mut == 21u) ? 0                                                     /* @nostopsmp */
+          : st != 2)
+            AIL_stop_sample(sound_slot_handle(k));
+        if (mut == 25u) DSW(h) = 0u;                                             /* @handlew */
+        else if (mut == 26u) DSD(h + 4u) = 0u;                                   /* @handle4 */
+        else if (mut != 24u && mut != 27u) DSD(h) = 0u;                          /* @nohandle */
+    }
+    if (mut != 28u && mut != 29u) DSD(DS_001028C8) = 0u;                         /* @nodig */
+}
+static void i_1d018_core(u32 mut)
+{
+    if (((mut == 2u) ? (u32)DSW(DS_000A2CB1) : (u32)DSB(DS_000A2CB1)) == 0u      /* @flagw */
+        && mut != 1u) return;                                                    /* @noret */
+    if (mut == 4u) DSW(DS_000A2CB1) = 0u;                                        /* @clearw */
+    else if (mut != 3u) DSB(DS_000A2CB1) = 0u;                                   /* @noclear */
+    if (mut == 31u) AIL_shutdown();                                              /* @shutfirst */
+    if (mut == 32u && DSD(DS_001028C8) != 0u) i_1d018_slots(0u);                 /* @order */
+    if (mut == 5u || ((mut == 6u) ? (u32)DSW(DS_001028C4) : DSD(DS_001028C4)) != 0u) {   /* @mdigate @mdiw */
+        const s32 st = AIL_sequence_status(NULL);
+        if ((mut == 7u) ? st != 4                                                /* @seqne */
+          : (mut == 8u) ? (u8)st == 4u                                           /* @seqal */
+          : (mut == 9u) ? 0                                                      /* @nostopseq */
+          : st == 4)
+            AIL_stop_sequence(NULL);
+        if (mut == 12u) DSW(DS_001028C4) = 0u;                                   /* @c4w */
+        else if (mut != 10u) DSD(DS_001028C4) = 0u;                              /* @noc4 */
+        if (mut == 13u) DSW(DS_001028C0) = 0u;                                   /* @c0w */
+        else if (mut != 11u) DSD(DS_001028C0) = 0u;                              /* @noc0 */
+    } else if (mut == 14u) {
+        DSD(DS_001028C0) = 0u;                                                   /* @c0always */
+    }
+    if (mut != 32u
+        && (mut == 15u || ((mut == 16u) ? (u32)DSW(DS_001028C8) : DSD(DS_001028C8)) != 0u))   /* @diggate @digw */
+        i_1d018_slots(mut);
+    if (mut != 30u && mut != 31u) AIL_shutdown();                                /* @noshut */
+}
+static void b_i_1d018(const u32 *r, u32 *eax) { (void)r; sound_shutdown(); *eax = 0u; }
+#define I_SD_MUT(name, n) \
+    static void m_i_sd_##name(const u32 *r, u32 *eax) { (void)r; i_1d018_core(n); *eax = 0u; }
+I_SD_MUT(noret, 1u)     I_SD_MUT(flagw, 2u)     I_SD_MUT(noclear, 3u)   I_SD_MUT(clearw, 4u)    I_SD_MUT(mdigate, 5u)
+I_SD_MUT(mdiw, 6u)      I_SD_MUT(seqne, 7u)     I_SD_MUT(seqal, 8u)     I_SD_MUT(nostopseq, 9u) I_SD_MUT(noc4, 10u)
+I_SD_MUT(noc0, 11u)     I_SD_MUT(c4w, 12u)      I_SD_MUT(c0w, 13u)      I_SD_MUT(c0always, 14u) I_SD_MUT(diggate, 15u)
+I_SD_MUT(digw, 16u)     I_SD_MUT(smpeq, 17u)    I_SD_MUT(smpal, 18u)    I_SD_MUT(smp4, 19u)     I_SD_MUT(smpgt, 20u)
+I_SD_MUT(nostopsmp, 21u) I_SD_MUT(three, 22u)   I_SD_MUT(five, 23u)     I_SD_MUT(nohandle, 24u) I_SD_MUT(handlew, 25u)
+I_SD_MUT(handle4, 26u)  I_SD_MUT(early, 27u)    I_SD_MUT(nodig, 28u)    I_SD_MUT(digfirst, 29u) I_SD_MUT(noshut, 30u)
+I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
+/* ---- track I task 3 bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -58004,6 +58069,39 @@ static const binding_t k_bindings[] = {
     { "game_master_init@ptrw", m_i_mi_ptrw, 0x00000000u },
     { "game_master_init@fieldw", m_i_mi_fieldw, 0x00000000u },
     { "game_master_init@nostore", m_i_mi_nostore, 0x00000000u },
+    { "sound_shutdown",                  b_i_1d018, 0x00000000u },
+    { "sound_shutdown@noret", m_i_sd_noret, 0x00000000u },
+    { "sound_shutdown@flagw", m_i_sd_flagw, 0x00000000u },
+    { "sound_shutdown@noclear", m_i_sd_noclear, 0x00000000u },
+    { "sound_shutdown@clearw", m_i_sd_clearw, 0x00000000u },
+    { "sound_shutdown@mdigate", m_i_sd_mdigate, 0x00000000u },
+    { "sound_shutdown@mdiw", m_i_sd_mdiw, 0x00000000u },
+    { "sound_shutdown@seqne", m_i_sd_seqne, 0x00000000u },
+    { "sound_shutdown@seqal", m_i_sd_seqal, 0x00000000u },
+    { "sound_shutdown@nostopseq", m_i_sd_nostopseq, 0x00000000u },
+    { "sound_shutdown@noc4", m_i_sd_noc4, 0x00000000u },
+    { "sound_shutdown@noc0", m_i_sd_noc0, 0x00000000u },
+    { "sound_shutdown@c4w", m_i_sd_c4w, 0x00000000u },
+    { "sound_shutdown@c0w", m_i_sd_c0w, 0x00000000u },
+    { "sound_shutdown@c0always", m_i_sd_c0always, 0x00000000u },
+    { "sound_shutdown@diggate", m_i_sd_diggate, 0x00000000u },
+    { "sound_shutdown@digw", m_i_sd_digw, 0x00000000u },
+    { "sound_shutdown@smpeq", m_i_sd_smpeq, 0x00000000u },
+    { "sound_shutdown@smpal", m_i_sd_smpal, 0x00000000u },
+    { "sound_shutdown@smp4", m_i_sd_smp4, 0x00000000u },
+    { "sound_shutdown@smpgt", m_i_sd_smpgt, 0x00000000u },
+    { "sound_shutdown@nostopsmp", m_i_sd_nostopsmp, 0x00000000u },
+    { "sound_shutdown@three", m_i_sd_three, 0x00000000u },
+    { "sound_shutdown@five", m_i_sd_five, 0x00000000u },
+    { "sound_shutdown@nohandle", m_i_sd_nohandle, 0x00000000u },
+    { "sound_shutdown@handlew", m_i_sd_handlew, 0x00000000u },
+    { "sound_shutdown@handle4", m_i_sd_handle4, 0x00000000u },
+    { "sound_shutdown@early", m_i_sd_early, 0x00000000u },
+    { "sound_shutdown@nodig", m_i_sd_nodig, 0x00000000u },
+    { "sound_shutdown@digfirst", m_i_sd_digfirst, 0x00000000u },
+    { "sound_shutdown@noshut", m_i_sd_noshut, 0x00000000u },
+    { "sound_shutdown@shutfirst", m_i_sd_shutfirst, 0x00000000u },
+    { "sound_shutdown@order", m_i_sd_order, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
