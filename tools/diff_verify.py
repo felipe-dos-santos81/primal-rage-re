@@ -21639,7 +21639,7 @@ D3E_SPECS = [
     # 0x1318D) gives the target 0, else `fild` d = x - 0x1400, `fstp dword` (exact: d < 2^24),
     # `fld; fld st(0); fmul dword [0x804a8]; fmulp` = d * (d * C) at the control word's 53 bits and
     # 0x61A4C (`frndint` under a control word whose high byte is 0x1F: chop), `fistp`. Then 0x12CD4
-    # (its one caller is 0x131CB: run on the original side, inlined in the port): snap when
+    # (its one caller is 0x131CB: run on the original side; the port's camera_y_step, its own row): snap when
     # |target - cam| <= 0x100 (`jg` 0x12CF3), else step 0x100 toward it, plus the dword 0xF0AF2
     # `sar 16` (the shake word 0xF0AF4, signed). Then the cap `[0x9AF28 + word[0x104AFC]*2] sar 16`
     # (the index zero-extended, `xor eax,eax; mov ax,..` 0x131D0), stored when below the camera y
@@ -33231,6 +33231,14 @@ def i_te_case(cid, regs, state, nxt, stub=None):
                                                                    0x6E6E))}, stub or {})
 
 
+def i_cs_case(cid, cam, target, shake=0x0003):
+    """0x12CD4: EAX = the target; the camera block (y = cam, the shake word 0xF0AF4; the x dword's high
+    word 0xC1C2 is the low word of the dword 0xF0AF2) and the dword before it."""
+    return Case(cid, {"eax": target & 0xFFFFFFFF}, {**d1h_cam(y=cam & 0xFFFFFFFF, shake=shake),
+                                                    0x000F0AE8: le32(0xE8E9EAEB)})
+
+
+I_C = 0x0001FF80                                # a camera y whose 0x100 step up carries into the high word
 I_SPECS = [
     # 0x2F920 actors_table_clear: no argument. `push ebx; push edx; mov ebx,0x14d4; mov eax,0x105f38;
     # xor edx,edx; call 0x61a70; pop edx; pop ebx; ret`: the runtime memset 0x61A70 (it runs 0x65490
@@ -33257,6 +33265,34 @@ I_SPECS = [
     ], allow_calls=(0x29D60,), calls=(VOICE,), eax_mask=0,
        mutants=tuple("@" + m for m in "nob1b nob15 b19 b1bw b15w swap nostate stated stateb voice0 novoice "
                                       "voicefirst".split())),
+    # 0x12CD4 camera_y_step: EAX = the target. diff = target - [0xF0AEC] (`sub` 0x12CDF, wrapping);
+    # its magnitude (`neg ecx` 0x12CE7 when negative) at or below 0x100 (`jg` 0x12CF3, signed) takes
+    # the target, else a positive diff (`jle` 0x12CFB) adds 0x100 and the others subtract it; then
+    # the dword 0xF0AF2 `sar 16` is added and the dword 0xF0AEC stored. n0..n4: the snap at 0, +-0xFF
+    # and +-0x100 (a snap at exactly 0x100 is what a step gives too). u0/d0: +-0x101, the first
+    # step. u1/d1: far, with a positive and a negative offset; w0: the offset 0x8000. m0: the
+    # difference 0x80000000, which `neg` leaves negative, so the signed `jg` is not taken and the
+    # camera takes the target. m1: a step up that wraps past 0x7FFFFFFF. m2: a step down that wraps
+    # below 0x80000000. m3: the difference 0x80000001, magnitude 0x7FFFFFFF, a step down from 0.
+    # Its one caller clears EAX at once (0x131D0 `xor eax,eax` after 0x131CB): mask 0.
+    Spec("camera_y_step", 0x12CD4, [
+        i_cs_case("n0", I_C, I_C),
+        i_cs_case("n1", I_C, I_C + 0xFF),
+        i_cs_case("n2", I_C, I_C - 0xFF),
+        i_cs_case("n3", I_C, I_C + 0x100),
+        i_cs_case("n4", I_C, I_C - 0x100),
+        i_cs_case("u0", I_C, I_C + 0x101),
+        i_cs_case("d0", I_C, I_C - 0x101),
+        i_cs_case("u1", I_C, I_C + 0x5000, shake=0x0030),
+        i_cs_case("d1", I_C, I_C - 0x5000, shake=0xFFF0),
+        i_cs_case("w0", I_C, I_C + 0x40, shake=0x8000),
+        i_cs_case("m0", 0, 0x80000000),
+        i_cs_case("m1", 0x7FFFFF80, 0x80000200),
+        i_cs_case("m2", 0x80000080, 0x7FFFFE00),
+        i_cs_case("m3", 0, 0x80000001),
+    ], eax_mask=0,
+       mutants=tuple("@" + m for m in "diffrev noabs snapwide snapnarrow unsigned nosnap dir step nooff shr lo "
+                                      "storew nostore argw camw".split())),
 ]
 D1_SPECS += I_SPECS
 SPECS = [

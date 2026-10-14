@@ -30156,6 +30156,7 @@ D1_CASES.extend(SI_CASES)
 I_MASKS = {
     "actors_table_clear": 0x0,
     "game_state_timer_exit": 0x0,
+    "camera_y_step": 0x0,
 }   # I_MASKS end
 I_KINDS = {
     "actors_table_clear@short": {'byte'},
@@ -30175,6 +30176,21 @@ I_KINDS = {
     "game_state_timer_exit@voice0": {'call #0'},
     "game_state_timer_exit@novoice": {'call #0'},
     "game_state_timer_exit@voicefirst": {'call #0 memory'},
+    "camera_y_step@diffrev": {'byte'},
+    "camera_y_step@noabs": {'byte'},
+    "camera_y_step@snapwide": {'byte'},
+    "camera_y_step@snapnarrow": {'byte'},
+    "camera_y_step@unsigned": {'byte'},
+    "camera_y_step@nosnap": {'byte'},
+    "camera_y_step@dir": {'byte'},
+    "camera_y_step@step": {'byte'},
+    "camera_y_step@nooff": {'byte'},
+    "camera_y_step@shr": {'byte'},
+    "camera_y_step@lo": {'byte'},
+    "camera_y_step@storew": {'byte'},
+    "camera_y_step@nostore": {'byte'},
+    "camera_y_step@argw": {'byte'},
+    "camera_y_step@camw": {'byte'},
 }   # I_KINDS end
 I_CASES = [
     ("actors_table_clear@short", ['t2']),
@@ -30194,6 +30210,21 @@ I_CASES = [
     ("game_state_timer_exit@voice0", ['e0', 'e1']),
     ("game_state_timer_exit@novoice", ['e0', 'e1']),
     ("game_state_timer_exit@voicefirst", ['e0', 'e1']),
+    ("camera_y_step@diffrev", ['d0', 'd1', 'm1', 'm2', 'm3', 'u0', 'u1']),
+    ("camera_y_step@noabs", ['d0', 'd1', 'm2', 'm3']),
+    ("camera_y_step@snapwide", ['d0', 'u0']),
+    ("camera_y_step@snapnarrow", ['n1', 'n2']),
+    ("camera_y_step@unsigned", ['m0']),
+    ("camera_y_step@nosnap", ['m0', 'n0', 'n1', 'n2', 'w0']),
+    ("camera_y_step@dir", ['d0', 'd1', 'm1', 'm2', 'm3', 'u0', 'u1']),
+    ("camera_y_step@step", ['d0', 'd1', 'm1', 'm2', 'm3', 'u0', 'u1']),
+    ("camera_y_step@nooff", ['d0', 'd1', 'm0', 'm1', 'm2', 'm3', 'n0', 'n1', 'n2', 'n3', 'n4', 'u0', 'u1', 'w0']),
+    ("camera_y_step@shr", ['d1', 'w0']),
+    ("camera_y_step@lo", ['d0', 'd1', 'm0', 'm1', 'm2', 'm3', 'n0', 'n1', 'n2', 'n3', 'n4', 'u0', 'u1', 'w0']),
+    ("camera_y_step@storew", ['m0', 'm1', 'm2', 'm3', 'n1', 'n3', 'u0', 'u1']),
+    ("camera_y_step@nostore", ['d0', 'd1', 'm0', 'm1', 'm2', 'm3', 'n0', 'n1', 'n2', 'n3', 'n4', 'u0', 'u1', 'w0']),
+    ("camera_y_step@argw", ['m0', 'm1', 'm3', 'n0', 'n1', 'n2', 'n3', 'u0', 'u1', 'w0']),
+    ("camera_y_step@camw", ['d0', 'd1', 'm1', 'm2', 'n0', 'n1', 'n2', 'n3', 'n4', 'u0', 'u1', 'w0']),
 ]   # I_CASES end
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
@@ -31520,11 +31551,11 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (824 after track I's 0x2F920 and 0x11BCC
-        # rows, open on the runtime memset 0x61A70 and the ret-only 0x29D60); the 168 without are counted
-        # apart
-        self.assertIn("diff-verify: 992/992 functions VERIFIED; 14742/14742 mutants detected; 1 named gaps; "
-                      "635/824 rows with callees closed (168 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (824 after track I task 1: the rows of
+        # 0x2F920 and 0x11BCC, open on the runtime memset 0x61A70 and the ret-only 0x29D60); the 169
+        # without are counted apart (0x12CD4's row is one)
+        self.assertIn("diff-verify: 993/993 functions VERIFIED; 14757/14757 mutants detected; 1 named gaps; "
+                      "635/824 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

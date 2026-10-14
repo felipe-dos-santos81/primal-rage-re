@@ -6,6 +6,7 @@
 
 #include "game/flow.h"
 #include "game/actors.h"
+#include "game/camera.h"
 #include "game/rng.h"
 #include "host.h"
 #include "mem.h"
@@ -4940,6 +4941,7 @@ int test_run_clock(void)
  * game_state_step. */
 #define IF_GRID      DS_00105F38                /* 0x2F927 */
 #define IF_GRID_LEN  0x14D4u                    /* 0x2F922 */
+#define IF_CAM_OFF   (DS_000F0AF4 - 2u)         /* the dword 0x12D03/0x12D1D read */
 int test_inlined_functions(void)
 {
     int before = g_failures;
@@ -4976,6 +4978,30 @@ int test_inlined_functions(void)
               "0x11BCE/0x11BD4: the bytes 0x104B1B and 0x104B15 alone are cleared");
         for (u32 i = 0u; i < 7u; i++) bad_w += (DSW(DS_000F0A62 + i * 2u) != want_w[i]);
         CHECK_EQ_INT(bad_w, 0);                        /* 0x11BE0: a word, from 0xF0A6C */
+    }
+
+    /* step — 0x12CD4: a difference of magnitude 0x100 or less snaps (`jg`
+     * 0x12CF3), a larger one steps 0x100 towards the target (0x12CFD up,
+     * 0x12D17 down, `jle` 0x12CFB), then the dword 0xF0AF2 `sar 16` is added
+     * (0x12D08/0x12D22). The last row is the difference 0x80000000: `neg ecx`
+     * (0x12CE7) leaves it negative, so the signed `jg` is not taken and the
+     * camera takes the target. */
+    {
+        static const struct { u32 cam, off, target, want; } st[] = {
+            { 0x1000u, 0x00030000u, 0x1100u, 0x1103u },
+            { 0x1000u, 0x00030000u, 0x1101u, 0x1103u },
+            { 0x1000u, 0x00030000u, 0x0F00u, 0x0F03u },
+            { 0x1000u, 0x00030000u, 0x0EFFu, 0x0F03u },
+            { 0x1000u, 0x00030000u, 0x1090u, 0x1093u },
+            { 0x1000u, 0xFFFE0000u, 0x1000u, 0x0FFEu },
+            { 0x0000u, 0x00030000u, 0x80000000u, 0x80000003u },
+        };
+        for (u32 i = 0u; i < sizeof st / sizeof st[0]; i++) {
+            DSD(DS_000F0AEC) = st[i].cam;
+            DSD(IF_CAM_OFF) = st[i].off;
+            camera_y_step((s32)st[i].target);
+            CHECK_EQ_INT((long)DSD(DS_000F0AEC), (long)st[i].want);
+        }
     }
 
     tf_voice_put();

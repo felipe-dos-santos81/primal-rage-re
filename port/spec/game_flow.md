@@ -439,7 +439,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x1324C` is **dormant**: no shipped store sets `DS_00104AE8` bit 0, so it never
   runs; it is registered only so the existing update-table dispatch reaches it if
   bit 0 is ever set.
-  **Ported:** `0x12CD4` (the camera-y stepper, inlined into `camera_y_clamp`),
+  **Ported:** `0x12CD4` (the camera-y stepper, `camera_y_step`, called by `camera_y_clamp`),
   `0x1317C` (the camera-y clamp, with its `0x131F8`/`0x13224` tails), `0x13290`
   (mode-2 two-player centering), `0x1333C` (mode-3 one-player centering), the
   `0x12D48` dispatcher (modes `0x12DF0`/`0x12E3C`) and `0x12DA8`

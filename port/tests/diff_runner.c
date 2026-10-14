@@ -30197,7 +30197,7 @@ D3D_KEY_MUT(swap, 5u)   D3D_KEY_MUT(tick, 6u)
 
 /* 0x1317C camera_y_clamp: no argument. x = the dword 0x1078F2 `sar 16` (0x13185); above 0x1400 the
  * target is d * (d * C) at the x87's 53 bits (0x131AC..0x131B8), truncated by 0x61A4C; then the
- * 0x12CD4 stepper (run on the original side, inlined in the port) and the cap `[0x9AF28 +
+ * 0x12CD4 stepper (run on the original side; the port's camera_y_step) and the cap `[0x9AF28 +
  * word[0x104AFC]*2] sar 16` against the stored camera y (0x131D0..0x131EC). One restatement with
  * one choice flipped per mutant number. */
 static u32 d3e_1317c_core(u32 mut)
@@ -42483,6 +42483,36 @@ I_TE_MUT(nob1b, 1u)  I_TE_MUT(nob15, 2u)   I_TE_MUT(b19, 3u)     I_TE_MUT(b1bw, 
 I_TE_MUT(swap, 6u)   I_TE_MUT(nostate, 7u) I_TE_MUT(stated, 8u)  I_TE_MUT(stateb, 9u)  I_TE_MUT(voice0, 10u)
 I_TE_MUT(novoice, 11u) I_TE_MUT(voicefirst, 12u)
 
+/* 0x12CD4 camera_y_step: EAX = the target. One restatement with one choice flipped per mutant
+ * number. No caller reads EAX (0x131D0 `xor eax,eax`). */
+static void i_12cd4_core(u32 target, u32 mut)
+{
+    u32 cam = (mut == 16u) ? (u32)DSW(DS_000F0AEC) : DSD(DS_000F0AEC);       /* @camw */
+    if (mut == 15u) target &= 0xFFFFu;                                       /* @argw */
+    s32 diff = (mut == 1u) ? (s32)(cam - target) : (s32)(target - cam);      /* @diffrev */
+    s32 mag = (diff < 0 && mut != 2u) ? (s32)(0u - (u32)diff) : diff;        /* @noabs */
+    int snap = (mut == 3u) ? (mag <= 0x101)                                  /* @snapwide */
+             : (mut == 4u) ? (mag <= 0xFE)                                   /* @snapnarrow */
+             : (mut == 5u) ? ((u32)mag <= 0x100u)                            /* @unsigned */
+             : (mut == 6u) ? 0                                               /* @nosnap */
+             : (mag <= 0x100);
+    const u32 st = (mut == 8u) ? 0x80u : 0x100u;                             /* @step */
+    if (snap) cam = target;
+    else if ((mut == 7u) ? diff < 0 : diff > 0) cam += st;                   /* @dir */
+    else cam -= st;
+    if (mut == 9u) { }                                                       /* @nooff */
+    else if (mut == 10u) cam += (u32)DSW(DS_000F0AF4);                       /* @shr */
+    else if (mut == 11u) cam += (u32)(s32)(s16)DSW(DS_000F0AF4 - 2u);        /* @lo */
+    else cam += (u32)(s32)(s16)DSW(DS_000F0AF4);
+    if (mut == 12u) DSW(DS_000F0AEC) = (u16)cam;                             /* @storew */
+    else if (mut != 13u) DSD(DS_000F0AEC) = cam;                             /* @nostore */
+}
+static void b_i_12cd4(const u32 *r, u32 *eax) { camera_y_step((s32)r[R_EAX]); *eax = 0u; }
+#define I_CS_MUT(name, n) \
+    static void m_i_cs_##name(const u32 *r, u32 *eax) { i_12cd4_core(r[R_EAX], n); *eax = 0u; }
+I_CS_MUT(diffrev, 1u)  I_CS_MUT(noabs, 2u)   I_CS_MUT(snapwide, 3u) I_CS_MUT(snapnarrow, 4u) I_CS_MUT(unsigned, 5u)
+I_CS_MUT(nosnap, 6u)   I_CS_MUT(dir, 7u)     I_CS_MUT(step, 8u)     I_CS_MUT(nooff, 9u)      I_CS_MUT(shr, 10u)
+I_CS_MUT(lo, 11u)      I_CS_MUT(storew, 12u) I_CS_MUT(nostore, 13u) I_CS_MUT(argw, 15u)      I_CS_MUT(camw, 16u)
 /* ---- track I task 1 bindings end ---- */
 
 static const binding_t k_bindings[] = {
@@ -57866,6 +57896,22 @@ static const binding_t k_bindings[] = {
     { "game_state_timer_exit@voice0", m_i_te_voice0, 0x00000000u },
     { "game_state_timer_exit@novoice", m_i_te_novoice, 0x00000000u },
     { "game_state_timer_exit@voicefirst", m_i_te_voicefirst, 0x00000000u },
+    { "camera_y_step",                   b_i_12cd4, 0x00000000u },
+    { "camera_y_step@diffrev", m_i_cs_diffrev, 0x00000000u },
+    { "camera_y_step@noabs", m_i_cs_noabs, 0x00000000u },
+    { "camera_y_step@snapwide", m_i_cs_snapwide, 0x00000000u },
+    { "camera_y_step@snapnarrow", m_i_cs_snapnarrow, 0x00000000u },
+    { "camera_y_step@unsigned", m_i_cs_unsigned, 0x00000000u },
+    { "camera_y_step@nosnap", m_i_cs_nosnap, 0x00000000u },
+    { "camera_y_step@dir", m_i_cs_dir, 0x00000000u },
+    { "camera_y_step@step", m_i_cs_step, 0x00000000u },
+    { "camera_y_step@nooff", m_i_cs_nooff, 0x00000000u },
+    { "camera_y_step@shr", m_i_cs_shr, 0x00000000u },
+    { "camera_y_step@lo", m_i_cs_lo, 0x00000000u },
+    { "camera_y_step@storew", m_i_cs_storew, 0x00000000u },
+    { "camera_y_step@nostore", m_i_cs_nostore, 0x00000000u },
+    { "camera_y_step@argw", m_i_cs_argw, 0x00000000u },
+    { "camera_y_step@camw", m_i_cs_camw, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

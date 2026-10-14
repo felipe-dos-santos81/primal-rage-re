@@ -188,6 +188,11 @@ void camera_y_commit(void);
 /* PORT: exported for the D3 d3e differential row (linkage only; record
  * 2026-10-12-reverse-d3e). */
 void camera_y_clamp(void);
+/* 0x12CD4. Steps the camera y DS_000F0AEC towards `target` (EAX): a
+ * difference of magnitude 0x100 or less snaps, a larger one moves 0x100;
+ * then the shake offset DS_000F0AF4 is added. One caller, camera_y_clamp
+ * (0x131CB). */
+void camera_y_step(s32 target);
 
 /* PORT: exported for the D4 d4b differential rows (linkage only; record
  * 2026-10-12-reverse-d4b). */
