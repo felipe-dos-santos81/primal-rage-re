@@ -1,9 +1,11 @@
 # Track G design — widen the proven picture (2026-10-14)
 
-Status: DRAFT for approval. Evidence base: the four recon reports in
-`.superpowers/planning/2026-10-14-next-phase/` (01-differential-completeness,
-02-port-coverage, 03-gameplay-frontier, 04-host-readiness), each citation
-carried through from there.
+Status: APPROVED FOR PLANNING (the user re-issued the planning request while the
+open calls were pending — read as the questions opt-out; the remaining calls are
+recorded below as the controller's, overturnable). Evidence base: the four recon
+reports in `.superpowers/planning/2026-10-14-next-phase/`
+(01-differential-completeness, 02-port-coverage, 03-gameplay-frontier,
+04-host-readiness), each citation carried through from there.
 
 ## Intent and the why
 
@@ -100,30 +102,25 @@ it — with the byte-exact oracles and every existing pin intact.
 - **The §C3g.7 reversal is proposed here, decided by the user** — see
   "Needs your call".
 
-## Needs your call (answered before the plan is final)
+## Settled by the controller (the re-issued request as the opt-out; the user
+## can overturn any of these — they are recorded as my calls, not agreements)
 
-1. Reversing §C3g.7's "vacuous rows" judgment for the six non-rows (their
-   callees get rows with weaker, honestly-worded claims) — a prior recorded
-   judgment the user's earlier tracks ratified; needs explicit yes/no. This
-   also sets the phase's completeness metric: **closed rows** (the counter's
-   current definition) or **closed-on-full rows** (01 §5 argues any
-   completeness plan must pick). Item 1 and the "~80 rows" success line stand
-   or shrink to ~5 rows on this answer.
-2. Commitment level of goals 2–4 when diagnosis finds a *port-side* divergence
-   instead of a model limit: default **name + escalate** (ratchets land where
-   they honestly land; a port fix that moves every frame index is a named
-   follow-up, not silent in-phase rework), or fix-in-phase at days-to-weeks
-   risk? (Builder-check Q3; goal 3's wording currently promises more than
-   tooling alone can guarantee either way.)
-3. Gamepad (goal 7's second half): there is no deterministic game-port capture
-   primitive today (01/04; injection is keyboard/pad-bits/pokes). Choose
-   (a) **additive host feature** — SDL-pad→pad-word, observational session,
-   not capture-pinned, or (b) build the capture capability for analog/game-port
-   state as part of this phase (a DOSBox I/O-emulation project), or
-   (c) **defer** gamepad; keep only the configured-binding-words fix in-phase.
-
-## Settled by the builder check (recorded as calls, yours to overturn)
-
+- **§C3g.7 reversed:** the six named non-rows get callee rows with weak,
+  honestly-worded claims (a row whose claim says so is not the vacuous-row
+  case the judgment named). Metric = the counter's **closed rows**;
+  *closed-on-full* reported in the record as the secondary number, per 01 §5.
+- **Commitment level:** the repo's standing rule governs — a MISMATCH is a
+  finding fixed from the bytes in-phase, one correction per commit (AGENTS.md).
+  Exception carved now: if mode-8 isolation finds the PORT's tick/catch-up
+  model is wrong (rework moving every frame index), that stops as a named
+  finding for the user; ratchets pin where the evidence honestly lands.
+  Builder-check softenings noted: goals 2-4 are best-effort on their N-values,
+  and keys-fight's replay reaches 1506 (§K.14), so its ratchet has room — the
+  plan must re-check §K.10 item 3 (pause freezes `f` both sides, so the
+  comparison may be pause-stable; verify, don't assume).
+- **Gamepad: deferred (option c).** Item 7 keeps only the configured
+  binding-words fix in-phase; the SDL-pad→pad-word map returns when a
+  scriptable game-port capture primitive exists.
 - **ENDURANCE capture = new scenario name, not a re-capture** of
   `gp-u8-endurance` — re-capturing invalidates its pinned `poll.log` sha256,
   frame count and N/F/MAX_START pins (03 §3's own warning). The new scenario
