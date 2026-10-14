@@ -500,5 +500,98 @@ class SwitchScanTests(unittest.TestCase):
         self.assertEqual(info.leaders, [0x10000, 0x10004, 0x10010, 0x10011, 0x10012, 0x10013])
 
 
+
+
+# ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model --------------------------------
+
+# 10000: mov ah,1; int 0x16; setz cl; mov [0x80010],cl; mov ah,0; int 0x16; mov [0x80000],eax;
+#        mov ah,1; int 0x16; setz cl; mov [0x80011],cl; ret
+H0_KEYS = {0x10000: "B401" "CD16" "0F94C1" "880D10000800" "B400" "CD16" "A300000800"
+                    "B401" "CD16" "0F94C1" "880D11000800" "C3"}
+# 10000: mov edx,0x3da; (10005) in al,dx; test al,8; je 10005; mov edx,0x3c8; mov al,0x10; out dx,al;
+#        inc edx; mov al,0xc5; out dx,al; ret
+H0_PORTS = {0x10000: "BADA030000" "EC" "A808" "74FB" "BAC8030000" "B010" "EE" "42" "B0C5" "EE" "C3"}
+H0_SEED = {0x80000: b"\xee" * 4, 0x80010: b"\xee\xee"}
+
+
+def h0_screen_image():
+    """An image up to 0xB0000 (the aperture inside it). 10000: mov [0xa0000],eax; mov [0xafa00],eax;
+    call 10100; ret     10100: int3 (stubbed)"""
+    data = bytearray(0xA0000)
+    code = bytes.fromhex("A300000A00" "A300FA0A00" "E8F1000000" "C3")
+    data[:len(code)] = code
+    data[0x100] = 0xCC
+    return E.Image(bytes(data))
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class H0MachineTests(unittest.TestCase):
+    def test_int16_peeks_with_zf_reads_ax_and_counts_the_keys_left(self):
+        r = E.run_original(program(H0_KEYS), 0x10000, regs={"eax": 0xABCD0000}, pokes=H0_SEED,
+                           machine=E.Machine(keys=(0x1E61,)))
+        self.assertEqual(r.outcome, "ok")
+        # a key: ZF = 0; AH = 0 takes it into AX, EAX's upper half kept; then the queue is empty: ZF = 1
+        self.assertEqual(r.writes, {0x80000: 0x61, 0x80001: 0x1E, 0x80002: 0xCD, 0x80003: 0xAB,
+                                    0x80010: 0x00, 0x80011: 0x01})
+        self.assertEqual(r.keys_left, 0)
+        r = E.run_original(program(H0_KEYS), 0x10000, pokes=H0_SEED, machine=E.Machine(keys=(0x1E61, 0x3062)))
+        self.assertEqual((r.outcome, r.writes[0x80011], r.keys_left), ("ok", 0x00, 1))   # a peek keeps the key
+
+    def test_int16_stops_where_the_bios_would_wait_or_without_the_key_model(self):
+        r = E.run_original(program(H0_KEYS), 0x10000, machine=E.Machine(keys=()))
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "int 0x16 AH=0 at 0x1000F: the key queue is empty"))
+        for m in (None, E.Machine(outs=(0x3C8,))):
+            r = E.run_original(program(H0_KEYS), 0x10000, machine=m)
+            self.assertEqual((r.outcome, r.detail, r.keys_left), ("unmodeled", "int at 0x10002", None))
+        # 10000: mov ah,0x10; int 0x16; ret
+        r = E.run_original(program({0x10000: "B410" "CD16" "C3"}), 0x10000, machine=E.Machine(keys=(1,)))
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "int 0x16 AH=0x10 at 0x10002"))
+
+    def test_in_returns_the_cases_bytes_and_out_is_recorded_as_the_device_keeps_it(self):
+        m = E.Machine(ins=((0x3DA, (0xF7, 0x08)),), outs=(0x3C8, 0x3C9))
+        r = E.run_original(program(H0_PORTS), 0x10000, machine=m)
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(r.outs, [(0x3C8, 0x10), (0x3C9, 0xC5)])    # AL as written
+        # one value with bit 3 clear: the spin reads again, past the case's values
+        r = E.run_original(program(H0_PORTS), 0x10000, machine=E.Machine(ins=((0x3DA, (0xF7,)),), outs=(0x3C8,)))
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "in from 0x3DA at 0x10005: its values are spent"))
+        r = E.run_original(program(H0_PORTS), 0x10000, machine=E.Machine(ins=((0x3DA, (8,)),), outs=(0x3C8,)))
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "out at 0x10015"))   # 0x3C9 is not recorded
+        for m in (None, E.Machine(keys=())):
+            r = E.run_original(program(H0_PORTS), 0x10000, machine=m)
+            self.assertEqual((r.outcome, r.detail, r.outs), ("unmodeled", "in at 0x10005", []))
+        # 10000: in al,0x40; ret
+        r = E.run_original(program({0x10000: "E440" "C3"}), 0x10000, regs={"eax": 0x12345678},
+                           machine=E.Machine(ins=((0x40, (0x9A,)),)))
+        self.assertEqual((r.outcome, r.regs["eax"]), ("ok", 0x1234569A))
+
+    def test_the_aperture_leaves_the_writes_and_the_call_memory(self):
+        seed = {0xA0000: b"\xaa" * 4, 0xAFA00: b"\xbb" * 4}
+        stub = (E.Call(0x10100),)
+        r = E.run_original(h0_screen_image(), 0x10000, regs={"eax": 0x11223344}, pokes=seed, calls=stub,
+                           machine=E.Machine(aperture=True))
+        self.assertEqual(r.aperture, {0xA0000: 0x44, 0xA0001: 0x33, 0xA0002: 0x22, 0xA0003: 0x11})
+        self.assertEqual(r.writes, {0xAFA00: 0x44, 0xAFA01: 0x33, 0xAFA02: 0x22, 0xAFA03: 0x11})   # past the 64000
+        self.assertEqual(r.call_mem, [dict(r.writes)])
+        r = E.run_original(h0_screen_image(), 0x10000, regs={"eax": 0x11223344}, pokes=seed, calls=stub)
+        self.assertEqual((r.aperture, len(r.writes), len(r.call_mem[0])), ({}, 8, 8))
+
+    def test_the_dac_keeps_six_bits_per_channel_and_advances_its_index_after_three(self):
+        outs = [(0x3C8, 0xFF), (0x3C9, 0xC5), (0x3C9, 0x41), (0x3C9, 0x02), (0x43, 0x34),
+                (0x3C9, 1), (0x3C9, 2), (0x3C9, 3), (0x3C9, 4)]
+        self.assertEqual(E.dac_effects(outs), [("dac", 0xFF, 5, 1, 2), ("out", 0x43, 0x34), ("dac", 0, 1, 2, 3),
+                                               ("dac-at", 1, (4,))])
+        # an index the stream never set; an index set again restarts the channels; no DAC write: nothing
+        self.assertEqual(E.dac_effects([(0x3C9, 1), (0x3C9, 2), (0x3C9, 3), (0x3C8, 7), (0x3C9, 9), (0x3C8, 7)]),
+                         [("dac", None, 1, 2, 3), ("dac-at", 7, ())])
+        self.assertEqual(E.dac_effects([(0x40, 1)]), [("out", 0x40, 1)])
+
+    def test_a_machine_declaration_is_checked(self):
+        for kw in ({"keys": (0x10000,)}, {"ins": ((0x3DA, ()),)}, {"ins": ((0x3DA, (0x100,)),)},
+                   {"outs": (0x10000,)}):
+            with self.subTest(kw=kw), self.assertRaises(ValueError):
+                E.Machine(**kw)
+
+
 if __name__ == "__main__":
     unittest.main()

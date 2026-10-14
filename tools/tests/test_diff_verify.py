@@ -29109,23 +29109,23 @@ D6A_KINDS = {
     "config_screen_wait@swapearly": {'call #2 memory'},
     "config_screen_wait@noflush": {'call #10', 'call #10 memory', 'call #11', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
     "config_screen_wait@flushfirst": {'call #3 memory'},
-    "config_screen_wait@m1": {'call #4', 'call #5'},
+    "config_screen_wait@m1": {'byte', 'call #4', 'call #5', 'keys'},
     "config_screen_wait@passes": {'call #10', 'call #11', 'call #6', 'call #7'},
     "config_screen_wait@ge": {'call #12', 'call #13', 'call #8', 'call #9'},
     "config_screen_wait@pumpfirst": {'byte', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
     "config_screen_wait_zero@n1": {'call #8', 'call #9'},
-    "config_screen_wait_zero@m1": {'call #4', 'call #5', 'call #6', 'call #7'},
-    "config_screen_wait_zero@eax": {'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "config_screen_wait_zero@m1": {'byte', 'call #4', 'call #5', 'call #6', 'call #7', 'keys'},
+    "config_screen_wait_zero@eax": {'byte', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9', 'keys'},
     "game_quit_prompt@hard32": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4 memory'},
     "game_quit_prompt@id": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
-    "game_quit_prompt@noflag": {'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "game_quit_prompt@noflag": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'keys'},
     "game_quit_prompt@nopause": {'call #0', 'call #0 memory', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4'},
     "game_quit_prompt@col": {'call #1'},
     "game_quit_prompt@row": {'call #1'},
     "game_quit_prompt@mode": {'call #1'},
     "game_quit_prompt@wait0": {'call #2'},
     "game_quit_prompt@answers": {'byte', 'call #3', 'call #3 memory', 'call #4'},
-    "game_quit_prompt@noupper": {'byte', 'call #3', 'call #3 memory', 'call #4'},
+    "game_quit_prompt@noupper": {'byte', 'call #3', 'call #3 memory', 'call #4', 'keys'},
     "game_quit_prompt@lo": {'byte', 'call #3 memory'},
     "game_quit_prompt@hi": {'byte', 'call #3 memory'},
     "game_quit_prompt@order": {'byte', 'call #3', 'call #3 memory', 'call #4'},
@@ -29138,14 +29138,22 @@ D6A_KINDS = {
     "game_quit_prompt@noresume": {'call #3', 'call #4'},
     "gfx_flush_palette@noclamp": {'byte'},
     "gfx_flush_palette@unsigned": {'byte'},
-    "gfx_flush_palette@clampby": {'byte'},
-    "gfx_flush_palette@clampcount": {'byte'},
+    # track H h0: the DAC writes are compared (record 2026-10-14-reverse-h §H.1): a clamp that leaves another low
+    # byte in +0xC changes the handle test 0x1C4AD, and an empty or shortened walk sends fewer entries
+    "gfx_flush_palette@clampby": {'byte', 'out'},
+    "gfx_flush_palette@clampcount": {'byte', 'out'},
     "gfx_flush_palette@nomark": {'byte'},
     "gfx_flush_palette@markw": {'byte'},
     "gfx_flush_palette@mark0": {'byte'},
-    "gfx_flush_palette@headfirst": {'byte'},
+    "gfx_flush_palette@headfirst": {'byte', 'out'},
     "gfx_flush_palette@nohead": {'byte'},
-    "gfx_flush_palette@one": {'byte'},
+    "gfx_flush_palette@one": {'byte', 'out'},
+    "gfx_flush_palette@shift": {'out'},
+    "gfx_flush_palette@idx": {'out'},
+    "gfx_flush_palette@while": {'out'},
+    "gfx_flush_palette@noskip": {'out'},
+    "gfx_flush_palette@noresolve": {'out'},
+    "gfx_flush_palette@chan": {'out'},
     "gfx_screen_reset@no508": {'byte'},
     "gfx_screen_reset@no50c": {'byte'},
     "gfx_screen_reset@one": {'byte'},
@@ -29153,6 +29161,13 @@ D6A_KINDS = {
     "gfx_screen_reset@byte": {'byte'},
     "gfx_screen_reset@short": {'byte'},
     "gfx_screen_reset@w50c": {'byte'},
+    "gfx_screen_reset@nodac": {'out'},
+    "gfx_screen_reset@dacidx": {'out'},
+    "gfx_screen_reset@dac255": {'out'},
+    "gfx_screen_reset@dacval": {'out'},
+    "gfx_screen_reset@noap": {'aperture'},
+    "gfx_screen_reset@apbyte": {'aperture'},
+    "gfx_screen_reset@apshort": {'aperture'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29222,45 +29237,45 @@ D6A_CASES = [
     ("config_set_defaults@f2a", ['t0', 't1', 't2']),
     ("config_set_defaults@nokeys", ['t0', 't1', 't2']),
     ("config_set_defaults@keysfirst", ['t0', 't1', 't2']),
-    ("config_screen_wait@nolatch", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@latchw", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@noupdate", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@nosort", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@nolist", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@order", ['w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nolatch", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@latchw", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@noupdate", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nosort", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nolist", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@order", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
     ("config_screen_wait@flagkeep", ['w1', 'w3']),
     ("config_screen_wait@flagw", ['w1', 'w3']),
-    ("config_screen_wait@noswap", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@swapearly", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@noflush", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@flushfirst", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@m1", ['w0', 'w1']),
-    ("config_screen_wait@passes", ['w2', 'w3']),
-    ("config_screen_wait@ge", ['w2', 'w3']),
-    ("config_screen_wait@pumpfirst", ['w2', 'w3', 'w4']),
+    ("config_screen_wait@noswap", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@swapearly", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@noflush", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@flushfirst", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@m1", ['k2', 'w0', 'w1']),
+    ("config_screen_wait@passes", ['k0', 'k1', 'w2', 'w3']),
+    ("config_screen_wait@ge", ['k0', 'k1', 'w2', 'w3']),
+    ("config_screen_wait@pumpfirst", ['k0', 'k1', 'k3', 'w2', 'w3', 'w4']),
     ("config_screen_wait_zero@n1", ['z0', 'z1']),
     ("config_screen_wait_zero@m1", ['z0', 'z1']),
     ("config_screen_wait_zero@eax", ['z0', 'z1']),
     ("game_quit_prompt@hard32", ['q0', 'q4']),
-    ("game_quit_prompt@id", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@noflag", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@nopause", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@col", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@row", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@mode", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@wait0", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@answers", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'qa']),
-    ("game_quit_prompt@noupper", ['q1', 'q2', 'q7', 'q8', 'qa']),
+    ("game_quit_prompt@id", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@noflag", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@nopause", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@col", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@row", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@mode", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@wait0", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@answers", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@noupper", ['q1', 'q2', 'q7', 'q8', 'qa', 'qc']),
     ("game_quit_prompt@lo", ['q6']),
     ("game_quit_prompt@hi", ['q5']),
     ("game_quit_prompt@order", ['q9']),
-    ("game_quit_prompt@flagkeep", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
-    ("game_quit_prompt@noquit", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
-    ("game_quit_prompt@quitw", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
-    ("game_quit_prompt@norelease", ['q2', 'q3', 'q4', 'qa']),
-    ("game_quit_prompt@relid", ['q2', 'q3', 'q4', 'qa']),
-    ("game_quit_prompt@relmode", ['q2', 'q3', 'q4', 'qa']),
-    ("game_quit_prompt@noresume", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@flagkeep", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9', 'qb', 'qd']),
+    ("game_quit_prompt@noquit", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9', 'qb', 'qd']),
+    ("game_quit_prompt@quitw", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9', 'qb', 'qd']),
+    ("game_quit_prompt@norelease", ['q2', 'q3', 'q4', 'qa', 'qc']),
+    ("game_quit_prompt@relid", ['q2', 'q3', 'q4', 'qa', 'qc']),
+    ("game_quit_prompt@relmode", ['q2', 'q3', 'q4', 'qa', 'qc']),
+    ("game_quit_prompt@noresume", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
     ("gfx_flush_palette@noclamp", ['f2', 'f3']),
     ("gfx_flush_palette@unsigned", ['f3']),
     ("gfx_flush_palette@clampby", ['f2', 'f3']),
@@ -29271,6 +29286,12 @@ D6A_CASES = [
     ("gfx_flush_palette@headfirst", ['f1', 'f2', 'f3']),
     ("gfx_flush_palette@nohead", ['f1', 'f2', 'f3']),
     ("gfx_flush_palette@one", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@shift", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@idx", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@while", ['f1']),
+    ("gfx_flush_palette@noskip", ['f2', 'f3']),
+    ("gfx_flush_palette@noresolve", ['f2', 'f3']),
+    ("gfx_flush_palette@chan", ['f1', 'f2', 'f3']),
     ("gfx_screen_reset@no508", ['s0', 's1', 's2']),
     ("gfx_screen_reset@no50c", ['s0', 's1', 's2']),
     ("gfx_screen_reset@one", ['s0', 's1', 's2']),
@@ -29278,6 +29299,13 @@ D6A_CASES = [
     ("gfx_screen_reset@byte", ['s1', 's2']),
     ("gfx_screen_reset@short", ['s0', 's1', 's2']),
     ("gfx_screen_reset@w50c", ['s1']),
+    ("gfx_screen_reset@nodac", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dacidx", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dac255", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dacval", ['s1']),
+    ("gfx_screen_reset@noap", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@apbyte", ['s1', 's2']),
+    ("gfx_screen_reset@apshort", ['s0', 's1', 's2']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)
@@ -30367,7 +30395,8 @@ I_CASES = [
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
 D1_CASES.extend(I_CASES)
-# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row
+# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row; track H batch h2 (record
+# 2026-10-14-reverse-h section H.3): the drawing cases d1, d2, d9, d3 and four mutants; @nostore and @clipt also in d3
 N1_MASKS = {
     "sprite_blit_aperture": 0x0,
 }   # N1_MASKS end
@@ -30376,12 +30405,20 @@ N1_KINDS = {
     "sprite_blit_aperture@clipt": {'byte'},
     "sprite_blit_aperture@nowidth": {'byte'},
     "sprite_blit_aperture@norows": {'byte'},
+    "sprite_blit_aperture@nodraw": {'aperture'},
+    "sprite_blit_aperture@noclipb": {'aperture'},
+    "sprite_blit_aperture@nomirror": {'aperture'},
+    "sprite_blit_aperture@xoff": {'aperture'},
 }   # N1_KINDS end
 N1_CASES = [
-    ("sprite_blit_aperture@nostore", ['a2', 'a3']),
-    ("sprite_blit_aperture@clipt", ['a2', 'a3']),
+    ("sprite_blit_aperture@nostore", ['a2', 'a3', 'd3']),
+    ("sprite_blit_aperture@clipt", ['a2', 'a3', 'd3']),
     ("sprite_blit_aperture@nowidth", ['a0']),
     ("sprite_blit_aperture@norows", ['a1']),
+    ("sprite_blit_aperture@nodraw", ['d1', 'd2', 'd3', 'd9']),
+    ("sprite_blit_aperture@noclipb", ['d3']),
+    ("sprite_blit_aperture@nomirror", ['a2', 'd9']),
+    ("sprite_blit_aperture@xoff", ['d1', 'd2', 'd3', 'd9']),
 ]   # N1_CASES end
 D1_MASKS.update(N1_MASKS)
 D1_KINDS.update(N1_KINDS)
@@ -30432,6 +30469,74 @@ D1_MASKS.update(N3_MASKS)
 D1_KINDS.update(N3_KINDS)
 D1_CASES.extend(N3_CASES)
 # N n3 end
+
+# ---- track H batch h1 (record 2026-10-14-reverse-h §H.2): the keyboard rows' new rows and mutants; measured pins ----
+H1_MASKS = {
+    "game_frame_keys": 0x0,
+    "game_frame_keys2": 0x0,
+}
+H1_KINDS = {
+    "config_screen_wait@nokeys": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "config_screen_wait@klatchw": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kscan": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kwordw": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@ktime": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kone": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "config_screen_wait@kany": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "game_quit_prompt@once": {'byte', 'call #3 memory', 'keys'},
+    "game_quit_prompt@ax": {'byte', 'call #3', 'call #3 memory', 'call #4', 'keys'},
+    "game_quit_prompt@more": {'call #4', 'keys'},
+    "game_frame_keys@knone": {'byte', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7', 'keys'},
+    "game_frame_keys@kmode1": {'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "game_frame_keys@kscan": {'byte', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_frame_keys@klatchw": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_frame_keys@kzero": {'byte', 'call #2 memory', 'keys'},
+    "game_frame_keys@kenter": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},
+    "game_frame_keys@kesc27": {'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "game_frame_keys@kescarg": {'call #2'},
+    "game_frame_keys@kspace": {'byte', 'call #1', 'call #1 memory', 'call #10', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "game_frame_keys@kpausew": {'byte', 'call #7 memory'},
+    "game_frame_keys@kpauserow": {'call #3'},
+    "game_frame_keys@kpauseflag": {'byte', 'call #7 memory'},
+    "game_frame_keys@kaltq": {'call #2'},
+    "game_frame_keys@kaltsm": {'call #2', 'call #3'},
+    "game_frame_keys2@knone": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'keys'},
+    "game_frame_keys2@kname": {'call #4', 'call #5', 'call #6'},
+    "game_frame_keys2@khook": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8'},
+}
+H1_CASES = [
+    ("config_screen_wait@nokeys", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@klatchw", ['k0', 'k3']),
+    ("config_screen_wait@kscan", ['k1']),
+    ("config_screen_wait@kwordw", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@ktime", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@kone", ['k1', 'k3']),
+    ("config_screen_wait@kany", ['k1']),
+    ("game_quit_prompt@once", ['qb']),
+    ("game_quit_prompt@ax", ['qb', 'qc', 'qd']),
+    ("game_quit_prompt@more", ['qc']),
+    ("game_frame_keys@knone", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'ka', 'kb']),
+    ("game_frame_keys@kmode1", ['k3']),
+    ("game_frame_keys@kscan", ['k2', 'k6']),
+    ("game_frame_keys@klatchw", ['k0', 'k1', 'k3', 'k4', 'k5', 'ka', 'kb']),
+    ("game_frame_keys@kzero", ['k1']),
+    ("game_frame_keys@kenter", ['k1']),
+    ("game_frame_keys@kesc27", ['k3', 'kb']),
+    ("game_frame_keys@kescarg", ['k4']),
+    ("game_frame_keys@kspace", ['k3', 'k4', 'kb']),
+    ("game_frame_keys@kpausew", ['ka']),
+    ("game_frame_keys@kpauserow", ['ka']),
+    ("game_frame_keys@kpauseflag", ['ka']),
+    ("game_frame_keys@kaltq", ['k6']),
+    ("game_frame_keys@kaltsm", ['k2']),
+    ("game_frame_keys2@knone", ['k7', 'k8', 'k9']),
+    ("game_frame_keys2@kname", ['k7']),
+    ("game_frame_keys2@khook", ['k9']),
+]   # H1_CASES end
+D1_MASKS.update(H1_MASKS)
+D1_KINDS.update(H1_KINDS)
+D1_CASES.extend(H1_CASES)
+# h1 end
 
 
 @needs_unicorn
@@ -31503,6 +31608,9 @@ class RealFunctionTests(unittest.TestCase):
         # N n2 (record 2026-10-14-reverse-n section N.2): the stubs the 0x1BE30 row adds
         0x1D018: (), 0x1B084: ("edi", "ebp"),
         # N n2 end
+        # H h1 (record 2026-10-14-reverse-h section H.2): the stubs the game_frame_keys rows add
+        0x20860: (), 0x249F0: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x1D220: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
+        # H h1 end
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
@@ -31768,9 +31876,14 @@ class RealFunctionTests(unittest.TestCase):
         # Track N batch n2: 0x1BE30's row adds one function, four mutants and one open row (open on
         # 0x4FB98 and 0x10D34, run from their bytes with no row of their own). Track N batch n3: the row
         # of 0x1C740 (closed: 0x52106 is VERIFIED), which also closes attract_step's (0x11000 stubs 0x1C740);
-        # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge.
-        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14840/14840 mutants detected; 1 named gaps; "
-                      "638/829 rows with callees closed (169 have none).", out.getvalue())
+        # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge. Track H batch h0: 0x1C470's
+        # row runs unpoked under the machine model and gains six DAC mutants (record 2026-10-14-reverse-h §H.1).
+        # Track H batch h1: 0x2EA78, 0x2EA74, 0x249F0 and 0x24C5C's eight rows run unpoked under the key model;
+        # two rows for 0x24C5C's key loop (game_frame_keys, game_frame_keys2, open on 0x500BB and 0x65431) and
+        # 27 mutants (7 + 3 + 14 + 3; record §H.2). Track H batch h2: 0x52106's row runs unpoked and gains seven
+        # DAC and screen mutants, and 0x51ED8's drawing cases four (record §H.3). Measured on the merge.
+        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14884/14884 mutants detected; 1 named gaps; "
+                      "638/831 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
@@ -32316,6 +32429,140 @@ class DiffrunStubTests(unittest.TestCase):
         for a in sorted(addrs):
             self.assertEqual((out["r%X" % a].eax, out["r%X" % a].calls), (1, []), hex(a))
         self.assertEqual((out["miss"].eax, out["miss"].calls), (0, [(0x10020, ())]))
+
+
+
+# ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model's text, lines and comparison ----
+
+class H0MachineTextTests(unittest.TestCase):
+    def test_a_machine_adds_its_lines_and_no_machine_adds_none(self):
+        m = E.Machine(keys=(0x1E61, 0x0F09), ins=((0x3DA, (8,)),), outs=(0x3C8,), aperture=True)
+        spec = V.Spec("f", 0x10000, [V.Case("a", {}, machine=m), V.Case("b", {}),
+                                     V.Case("c", {}, machine=E.Machine(keys=()))])
+        self.assertEqual(V.cases_text(spec, "f"), "case a\nfn f\nkbd\nkey 0x1E61\nkey 0xF09\nouts\naperture\nend\n"
+                                                  "case b\nfn f\nend\ncase c\nfn f\nkbd\nend\n")
+
+    def test_the_machine_lines_are_parsed_in_their_place_only(self):
+        out = V.parse_port_output("case a\no 0x3C8 0x10\no 0x3C9 0x5\nret eax 0x0 mask 0x0\nk 1\na 0xA0000 0x44\nend\n")
+        self.assertEqual((out["a"].outs, out["a"].keys_left, out["a"].aperture),
+                         ([(0x3C8, 0x10), (0x3C9, 5)], 1, {0xA0000: 0x44}))
+        ok = "ret eax 0x0 mask 0x0\n"
+        for name, text in [("an out after the result", ok + "o 0x3C8 0x1\n"), ("keys before the result", "k 1\n" + ok),
+                           ("keys twice", ok + "k 1\nk 1\n"), ("a screen byte twice", ok + "a 0xA0000 0x1\na 0xA0000 0x2\n"),
+                           ("a screen byte before the result", "a 0xA0000 0x1\n" + ok)]:
+            with self.subTest(name), self.assertRaises(ValueError):
+                V.parse_port_output("case a\n" + text + "end\n")
+
+    def test_each_machine_difference_is_a_discrepancy_that_detects_a_mutant(self):
+        o = orig(0)
+        o.outs, o.keys_left, o.aperture = [(0x3C8, 0x10), (0x3C9, 5)], 1, {0xA0000: 0x44}
+        same = V.PortResult(0, 0xFFFFFFFF, outs=[(0x3C8, 0x10), (0x3C9, 5)], keys_left=1, aperture={0xA0000: 0x44})
+        self.assertEqual(V.compare(o, same), [])
+        self.assertEqual(V.compare(o, dataclasses.replace(same, outs=[(0x3C8, 0x10), (0x3C9, 0x45)])), [])   # six bits
+        for port, want in [
+                (dataclasses.replace(same, outs=[(0x3C8, 0x10), (0x3C9, 6)]),
+                 "out #0: original dac at 0x10 with 0x05 latched, port dac at 0x10 with 0x06 latched (1 and 1 effects)"),
+                (dataclasses.replace(same, outs=[(0x3C8, 0x11), (0x3C9, 0x45)]),
+                 "out #0: original dac at 0x10 with 0x05 latched, port dac at 0x11 with 0x05 latched (1 and 1 effects)"),
+                (dataclasses.replace(same, outs=[(0x3C8, 0x10), (0x3C9, 5), (0x40, 1)]),
+                 "out #0: original dac at 0x10 with 0x05 latched, port out 0x40 <- 0x01 (1 and 2 effects)"),
+                (dataclasses.replace(same, keys_left=0), "keys left: original 1, port 0"),
+                (dataclasses.replace(same, keys_left=None), "keys left: original 1, port None"),
+                (dataclasses.replace(same, aperture={}), "aperture 0xA0000: original 0x44, port unchanged")]:
+            with self.subTest(want):
+                d = V.compare(o, port)
+                self.assertEqual(d, [want])
+                self.assertTrue(d[0].startswith(V.H0_DIFFS))
+
+
+@unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
+                     "build/diffrun or PRAGE.EXE absent")
+class H0DiffrunMachineTests(unittest.TestCase):
+    """The runner's side: the key FIFO filled and counted, the screen seeded from mem[] and reported."""
+
+    def test_the_keys_fill_the_ports_fifo_and_the_ones_left_are_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"),
+                             "case a\nfn fighter_slot_flag\nkbd\nkey 0x1E61\nkey 0x3062\nend\n"
+                             "case b\nfn fighter_slot_flag\nend\n")
+        self.assertEqual((out["a"].keys_left, out["b"].keys_left), (2, None))
+
+    def test_the_screen_is_seeded_after_the_pokes_and_its_changes_reported(self):
+        # 0x52106 fills gfx_aperture() with the dword EAX; the first dword is poked to that value already
+        with tempfile.TemporaryDirectory() as d:
+            img = os.path.join(d, "img")
+            text = ("case a\nfn gfx_screen_reset\nreg eax 0x11223344\npoke 0xA0000 44332211\n"
+                    "poke 0x1014E4 00000c0000000d00\naperture\nend\n")
+            both = V.run_port(DIFFRUN, EXE, img, text + "case b\nfn fighter_slot_flag\naperture\nend\n")
+            out = both["a"]
+            seed = bytearray(open(img, "rb").read()[0xA0000 - 0x10000:0xAFA00 - 0x10000])
+        seed[0:4] = bytes.fromhex("44332211")
+        self.assertTrue(out.aperture)
+        self.assertNotIn(0xA0000, out.aperture)
+        screen = bytes(out.aperture.get(0xA0000 + i, seed[i]) for i in range(0xFA00))
+        self.assertEqual(screen, bytes.fromhex("44332211") * 0x3E80)
+        self.assertEqual([a for a in out.writes if 0xA0000 <= a < 0xB0000], [])
+        self.assertEqual(both["b"].aperture, {})     # the next case's screen starts from its own seed
+        with tempfile.TemporaryDirectory() as d:
+            out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"), text.replace("aperture\n", ""))["a"]
+        self.assertEqual(out.aperture, {})
+
+    def test_the_ports_outs_are_reported_only_for_a_case_that_records_them(self):
+        spec = next(x for x in V.SPECS if x.name == "gfx_flush_palette")
+        f1 = next(c for c in spec.cases if c.id == "f1")
+        bare = dataclasses.replace(f1, id="bare", machine=None)
+        with tempfile.TemporaryDirectory() as d:
+            out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"),
+                             V.cases_text(dataclasses.replace(spec, cases=[f1, bare]), spec.name))
+        # f1's three records: colours 0x00FCA850 + 0x01010101 i from 0x10A300, entries 0x10.. 0xFE and 0x00
+        self.assertEqual(E.dac_effects(out["f1"].outs)[:2], [("dac", 0x10, 0x14, 0x2A, 0x3F), ("dac", 0x11, 0x14, 0x2A, 0x3F)])
+        self.assertEqual(len(out["f1"].outs), 4 * 5)
+        self.assertEqual(out["bare"].outs, [])
+# h0 end
+
+
+# ---- track H batch h2 (record 2026-10-14-reverse-h §H.3): a declared difference ----
+class H2DeclaredTests(unittest.TestCase):
+    A, B = 0x10A914, 0x10A938
+    DECL = {A: (0x00, None), B: (0x01, None)}
+
+    def run_both(self, owrites, pwrites):
+        c = V.H2Case("d", {}, declared=self.DECL)
+        return V.h2_compare(c, orig(0, owrites), V.PortResult(0, 0xFFFFFFFF, writes=pwrites), 0xFFFFFFFF)
+
+    def test_a_declared_byte_with_its_declared_values_is_left_out_and_no_other(self):
+        self.assertEqual(self.run_both({self.A: 0, self.B: 1}, {}), [])
+        self.assertEqual(self.run_both({self.A: 0, self.B: 1, 0x10A900: 5}, {}),
+                         ["byte 0x10A900: original 0x05, port unchanged"])
+
+    def test_a_declared_byte_with_another_value_on_either_side_is_a_discrepancy(self):
+        for ow, pw, want in [
+                ({self.A: 0, self.B: 1}, {self.A: 3},
+                 "byte 0x10A914: declared original 0x00, port unchanged; the run gives original 0x00, port 0x03"),
+                ({self.A: 0, self.B: 2}, {},
+                 "byte 0x10A938: declared original 0x01, port unchanged; the run gives original 0x02, port unchanged"),
+                ({self.B: 1}, {},      # the declared difference absent: both sides leave the byte
+                 "byte 0x10A914: declared original 0x00, port unchanged; the run gives original unchanged, port unchanged")]:
+            with self.subTest(want):
+                d = self.run_both(ow, pw)
+                self.assertEqual(d, [want])
+                self.assertTrue(d[0].startswith("byte "))     # counted as a difference: it detects a mutant
+
+    def test_a_plain_case_is_compare_itself_and_a_declaration_of_no_difference_is_refused(self):
+        o, p = orig(0, {self.A: 0}), V.PortResult(0, 0xFFFFFFFF)
+        self.assertEqual(V.h2_compare(V.Case("c", {}), o, p, 0xFFFFFFFF), V.compare(o, p))
+        with self.assertRaises(ValueError):
+            V.H2Case("d", {}, declared={self.A: (0x00, 0x00)})
+
+    def test_verify_spec_applies_the_declaration(self):
+        spec = V.Spec("f", 0x10000, [V.H2Case("d", {}, declared=self.DECL), V.Case("e", {})])
+        info = type("Info", (), {"leaders": [], "indirect": [], "truncated": False})()
+        o = orig(0, {self.A: 0, self.B: 1})
+        port = {"d": V.PortResult(0, 0xFFFFFFFF), "e": V.PortResult(0, 0xFFFFFFFF)}
+        r = V.verify_spec(spec, None, port, original=(info, [o, o]))
+        self.assertEqual((r.verdict, r.problems), ("MISMATCH", ["e: byte 0x10A914: original 0x00, port unchanged",
+                                                                "e: byte 0x10A938: original 0x01, port unchanged"]))
+# h2 end
 
 
 if __name__ == "__main__":

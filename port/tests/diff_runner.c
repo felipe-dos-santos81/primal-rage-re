@@ -39151,6 +39151,63 @@ static void d5h_24c5c_sides(u32 mut, int gated)
         }
     }
 }
+/* ---- track H batch h1 (record 2026-10-14-reverse-h §H.2): 0x24C5C's key loop for the d5h restatement ---- */
+/* d5h_24c5c_core runs this at the raw's place. h1_kmut = 0 (every d5h mutant, whose cases queue no key) is
+ * flow.c's game_key_loop restated; the game_frame_keys/keys2 mutants set one choice flipped. Every read is
+ * guarded by the queue (the original stops on an empty one), so a mutant that reads past the case's keys
+ * returns instead of waiting. */
+enum { H1_K_NONE, H1_K_knone, H1_K_kmode1, H1_K_kscan, H1_K_klatchw, H1_K_kzero, H1_K_kname, H1_K_kenter,
+       H1_K_kesc27, H1_K_kescarg, H1_K_kspace, H1_K_khook, H1_K_kpausew, H1_K_kpauserow, H1_K_kpauseflag,
+       H1_K_kaltq, H1_K_kaltsm };
+static u32 h1_kmut;
+static void d5h_24c5c_core(u32 mut, u32 dm);
+#define H1_K(x) (h1_kmut == H1_K_##x)
+static void h1_24c5c_keys(void)
+{
+    u32 mode0 = DSW(0x00104B00u);
+    for (;;) {
+        if (H1_K(knone)) break;                                                  /* @knone */
+        if (H1_K(kzero) ? !input_has_key() : ((u32)input_check_key() & 0xFFFFu) == 0u) break;   /* @kzero */
+        u32 key = (u32)input_get_key() & 0xFFFFu, bl = key & 0xFFu;
+        u32 latch = (bl != 0u || H1_K(kscan)) ? key : key >> 8;                 /* @kscan */
+        DSD(0x00105F30u) = H1_K(klatchw) ? latch : latch & 0xFFu;                /* @klatchw */
+        u32 mode = H1_K(kmode1) ? mode0 : DSW(0x00104B00u);                     /* @kmode1 */
+        if (mode == 0x1Eu && (bl != 0u || H1_K(kname))) { nameentry_key(bl); continue; }   /* @kname */
+        if (bl == 0x0Du) {
+            if (mode == 3u || H1_K(kenter)) DSW(0x00104B00u) = 0x27u;           /* @kenter */
+        } else if (bl == 0x1Bu) {
+            if (mode == 3u) game_quit_prompt(H1_K(kescarg) ? 1u : 0u);         /* @kescarg */
+            else if (mode != 0x27u || H1_K(kesc27)) game_quit_prompt(1u);       /* @kesc27 */
+        } else if (bl == 0x20u) {
+            if ((mode == 3u || mode == 0x27u) && !H1_K(kspace)) continue;       /* @kspace */
+            if (mode == 0x17u && (H1_K(khook) || DSD(0x00104AE4u) == 0x00010E80u)) continue;   /* @khook */
+            DSB(0x00104B22u) = 1u;
+            sound_pause();
+            text_cursor_set(-1, H1_K(kpauserow) ? 0xA : 0xF, game_string_get(0x1E8u), 0x1000u);   /* @kpauserow */
+            config_screen_wait(-1);
+            while (input_has_key()) {
+                u32 k = (u32)input_get_key();
+                if ((k & (H1_K(kpausew) ? 0xFFFFu : 0xFFu)) == 0x20u) break;     /* @kpausew */
+            }
+            text_cells_release(-1, 0xF, game_string_get(0x1E8u), 0x1000u);
+            sound_resume();
+            if (!H1_K(kpauseflag)) DSB(0x00104B22u) = 0u;                        /* @kpauseflag */
+        } else if (bl == 0u) {
+            switch (key >> 8) {
+            case 0x10u: game_quit_prompt(H1_K(kaltq) ? 1u : 0u); break;          /* @kaltq */
+            case 0x1Fu: if (H1_K(kaltsm)) sound_music_pause_toggle(); else sound_sample_pause_toggle(); break;   /* @kaltsm */
+            case 0x32u: if (H1_K(kaltsm)) sound_sample_pause_toggle(); else sound_music_pause_toggle(); break;
+            default: break;
+            }
+        }
+    }
+}
+#define X(n) static void m_h1_gf_##n(const u32 *r, u32 *eax) \
+    { (void)r; h1_kmut = H1_K_##n; d5h_24c5c_core(D5H_F_NONE, 0u); h1_kmut = 0u; *eax = 0u; }
+X(knone) X(kmode1) X(kscan) X(klatchw) X(kzero) X(kname) X(kenter) X(kesc27) X(kescarg) X(kspace) X(khook)
+X(kpausew) X(kpauserow) X(kpauseflag) X(kaltq) X(kaltsm)
+#undef X
+/* ---- h1 end ---- */
 static void d5h_24c5c_core(u32 mut, u32 dm)
 {
     u32 mode = DSW(0x00104B00u);                                 /* 0x24C61/0x24C63 */
@@ -39191,7 +39248,7 @@ table:
     }
     if (D5H_F(tblearly)) goto track;
 keys:
-    /* 0x24CFE..0x24EE7: no keystroke */
+    h1_24c5c_keys();                                             /* 0x24CFE..0x24EE7 (track H h1) */
     if (!D5H_F(modecache)) mode = D5H_F(swb) ? DSB(0x00104B00u) : DSW(0x00104B00u);   /* 0x24EEC */
     if (D5H_F(sw33) ? mode < 0x33u : mode <= 0x33u) {            /* 0x24EF2/0x24EF6 `ja` */
         switch (mode) {
@@ -41552,9 +41609,10 @@ D6A_SD_MUT(table, 1u) D6A_SD_MUT(f29, 2u)  D6A_SD_MUT(v29, 3u)   D6A_SD_MUT(orde
 D6A_SD_MUT(get, 6u)   D6A_SD_MUT(al, 7u)   D6A_SD_MUT(mask, 8u)  D6A_SD_MUT(or, 9u)
 D6A_SD_MUT(f2a, 11u)  D6A_SD_MUT(nokeys, 12u) D6A_SD_MUT(keysfirst, 13u)
 
-/* 0x2EA78 config_screen_wait: EAX = n. The raw's BIOS peek `int 0x16` (0x2EB15) is `cmp eax,eax` in every
- * case (no key); the port's key queue is empty (input_clear). The mutants restate config.c's body with the
- * ISR gate byte 0x104B22 at 1 (the port's tick model, PORT, is off). */
+/* 0x2EA78 config_screen_wait: EAX = n. The raw's two `int 0x16` (0x2EB15, 0x2EB2D) take the case's key queue
+ * from the machine model (track H h1, record 2026-10-14-reverse-h §H.2), which h0_start loads into the port's
+ * key queue before the binding. The mutants restate config.c's body with the ISR gate byte 0x104B22 at 1
+ * (the port's tick model, PORT, is off); @nokeys is the d6a restatement, with no key drain. */
 #include "platform/input.h"
 static void d6a_2ea78_core(s32 n, u32 mut)
 {
@@ -41583,29 +41641,42 @@ static void d6a_2ea78_core(s32 n, u32 mut)
         u16 seen = DSW(0x000EF6DEu);
         while (DSW(0x000EF6DEu) == seen) game_audio_service();
         if (mut != 17u) (void)input_pump();
+        while (mut != 18u) {                                                     /* @nokeys */
+            u32 key = (u32)input_check_key() & 0xFFFFu;
+            if (mut == 24u ? !input_has_key() : key == 0u) break;                /* @kany */
+            key = (u32)input_get_key();
+            if (mut == 21u) DSW(0x00105F28u) = (u16)key; else DSD(0x00105F28u) = key;   /* @kwordw */
+            DSD(0x00105F2Cu) = DSD((mut == 22u) ? 0x00101508u : 0x00101500u);   /* @ktime */
+            u32 latch = key;
+            if ((latch & 0xFFu) == 0u && mut != 20u) latch >>= 8;                /* @kscan */
+            DSD(0x00105F30u) = (mut == 19u) ? latch : latch & 0xFFu;             /* @klatchw */
+            if (mut == 23u) break;                                               /* @kone */
+        }
         s32 prev = ecx;
         ecx--;
         if (!((mut == 14u) ? (prev > 0) : (mut == 15u) ? (prev >= -1) : (prev > -1))) break;   /* @passes @ge */
         if (mut == 15u && prev < -1) break;
     }
 }
-static void b_d6a_2ea78(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
-static void b_d6a_2ea74(const u32 *r, u32 *eax) { (void)r; input_clear(); config_screen_wait_zero(); *eax = 0u; }
+static void b_d6a_2ea78(const u32 *r, u32 *eax) { config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+static void b_d6a_2ea74(const u32 *r, u32 *eax) { (void)r; config_screen_wait_zero(); *eax = 0u; }
 #define D6A_SW_MUT(name, n) \
-    static void m_d6a_sw_##name(const u32 *r, u32 *eax) { input_clear(); d6a_2ea78_core((s32)r[R_EAX], n); *eax = 0u; }
+    static void m_d6a_sw_##name(const u32 *r, u32 *eax) { d6a_2ea78_core((s32)r[R_EAX], n); *eax = 0u; }
 D6A_SW_MUT(nolatch, 1u) D6A_SW_MUT(latchw, 2u)  D6A_SW_MUT(noupdate, 3u) D6A_SW_MUT(nosort, 4u)  D6A_SW_MUT(nolist, 5u)
 D6A_SW_MUT(order, 6u)   D6A_SW_MUT(flagkeep, 7u) D6A_SW_MUT(flagw, 8u)   D6A_SW_MUT(noswap, 9u)  D6A_SW_MUT(swapearly, 10u)
 D6A_SW_MUT(noflush, 11u) D6A_SW_MUT(flushfirst, 12u) D6A_SW_MUT(m1, 13u) D6A_SW_MUT(passes, 14u) D6A_SW_MUT(ge, 15u)
 D6A_SW_MUT(pumpfirst, 17u)
-static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(1); *eax = 0u; }
-static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(-1); *eax = 0u; }
-static void m_d6a_swz_eax(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+D6A_SW_MUT(nokeys, 18u) D6A_SW_MUT(klatchw, 19u) D6A_SW_MUT(kscan, 20u) D6A_SW_MUT(kwordw, 21u) D6A_SW_MUT(ktime, 22u)
+D6A_SW_MUT(kone, 23u)   D6A_SW_MUT(kany, 24u)
+static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; config_screen_wait(1); *eax = 0u; }
+static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; config_screen_wait(-1); *eax = 0u; }
+static void m_d6a_swz_eax(const u32 *r, u32 *eax) { config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
 
-/* 0x249F0 game_quit_prompt: AL = hard_quit. The raw's blocking BIOS read `int 0x16` (AH = 0, 0x24A64) is
- * `mov al,K` (B0 K) in every case; the binding feeds the same K, read from the poked byte 0x24A65, to
- * the port's BIOS-style key queue (input.c). One key a case. The mutants restate flow.c's body for one
- * key (a key that matches neither answer leaves the prompt flag set instead of reading another). */
-static void d6a_249f0_key(void) { input_clear(); input_push(0u, DSB(0x00024A65u)); }
+/* 0x249F0 game_quit_prompt: AL = hard_quit. The raw's blocking BIOS read `int 0x16` (AH = 0, 0x24A64) takes
+ * the case's key queue from the machine model (track H h1, record 2026-10-14-reverse-h §H.2), which
+ * h0_start loads into the port's key queue before the binding. The mutants restate flow.c's body; their
+ * loop ends on an empty queue, where the original stops, so a mutant that reads past the case's keys
+ * returns instead of waiting. @once is the d6a restatement (one key). */
 static void d6a_249f0_core(const u32 *r, u32 mut)
 {
     u32 hard = r[R_EAX];
@@ -41618,38 +41689,54 @@ static void d6a_249f0_core(const u32 *r, u32 mut)
     config_screen_wait((mut == 8u) ? 0 : -1);                                    /* @wait0 */
     s32 yes = (s8)game_string_get((mut == 9u) ? 0x1F1u : 0x1F0u)[0];             /* @answers */
     s32 no = (s8)game_string_get((mut == 9u) ? 0x1F0u : 0x1F1u)[0];
-    s32 key = (s32)(input_get_key() & 0xFFu);
-    if (mut != 10u && key >= ((mut == 11u) ? 0x60 : 0x61) && key <= ((mut == 12u) ? 0x7B : 0x7A)) key -= 0x20;   /* @noupper @lo @hi */
-    int isyes = (key == yes), isno = (key == no);
-    if (mut == 13u && isno) isyes = 0;                                           /* @order */
-    if (isyes) {
-        if (mut != 14u) DSB(0x00104B22u) = 0u;                                   /* @flagkeep */
-        if (!h) { if (mut == 16u) DSD(0x000A81A8u) = 1u; else if (mut != 15u) DSB(0x000A81A8u) = 1u; }   /* @noquit @quitw */
-        else return;                                   /* the soft-restart arm: no case */
-    } else if (isno) {
-        DSB(0x00104B22u) = 0u;
-        if (mut != 17u) text_cells_release(-1, 0xA, game_string_get((mut == 18u) ? (id ^ 1u) : id),
-                                           (mut == 19u) ? 0x2000u : 0x1000u);    /* @norelease @relid @relmode */
-    }
+    do {
+        if (!input_has_key()) break;
+        s32 key = (s32)(input_get_key() & ((mut == 22u) ? 0xFFFFu : 0xFFu));      /* @ax */
+        if (mut != 10u && key >= ((mut == 11u) ? 0x60 : 0x61) && key <= ((mut == 12u) ? 0x7B : 0x7A)) key -= 0x20;   /* @noupper @lo @hi */
+        int isyes = (key == yes), isno = (key == no);
+        if (mut == 13u && isno) isyes = 0;                                       /* @order */
+        if (isyes) {
+            if (mut != 14u) DSB(0x00104B22u) = 0u;                               /* @flagkeep */
+            if (!h) { if (mut == 16u) DSD(0x000A81A8u) = 1u; else if (mut != 15u) DSB(0x000A81A8u) = 1u; }   /* @noquit @quitw */
+            else return;                               /* the soft-restart arm: no case */
+        } else if (isno) {
+            DSB(0x00104B22u) = 0u;
+            if (mut != 17u) text_cells_release(-1, 0xA, game_string_get((mut == 18u) ? (id ^ 1u) : id),
+                                               (mut == 19u) ? 0x2000u : 0x1000u);   /* @norelease @relid @relmode */
+        }
+        if (mut == 21u) break;                                                   /* @once */
+    } while (DSB(0x00104B22u) != 0u || (mut == 23u && input_has_key()));        /* @more */
     if (mut != 20u) sound_resume();                                              /* @noresume */
 }
-static void b_d6a_249f0(const u32 *r, u32 *eax)
-{
-    d6a_249f0_key();
-    game_quit_prompt(r[R_EAX]);
-    input_clear();
-    *eax = 0u;
-}
+static void b_d6a_249f0(const u32 *r, u32 *eax) { game_quit_prompt(r[R_EAX]); *eax = 0u; }
 #define D6A_QP_MUT(name, n) \
-    static void m_d6a_qp_##name(const u32 *r, u32 *eax) { d6a_249f0_key(); d6a_249f0_core(r, n); input_clear(); *eax = 0u; }
+    static void m_d6a_qp_##name(const u32 *r, u32 *eax) { d6a_249f0_core(r, n); *eax = 0u; }
 D6A_QP_MUT(hard32, 1u)  D6A_QP_MUT(id, 2u)     D6A_QP_MUT(noflag, 3u)  D6A_QP_MUT(nopause, 4u)  D6A_QP_MUT(col, 5u)
 D6A_QP_MUT(row, 6u)     D6A_QP_MUT(mode, 7u)   D6A_QP_MUT(wait0, 8u)   D6A_QP_MUT(answers, 9u)  D6A_QP_MUT(noupper, 10u)
 D6A_QP_MUT(lo, 11u)     D6A_QP_MUT(hi, 12u)    D6A_QP_MUT(order, 13u)  D6A_QP_MUT(flagkeep, 14u) D6A_QP_MUT(noquit, 15u)
 D6A_QP_MUT(quitw, 16u)  D6A_QP_MUT(norelease, 17u) D6A_QP_MUT(relid, 18u) D6A_QP_MUT(relmode, 19u) D6A_QP_MUT(noresume, 20u)
+D6A_QP_MUT(once, 21u)   D6A_QP_MUT(ax, 22u)    D6A_QP_MUT(more, 23u)
 
-/* 0x1C470 gfx_flush_palette: no argument. The raw runs with its retrace read `in al,dx` as `mov al,8` and
- * its four DAC writes `out dx,al` as nops: only the dirty list's own bookkeeping is compared (the port's
- * DAC is the host's gfx_dac). The mutants restate that bookkeeping. */
+/* 0x1C470 gfx_flush_palette: no argument. The raw runs unpoked under the machine model (track H h0, record
+ * §H.1): its retrace read takes the case's bytes and its DAC writes are compared, through the DAC's view,
+ * with the PR_OUTs of gfx.c's palette path. The mutants restate the bookkeeping and the DAC writes. */
+static void d6a_1c470_dac(u32 rec, u32 mut)
+{
+    u32 ptr = DSD(rec), first = (u8)DSD(rec + 4u);
+    s32 count = (s32)DSD(rec + 8u), i = 0;
+    if (DSB(rec + 12u) != 0u && mut != 15u) {                                    /* @noresolve */
+        const u8 *rp = res_resolve(ptr);
+        ptr = rp ? (u32)(rp - mem) + ((mut == 14u) ? 0u : 4u) : 0u;              /* @noskip */
+    }
+    if (mut == 13u && count < 1) return;                                         /* @while */
+    do {
+        u32 w = DSD(ptr + (u32)i * 4u) >> ((mut == 11u) ? 0u : 2u);              /* @shift */
+        PR_OUT(0x3C8u, (u8)(first + ((mut == 12u) ? 0u : (u32)i)));             /* @idx */
+        PR_OUT(0x3C9u, ((mut == 16u) ? w >> 16 : w) & 0x3Fu);                    /* @chan */
+        PR_OUT(0x3C9u, (w >> 8) & 0x3Fu);
+        PR_OUT(0x3C9u, ((mut == 16u) ? w : w >> 16) & 0x3Fu);
+    } while (++i < count);
+}
 static void d6a_1c470_core(u32 mut)
 {
     u32 rec = 0x00107498u, head = DSD(0x00107798u);
@@ -41661,6 +41748,7 @@ static void d6a_1c470_core(u32 mut)
             if (mut == 4u) DSD(rec + 8u) -= (u32)(sum - 0x100);                  /* @clampcount */
             else DSD(rec + 12u) -= (u32)(sum - ((mut == 3u) ? 0xFF : 0x100));    /* @clampby */
         }
+        d6a_1c470_dac(rec, mut);
         if (mut == 6u) DSW(rec + 4u) = 0xFFFFu;                                  /* @markw */
         else if (mut != 5u) DSD(rec + 4u) = (mut == 7u) ? 0u : 0xFFFFFFFFu;      /* @nomark @mark0 */
         rec += 16u;
@@ -41673,11 +41761,12 @@ static void b_d6a_1c470(const u32 *r, u32 *eax) { (void)r; gfx_flush_palette(); 
     static void m_d6a_fp_##name(const u32 *r, u32 *eax) { (void)r; d6a_1c470_core(n); *eax = 0u; }
 D6A_FP_MUT(noclamp, 1u) D6A_FP_MUT(unsigned, 2u) D6A_FP_MUT(clampby, 3u) D6A_FP_MUT(clampcount, 4u) D6A_FP_MUT(nomark, 5u)
 D6A_FP_MUT(markw, 6u)   D6A_FP_MUT(mark0, 7u)    D6A_FP_MUT(headfirst, 8u) D6A_FP_MUT(nohead, 9u)  D6A_FP_MUT(one, 10u)
+D6A_FP_MUT(shift, 11u)  D6A_FP_MUT(idx, 12u)     D6A_FP_MUT(while, 13u)    D6A_FP_MUT(noskip, 14u) D6A_FP_MUT(noresolve, 15u)
+D6A_FP_MUT(chan, 16u)
 
-/* 0x52106 gfx_screen_reset: EAX = ticks. The raw runs with its retrace read as `mov al,8`, its four DAC
- * writes as nops and its third 0x51F72 call, the fill of the aperture 0xA0000, as nops: the two tick
- * stores and the two offscreen fills are compared (the port's DAC and aperture are the host's). The
- * mutants restate that part of gfx.c's body. */
+/* 0x52106 gfx_screen_reset: EAX = ticks. The raw runs unpoked under the machine model (track H h2, record
+ * §H.3): the tick stores, the two offscreen fills, the DAC writes (compared through the DAC's view with
+ * gfx.c's PR_OUTs) and the screen fill (compared with gfx_aperture()). The mutants restate gfx.c's body. */
 static void d6a_52106_core(u32 ticks, u32 mut)
 {
     if (mut != 1u) DSD(0x00101508u) = ticks;                                     /* @no508 */
@@ -41690,12 +41779,22 @@ static void d6a_52106_core(u32 ticks, u32 mut)
         gfx_fill_screen(DSD((mut == 4u) ? 0x001014E4u : 0x001014E8u), v);        /* @e4twice */
     }
     if (mut != 3u) gfx_fill_screen(DSD(0x001014E4u), v);                         /* @one */
+    if (mut != 8u) {                                                             /* @nodac */
+        PR_OUT(0x3C8u, (mut == 9u) ? 1u : 0u);                                   /* @dacidx */
+        u32 n = (mut == 10u) ? 0xFFu * 3u : 0x100u * 3u;                         /* @dac255 */
+        for (u32 i = 0u; i < n; i++) PR_OUT(0x3C9u, (mut == 11u) ? ticks & 0x3Fu : 0u);   /* @dacval */
+    }
+    if (mut == 12u) return;                                                      /* @noap */
+    u32 a = (mut == 13u) ? (ticks & 0xFFu) * 0x01010101u : ticks;                /* @apbyte */
+    for (u32 k = 0u; k < ((mut == 14u) ? 0xFA00u - 4u : 0xFA00u); k += 4u)        /* @apshort */
+        memcpy(gfx_aperture() + k, &a, 4u);
 }
 static void b_d6a_52106(const u32 *r, u32 *eax) { gfx_screen_reset(r[R_EAX]); *eax = 0u; }
 #define D6A_SR_MUT(name, n) \
     static void m_d6a_sr_##name(const u32 *r, u32 *eax) { d6a_52106_core(r[R_EAX], n); *eax = 0u; }
 D6A_SR_MUT(no508, 1u) D6A_SR_MUT(no50c, 2u) D6A_SR_MUT(one, 3u) D6A_SR_MUT(e4twice, 4u) D6A_SR_MUT(byte, 5u)
-D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u)
+D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u) D6A_SR_MUT(nodac, 8u) D6A_SR_MUT(dacidx, 9u) D6A_SR_MUT(dac255, 10u)
+D6A_SR_MUT(dacval, 11u) D6A_SR_MUT(noap, 12u) D6A_SR_MUT(apbyte, 13u) D6A_SR_MUT(apshort, 14u)
 /* ---- d6a bindings end ---- */
 /* ---- track S batch sa (record 2026-10-13-reverse-s section S.5): the storage image and its validators ---- */
 
@@ -42637,7 +42736,8 @@ I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
 /* ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ---- */
 /* 0x51ED8 sprite_blit_aperture: EAX = the raw node. The binding writes every field of the C node back to
  * the raw offsets (+0x24 is not in the C node). The mutants restate sprite.c's body, one choice flipped per
- * number; the cases draw nothing (the table's `ret` entries), so the draw is sprite_blit_at itself. */
+ * number; the draw is sprite_blit_at itself, on gfx_aperture() (the machine's screen since track H h2,
+ * record §H.3), on a copy of the node for the draw's mutants. */
 static void n1_51ed8_store(u32 at, const SpriteNode *n)
 {
     DSD(at) = (u32)n->x;            DSD(at + 4u) = (u32)n->y;
@@ -42655,7 +42755,10 @@ static void n1_51ed8_run(const u32 *r, u32 mut)
     d5b_51e5c_load(r[R_EAX], &n);
     if (mut == 0u) sprite_blit_aperture(&n);
     else if (!((n.width == 0 && mut != 3u) || (n.rows == 0 && mut != 4u))) {   /* @nowidth @norows */
-        sprite_blit_at(&n, gfx_aperture());
+        SpriteNode d = n;
+        if (mut == 6u) d.clip_b = 0;                                           /* @noclipb */
+        if (mut == 7u) d.type &= ~8u;                                          /* @nomirror */
+        if (mut != 5u) sprite_blit_at(&d, gfx_aperture() + ((mut == 8u) ? 1u : 0u));   /* @nodraw @xoff */
         if (mut != 1u) n.rows -= (mut == 2u) ? n.clip_t : n.clip_b;           /* @nostore @clipt */
     }
     n1_51ed8_store(r[R_EAX], &n);
@@ -42664,6 +42767,7 @@ static void b_n1_51ed8(const u32 *r, u32 *eax) { n1_51ed8_run(r, 0u); *eax = 0u;
 #define N1_BA_MUT(name, n) \
     static void m_n1_ba_##name(const u32 *r, u32 *eax) { n1_51ed8_run(r, n); *eax = 0u; }
 N1_BA_MUT(nostore, 1u)  N1_BA_MUT(clipt, 2u)    N1_BA_MUT(nowidth, 3u)  N1_BA_MUT(norows, 4u)
+N1_BA_MUT(nodraw, 5u)   N1_BA_MUT(noclipb, 6u)  N1_BA_MUT(nomirror, 7u) N1_BA_MUT(xoff, 8u)
 /* ---- track N batch n1 bindings end ---- */
 
 /* ---- track N batch n2 bindings (record 2026-10-14-reverse-n §N.2) ---- */
@@ -56499,6 +56603,25 @@ static const binding_t k_bindings[] = {
     { "game_frame_start@hook", m_d5h_24c5c_hook, 0x00000000u },
     { "game_frame_start@m17", m_d5h_24c5c_m17, 0x00000000u },
     { "game_frame_rr", b_d5h_24c5c, 0x00000000u },
+    { "game_frame_keys", b_d5h_24c5c, 0x00000000u },
+    { "game_frame_keys@knone", m_h1_gf_knone, 0x00000000u },
+    { "game_frame_keys@kmode1", m_h1_gf_kmode1, 0x00000000u },
+    { "game_frame_keys@kscan", m_h1_gf_kscan, 0x00000000u },
+    { "game_frame_keys@klatchw", m_h1_gf_klatchw, 0x00000000u },
+    { "game_frame_keys@kzero", m_h1_gf_kzero, 0x00000000u },
+    { "game_frame_keys@kenter", m_h1_gf_kenter, 0x00000000u },
+    { "game_frame_keys@kesc27", m_h1_gf_kesc27, 0x00000000u },
+    { "game_frame_keys@kescarg", m_h1_gf_kescarg, 0x00000000u },
+    { "game_frame_keys@kspace", m_h1_gf_kspace, 0x00000000u },
+    { "game_frame_keys@kpausew", m_h1_gf_kpausew, 0x00000000u },
+    { "game_frame_keys@kpauserow", m_h1_gf_kpauserow, 0x00000000u },
+    { "game_frame_keys@kpauseflag", m_h1_gf_kpauseflag, 0x00000000u },
+    { "game_frame_keys@kaltq", m_h1_gf_kaltq, 0x00000000u },
+    { "game_frame_keys@kaltsm", m_h1_gf_kaltsm, 0x00000000u },
+    { "game_frame_keys2", b_d5h_24c5c, 0x00000000u },
+    { "game_frame_keys2@knone", m_h1_gf_knone, 0x00000000u },
+    { "game_frame_keys2@kname", m_h1_gf_kname, 0x00000000u },
+    { "game_frame_keys2@khook", m_h1_gf_khook, 0x00000000u },
     { "game_frame_rr@modecache", m_d5h_24c5c_modecache, 0x00000000u },
     { "game_frame_rr@tailcache", m_d5h_24c5c_tailcache, 0x00000000u },
     { "game_frame_rr@b1acache", m_d5h_24c5c_b1acache, 0x00000000u },
@@ -57623,6 +57746,13 @@ static const binding_t k_bindings[] = {
     { "config_screen_wait@passes", m_d6a_sw_passes, 0x00000000u },
     { "config_screen_wait@ge", m_d6a_sw_ge, 0x00000000u },
     { "config_screen_wait@pumpfirst", m_d6a_sw_pumpfirst, 0x00000000u },
+    { "config_screen_wait@nokeys", m_d6a_sw_nokeys, 0x00000000u },
+    { "config_screen_wait@klatchw", m_d6a_sw_klatchw, 0x00000000u },
+    { "config_screen_wait@kscan", m_d6a_sw_kscan, 0x00000000u },
+    { "config_screen_wait@kwordw", m_d6a_sw_kwordw, 0x00000000u },
+    { "config_screen_wait@ktime", m_d6a_sw_ktime, 0x00000000u },
+    { "config_screen_wait@kone", m_d6a_sw_kone, 0x00000000u },
+    { "config_screen_wait@kany", m_d6a_sw_kany, 0x00000000u },
     { "config_screen_wait_zero",         b_d6a_2ea74, 0x00000000u },
     { "config_screen_wait_zero@n1", m_d6a_swz_n1, 0x00000000u },
     { "config_screen_wait_zero@m1", m_d6a_swz_m1, 0x00000000u },
@@ -57648,6 +57778,9 @@ static const binding_t k_bindings[] = {
     { "game_quit_prompt@relid", m_d6a_qp_relid, 0x00000000u },
     { "game_quit_prompt@relmode", m_d6a_qp_relmode, 0x00000000u },
     { "game_quit_prompt@noresume", m_d6a_qp_noresume, 0x00000000u },
+    { "game_quit_prompt@once", m_d6a_qp_once, 0x00000000u },
+    { "game_quit_prompt@ax", m_d6a_qp_ax, 0x00000000u },
+    { "game_quit_prompt@more", m_d6a_qp_more, 0x00000000u },
     { "gfx_flush_palette",               b_d6a_1c470, 0x00000000u },
     { "gfx_flush_palette@noclamp", m_d6a_fp_noclamp, 0x00000000u },
     { "gfx_flush_palette@unsigned", m_d6a_fp_unsigned, 0x00000000u },
@@ -57659,6 +57792,12 @@ static const binding_t k_bindings[] = {
     { "gfx_flush_palette@headfirst", m_d6a_fp_headfirst, 0x00000000u },
     { "gfx_flush_palette@nohead", m_d6a_fp_nohead, 0x00000000u },
     { "gfx_flush_palette@one", m_d6a_fp_one, 0x00000000u },
+    { "gfx_flush_palette@shift", m_d6a_fp_shift, 0x00000000u },
+    { "gfx_flush_palette@idx", m_d6a_fp_idx, 0x00000000u },
+    { "gfx_flush_palette@while", m_d6a_fp_while, 0x00000000u },
+    { "gfx_flush_palette@noskip", m_d6a_fp_noskip, 0x00000000u },
+    { "gfx_flush_palette@noresolve", m_d6a_fp_noresolve, 0x00000000u },
+    { "gfx_flush_palette@chan", m_d6a_fp_chan, 0x00000000u },
     { "gfx_screen_reset",                b_d6a_52106, 0x00000000u },
     { "gfx_screen_reset@no508", m_d6a_sr_no508, 0x00000000u },
     { "gfx_screen_reset@no50c", m_d6a_sr_no50c, 0x00000000u },
@@ -57667,6 +57806,13 @@ static const binding_t k_bindings[] = {
     { "gfx_screen_reset@byte", m_d6a_sr_byte, 0x00000000u },
     { "gfx_screen_reset@short", m_d6a_sr_short, 0x00000000u },
     { "gfx_screen_reset@w50c", m_d6a_sr_w50c, 0x00000000u },
+    { "gfx_screen_reset@nodac", m_d6a_sr_nodac, 0x00000000u },
+    { "gfx_screen_reset@dacidx", m_d6a_sr_dacidx, 0x00000000u },
+    { "gfx_screen_reset@dac255", m_d6a_sr_dac255, 0x00000000u },
+    { "gfx_screen_reset@dacval", m_d6a_sr_dacval, 0x00000000u },
+    { "gfx_screen_reset@noap", m_d6a_sr_noap, 0x00000000u },
+    { "gfx_screen_reset@apbyte", m_d6a_sr_apbyte, 0x00000000u },
+    { "gfx_screen_reset@apshort", m_d6a_sr_apshort, 0x00000000u },
     /* d6a table end */
     /* track S batch sa */
     { "config_image_store",              b_sa_2d498, 0x00000000u },
@@ -58209,6 +58355,10 @@ static const binding_t k_bindings[] = {
     { "sprite_blit_aperture@clipt",      m_n1_ba_clipt, 0x00000000u },
     { "sprite_blit_aperture@nowidth",    m_n1_ba_nowidth, 0x00000000u },
     { "sprite_blit_aperture@norows",     m_n1_ba_norows, 0x00000000u },
+    { "sprite_blit_aperture@nodraw", m_n1_ba_nodraw, 0x00000000u },
+    { "sprite_blit_aperture@noclipb", m_n1_ba_noclipb, 0x00000000u },
+    { "sprite_blit_aperture@nomirror", m_n1_ba_nomirror, 0x00000000u },
+    { "sprite_blit_aperture@xoff", m_n1_ba_xoff, 0x00000000u },
     /* track N batch n2 */
     { "game_shutdown",            b_n2_1be30, 0x00000000u },
     { "game_shutdown@noshut", m_n2_1be30_noshut, 0x00000000u },
@@ -58302,6 +58452,8 @@ typedef struct {
     int npoke;
     stub_t stub[16];
     int nstub;
+    int kbd, nkey, outs, aperture;    /* the machine model (track H h0, record §H.1): opt-in per case */
+    u32 key[16];
 } case_t;
 
 static const case_t *g_case;          /* the case running, for the seam hook */
@@ -58497,6 +58649,45 @@ static int parse_bytes(const char *s, poke_t *p)
     return 1;
 }
 
+/* ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model's port side ---- */
+/* A case that opts in (`kbd` with its `key` words, `outs`, `aperture`): the key queue is the port's
+ * input FIFO, filled before the binding runs and counted (`k <left>`) after it; each PR_OUT the port
+ * makes is an `o <port> <value>` line as it happens; the screen is gfx_aperture(), seeded from mem[] at
+ * the aperture (the case's pokes applied, as the emulator's screen starts) and reported after the run
+ * as an `a <addr> <byte>` line per byte that changed. A case that declares none of them runs as before. */
+#define H0_SCREEN 0x000A0000u
+static u8 h0_seed[320u * 200u];
+static void h0_out(u32 port, u32 value) { printf("o 0x%X 0x%X\n", port, value); }
+static void h0_start(const case_t *c)
+{
+    if (c->kbd) {
+        input_clear();
+        for (int i = 0; i < c->nkey; i++) input_push((u8)(c->key[i] >> 8), (u8)c->key[i]);
+    }
+    /* the DAC seeded with 0xFE, a byte no six-bit channel expands to ((v << 2) | (v >> 4)), so an
+     * entry the port does not store reports 0x3F through gfx.c's read-back (audit H F1) */
+    if (c->outs) { memset(gfx_dac, 0xFE, sizeof gfx_dac); pr_out = h0_out; }
+    if (c->aperture) {
+        memcpy(h0_seed, mem + H0_SCREEN, sizeof h0_seed);
+        memcpy(gfx_aperture(), h0_seed, sizeof h0_seed);
+    }
+}
+static void h0_end(const case_t *c)
+{
+    pr_out = NULL;
+    if (c->kbd) {
+        u32 left = 0;
+        for (; input_has_key(); left++) (void)input_get_key();
+        printf("k %u\n", left);
+    }
+    if (c->aperture) {
+        const u8 *s = gfx_aperture();
+        for (u32 i = 0; i < sizeof h0_seed; i++)
+            if (s[i] != h0_seed[i]) printf("a 0x%X 0x%02X\n", H0_SCREEN + i, s[i]);
+    }
+}
+/* ---- h0 end ---- */
+
 static void run_case(const case_t *c)
 {
     printf("case %s\n", c->id);
@@ -58517,12 +58708,14 @@ static void run_case(const case_t *c)
     u32 eax = 0;
     g_case = c;
     g_seam_error = 0;
+    h0_start(c);
     b->call(c->reg, &eax);
     g_case = NULL;
     if (g_seam_error == 2)
         printf("error a stub write names argument %u, but 0x%X reports %u arguments\n", g_seam_arg, g_seam_addr, g_seam_nargs);
     else if (g_seam_error) printf("error a stub write outside the image\n");
     else printf("ret eax 0x%X mask 0x%X\n", eax & b->eax_mask, b->eax_mask);
+    h0_end(c);
     scan_image(g_pre, 'w');
     scan_outside(0, CODE_BASE, 'w', 1);              /* the case's writes outside the image, cleared */
     scan_outside(CODE_BASE + g_len, MEM_SIZE, 'w', 1);
@@ -58584,6 +58777,15 @@ static int run_cases(const char *path)
             if (!parse_hex(t[2], &w->off) || !parse_bytes(t[3], &w->p)) {
                 fprintf(stderr, "diffrun: bad swrite line\n"); fclose(f); return 0;
             }
+        } else if (strcmp(t[0], "kbd") == 0 && n == 1) {
+            c.kbd = 1;
+        } else if (strcmp(t[0], "key") == 0 && n == 2 && c.kbd && c.nkey < 16) {
+            if (!parse_hex(t[1], &c.key[c.nkey]) || c.key[c.nkey] > 0xFFFFu) { fprintf(stderr, "diffrun: bad key line\n"); fclose(f); return 0; }
+            c.nkey++;
+        } else if (strcmp(t[0], "outs") == 0 && n == 1) {
+            c.outs = 1;
+        } else if (strcmp(t[0], "aperture") == 0 && n == 1) {
+            c.aperture = 1;
         } else if (strcmp(t[0], "end") == 0) {
             run_case(&c);
             open = 0;

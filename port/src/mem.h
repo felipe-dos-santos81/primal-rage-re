@@ -122,4 +122,16 @@ extern pr_seam_fn pr_seam;
         }                                                                   \
     } while (0)
 
+/* PORT: the differential harness's port-I/O seam (record
+ * 2026-10-14-reverse-h §H.1); no original instruction. Where the original
+ * writes a byte to an I/O port (`out`), the port's equivalent path reports
+ * the port and the byte the device keeps. pr_out is NULL in every binary but
+ * build/diffrun, which installs a hook for a case that records its `out`s. */
+typedef void (*pr_out_fn)(u32 port, u32 value);
+extern pr_out_fn pr_out;
+#define PR_OUT(port, value)                                                 \
+    do {                                                                    \
+        if (pr_out) pr_out((port), (value));                                \
+    } while (0)
+
 #endif /* PR_MEM_H */

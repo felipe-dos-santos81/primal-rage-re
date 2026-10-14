@@ -165,6 +165,111 @@ class Call:
                                  % (self.addr, w, self.args[w[0]]))
 
 
+APERTURE = (0xA0000, 0xAFA00)     # the 320x200 bytes the game writes at the literal 0xA0000 (gfx.c, the aperture rule)
+DAC_INDEX, DAC_DATA = 0x3C8, 0x3C9
+
+
+def dac_effects(outs):
+    """What the VGA DAC (mode 13h, the game's mode) makes of an `out` stream: `out 0x3C8` sets the
+    write index and restarts the channel count; each `out 0x3C9` latches the low six bits of one channel
+    (the DAC's registers are six bits wide), and the third writes the entry, ("dac", index, r, g, b), and
+    advances the index modulo 256. A stream with a DAC write ends with ("dac-at", index, the channels
+    latched): the state a later write continues from. An index never set in the stream is None (the
+    hardware's, unknown here). Any other port: ("out", port, value), in place. Two streams that write the
+    same entries in the same order and leave the DAC in the same state are the same to the screen."""
+    eff, idx, comp, dac = [], None, [], False
+    for port, v in outs:
+        if port == DAC_INDEX:
+            idx, comp, dac = v & 0xFF, [], True
+        elif port == DAC_DATA:
+            comp.append(v & 0x3F)
+            dac = True
+            if len(comp) == 3:
+                eff.append(("dac", idx) + tuple(comp))
+                idx, comp = None if idx is None else (idx + 1) & 0xFF, []
+        else:
+            eff.append(("out", port, v))
+    return eff + ([("dac-at", idx, tuple(comp))] if dac else [])
+
+
+@dataclass(frozen=True)
+class Machine:
+    """The machine model a case opts into (track H, record 2026-10-14-reverse-h §H.1). With none, an
+    `int`, `in` or `out` stops the run as `unmodeled`, as before. Each part is opt-in on its own:
+
+    keys: the BIOS key queue, AX words in order, or None (int 0x16 stays unmodeled). `int 0x16` with
+      AH = 0 removes the first word into AX (an empty queue stops the run: the BIOS would wait); AH = 1
+      sets ZF = 1 when the queue is empty, else ZF = 0 and AX = the first word, which stays queued. AH
+      only (the game's six sites issue 0 and 1; any other AH stops the run). EAX bits 16+, the other
+      registers and the other flags are kept: every site reads AX and, after AH = 1, ZF alone.
+      OrigResult.keys_left = the words left.
+    ins: ((port, (byte, ...)), ...): `in al,dx` / `in al,imm8` from a listed port returns its bytes in
+      order; past the last, or from a port not listed, the run stops (`unmodeled`).
+    outs: the ports whose `out dx,al` / `out imm8,al` are recorded, in order, in OrigResult.outs as
+      (port, AL); an `out` to another port stops the run. The comparison sees the DAC ports through
+      dac_effects, the device's view.
+    aperture: the bytes changed in APERTURE are the screen's, not mem[]'s: they leave OrigResult.writes
+      and the call memory for OrigResult.aperture. A case seeds the screen by poking that range.
+    Only the byte forms of in/out are modelled; the word and dword forms stay unmodeled."""
+    keys: tuple = None
+    ins: tuple = ()
+    outs: tuple = ()
+    aperture: bool = False
+
+    def __post_init__(self):
+        if self.keys is not None and not all(0 <= k <= 0xFFFF for k in self.keys):
+            raise ValueError("machine: a key word is not 16 bits: %r" % (self.keys,))
+        for port, vals in self.ins:
+            if not 0 <= port <= 0xFFFF or not vals or not all(0 <= v <= 0xFF for v in vals):
+                raise ValueError("machine: in from 0x%X needs one or more byte values" % port)
+        if not all(0 <= p <= 0xFFFF for p in self.outs):
+            raise ValueError("machine: an out port is not 16 bits: %r" % (self.outs,))
+
+
+class _Devices:
+    """One run's machine state; step() models one int/in/out (EIP not yet moved) and returns None, or
+    the (outcome, detail) the run stops with."""
+
+    def __init__(self, m):
+        self.m, self.outs = m, []
+        self.keys = None if m.keys is None else list(m.keys)
+        self.ins = {p: list(v) for p, v in m.ins}
+
+    def step(self, uc, ins, addr):
+        op = ins.bytes[0]
+        stop = ("unmodeled", "%s at 0x%X" % (ins.mnemonic, addr))
+        if op == 0xCD:                                    # int imm8
+            if ins.bytes[1] != 0x16 or self.keys is None:
+                return stop
+            eax = uc.reg_read(ux.UC_X86_REG_EAX)
+            ah = (eax >> 8) & 0xFF
+            if ah == 0 and not self.keys:
+                return ("unmodeled", "int 0x16 AH=0 at 0x%X: the key queue is empty" % addr)
+            if ah not in (0, 1):
+                return ("unmodeled", "int 0x16 AH=0x%X at 0x%X" % (ah, addr))
+            if ah == 1:
+                fl = uc.reg_read(ux.UC_X86_REG_EFLAGS)
+                uc.reg_write(ux.UC_X86_REG_EFLAGS, fl & ~0x40 if self.keys else fl | 0x40)
+            if self.keys:
+                uc.reg_write(ux.UC_X86_REG_EAX, (eax & 0xFFFF0000) | (self.keys.pop(0) if ah == 0 else self.keys[0]))
+        elif op in (0xE4, 0xEC):                          # in al,imm8 / in al,dx
+            port = ins.bytes[1] if op == 0xE4 else uc.reg_read(ux.UC_X86_REG_EDX) & 0xFFFF
+            if not self.ins.get(port):
+                return stop if port not in self.ins else (
+                    "unmodeled", "in from 0x%X at 0x%X: its values are spent" % (port, addr))
+            eax = uc.reg_read(ux.UC_X86_REG_EAX)
+            uc.reg_write(ux.UC_X86_REG_EAX, (eax & ~0xFF) | self.ins[port].pop(0))
+        elif op in (0xE6, 0xEE):                          # out imm8,al / out dx,al
+            port = ins.bytes[1] if op == 0xE6 else uc.reg_read(ux.UC_X86_REG_EDX) & 0xFFFF
+            if port not in self.m.outs:
+                return stop
+            self.outs.append((port, uc.reg_read(ux.UC_X86_REG_EAX) & 0xFF))
+        else:
+            return stop
+        uc.reg_write(ux.UC_X86_REG_EIP, addr + ins.size)
+        return None
+
+
 @dataclass
 class OrigResult:
     outcome: str                 # ok | fault | unmodeled | timeout
@@ -175,6 +280,9 @@ class OrigResult:
     outside: list = field(default_factory=list)    # (addr, size) read or written outside image and stack
     calls: list = field(default_factory=list)      # (addr, args tuple) per arrival at a call-set address, in order
     call_mem: list = field(default_factory=list)   # per arrival: {addr: byte} changed since the start, private stack excluded
+    outs: list = field(default_factory=list)       # Machine.outs: (port, value) per recorded `out`, in order
+    keys_left: int = None                          # Machine.keys: the words left in the queue (None: no key model)
+    aperture: dict = field(default_factory=dict)   # Machine.aperture: addr -> final byte of each changed screen byte
 
 
 if capstone is not None:
@@ -214,7 +322,7 @@ def _indirect_target(uc, ins):
 
 
 def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=DEFAULT_MAX_INSNS,
-                 calls=()):
+                 calls=(), machine=None):
     """Run the original function at `entry` once from `image` with `regs` and `pokes` applied.
 
     regs: {"eax": v, ...}; pokes: {addr: bytes}, applied inside the image before the run (the
@@ -224,6 +332,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     calls: Call entries (record E3 §E3.4): their targets may be called, directly or indirectly,
     and every arrival is recorded in `OrigResult.calls`. With no calls and no allow-list entry for
     it, an indirect call stops the run as E1's "indirect call at" (E1 §E.3).
+    machine: a Machine (track H §H.1), or None: the int/in/out instructions stop the run as before.
     """
     if not available():
         raise RuntimeError("unicorn or capstone is not installed (pip install -r tools/requirements-diff.txt)")
@@ -265,6 +374,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     allow = frozenset(allow_calls)
     callset = {c.addr: c for c in calls}
     recorded, recorded_mem = [], []
+    dev = _Devices(machine) if machine is not None else None
+    screen = (lambda a: APERTURE[0] <= a < APERTURE[1]) if machine is not None and machine.aperture else (lambda a: False)
 
     def arg(uc, esp, a):
         if a in STACK_ARGS:
@@ -279,7 +390,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
         stack excluded: what the port's seam hook reports from mem[] against its copy (§E3.12)."""
         out = {}
         for a, old in before.items():
-            if not STACK_LOW <= a < STACK_END:
+            if not STACK_LOW <= a < STACK_END and not screen(a):
                 new = uc.mem_read(a, 1)[0]
                 if new != old:
                     out[a] = new
@@ -331,6 +442,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
             kind, transfer, ind = None, None, None
             if ins is None:
                 kind = ("unmodeled", "undecodable bytes at 0x%X" % addr)
+            elif dev is not None and ins.mnemonic in ("int", "in", "out"):
+                kind = ("machine", ins)
             elif ins.mnemonic in UNMODELED_MNEMONICS:
                 kind = ("unmodeled", "%s at 0x%X" % (ins.mnemonic, addr))
             elif ins.mnemonic == "call":
@@ -352,6 +465,10 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
             if kind is None and tgt not in allow and tgt not in callset:
                 kind = ("unmodeled", "indirect call at 0x%X" % addr if not callset and not allow
                         else "indirect call to 0x%X at 0x%X" % (tgt, addr))
+        if kind is not None and kind[0] == "machine":
+            kind = dev.step(uc, kind[1], addr)
+            if kind is None:
+                return
         if kind is not None and state["stop"] is None:
             state["stop"] = kind
             uc.emu_stop()
@@ -384,14 +501,15 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
         outcome, detail = "fault", str(e)
 
     final_regs = {r: mu.reg_read(names[r]) for r in REGS}
-    writes = {}
+    writes, aperture = {}, {}
     for a, old in before.items():
         if STACK_LOW <= a < STACK_END:
             continue
         new = mu.mem_read(a, 1)[0]
         if new != old:
-            writes[a] = new
-    return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside), recorded, recorded_mem)
+            (aperture if screen(a) else writes)[a] = new
+    return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside), recorded, recorded_mem,
+                      dev.outs if dev else [], None if dev is None or dev.keys is None else len(dev.keys), aperture)
 
 
 # ---- static scan: the function's basic blocks, for the coverage claim (spec §5.3) -------------
