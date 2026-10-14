@@ -6869,8 +6869,9 @@ void game_init(void)
     if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return; }
 
     /* PORT: 0x10C30/0x10D34/0x10D0C (CD-ROM drive locate and restore) and the
-     * DPMI locks 0x1ADAC/0x1ADE4 have no flat-memory or host equivalent (record
-     * §50-E). */
+     * DPMI real-mode vector get/set 0x1ADAC/0x1ADE4 (INT 31h AX=0x200/0x201, the
+     * saved and restored interrupt vectors; record §50-C, track N §N.2) have no
+     * flat-memory or host equivalent (record §50-E). */
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
         return;

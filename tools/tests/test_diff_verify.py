@@ -31790,16 +31790,12 @@ class RealFunctionTests(unittest.TestCase):
         # row of 0x2F9CC, closed: each of its ten callees has a VERIFIED row); the 169 without are
         # counted apart (0x12CD4's row is one). Track N batch n1: 0x51ED8's partial row (four mutants), open
         # on 0x1B544 (a named non-row) and 0x51E58
-        self.assertIn("diff-verify: 996/996 functions VERIFIED; 14829/14829 mutants detected; 1 named gaps; "
-                      "636/827 rows with callees closed (169 have none).", out.getvalue())
-        # track N batch n2: 0x1BE30's row adds one function, four mutants and one open row (open on
-        # 0x4FB98 and 0x10D34, run from their bytes with no row of their own)
-        self.assertIn("diff-verify: 996/996 functions VERIFIED; 14829/14829 mutants detected; 1 named gaps; "
-                      "636/827 rows with callees closed (169 have none).", out.getvalue())
-        # track N batch n3: the rows of 0x1B120 (open: its stubs 0x1B3AC and 0x1C308 have no row) and 0x1C740
-        # (closed: 0x52106 is VERIFIED), whose row also closes attract_step's (0x11000 stubs 0x1C740)
-        self.assertIn("diff-verify: 997/997 functions VERIFIED; 14843/14843 mutants detected; 1 named gaps; "
-                      "638/828 rows with callees closed (169 have none).", out.getvalue())
+        # Track N batch n2: 0x1BE30's row adds one function, four mutants and one open row (open on
+        # 0x4FB98 and 0x10D34, run from their bytes with no row of their own). Track N batch n3: the rows
+        # of 0x1B120 (open: its stubs 0x1B3AC and 0x1C308 have no row) and 0x1C740 (closed: 0x52106 is
+        # VERIFIED), whose row also closes attract_step's (0x11000 stubs 0x1C740). Measured on the merge.
+        self.assertIn("diff-verify: 999/999 functions VERIFIED; 14851/14851 mutants detected; 1 named gaps; "
+                      "638/830 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
