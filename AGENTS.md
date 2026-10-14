@@ -340,13 +340,18 @@ consolidation gate).
   the bytes: three got a weaker row, nine stay gaps with the instruction that stops each; track H (record
   `2026-10-14-reverse-h-derivations.md`) gave the emulator a machine model (`E.Machine`: BIOS `int 0x16` from a
   per-case key queue, `in` answers, the VGA DAC through a device model fed by the port's `PR_OUT`, the aperture
-  against `gfx_aperture()`) and ran the keyboard and VGA rows unpoked. `make diff-verify`'s counter after it is
-  `1000/1000 functions VERIFIED; 14884/14884 mutants detected; 1 named gaps;
+  against `gfx_aperture()`) and ran the keyboard and VGA rows unpoked; track F (record
+  `2026-10-14-reverse-f-derivations.md`) extended it with a per-case file model (`Machine.files`: the runtime's
+  fopen/fread/fwrite/fclose answer from the case's in-memory files and the closed file's final bytes mirror into
+  `mem[]` for the comparison) and ran both save-file rows unpoked. `make diff-verify`'s counter after it is
+  `1000/1000 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps;
   638/831 rows with callees closed (169 have none)` (`0x24C5C` has ten rows); 15 of the 747 ported functions have no
   row (9 named gaps and 6 named non-rows, none open; record §D.12, §S.8, §I.5, §N.4). The counter does not tell a full row from a
   weaker one: 9 of the 732 rowed functions have a row that runs the original under code pokes or leaves reachable
-  blocks out (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls; track S's `0x1AFE8` and
-  `0x1B084`, whose file calls are poked out; track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
+  blocks out (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls; `0x1AFE8` and
+  `0x1B084`, unpoked since track F but missing the exit block (a short read the model answers ends the
+  original's run, and a modelled write never comes short; the port takes the failed-open path instead,
+  config.c PORT); track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
   `0x24C5C`, `0x2EA78` and `0x2EA74`, unpoked since track H but missing the key paths into `0x5004A`, the
   port's documented omission): count 723 full rows, of which `0x51ED8`'s carries one declared difference (the
   renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker

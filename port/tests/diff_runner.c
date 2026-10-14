@@ -42382,37 +42382,144 @@ SB_CF_MUT(nopost, SB_M_NOAUDIT) SB_CF_MUT(postkind, SB_M_AUDITF) SB_CF_MUT(postz
 SB_CF_MUT(postcur, SB_M_A)      SB_CF_MUT(postside, SB_M_B)      SB_CF_MUT(postearly, SB_M_AUDITEARLY)
 SB_CF_MUT(postlate, SB_M_AUDITLATE)
 /* ---- sb bindings end ---- */
-/* ---- track S, batch sc (record 2026-10-13-reverse-s §S.7): the save file ---- */
+/* ---- track S, batch sc (record 2026-10-13-reverse-s §S.7), with the track F f1 conversion
+   (record 2026-10-14-reverse-f §F.1): the save file ---- */
 #include "host.h"
 #include <unistd.h>
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
-/* The raw's file calls are `mov eax,<result>` in every case (diff_verify.py SC_SPECS); the port's are the
- * host's (host_save_read/_writable/_write), which no seam reaches. Each binding reads the case's results
- * from the poked bytes and gives the host a scratch save path whose state yields them. */
+/* Both rows run under the file model (diff_emu.py Machine.files): the original's fopen/fread/fwrite/
+ * fclose answer from the case's declared files, and the port's real host_save_* calls run on a
+ * scratch directory seeded from the same declarations. The parser carries them to the bindings:
+ * `files` arms the case, `fdec <hexname> present|absent|gone` declares a file (present content
+ * arrives as `fd` chunks), `fmode <hex>` states the mode the case says the original passes. The
+ * CD-drive wrappers 0x10D34/0x10D0C and the memset 0x61A70 run from their bytes with the `-f` byte
+ * 0x101520 set, as before. After the call the binding mirrors every existing file of the scratch
+ * directory into the image's gap at F1_SHADOW — the name + NUL, the declared mode + NUL, the byte
+ * count as a dword, the bytes — the layout the emulator's model mirrors at its fclose, so the
+ * ordinary write comparison compares the two sides' real file bytes, and a difference shows as the
+ * usual `byte` problems (record §F.1). F1_SHADOW (0x79000, two 0x840 slots) sits above the
+ * track-D4D pset pool [0x74000, 0x78880) and below the data object: the gap holds no loaded bytes
+ * (the image's [0x73B15, 0x80000) reads all zero) and no harness constant claims 0x79000
+ * (record §F.1). */
+#define F1_SHADOW 0x00079000u
+#define F1_SLOT   0x840u
+#define F1_MAXFILE 0x800u
 #define SC_IMAGE 0x00100CE4u
 #define SC_LEN   0x7F8u
-static char sc_dir[40], sc_path[64];
-static void sc_begin(const char *sub)
+typedef struct { u32 nlen, mlen, dlen; int present, gone; u8 name[16], mode[16]; u8 data[F1_MAXFILE]; } f1_dec_t;
+static int f1_on, f1_n;
+static f1_dec_t f1_dec[2];
+static char sc_dir[40];
+static void f1_reset(void) { f1_on = 0; f1_n = 0; }
+static u32 f1_hex(const char *s, u8 *out, u32 cap)   /* hex pairs into out; ~0u on a bad or over-long run */
 {
+    u32 n = 0;
+    for (; *s; s += 2) {
+        char q[3] = { s[0], s[1], 0 }, *e;
+        if (!q[1]) return ~0u;
+        unsigned long v = strtoul(q, &e, 16);
+        if (*e || v > 0xFFu || n >= cap) return ~0u;
+        out[n++] = (u8)v;
+    }
+    return n;
+}
+static int f1_parse_decl(const char *hexname, const char *state)
+{
+    if (!f1_on || f1_n >= 2) return 0;
+    f1_dec_t *d = &f1_dec[f1_n];
+    memset(d, 0, sizeof *d);
+    d->nlen = f1_hex(hexname, d->name, sizeof d->name);
+    if (d->nlen == ~0u || d->nlen < 1u || d->nlen > 15u) return 0;
+    if (strcmp(state, "present") == 0) d->present = 1;
+    else if (strcmp(state, "gone") == 0) d->gone = 1;
+    else if (strcmp(state, "absent") != 0) return 0;
+    f1_n++;
+    return 1;
+}
+static int f1_parse_mode(const char *hexmode)
+{
+    if (f1_n == 0) return 0;
+    u32 n = f1_hex(hexmode, f1_dec[f1_n - 1].mode, sizeof f1_dec[f1_n - 1].mode);
+    if (n == ~0u || n > 15u) return 0;
+    f1_dec[f1_n - 1].mlen = n;
+    return 1;
+}
+static int f1_parse_data(const char *hex)
+{
+    if (f1_n == 0 || !f1_dec[f1_n - 1].present) return 0;
+    f1_dec_t *d = &f1_dec[f1_n - 1];
+    u32 n = f1_hex(hex, d->data + d->dlen, F1_MAXFILE - d->dlen);
+    if (n == ~0u) return 0;
+    d->dlen += n;
+    return 1;
+}
+static void f1_path(u32 i, char *out, size_t n)   /* a gone file lives under a subdirectory never made */
+{
+    snprintf(out, n, "%s/%s%.*s", sc_dir, f1_dec[i].gone ? "none/" : "", (int)f1_dec[i].nlen, f1_dec[i].name);
+}
+static int f1_append(const u8 *src, u32 len)      /* the @wmode mutant: append at the file's end instead
+                                                   * of the model's write at offset 0 (the raw's
+                                                   * truncate-on-open was not pinned, f-conventions.md
+                                                   * OPEN Q1; every stale file in the rows is shorter
+                                                   * than the write, so truncate and write-at-0 look
+                                                   * alike and append differs under either reading) */
+{
+    char path[64];
+    f1_path(0, path, sizeof path);
+    FILE *f = fopen(path, "ab");
+    if (!f) return 0;
+    size_t n = fwrite(src, 1, len, f);
+    fclose(f);
+    return n == (size_t)len;
+}
+static void sc_begin(void)
+{
+    char path[64];
     snprintf(sc_dir, sizeof sc_dir, "/tmp/pr_sc_XXXXXX");
     if (mkdtemp(sc_dir) == NULL) { perror("diffrun: mkdtemp"); exit(2); }
-    snprintf(sc_path, sizeof sc_path, "%s/%scmos", sc_dir, sub);
-    host_save_set_path(sc_path);
+    if (!f1_on || f1_n < 1) { fprintf(stderr, "diffrun: the sc rows run without a declared file\n"); exit(2); }
+    for (u32 i = 0; i < (u32)f1_n; i++) {
+        f1_path(i, path, sizeof path);
+        if (f1_dec[i].present && !host_write_file(path, f1_dec[i].data, f1_dec[i].dlen))
+            { fprintf(stderr, "diffrun: f1 seed %s\n", path); exit(2); }
+    }
+    f1_path(0, path, sizeof path);               /* the row's one file is the save path; no fallback */
+    host_save_set_path(path);
     host_save_set_fallback(NULL);
+}
+static void f1_mirror(void)
+{
+    static u8 buf[F1_MAXFILE];
+    for (u32 i = 0; i < (u32)f1_n; i++) {
+        u32 len = 0;
+        char path[64];
+        f1_path(i, path, sizeof path);
+        if (!host_read_file(path, buf, sizeof buf, &len)) continue;   /* no file, or one too big: no mirror */
+        u8 *slot = mem + F1_SHADOW + i * F1_SLOT;
+        memcpy(slot, f1_dec[i].name, f1_dec[i].nlen);
+        slot[f1_dec[i].nlen] = 0u;
+        memcpy(slot + 0x10u, f1_dec[i].mode, f1_dec[i].mlen);
+        slot[0x10u + f1_dec[i].mlen] = 0u;
+        memcpy(slot + 0x20u, &len, 4);
+        memcpy(slot + 0x24u, buf, len);
+    }
 }
 static void sc_end(void)
 {
     host_save_set_path(NULL);
-    (void)unlink(sc_path);
+    for (u32 i = 0; i < (u32)f1_n; i++) {
+        char path[64];
+        f1_path(i, path, sizeof path);
+        (void)unlink(path);
+    }
     (void)rmdir(sc_dir);
 }
 
-/* 0x1AFE8 config_file_load: no argument. fopen's EAX is the dword at 0x1AFFC, fread's count the one at
- * 0x1B018. With a handle the save file holds that many bytes of the image and the buffer is every byte
- * XOR 0x5A, so the bytes the original holds are there only if the port reads them; with none there is
- * no file. The mutants restate config.c's body. */
+/* 0x1AFE8 config_file_load: no argument. The buffer starts every byte XOR 0x5A (the case's pokes,
+ * both sides), so the original's modelled fread and the port's host_save_read each must move the
+ * file's bytes; the mutants restate config.c's body. */
 static u32 sc_1afe8_core(u32 mut)
 {
     u32 fail = 1u;
@@ -42431,13 +42538,9 @@ static u32 sc_1afe8_core(u32 mut)
 }
 static void sc_1afe8_run(u32 *eax, u32 mut)
 {
-    const u32 handle = DSD(0x0001AFFCu), count = DSD(0x0001B018u);
-    sc_begin("");
-    if (handle != 0u) {
-        (void)host_write_file(sc_path, mem + SC_IMAGE, count < SC_LEN ? count : SC_LEN);
-        for (u32 i = 0u; i < SC_LEN; i++) DSB(SC_IMAGE + i) ^= 0x5Au;
-    }
+    sc_begin();
     *eax = (mut == 0u) ? config_file_load() : sc_1afe8_core(mut);
+    f1_mirror();
     sc_end();
 }
 static void b_sc_1afe8(const u32 *r, u32 *eax) { (void)r; sc_1afe8_run(eax, 0u); }
@@ -42447,12 +42550,11 @@ SC_LD_MUT(noread, 1u)  SC_LD_MUT(dst, 2u)    SC_LD_MUT(readlen, 3u) SC_LD_MUT(le
 SC_LD_MUT(add, 6u)     SC_LD_MUT(sumbyte, 7u) SC_LD_MUT(nofill, 8u) SC_LD_MUT(fill0, 9u)   SC_LD_MUT(filllen, 10u)
 SC_LD_MUT(fillall, 11u) SC_LD_MUT(flag, 12u)
 
-/* 0x1B084 config_file_save: no argument. fopen's EAX is the dword at 0x1B098: with a handle the save path
- * is writable, with none its directory does not exist. After the call the binding reads the file back: the
- * verdict byte SC_VERDICT (above the image, where the original writes nothing) is set unless the file is
- * the image's 0x7F8 bytes as they are at return, the raw's fwrite(0x100CE4, 1, 0x7F8) (0x1B0CA..0x1B0E1),
- * or, with no handle, unless there is no file. The mutants restate config.c's body. */
-#define SC_VERDICT 0x03900200u
+/* 0x1B084 config_file_save: no argument. The buffer holds the image the original's fwrite copies and
+ * the port's host_save_write writes; after the call f1_mirror sends the directory's real file to the
+ * comparison, so a port file that differs from the bytes the original wrote is a byte difference.
+ * 0x2D4EC is a stub storing two bytes at image offset 0x20 + kind (diff_verify.py SC_TOUCH). The
+ * mutants restate config.c's body. */
 static u32 sc_xor(u32 n, u32 add)
 {
     u32 sum = 0u;
@@ -42476,20 +42578,16 @@ static u32 sc_1b084_core(u32 mut)
     if (mut == 16u) ok = (u32)host_save_write(mem + SC_IMAGE, SC_LEN);           /* @writefirst */
     if (mut != 3u && mut != 4u && mut != 9u) DSB(at) = (u8)sc_xor(n, mut == 12u);   /* @nosum @add */
     if (mut == 15u) ok = 1u;                                                     /* @nowrite */
+    else if (mut == 19u) ok = (u32)f1_append(mem + SC_IMAGE, SC_LEN);            /* @wmode */
     else if (mut != 16u)
         ok = (u32)host_save_write(mem + SC_IMAGE + ((mut == 18u) ? 1u : 0u), (mut == 17u) ? 0x7F7u : SC_LEN);   /* @wsrc @wlen */
     return ((ok != 0u) != (mut == 14u)) ? 0u : 1u;
 }
 static void sc_1b084_run(u32 *eax, u32 mut)
 {
-    static u8 file[SC_LEN + 1u];
-    const u32 handle = DSD(0x0001B098u);
-    u32 len = 0u;
-    sc_begin(handle != 0u ? "" : "none/");
+    sc_begin();
     *eax = (mut == 0u) ? config_file_save() : sc_1b084_core(mut);
-    int have = host_read_file(sc_path, file, sizeof file, &len);
-    if (handle == 0u) { if (have) DSB(SC_VERDICT) = 2u; }
-    else if (!have || len != SC_LEN || memcmp(file, mem + SC_IMAGE, SC_LEN) != 0) DSB(SC_VERDICT) = 1u;
+    f1_mirror();
     sc_end();
 }
 static void b_sc_1b084(const u32 *r, u32 *eax) { (void)r; sc_1b084_run(eax, 0u); }
@@ -42498,7 +42596,7 @@ static void b_sc_1b084(const u32 *r, u32 *eax) { (void)r; sc_1b084_run(eax, 0u);
 SC_SV_MUT(gatelate, 1u)  SC_SV_MUT(nogate, 2u)   SC_SV_MUT(sumfirst, 3u) SC_SV_MUT(summid, 4u)  SC_SV_MUT(notouch1, 5u)
 SC_SV_MUT(notouch2, 6u)  SC_SV_MUT(touchorder, 7u) SC_SV_MUT(touch0, 8u) SC_SV_MUT(nosum, 9u)   SC_SV_MUT(len6, 10u)
 SC_SV_MUT(len8, 11u)     SC_SV_MUT(add, 12u)     SC_SV_MUT(sumat, 13u)   SC_SV_MUT(flag, 14u)   SC_SV_MUT(nowrite, 15u)
-SC_SV_MUT(writefirst, 16u) SC_SV_MUT(wlen, 17u)  SC_SV_MUT(wsrc, 18u)
+SC_SV_MUT(writefirst, 16u) SC_SV_MUT(wlen, 17u)  SC_SV_MUT(wsrc, 18u)    SC_SV_MUT(wmode, 19u)
 /* ---- sc bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
@@ -58244,6 +58342,7 @@ static const binding_t k_bindings[] = {
     { "config_file_save@writefirst", m_sc_sv_writefirst, 0x000000FFu },
     { "config_file_save@wlen", m_sc_sv_wlen, 0x000000FFu },
     { "config_file_save@wsrc", m_sc_sv_wsrc, 0x000000FFu },
+    { "config_file_save@wmode", m_sc_sv_wmode, 0x000000FFu },
     { "actors_table_clear",              b_i_2f920, 0x00000000u },
     { "actors_table_clear@short", m_i_tc_short, 0x00000000u },
     { "actors_table_clear@long", m_i_tc_long, 0x00000000u },
@@ -58742,6 +58841,7 @@ static int run_cases(const char *path)
                 return 0;
             }
             memset(&c, 0, sizeof c);
+            f1_reset();                             /* the file model's declarations are per case (§F.1) */
             snprintf(c.id, sizeof c.id, "%s", t[1]);
             open = 1;
         } else if (!open) {
@@ -58786,6 +58886,14 @@ static int run_cases(const char *path)
             c.outs = 1;
         } else if (strcmp(t[0], "aperture") == 0 && n == 1) {
             c.aperture = 1;
+        } else if (strcmp(t[0], "files") == 0 && n == 1) {
+            f1_on = 1;
+        } else if (strcmp(t[0], "fdec") == 0 && n == 3) {
+            if (!f1_parse_decl(t[1], t[2])) { fprintf(stderr, "diffrun: bad fdec line\n"); fclose(f); return 0; }
+        } else if (strcmp(t[0], "fmode") == 0 && n == 2) {
+            if (!f1_parse_mode(t[1])) { fprintf(stderr, "diffrun: bad fmode line\n"); fclose(f); return 0; }
+        } else if (strcmp(t[0], "fd") == 0 && n == 2) {
+            if (!f1_parse_data(t[1])) { fprintf(stderr, "diffrun: bad fd line\n"); fclose(f); return 0; }
         } else if (strcmp(t[0], "end") == 0) {
             run_case(&c);
             open = 0;
