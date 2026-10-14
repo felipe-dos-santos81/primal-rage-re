@@ -101,7 +101,7 @@ Callers (scan of the code object for `call`/`jmp rel32`, and of the image for th
 
 | Entry | `call rel32` | `jmp rel32` | dword |
 |---|---|---|---|
-| `0x1BE30` | `0x1C0C7` (`0x1BEC4`), `0x1C1C4`, `0x1C2AF` (`0x1C0F0`), `0x1D293` (`0x1D290`) | none | none |
+| `0x1BE30` | `0x1C0C7` (`0x1BEC4`), `0x1C1C4`, `0x1C2AF` (`0x1C260`, which nothing calls; corrected at integration, §N.4), `0x1D293` (`0x1D290`) | none | none |
 | `0x1CF40` | `0x1BFDB` (`0x1BEC4`, `EAX = EDX = 1`: `0x1BFD1`, `0x1BFD9`) | none | none |
 | `0x1C930` | `0x1CF39` (`0x1CF20`, after `cmp dword [0x1028cc],0; je` `0x1CF30`) | none | none |
 
@@ -276,7 +276,7 @@ measured with `tools/diff_verify.py --self-check`; the pins (`N3_MASKS`/`N3_KIND
 
 | function | port | outcome | what decides it |
 |---|---|---|---|
-| `0x1B120` | `res_load_index` (res.c) | **poked row, partial** (21/35 blocks) | The six file calls are pokeable (`mov eax,<result>`, track S's form); every block between them corresponds to the port's C once the port allocates through `0x1C308`'s seam and `0x1B3AC`'s head has one. The 14 unhit blocks are the fatal `0x1D290` and the allocator's retries. Two corrections (§N.3.3). |
+| `0x1B120` | `res_load_index` (res.c) | **poked row, partial** (21/35 blocks) — **withdrawn at integration: stays a gap (§N.4)** | The six file calls are pokeable (`mov eax,<result>`, track S's form); every block between them corresponds to the port's C once the port allocates through `0x1C308`'s seam and `0x1B3AC`'s head has one. The 14 unhit blocks are the fatal `0x1D290` and the allocator's retries. Two corrections (§N.3.3). |
 | `0x1B3AC` | none whole: the head is `res_load_present` (res.c) | **stays a gap** | No port function is `0x1B3AC`. Its head `0x1B3B8..0x1B3F8` is `res_load_present`; its read `0x1B403..0x1B45A` (`0x61C60`, `0x61CF6`, `0x61EC0`, `int 0x21` at `0x6F53A` under them) is the host's, done by `res_load_index` for every entry at init (PORT); its mark `0x1B47A` is made by `res_load_index` after the read and by `res_resolve` before the head; `0x1E75C`/`0x1E808` (`0x1B423`, `0x1B475`) and the stores to `[[0x101514]+0x253]` (`0x1B3D3`, `0x1B42E`, `0x1B451`) have no port counterpart; and the port's head advances the ISR's counters (`game_isr_ticks`, the read-stall model, PORT) where the raw writes none. A row would compare a composition the binding assembles, not the port. |
 | `0x47370` | `game_string_table_load` (flow.c) | **stays a gap** | The port's loader is a replacement that makes none of the raw's calls: `0x1E6D8` (the free of the old table, `0x47389`), `0x1C308(0x42, size)` (`0x47429`, retried with 2 at `0x47442`), `0x1E75C(handle, 1)` (`0x4746B`), `0x1E808` (`0x474A7`), and on failure `0x1D290` (`0x474D3`, `0x47496`) or the runtime's `exit` (`0x474BA`, a bad magic: `cmp dword [0x1082d8],0x33340001` `0x473E0`). Its two stores take values of its own making: `0x1082DC` is a fixed handle `0x3800000` (STRING_HANDLE), not the allocator's, and `0x1082D8` the bytes read capped at `0x2000`, not ftell's size. It ignores the language index (`[edi+0xC9418]`, `0x473A0`) and returns at once on a second call (a C static), where the raw frees and reloads (`0x20C7F`, `0x336AE`). The file calls could be poked as `0x1B120`'s are; the rest could not. |
 | `0x1C740` | `movie_play` (movie.c) | **poked row, partial** (4/23 blocks) | The entry blank, the key test, the quit byte, the open and the epilogue are the port's prefix. Two pokes: the runtime's kbhit (`0x1C752`) and the Smacker open (`0x1C76C..0x1C778`). The play loop (19 blocks) is the Smacker library and the hardware, which the port replaces with its own decoder (movie.c, smacker.c, PORT). |
@@ -413,3 +413,46 @@ closed (`0x52106` VERIFIED) and closes `attract_step`'s row (`0x11000` stubs `0x
 on `0x1B3AC` and `0x1C308`, which have no row. Harness suite: 180 tests OK. `run_tests` (PR_ORACLE_REQUIRED=1):
 all checks passed. `tools/port_progress.py`: `787 1203 65`, `747 747 100` (unchanged). Unrowed ported functions:
 18 → 16; the named gaps of this batch: 4 → 2 (`0x1B3AC`, `0x47370`). Weaker rows: 10 → 12.
+
+## §N.4 Integration and audit (2026-10-14)
+
+The three batches merged onto `reverse-n` (the harness files without conflict; this record rebuilt from
+the three sections). A read-only audit (`.superpowers/sdd/2026-10-14-reverse-n/audit-report.md`) found one
+Important and ten Minor findings, none Critical; it confirmed both `res_load_index` corrections, all eight
+gaps, and the rows of `0x51ED8`, `0x1BE30` and `0x1C740` within their stated claims.
+
+**`0x1B120`'s row is withdrawn; `0x1B120` stays a named gap.** The row passed only because its binding gave
+the port a game directory that does not exist. With the payloads present, the port reads each one into the
+block the stubbed `0x1C308` answered (the INDEX table itself, `N3_TABLE`) and marks the preloaded entries
+`0x20000000` before the presentation (res.c), which `0x1B120` never does: the read and the mark `0x1B47A`
+belong to `0x1B3AC`. `res_load_index` therefore also does part of `0x1B3AC`'s work, the reason
+`0x1BEC4` and `0x20C10` stay gaps (no single C function corresponds). The `PR_SEAM(0x1B3AC)` that batch
+n3 put on `res_load_present` came off with the row: that function is only `0x1B3AC`'s head
+`0x1B3B8..0x1B3F8`, so a stub of `0x1B3AC` there would not span the callee.
+
+**The two corrections stay**, each pinned by a unit test (`check_res_index_rules`, `test_platform.c`, called
+from `test_res`) on a two-entry INDEX in a scratch directory holding both payloads (a preloaded `0x300`, a
+lazy `0x20`):
+
+| rule | raw | assertion | fails under |
+|---|---|---|---|
+| the count is stored before the table's allocation, the table pointer after it and before its test | `0x1B194` `mov [0x1014f0],eax`; `0x1B1A0` `call 0x1C308`; `0x1B1A5` `mov [0x1014e0],eax`; `0x1B1AA` `test eax,eax` | the table's allocation failed (`res_fail_alloc_nth(1)`), sentinels `0xA5A5A5A5`: count 2, table 0 | the old order (both lines) |
+| `0x1014F8` is raised only by an entry that is not preloaded, compared signed | `0x1B26F..0x1B289` (`cmp eax,edx; jle`) | seeded `0x80000000`: ends at `0x20` | the old all-entries maximum (`0x300`); an unsigned compare (`0x80000000`) |
+
+**Comment corrections** (no behaviour change): `game_init`'s note that "0x1B3AC resource-file setup is
+replaced by res_load_index()" was false: `0x1BF51` calls `0x1B3AC(0xA2C9C)`, the entry `RM.DRV` (`+0xC =
+0x05000C00`, preloaded, `0xC00` bytes) with `+0x10 = [0x101514]` (`0x1BF47`), the real-mode driver, which
+the port does not load. The DPMI note now says `0x1ADE4` also installs RM.DRV's handlers for vectors 9,
+`0x23` and `0x1B` (`0x1C05B`, `0x1C077`, `0x1C093`). `menu_fatal_error`'s note now says `0x2EA68`'s `mov eax,1`
+discards the message. `res_load_index` gained `PORT:` notes for its allocation failure (the raw retries with
+type 1, `0x1B1AE`, then calls the fatal `0x1D290`; the port returns 0) and for its `RES_MAX` bound (no raw
+counterpart). The caller table of §N.2 placed `0x1C2AF` in `0x1C0F0`; it is in `0x1C260`, which nothing calls.
+
+**Known limit (F11):** `attract_step` (`0x11000`) counts as closed because `movie_play`'s row is VERIFIED, and
+that row covers 4 of 23 blocks. The closed count does not distinguish a weaker callee row.
+
+**After track N:** `998/998 functions VERIFIED; 14840/14840 mutants detected; 1 named gaps; 638/829 rows with
+callees closed (169 have none)`. 15 ported functions have no row: 9 named gaps (`0x4FBA2`, `0x2EA68`,
+`0x1BEC4`, `0x20C10`, `0x1CF40`, `0x1C930`, `0x1B120`, `0x1B3AC`, `0x47370`) and the 6 named non-rows. 13 rows
+are weaker (the 10 before, plus `0x51ED8` partial, `0x1BE30` poked and partial, `0x1C740` poked and
+partial); 719 full rows. `tools/port_progress.py` is unchanged (`787 1203 65`, `747 747 100`).
