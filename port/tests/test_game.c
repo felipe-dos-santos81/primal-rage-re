@@ -4959,6 +4959,25 @@ int test_inlined_functions(void)
         CHECK_EQ_INT((int)DSB(IF_GRID + IF_GRID_LEN), 0x5B);
     }
 
+    /* timer — 0x11BCC: the bytes 0x104B1B (0x11BCE) and 0x104B15 (0x11BD4)
+     * cleared, the state word 0xF0A64 = the word 0xF0A6C (0x11BDA/0x11BE0);
+     * every byte around them seeded and kept. */
+    {
+        static const u8 want_b[9] = { 0x14u, 0x00u, 0x16u, 0x17u, 0x18u, 0x19u, 0x1Au, 0x00u, 0x1Cu };
+        static const u16 want_w[7] = { 0x6262u, 0x1234u, 0x6666u, 0x6868u, 0x6A6Au, 0x1234u, 0x6E6Eu };
+        int bad_w = 0;
+        for (u32 i = 0u; i < 9u; i++) DSB(DS_00104B14 + i) = (u8)(0x14u + i);
+        DSB(DS_00104B15) = 0x5Bu;
+        DSB(DS_00104B19 + 2u) = 0x5Au;
+        for (u32 i = 0u; i < 7u; i++) DSW(DS_000F0A62 + i * 2u) = want_w[i];
+        DSW(DS_000F0A64) = 0x4321u;
+        game_state_timer_exit();
+        CHECK(memcmp(mem + DS_00104B14, want_b, sizeof want_b) == 0,
+              "0x11BCE/0x11BD4: the bytes 0x104B1B and 0x104B15 alone are cleared");
+        for (u32 i = 0u; i < 7u; i++) bad_w += (DSW(DS_000F0A62 + i * 2u) != want_w[i]);
+        CHECK_EQ_INT(bad_w, 0);                        /* 0x11BE0: a word, from 0xF0A6C */
+    }
+
     tf_voice_put();
     return g_failures - before;
 }

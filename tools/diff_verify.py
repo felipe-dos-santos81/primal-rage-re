@@ -29805,8 +29805,8 @@ D5H_SPECS += [
                 "@one")),
     # States 5, 7, 8 and 9. 5: voice 0x100, 0x1EA08, 0x2C06C(0x1D), the run clock, then the bytes
     # 0xF0A6F/0xF0A72 = 0, the words 0xF0A6A = 0x12C, 0xF0A6C = 6, 0xF0A64 = 9. 7: the timer word
-    # 0xF0A6A - 1 is stored; zero-extended and below 1 (`jge`: only 0) it runs 0x11BCC (inlined in the
-    # port: the bytes 0x104B1B/0x104B15 = 0, 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60, voice
+    # 0xF0A6A - 1 is stored; zero-extended and below 1 (`jge`: only 0) it runs 0x11BCC (the port's
+    # game_state_timer_exit, its own row: the bytes 0x104B1B/0x104B15 = 0, 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60, voice
     # 0x100 by a tail jump), else 0x263F4 and 0x33F08. 8: the run clock and 0x257A4(3), then the tails.
     # 9: the timer the same way; at 0 the state takes the word 0xF0A6C and, with the byte 0xF0A71 set,
     # 0x10EE4 runs (0x11EF2/0x11EF6; the port left this call out until D5, record §3). 0x11BCC, 0x29D60
@@ -33223,6 +33223,14 @@ def i_tc_case(cid, regs, k, fill):
     return Case(cid, regs, dict(chunks[k::3]))
 
 
+def i_te_case(cid, regs, state, nxt, stub=None):
+    """0x11BCC: the bytes 0x104B15 and 0x104B1B between seeded neighbours, and the state block
+    0xF0A62..0xF0A6F: the state word 0xF0A64, the next-state word 0xF0A6C, every other word seeded."""
+    return Case(cid, regs, {0x00104B14: bytes([0x14, 0x5B, 0x16]), 0x00104B19: bytes([0x19, 0x1A, 0x5A, 0x1C, 0x1D]),
+                            0x000F0A62: b"".join(le16(w) for w in (0x6262, state, 0x6666, 0x6868, 0x6A6A, nxt,
+                                                                   0x6E6E))}, stub or {})
+
+
 I_SPECS = [
     # 0x2F920 actors_table_clear: no argument. `push ebx; push edx; mov ebx,0x14d4; mov eax,0x105f38;
     # xor edx,edx; call 0x61a70; pop edx; pop ebx; ret`: the runtime memset 0x61A70 (it runs 0x65490
@@ -33236,6 +33244,19 @@ I_SPECS = [
         i_tc_case("t1", D2E_DIRTY, 1, lambda i: 1 + i % 255),
         i_tc_case("t2", {}, 2, lambda i: 0xFF),
     ], allow_calls=(0x61A70, 0x65490, 0x654C7), eax_mask=0, mutants=("@short", "@long", "@base", "@low", "@none")),
+    # 0x11BCC game_state_timer_exit: no argument. `xor ah,ah`, the bytes 0x104B1B and 0x104B15 = AH,
+    # the word 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60 (run in the original, not called by
+    # the port), then `mov eax,0x100; jmp 0x2c3fc`: the voice, a stub whose call and the memory at it
+    # are recorded. e1 enters with every register dirty (AH = 0xFF before the `xor`) and a
+    # next-state word whose two bytes differ from the state's. Its EAX is the voice's; after its one
+    # call site 0x11E77 the tails 0x10DB0, 0x10E18 and 0x2BF08 each load AH before reading it
+    # (0x10DB1, 0x10E19, 0x2BF0E) and 0x11D04's own EAX is not read (record d5h §1): mask 0.
+    Spec("game_state_timer_exit", 0x11BCC, [
+        i_te_case("e0", {}, 0x4321, 0x1234),
+        i_te_case("e1", D2E_DIRTY, 0x0007, 0x8001, {0x2C3FC: 0}),
+    ], allow_calls=(0x29D60,), calls=(VOICE,), eax_mask=0,
+       mutants=tuple("@" + m for m in "nob1b nob15 b19 b1bw b15w swap nostate stated stateb voice0 novoice "
+                                      "voicefirst".split())),
 ]
 D1_SPECS += I_SPECS
 SPECS = [

@@ -42459,6 +42459,30 @@ I_TC_MUT(short, DS_00105F38, 0x14D3u)      I_TC_MUT(long, DS_00105F38, 0x14D5u)
 I_TC_MUT(base, DS_00105F38 + 1u, 0x14D3u)  I_TC_MUT(low, DS_00105F38 - 1u, 0x14D5u)
 I_TC_MUT(none, DS_00105F38, 0u)
 
+/* 0x11BCC game_state_timer_exit: one restatement with one choice flipped per mutant number. No
+ * caller reads EAX (the tails 0x10DB0, 0x10E18 and 0x2BF08 that follow 0x11E77 load AH first). */
+static void i_11bcc_core(u32 mut)
+{
+    if (mut == 12u) (void)sound_voice(0x100u);                               /* @voicefirst */
+    if (mut == 3u) DSB(DS_00104B19) = 0u;                                    /* @b19 */
+    else if (mut == 4u) DSW(DS_00104B19 + 2u) = 0u;                          /* @b1bw */
+    else if (mut != 1u) DSB(DS_00104B19 + 2u) = 0u;                          /* @nob1b */
+    if (mut == 5u) DSW(DS_00104B15) = 0u;                                    /* @b15w */
+    else if (mut != 2u) DSB(DS_00104B15) = 0u;                               /* @nob15 */
+    if (mut == 6u) DSW(DS_000F0A6C) = DSW(DS_000F0A64);                      /* @swap */
+    else if (mut == 8u) DSD(DS_000F0A64) = DSD(DS_000F0A6C);                 /* @stated */
+    else if (mut == 9u) DSB(DS_000F0A64) = DSB(DS_000F0A6C);                 /* @stateb */
+    else if (mut != 7u) DSW(DS_000F0A64) = DSW(DS_000F0A6C);                 /* @nostate */
+    if (mut == 10u) (void)sound_voice(0u);                                   /* @voice0 */
+    else if (mut != 11u && mut != 12u) (void)sound_voice(0x100u);            /* @novoice */
+}
+static void b_i_11bcc(const u32 *r, u32 *eax) { (void)r; game_state_timer_exit(); *eax = 0u; }
+#define I_TE_MUT(name, n) \
+    static void m_i_te_##name(const u32 *r, u32 *eax) { (void)r; i_11bcc_core(n); *eax = 0u; }
+I_TE_MUT(nob1b, 1u)  I_TE_MUT(nob15, 2u)   I_TE_MUT(b19, 3u)     I_TE_MUT(b1bw, 4u)    I_TE_MUT(b15w, 5u)
+I_TE_MUT(swap, 6u)   I_TE_MUT(nostate, 7u) I_TE_MUT(stated, 8u)  I_TE_MUT(stateb, 9u)  I_TE_MUT(voice0, 10u)
+I_TE_MUT(novoice, 11u) I_TE_MUT(voicefirst, 12u)
+
 /* ---- track I task 1 bindings end ---- */
 
 static const binding_t k_bindings[] = {
@@ -57829,6 +57853,19 @@ static const binding_t k_bindings[] = {
     { "actors_table_clear@base", m_i_tc_base, 0x00000000u },
     { "actors_table_clear@low", m_i_tc_low, 0x00000000u },
     { "actors_table_clear@none", m_i_tc_none, 0x00000000u },
+    { "game_state_timer_exit",           b_i_11bcc, 0x00000000u },
+    { "game_state_timer_exit@nob1b", m_i_te_nob1b, 0x00000000u },
+    { "game_state_timer_exit@nob15", m_i_te_nob15, 0x00000000u },
+    { "game_state_timer_exit@b19", m_i_te_b19, 0x00000000u },
+    { "game_state_timer_exit@b1bw", m_i_te_b1bw, 0x00000000u },
+    { "game_state_timer_exit@b15w", m_i_te_b15w, 0x00000000u },
+    { "game_state_timer_exit@swap", m_i_te_swap, 0x00000000u },
+    { "game_state_timer_exit@nostate", m_i_te_nostate, 0x00000000u },
+    { "game_state_timer_exit@stated", m_i_te_stated, 0x00000000u },
+    { "game_state_timer_exit@stateb", m_i_te_stateb, 0x00000000u },
+    { "game_state_timer_exit@voice0", m_i_te_voice0, 0x00000000u },
+    { "game_state_timer_exit@novoice", m_i_te_novoice, 0x00000000u },
+    { "game_state_timer_exit@voicefirst", m_i_te_voicefirst, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

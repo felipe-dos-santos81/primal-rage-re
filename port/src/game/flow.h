@@ -86,6 +86,10 @@ void game_key_loop(void);
  * handoff carry PORT markers naming the sub-project that owns them. The coin
  * arm and state 8 call 0x257A4 (game_coin_divert, record §48-W). */
 void game_state_step(void);
+/* 0x11BCC. State 7's timer exit: clears DS_00104B19+2 and DS_00104B15, hands
+ * the state word DS_000F0A64 the word DS_000F0A6C, then voice 0x100. One
+ * caller, game_state_step (0x11E77). */
+void game_state_timer_exit(void);
 
 /* 0x33904: the fixed 0x10-stride list iterator at DS_00107608..DS_00107798.
  * Returns the first entry whose +4 dword is non-zero, or 0 at the end. Exposed

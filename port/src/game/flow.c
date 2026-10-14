@@ -7694,6 +7694,16 @@ void game_frame(void)
     }
 }
 
+/* 0x11BCC — record 2026-10-13-reverse-i §I.2 */
+void game_state_timer_exit(void)
+{
+    DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCC/0x11BCE */
+    DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
+    DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BDA/0x11BE0 */
+    /* PORT: 0x11BE6 0x29D60 is a ret-only no-op, not called. */
+    (void)sound_voice(0x100u);              /* 0x11BEB/0x11BF0 `jmp 0x2C3FC` */
+}
+
 /* 0x11F28 — record §47-M. One coin/start event: requires a credit (0x2C060),
  * then tests the event's mask in the DS_0009ACBC table against the
  * newly-pressed bits DS_001088E4, and debits one credit through 0x2CA7C.
@@ -7760,13 +7770,7 @@ void game_state_step(void)
              * the one whose PRE value is 1. */
             DSW(DS_000F0A6A) = (u16)sVar1;              /* 0x11E67 */
             if (sVar1 == 0) {                           /* 0x11E72 (jge) */
-                /* 0x11BCC the timer exit. */
-                DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCE */
-                DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
-                DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BE0 */
-                /* PORT: 0x11BE6 0x29D60 is a ret-only no-op, not called;
-                 * then 0x11BF0 `jmp 0x2C3FC`. */
-                (void)sound_voice(0x100u);              /* 0x11BEB/0x11BF0 0x2C3FC */
+                game_state_timer_exit();                /* 0x11E77 0x11BCC */
             } else {
                 fight_arena_frame();                    /* 0x11E8F 0x263F4 */
                 fight_health_bars();                    /* 0x11E94 0x33F08 */

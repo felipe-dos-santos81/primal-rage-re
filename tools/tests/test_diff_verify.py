@@ -30155,6 +30155,7 @@ D1_CASES.extend(SI_CASES)
 # track I task 1 (record 2026-10-13-reverse-i sections I.1-I.3): 0x2F920, 0x11BCC and 0x12CD4 as functions
 I_MASKS = {
     "actors_table_clear": 0x0,
+    "game_state_timer_exit": 0x0,
 }   # I_MASKS end
 I_KINDS = {
     "actors_table_clear@short": {'byte'},
@@ -30162,6 +30163,18 @@ I_KINDS = {
     "actors_table_clear@base": {'byte'},
     "actors_table_clear@low": {'byte'},
     "actors_table_clear@none": {'byte'},
+    "game_state_timer_exit@nob1b": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@nob15": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@b19": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@b1bw": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@b15w": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@swap": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@nostate": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@stated": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@stateb": {'byte', 'call #0 memory'},
+    "game_state_timer_exit@voice0": {'call #0'},
+    "game_state_timer_exit@novoice": {'call #0'},
+    "game_state_timer_exit@voicefirst": {'call #0 memory'},
 }   # I_KINDS end
 I_CASES = [
     ("actors_table_clear@short", ['t2']),
@@ -30169,6 +30182,18 @@ I_CASES = [
     ("actors_table_clear@base", ['t0']),
     ("actors_table_clear@low", ['t0']),
     ("actors_table_clear@none", ['t0', 't1', 't2']),
+    ("game_state_timer_exit@nob1b", ['e0', 'e1']),
+    ("game_state_timer_exit@nob15", ['e0', 'e1']),
+    ("game_state_timer_exit@b19", ['e0', 'e1']),
+    ("game_state_timer_exit@b1bw", ['e0', 'e1']),
+    ("game_state_timer_exit@b15w", ['e0', 'e1']),
+    ("game_state_timer_exit@swap", ['e0', 'e1']),
+    ("game_state_timer_exit@nostate", ['e0', 'e1']),
+    ("game_state_timer_exit@stated", ['e0', 'e1']),
+    ("game_state_timer_exit@stateb", ['e0', 'e1']),
+    ("game_state_timer_exit@voice0", ['e0', 'e1']),
+    ("game_state_timer_exit@novoice", ['e0', 'e1']),
+    ("game_state_timer_exit@voicefirst", ['e0', 'e1']),
 ]   # I_CASES end
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
@@ -31495,10 +31520,11 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (823 after track I's 0x2F920 row, open
-        # on the runtime memset 0x61A70); the 168 without are counted apart
-        self.assertIn("diff-verify: 991/991 functions VERIFIED; 14730/14730 mutants detected; 1 named gaps; "
-                      "635/823 rows with callees closed (168 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (824 after track I's 0x2F920 and 0x11BCC
+        # rows, open on the runtime memset 0x61A70 and the ret-only 0x29D60); the 168 without are counted
+        # apart
+        self.assertIn("diff-verify: 992/992 functions VERIFIED; 14742/14742 mutants detected; 1 named gaps; "
+                      "635/824 rows with callees closed (168 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
