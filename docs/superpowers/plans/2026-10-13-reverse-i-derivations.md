@@ -590,3 +590,227 @@ PR_GAME_DIR=data/game/C ./build/run_tests` and restored:
 | A2 | the spawn's `a2 = 1` | `:5064` | call 5 is `0x38B18(0x9AD84, 1, 0)` |
 | A3 | `config_voice_gate(-1)` | `:5064` | call 8 is `0x2C9B8(-1)` |
 | A4 | the two `0x2C8F0` calls swapped | `:5064` | call 9 is `0x2C8F0(-2)` |
+
+## §I.5 `0x1D018` — `sound_shutdown` (`flow.c`)
+
+Callers: `call rel32` at `0x1BE33` only (the first instruction of `0x1BE30`'s body after its three
+pushes); no `jmp rel32`, no dword `0x1D018` in the image.
+
+```
+01D018  push ebx / push ecx / push edx / push esi
+01D01C  cmp byte ptr [0xa2cb1], 0
+01D023  je 0x1d0b4
+01D029  xor dl, dl
+01D02B  mov byte ptr [0xa2cb1], dl
+01D031  cmp dword ptr [0x1028c4], 0
+01D038  je 0x1d06b
+01D03A  mov ebx, dword ptr [0x1028c0]
+01D040  push ebx
+01D041  call 0x5deed
+01D046  add esp, 4
+01D049  cmp eax, 4
+01D04C  jne 0x1d05d
+01D04E  mov ecx, dword ptr [0x1028c0]
+01D054  push ecx
+01D055  call 0x5deaf
+01D05A  add esp, 4
+01D05D  xor esi, esi
+01D05F  mov dword ptr [0x1028c4], esi
+01D065  mov dword ptr [0x1028c0], esi
+01D06B  cmp dword ptr [0x1028c8], 0
+01D072  je 0x1d0af
+01D074  xor esi, esi
+01D076  mov eax, dword ptr [esi + 0x102860]
+01D07C  push eax
+01D07D  call 0x5dd03
+01D082  add esp, 4
+01D085  cmp eax, 2
+01D088  je 0x1d099
+01D08A  mov edx, dword ptr [esi + 0x102860]
+01D090  push edx
+01D091  call 0x5dc8b
+01D096  add esp, 4
+01D099  add esi, 0x18
+01D09C  xor ebx, ebx
+01D09E  mov dword ptr [esi + 0x102848], ebx
+01D0A4  cmp esi, 0x60
+01D0A7  jne 0x1d076
+01D0A9  mov dword ptr [0x1028c8], ebx
+01D0AF  call 0x5d86a
+01D0B4  pop esi / pop edx / pop ecx / pop ebx
+01D0B8  ret
+```
+
+The brief's reading is confirmed block by block. Notes from the bytes:
+
+- `0x1D09E` writes `[esi + 0x102848]` after `esi += 0x18`: that is `0x102860 + 0x18 * i`, the handle
+  dword of the slot just served, zeroed after its status (and stop) and before the next slot's status.
+- Both status tests compare the whole EAX (`cmp eax,4` `0x1D049`, `cmp eax,2` `0x1D085`), not AL.
+- The handle is re-read for the second call of each arm (`0x1D04E`, `0x1D08A`).
+- With `0x1028C4` zero, `0x1028C0` is not touched; `0x5D86A` runs whenever the flag was set, with or
+  without either driver.
+- The five library calls are cdecl wrappers (`push esi; push edi; push ebp; ... ret`, the caller pops:
+  `add esp,4`). Their bodies: `0x5DEED -> 0x6A950` and `0x5DD03 -> 0x67FA0` return `[handle+4]` (0 for
+  a NULL handle); `0x5DEAF -> 0x6A8A0` sets `[handle+4] = 2` unless it is 1; `0x5DC8B -> 0x680F0` sets
+  `[handle+4] = 2` unless it is 1 or 2; `0x5D86A -> 0x6616A` releases the 16 driver slots at
+  `0x108C24` and shuts the library down. `E.callee_clobbers` gives `()` for `0x5DEED`/`0x5DD03` and
+  `ebx, ecx, edx` for `0x5DEAF`/`0x5DC8B`/`0x5D86A`.
+- **EAX.** On the early exit it is the caller's, else `0x5D86A`'s. The one caller does not read it:
+  `0x1BE38 mov edx,[0x101514]; test edx,edx; je 0x1BEAB`, then `0x1BE42 mov eax,edx` or `0x1BEAB mov
+  eax,[0x101504]`. The C function is `void`; the row's mask is 0.
+
+**What the port's audio layer holds, and where.** The original's handles are `mem[]` dwords: `0x1CF40`
+stores the DIG driver at `0x1028C8` (`0x1CF8E`), each slot's sample handle at `0x102860 + 0x18 * i`
+(`0x1CFAC`), the MDI driver at `0x1028C4` (`0x1CFD6`) and the sequence at `0x1028C0` (`0x1CFE8`). The
+port's `game_audio_init` stores `1` at `0x1028C8` as a non-zero stand-in for its host DIG object, keeps
+the four sample handles in `flow.c`'s `static HSAMPLE s_samples[4]` and the sequence in `static
+HSEQUENCE s_sequence` (pointers into `ail.c`'s static pools `g_samples`/`g_sequences`), and writes
+neither `0x1028C4` nor `0x1028C0` nor the slots' `+0x00` dwords (the sound-module comment in `flow.c`,
+record §22 of `2026-09-29-todo-verify-derivations.md`). The port's `AIL_sequence_status` /
+`AIL_sample_status` answer 0 for a NULL or released handle, 2 stopped, 4 playing, like the library's
+`[handle+4]` read for the cases `0x1D018` tests (a released original handle is status 1, the port's 0:
+either is "not 2", and both libraries' stop does nothing for it). Seams before this task: `0x5DEED`,
+`0x5DEAF`, `0x5DD03`, `0x5DC8B` (`ail.c`, no argument: the C3b treatment, record C3b §C3b.5); `0x5D86A`
+had none.
+
+**The outcome: 2, a function with named `PORT:` deviations; its row reaches every block.**
+
+1. *Outcome 1 is not honest.* Its condition is that the port's handles are the raw's dwords or that
+   a read of them gives the same tests. The four handle arguments are host pointers, not the dwords
+   `[0x1028C0]` and `[esi+0x102860]`; and the gate `[0x1028C4]` does not give the original's test in a
+   run of the port: `game_audio_init` leaves it 0, so the sequence arm (`0x1D03A..0x1D065`) is never
+   taken there, where the original with an MDI driver takes it.
+2. *Outcome 2 is.* `sound_shutdown()` follows the raw block by block: the flag test and clear, the
+   MDI gate, the status test on the whole EAX, the stop, the two stores in the raw's order, the DIG
+   gate, the four-slot loop with the stop when the status is not 2 and the handle dword zeroed after
+   each slot's calls, the `0x1028C8` store, then `0x5D86A`. The deviations are one `PORT:` note in the
+   function's header: the handle arguments at `0x1D03A`/`0x1D04E` (`s_sequence`) and
+   `0x1D076`/`0x1D08A` (`s_samples[i]`), and the dead sequence arm in a run of the port.
+3. *Outcome 3 is not needed*: no instruction of `0x1D018` is impossible in C.
+
+**Observable behaviour at the shutdown: unchanged.** The old inline copy called
+`AIL_stop_sequence(s_sequence)` unconditionally and then `AIL_shutdown()`. The function, in a run of
+the port, skips the sequence arm and polls each slot's status, ending the playing ones, then calls
+`AIL_shutdown()`. `AIL_shutdown` releases every sample handle (`AIL_release_sample_handle`:
+`mixer_stop_sample`, state 0), stops the sequencer (`seq_stop`) and clears the sequence (state 0): the
+same end state as before, with nothing rendered between (the mixer runs only from
+`game_audio_service`). `--check 820` after the change gives the same miss lines as task 2's tree
+(`actor_spawn hits=7505`, `set_dead hits=7359`, distinct=2) and the same 688/688/0 idx/pal/ppm count
+against the pre-task-2 reference `/tmp/pr_i_frames_before_820` that §I.4 records for the master init
+alone. The function stops or releases nothing the port does not own (the four handles `game_audio_init`
+allocated, and `AIL_shutdown`'s pool, which it already released).
+
+**Port.** `void sound_shutdown(void)` (`flow.c`, declared in `flow.h`), header `/* 0x1D018 — record
+2026-10-13-reverse-i §I.5 */`; `game_shutdown` calls it at `0x1BE33`'s place, before the
+`config_file_save()` of `0x1BEB5` (order kept). **Seam added:** `PR_SEAM0(0x5D86Au)` as the first
+statement of `AIL_shutdown` (`ail.c`); no existing binding calls `AIL_shutdown`, so no existing row
+moves. `sound_shutdown` itself has no seam: its one caller `0x1BE30` has no row (a named gap of record
+§D.12).
+
+### The row
+
+| row | entry | cases | blocks | mutants | EAX mask | callees |
+|---|---|---|---|---|---|---|
+| `sound_shutdown` | `0x1D018` | 6 | 13/13 | 32 | 0 | `0x5DEED`, `0x5DEAF`, `0x5DD03`, `0x5DC8B`, `0x5D86A`: recorded stubs, no argument |
+
+Every case seeds the flag byte between `0xA2CB0 = 0xB0` and `0xA2CB2 = 0xB2`, the dword below the slots
+(`0x10285C`), the four slot records whole (a handle `0x10C000 + 0x18 * i`, every other byte non-zero),
+`0x1028C0 = 0x10B0C0`, `0x1028C4`, `0x1028C8` and `0x1028CC = 0xCCCCCCCC`. The stubs of `0x5DEED`,
+`0x5DD03` and `0x5D86A` answer a value per case. The memory at each recorded call places every store.
+
+| case | regs | flag | `0x1028C4` | `0x1028C8` | `0x5DEED` | `0x5DD03` | what it shows |
+|---|---|---|---|---|---|---|---|
+| `s0` | dirty | `0x00` | set | set | — | — | the early exit (a word test would see `0xB2`) |
+| `s1` | — | `0x01` | `0x10B100` | `0x10B200` | 4 | 4 | every stop |
+| `s2` | ESI `0x18` | `0x80` | `0x00010000` | `0x00010000` | `0x104` | 2 | whole-EAX `cmp eax,4`; no stop; word gates |
+| `s3` | — | `0x01` | 0 | `0x01000000` | — | `0x102` | MDI gate (`0x1028C0` kept); whole-EAX `cmp eax,2` |
+| `s4` | dirty | `0x01` | `0x01000000` | 0 | 3 | — | DIG gate (handles kept) |
+| `s5` | — | `0xFF` | set | set | 2 | 0 | sequence not stopped; status 0 stops a slot |
+
+| mutant | the wrong port | caught by (cases) |
+|---|---|---|
+| `@noret` | the early return dropped | byte, calls (`s0`) |
+| `@flagw` | the flag tested as a word | byte, calls (`s0`) |
+| `@noclear` / `@clearw` | the flag not cleared / cleared as a word | byte, call memory (`s1`-`s5`) |
+| `@mdigate` | the MDI gate dropped | calls, memory (`s3`) |
+| `@mdiw` | `0x1028C4` tested as a word | calls (`s2`, `s4`) |
+| `@seqne` | the sequence status test inverted | calls (`s1`, `s2`, `s4`, `s5`) |
+| `@seqal` | AL compared with 4 | calls (`s2`) |
+| `@nostopseq` | the `0x5DEAF` stop dropped | calls (`s1`) |
+| `@noc4` / `@noc0` | `0x1028C4` / `0x1028C0` not zeroed | byte, call memory (`s1`, `s2`, `s4`, `s5`) |
+| `@c4w` / `@c0w` | either stored as a word | byte, call memory (the same) |
+| `@c0always` | `0x1028C0` zeroed without the MDI gate | byte, call memory (`s3`) |
+| `@diggate` | the DIG gate dropped | calls (`s4`) |
+| `@digw` | `0x1028C8` tested as a word | calls (`s2`, `s3`) |
+| `@smpeq` | the sample status test inverted | calls (`s1`, `s2`, `s3`, `s5`) |
+| `@smpal` | AL compared with 2 | calls (`s3`) |
+| `@smp4` | a stop only at status 4 | calls (`s3`, `s5`) |
+| `@smpgt` | a stop only above 2 | calls (`s5`) |
+| `@nostopsmp` | the `0x5DC8B` stop dropped | calls (`s1`, `s3`, `s5`) |
+| `@three` / `@five` | the loop bound 3 / 5 slots | calls, byte (`s1`, `s2`, `s3`, `s5`) |
+| `@nohandle` / `@handlew` / `@handle4` | the handle not zeroed / a word / `+0x04` instead | byte, call memory (the same) |
+| `@early` | the handle zeroed before its status call | call memory (the same) |
+| `@nodig` | `0x1028C8` not zeroed | byte, call memory (the same) |
+| `@digfirst` | `0x1028C8` zeroed before the slots (the old inline copy's order) | call memory (the same) |
+| `@noshut` | the `0x5D86A` call dropped | calls (`s1`-`s5`) |
+| `@shutfirst` | `0x5D86A` before the stores and slots | calls, memory (`s1`-`s5`) |
+| `@order` | the slot loop before the sequence arm | calls, memory (`s1`, `s2`, `s5`) |
+
+**What the row does not compare.** The handle each library call takes (pushed by the caller at
+`0x1D040`, `0x1D054`, `0x1D07C`, `0x1D090`): the port's seams pass no argument, as in the seven earlier
+sound rows (C3b). A port that passed the wrong slot's handle would not be caught by the row; the unit
+case does not see it either (its probe records no argument). No block is unreached. The row is open on
+its five callees, which have no row (the AIL wrappers are named non-rows, record §D.12).
+
+New stub `0x5D86A: ("ebx", "ecx", "edx")` in the pinned clobbers dictionary. The counter, measured:
+`995/995 functions VERIFIED; 14825/14825 mutants detected; 1 named gaps; 636/826 rows with callees closed
+(169 have none)` (before: `994/994`, `14793/14793`, `636/825`). No existing row, mask, case or pin moved.
+
+### The unit case `shutdown` (`test_inlined_functions`)
+
+Every library call is stubbed through the call seam (`if_sd_probe`): it records the address and which
+of the eight locations `0x1D018` clears are zero when the call arrives (bit 0 the flag, bit 1
+`0x1028C4`, bit 2 `0x1028C0`, bits 3..6 the slot handles, bit 7 `0x1028C8`); `0x5DEED` answers the
+row's value, the k-th `0x5DD03` the k-th of four. The slot range `0x10285C..0x1028CF` is filled `0x6B`
+before each row. Four rows, in order: `open` (flag 1, both drivers, the statuses 4 and `2, 4, 0, 0x102`:
+ten calls), `twice` (the call after `open`, the flag as it left it, everything else re-seeded: no call,
+nothing stored), `idle` (flag `0x80`, MDI only, status `0x104`: `0x5DEED`, `0x5D86A`, the handles kept),
+`nomdi` (DIG `0x100` only, `0x1028C0` set: four status calls, `0x5D86A`, `0x1028C0` kept). Assertions
+per row: the call count (`test_game.c:5147`), each call and its zero set (`:5154`), the zero set at the
+end (`:5156`), the 88 bytes the function does not store kept (`:5164`), the bytes around the flag kept
+(`:5165`). It failed first on the old inline copy moved into `sound_shutdown` (23 failures). Mutations
+of `sound_shutdown`, each built, run with `PR_ORACLE_REQUIRED=1 ./build/run_tests` and restored:
+
+| # | mutation | failing lines |
+|---|---|---|
+| M1 | the early return dropped | `:5147`, `:5156` (`twice`) |
+| M2 | the flag not cleared | `:5147`, `:5154`, `:5156` (and `test_flow`'s `:1772`) |
+| M3 | the sequence status test inverted | `:5147`, `:5154` |
+| M4 | AL compared with 4 | `:5147`, `:5154` (`idle`) |
+| M5 | `0x1028C0` zeroed without the MDI gate | `:5154`, `:5156` (`nomdi`) |
+| M6 | `0x1028C4` not zeroed | `:5154`, `:5156` |
+| M7 | the sample status test inverted | `:5147`, `:5154` |
+| M8 | AL compared with 2 | `:5147`, `:5154` (`open`) |
+| M9 | three slots | `:5147`, `:5154`, `:5156` |
+| M10 | the handle not zeroed | `:5154`, `:5156` |
+| M11 | the handle zeroed before its status | `:5154` |
+| M12 | `0x1028C8` not zeroed | `:5154`, `:5156` (and `test_flow`'s `:1773`) |
+| M13 | `0x5D86A` dropped | `:5147`, `:5154` (and later suites: the handles stay live) |
+| M14 | the early exit zeroes `0x1028C8` | `:5156` alone |
+| M15 | the slot's `+0x04` zeroed too | `:5164` alone |
+| M16 | the flag cleared as a word | `:5165` alone |
+| M17 | the DIG gate dropped | `:5147`, `:5154`, `:5156` (`idle`) |
+| M18 | the MDI gate dropped | `:5147`, `:5154`, `:5156` (`nomdi`) |
+| M19 | `0x1028C8` zeroed before the slots (the old copy's order) | `:5154` |
+
+### An incident during the task (repaired)
+
+A measurement script run from the shared scratchpad imported `bisect`, and the scratchpad held task 2's
+`bisect.py`, which shadowed the standard module: it ran task 2's boot bisection (editing `flow.c`,
+rebuilding, `rm -rf frames`, `--check 820`, the `PR_RESTART` driver) for ten minutes before it was
+killed, which skipped its own restore. It left one line of `game_master_init` commented out
+(`/* BISECT */ //actors_reset();`), a build of that tree and a `frames/` dump from it. Repaired: `flow.c`
+restored from the task's own copy (the diff was that one line), rebuilt, `frames/` regenerated with
+`./build/prageport --game-dir data/game/C --check 820` (the gate's `verify_frames`, rc 0, the miss lines
+above), and every later measurement ran from a private directory. Task 2's scratch outputs
+`b_check.txt`, `b_diff.txt` and `b_restart.txt` were overwritten by that run.
