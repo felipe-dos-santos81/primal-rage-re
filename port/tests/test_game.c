@@ -5721,7 +5721,7 @@ static int fe_entry_read(u32 e)
  * value: 4100 (3900 before record §47-A, 3500 before §44-A, 3300 before §41,
  * 3200 before §40, 3100 before §39, 2800 before §38) reaches past the
  * capture's last frame, 3616: capture 3546 is loop 3986's frame (cycle-2
- * 2194), and 70 capture frames at the 60.05/70.09 Hz ratio are about 60
+ * 2193), and 70 capture frames at the 60.05/70.09 Hz ratio are about 60
  * loops, so 3616 lies near loop 4046. (The old estimate, loop 3865 from the
  * exit's capture frame 3406, missed that the capture drops the static
  * high-score screen's repeated frames.) */
@@ -6890,7 +6890,7 @@ int test_frontend(void)
          * on 0xE3AAC. */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 2308);
+        CHECK_EQ_INT(fe_cyc2_n, 2307);
         /* Record §45-A. The sound banks' first reads: none before, all after
          * each loop (0x33E51's tails, 0x2C3FC(0x4D)). */
         CHECK_EQ_INT(sd1[0], 0);
@@ -6903,57 +6903,58 @@ int test_frontend(void)
          * state-9 hold 0x12C) hands to state 6 at the end of loop 3984; loop
          * 3985 is the third demo's state-6 entry. It reads its six files
          * there, none before, and presents the frame after the last loader
-         * screen (cycle-2 frame 2193, the middle of capture 3545's
-         * three-frame splice 2192/2193/2194). */
+         * screen (cycle-2 frame 2192, the middle of capture 3545's
+         * three-frame splice 2191/2192/2193). */
         CHECK_EQ_INT(sd3[0], 0);
         CHECK_EQ_INT(sd3[1], 0x3F);
         CHECK_EQ_INT(c2_s6c_i, 3985);
-        CHECK_EQ_INT(c2_s6c_f, 2193);
-        /* The thirteen loader screens the cycle-2 dump holds, with the loop
-         * that drew each: s16title (loop 1973), the second demo's state-6
-         * entry (s16stone, s16kon, s16konsd, s16konsh in loop 2783), s16spisd
-         * (loop 3557, capture 3257), s16hghsc (loop 3684) and the third
-         * demo's state-6 entry (six screens in loop 3985, record §47-A).
-         * 2295 presented frames (loops 1971..4099 and the logo player's 166
-         * screens) + 13 = 2308. The first is this driver's, not the port's:
-         * the original and the port's own boot both read s16title in the
-         * boot attract's phase 2 (0x110D8's palette_acquire(0x396ED28), the
-         * first entry-7 resolve; the headless boot reads it at f 3), but this
-         * driver enters at state 2 and skips that attract, so its first
-         * entry-7 resolve is cycle 2's phase 2 (record §6 of
-         * 2026-09-29-e-open-derivations.md). Seeding entry 7's read bit as
-         * the boot attract leaves it would drop this screen and shift the
-         * cycle-2 dump by one frame (2308 -> 2307, and attract2's named
-         * 2192/2193/2194 splice), an oracle-line move not made here. The f 0/f 3
-         * residue needs a DOSBox-X breakpoint at 0x1B5E9 that logs
-         * DS_000EF6DC (record §6). */
+        CHECK_EQ_INT(c2_s6c_f, 2192);
+        /* The twelve loader screens the cycle-2 dump holds, with the loop
+         * that drew each: the second demo's state-6 entry (s16stone, s16kon,
+         * s16konsd, s16konsh in loop 2783), s16spisd (loop 3557, capture
+         * 3257), s16hghsc (loop 3684) and the third demo's state-6 entry (six
+         * screens in loop 3985, record §47-A). 2295 presented frames (loops
+         * 1971..4099 and the logo player's 166 screens) + 12 = 2307.
+         * s16title's is not among them: game_init() reads entry 7 at boot,
+         * as the original does. 0x2F9CC builds the actor pool (0x2F9E9
+         * 0x2BAF4(1)) and spawns the descriptor 0x9AD84 (0x2F9FC 0x38B18),
+         * whose +0x10 handle 0x0396EB68 is entry 7's first resolve, at frame
+         * word 0 (record 2026-10-13-reverse-i §I.4). Until track I the port
+         * left those two calls out, so entry 7 was first read by the attract's
+         * phase 2 (0x110D8's palette_acquire(0x396ED28)): at f 3 on the
+         * headless boot, and in this driver, which enters at state 2 and
+         * skips the boot attract, in cycle 2's loop 1973 (cycle-2 frame 168,
+         * a thirteenth screen that made the dump 2308 frames and every later
+         * index one higher). That settles the f 0/f 3 residue of record §6
+         * of 2026-09-29-e-open-derivations.md from the bytes; no DOSBox-X
+         * run was made for it. */
         {
-            static const int ld_loop[13] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684,
+            static const int ld_loop[12] = { 2783, 2783, 2783, 2783, 3557, 3684,
                                              3985, 3985, 3985, 3985, 3985, 3985 };
-            static const int ld_frame[13] = { 168, 979, 980, 981, 982, 1757, 1885,
-                                              2187, 2188, 2189, 2190, 2191, 2192 };
-            CHECK_EQ_INT(fe_ld_n, 13);
-            for (int k = 0; k < 13 && k < fe_ld_n; k++) {
+            static const int ld_frame[12] = { 978, 979, 980, 981, 1756, 1884,
+                                              2186, 2187, 2188, 2189, 2190, 2191 };
+            CHECK_EQ_INT(fe_ld_n, 12);
+            for (int k = 0; k < 12 && k < fe_ld_n; k++) {
                 CHECK_EQ_INT(fe_ld_loop[k], ld_loop[k]);
                 CHECK_EQ_INT(fe_ld_frame[k], ld_frame[k]);
             }
         }
         /* Capture 3257's screen: loop 3557's loader screen (cycle-2 frame
-         * 1757) is the frame presented before it (1756) with the `- LOADING -`
+         * 1756) is the frame presented before it (1755) with the `- LOADING -`
          * text over it: every differing pixel is in the text's box, rows
          * 192..197, columns 0..85. */
         {
             char pa[1400], pb[1400];
             static u8 fa[192000], fb[192000];
-            snprintf(pa, sizeof pa, "%s/frame_%04d.raw", fe_cyc2_dir, 1756);
-            snprintf(pb, sizeof pb, "%s/frame_%04d.raw", fe_cyc2_dir, 1757);
+            snprintf(pa, sizeof pa, "%s/frame_%04d.raw", fe_cyc2_dir, 1755);
+            snprintf(pb, sizeof pb, "%s/frame_%04d.raw", fe_cyc2_dir, 1756);
             FILE *xa = fopen(pa, "rb"), *xb = fopen(pb, "rb");
             int ok = xa != NULL && xb != NULL
                   && fread(fa, 1, sizeof fa, xa) == sizeof fa
                   && fread(fb, 1, sizeof fb, xb) == sizeof fb;
             if (xa != NULL) fclose(xa);
             if (xb != NULL) fclose(xb);
-            CHECK(ok, "cycle-2 frames 1756/1757 read back");
+            CHECK(ok, "cycle-2 frames 1755/1756 read back");
             int in_box = 0, out_box = 0;
             for (int px = 0; ok && px < 64000; px++) {
                 if (memcmp(fa + px * 3, fb + px * 3, 3) == 0) continue;
@@ -6961,7 +6962,7 @@ int test_frontend(void)
                 if (y >= 192 && y <= 197 && x <= 85) in_box++;
                 else out_box++;
             }
-            CHECK(in_box > 0, "the loader text is over frame 1756");
+            CHECK(in_box > 0, "the loader text is over frame 1755");
             CHECK_EQ_INT(out_box, 0);
         }
         CHECK_EQ_INT(c2_proj54, 0);

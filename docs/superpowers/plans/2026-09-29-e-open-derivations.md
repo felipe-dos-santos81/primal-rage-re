@@ -343,3 +343,17 @@ the fix, and its oracle impact:
 | `fe_cyc2_n` / attract2 dump count | 2308 | 2307 |
 | attract2 named splice | cycle-2 2192/2193/2194 | 2191/2192/2193 |
 | `ld_loop[0]`/`ld_frame[0]` | 1973 / 168 | removed |
+
+**Dated note (2026-10-13, track I; record `2026-10-13-reverse-i-derivations.md` §I.4).** The residue is
+settled from the bytes, and the fix above was made by another route. The list of entry-7 handles under
+"The raw" covers code immediates only; a third is in data: the descriptor `0x9AD84` holds `0x0396EB68`
+at `+0x10`. The master init `0x2F9CC`, which runs before the first loop iteration, builds the actor pool
+(`0x2F9E9` `0x2BAF4(1)`) and spawns that descriptor (`0x2F9FC` `0x38B18(0x9AD84, 0, 0)`), so the
+original's first entry-7 resolve is at boot, the poll's f 0, and not phase 2's `0x110D8`. The port left
+those two calls out until track I, which is why its headless boot read entry 7 at f 3. With them in, the
+port reads it at f 0 (a probe in `res_resolve`'s lazy branch: the frame word `0xEF6DC` is 0), the
+driver's `game_init()` does too, and the loop-1973 screen is gone from the cycle-2 dump without any
+seeding: `fe_cyc2_n` 2308 -> 2307, the named splice `cycle-2 2192/2193/2194` -> `2191/2192/2193` at the
+same bytes, `ld_loop[0]`/`ld_frame[0]` removed, as the table above predicted; every other line of the
+front-end, demo-fight and attract cycle-2 oracles is unchanged. No DOSBox-X run was made: the f 0 is the
+old poll's, as §45-A.3 reported it.

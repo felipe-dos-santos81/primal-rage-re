@@ -171,9 +171,9 @@ frame loop is reached through `0x20C10`:
 ### The soft restart: `0x20C10`'s `setjmp` and its three `longjmp`s (record named-gaps-b)
 
 * **The single `setjmp`.** `0x20C10` has one caller (`0x1C0BD` in `0x1BEC4`):
-  `0x20C15 call 0x2F9CC` (the options-menu pointer `DS_0010740C = 0x1D2D0`,
-  `config_validate` `0x2D6F8`, `DS_00107410 = field 0x2A & ~3`, the menu
-  callbacks), then `0x20C1A mov eax,0x1044F4; 0x20C1F call 0x653FC`: WATCOM
+  `0x20C15 call 0x2F9CC` (the master init, `game_master_init`: among its twelve
+  steps the options-menu pointer `DS_0010740C = 0x1D2D0`, `config_validate`
+  `0x2D6F8` and `DS_00107410 = field 0x2A & ~3`), then `0x20C1A mov eax,0x1044F4; 0x20C1F call 0x653FC`: WATCOM
   `setjmp` on the `0x2C`-byte jmp_buf at `DS 0x1044F4`. It is the binary's only
   call of `0x653FC`. `0x20C24 mov eax,-1` discards the result, so the first pass
   and every restart run the same tail `0x20C24..0x20DE3` and then `0x20DE8 call
@@ -219,7 +219,7 @@ frame loop is reached through `0x20C10`:
   restart (through the attract's `0x2C3FC(0x100)`, the movie player or
   otherwise) is not established; no capture holds the audio.
 * **Port.** `game_init()` is the pre-setjmp part (the `0x1BEC4` chain up to
-  `sound_buffers_alloc`, then the `0x2F9CC` work) and ends by calling
+  `sound_buffers_alloc`, then `game_master_init`, `0x2F9CC`) and ends by calling
   `game_init_resume()`, the tail. The restart point is a real C `setjmp`,
   armed in `game_loop()` (`game_restart_arm`), the port's one entry to
   `0x255CC` (`PORT:` the drivers step `game_loop()` one iteration per call).
@@ -891,17 +891,21 @@ image, `0x2D4EC`) declared a no-op, validate always takes the defaults path, as 
 a fresh machine, writing field `0x29 = 0x142095`, fields `0x35`/`0x37 = 0xA0`,
 field `0x2A`'s low two bits `= 3`, and the `0x9C94D2C4` magic.
 
-**Consumers (`flow.c` `game_init`, `game_init_resume`).** `config_validate()`
-is called by the master init `0x2F9CC` (`0x20C15`, whose `0x13ADC` effects_init
-already ran inside `actors_init`), before `0x20C10`'s `setjmp`, so the port calls
-it at the end of `game_init`'s pre-setjmp part (record named-gaps-b §B.2). The
+**Consumers (`flow.c` `game_master_init`, `game_init_resume`).** `config_validate()`
+is called by the master init `0x2F9CC` (`0x20C15`), before `0x20C10`'s `setjmp`:
+the port's `game_master_init`, which `game_init` calls at the end of its
+pre-setjmp part (record named-gaps-b §B.2; record 2026-10-13-reverse-i §I.4). The
 tail's `0x20C5D` block (`game_init_resume`) then
 reads `v = 0x2D974(0x29)` and derives `DS_00104528 = v`,
 `DS_00105B3A = (v & 0x100) >> 4`, `DS_001088D0 = (v & 0xF)*5 + 0x1E`,
 `DS_0010452C = (v & 0xF0) >> 4` (raw `0x20C5D`–`0x20CC2`), plus `0x2C304`'s
 `DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) + 1 = 5` (`config_credits_init`,
 called from `0x10E80` at `0x10ECC`). The outer wrapper `0x20C10` is not
-transcribed as one function: its `0x2F9CC` call folds into `game_init`, its
+transcribed as one function: its `0x2F9CC` call is `game_init`'s call of
+`game_master_init` (the twelve steps `0x2F9CF..0x2FA37` in the raw's order:
+the save file, `0x13ADC`, `0x4F1E4`, `0x2BAF4(1)`, `0x4F1D0`,
+`0x38B18(0x9AD84, 0, 0)`, the pointer, `0x2D6F8`, the field `0x2A`, `0x2C9B8(0)`,
+`0x2C8F0(-1)` and `0x2C8F0(-2)`; its spawn reads `s16title.gra` at boot), its
 post-setjmp tail `0x20C24..0x20DE3` is `game_init_resume` (see "The soft
 restart"), and `game_state_init` is `0x10E80` whole (record §46-F).
 
@@ -1253,14 +1257,19 @@ loop 1970 was dropped and the dump held 1381 frames.)
 **The attract's second cycle (roar-timing Task 26, demo-pose record §36).** The
 exit frame closes that dump. The loop now runs to 4100 (a measurement window:
 2800 in Task 26, raised in Tasks 28, 29, 30, 31, 32 and 35; 4100 reaches past the capture's last frame 3616, near loop 4046, record §47-A), and every frame
-presented after loop 1970 goes to a separate `cycle2/` dump (2308 frames).
+presented after loop 1970 goes to a separate `cycle2/` dump (2307 frames).
 That is one frame per iteration for loops 1971..4099, plus the 166 screens the logo
 player `0x1C740` writes inside loop 1971 (its `0x52106` blanks and every TWI5
 and TWG frame, through the `PORT:` seam `movie_set_screen_hook`), plus the
-thirteen `- LOADING -` screens the loader draws over the held frame inside an
-iteration (the `PORT:` seam `res_set_screen_hook`, record §45-A: loop 1973,
+twelve `- LOADING -` screens the loader draws over the held frame inside an
+iteration (the `PORT:` seam `res_set_screen_hook`, record §45-A:
 four in loop 2783, loop 3557, loop 3684 and six in loop 3985, the third
-demo's state-6 entry; the driver lists their indices in `cycle2/loader.txt`). Every
+demo's state-6 entry; the driver lists their indices in `cycle2/loader.txt`).
+Until track I the dump held a thirteenth, s16title's in loop 1973, and 2308
+frames: the port's master init left out `0x2F9E9` `0x2BAF4(1)` and `0x2F9FC`
+`0x38B18(0x9AD84, 0, 0)`, whose spawn is entry 7's first resolve, at boot (record
+2026-10-13-reverse-i §I.4), so the driver, which skips the boot attract, first read
+it in cycle 2. Every
 earlier measurement keeps the loop-0..1999 window. A separate dump is needed:
 in one dump the second cycle's frames content-match the capture's first
 attract, and the front-end window grew to `[1..2231]`. The driver seeds
@@ -3074,7 +3083,7 @@ record §34).**
   `res_set_screen_hook` dumps the screen into `cycle2/`. The §9.6 rate becomes
   132674 bytes/tick (six reads in the 55 ticks, not three; the per-read model's
   ticks drift up to 4 from the original's, a named gap).
-* **Result.** 3257 = port 1757 (1756 with the text), clean; 2384 and 3407 are
+* **Result.** 3257 = port 1757 (1756 with the text; 1756 and 1755 since track I, record 2026-10-13-reverse-i §I.4), clean; 2384 and 3407 are
   clean against text-on-black screens. First unexplained **3408**: the
   high-score table the attract shows after the second demo, which the port
   did not draw then (record §45-A.3; since drawn, record §46-A). N = 3408.
