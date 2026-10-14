@@ -165,11 +165,10 @@ void gfx_flush_palette(void)
              * channels this entry stores. The original sets the index once a
              * record (0x1C4AA) and lets the DAC advance it after each third
              * byte (0x1C4CA, 0x1C4CE, 0x1C4D5); the port sets it per entry,
-             * which the DAC takes as the same writes. */
+             * which the DAC takes as the same writes. Each channel is read back
+             * from gfx_dac, so the report is what the port stored. */
             PR_OUT(0x3C8u, index);
-            PR_OUT(0x3C9u, r);
-            PR_OUT(0x3C9u, g);
-            PR_OUT(0x3C9u, b);
+            for (u32 k = 0; k < 3u; k++) PR_OUT(0x3C9u, (u32)gfx_dac[index][k] >> 2);
         } while (++i < count);                           /* 0x1C4D6 dec esi; jg */
         DSD(rec + 4) = 0xFFFFFFFFu;   /* the original marks the record consumed */
         rec += 16;
@@ -228,9 +227,10 @@ void gfx_screen_reset(u32 ticks)
     /* PORT: the harness's view of the DAC writes (mem.h PR_OUT; record
      * 2026-10-14-reverse-h §H.3): the index 0 (0x5213D/0x5213F) and 256
      * entries of three zero channels (0x52145..0x52147, `dec ecx; jg`
-     * 0x52148 from ECX = 0x100 0x52133). */
+     * 0x52148 from ECX = 0x100 0x52133), read back from gfx_dac so the report
+     * is what the port stored. */
     PR_OUT(0x3C8u, 0u);
-    for (u32 i = 0; i < 0x100u * 3u; i++) PR_OUT(0x3C9u, 0u);
+    for (u32 i = 0; i < 0x100u * 3u; i++) PR_OUT(0x3C9u, (u32)gfx_dac[i / 3u][i % 3u] >> 2);
     /* PORT: 0x5214C/0x52151 0x51F72 on EAX = 0xA0000, the aperture; the port
      * keeps the screen in g_aperture (the aperture rule), filled here with the
      * same dword pattern (record §K2.4). */

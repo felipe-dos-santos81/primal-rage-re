@@ -58664,7 +58664,9 @@ static void h0_start(const case_t *c)
         input_clear();
         for (int i = 0; i < c->nkey; i++) input_push((u8)(c->key[i] >> 8), (u8)c->key[i]);
     }
-    if (c->outs) pr_out = h0_out;
+    /* the DAC seeded with 0xFE, a byte no six-bit channel expands to ((v << 2) | (v >> 4)), so an
+     * entry the port does not store reports 0x3F through gfx.c's read-back (audit H F1) */
+    if (c->outs) { memset(gfx_dac, 0xFE, sizeof gfx_dac); pr_out = h0_out; }
     if (c->aperture) {
         memcpy(h0_seed, mem + H0_SCREEN, sizeof h0_seed);
         memcpy(gfx_aperture(), h0_seed, sizeof h0_seed);
