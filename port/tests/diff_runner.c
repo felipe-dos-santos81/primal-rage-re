@@ -58302,6 +58302,8 @@ typedef struct {
     int npoke;
     stub_t stub[16];
     int nstub;
+    int kbd, nkey, outs, aperture;    /* the machine model (track H h0, record §H.1): opt-in per case */
+    u32 key[16];
 } case_t;
 
 static const case_t *g_case;          /* the case running, for the seam hook */
@@ -58497,6 +58499,43 @@ static int parse_bytes(const char *s, poke_t *p)
     return 1;
 }
 
+/* ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model's port side ---- */
+/* A case that opts in (`kbd` with its `key` words, `outs`, `aperture`): the key queue is the port's
+ * input FIFO, filled before the binding runs and counted (`k <left>`) after it; each PR_OUT the port
+ * makes is an `o <port> <value>` line as it happens; the screen is gfx_aperture(), seeded from mem[] at
+ * the aperture (the case's pokes applied, as the emulator's screen starts) and reported after the run
+ * as an `a <addr> <byte>` line per byte that changed. A case that declares none of them runs as before. */
+#define H0_SCREEN 0x000A0000u
+static u8 h0_seed[320u * 200u];
+static void h0_out(u32 port, u32 value) { printf("o 0x%X 0x%X\n", port, value); }
+static void h0_start(const case_t *c)
+{
+    if (c->kbd) {
+        input_clear();
+        for (int i = 0; i < c->nkey; i++) input_push((u8)(c->key[i] >> 8), (u8)c->key[i]);
+    }
+    if (c->outs) pr_out = h0_out;
+    if (c->aperture) {
+        memcpy(h0_seed, mem + H0_SCREEN, sizeof h0_seed);
+        memcpy(gfx_aperture(), h0_seed, sizeof h0_seed);
+    }
+}
+static void h0_end(const case_t *c)
+{
+    pr_out = NULL;
+    if (c->kbd) {
+        u32 left = 0;
+        for (; input_has_key(); left++) (void)input_get_key();
+        printf("k %u\n", left);
+    }
+    if (c->aperture) {
+        const u8 *s = gfx_aperture();
+        for (u32 i = 0; i < sizeof h0_seed; i++)
+            if (s[i] != h0_seed[i]) printf("a 0x%X 0x%02X\n", H0_SCREEN + i, s[i]);
+    }
+}
+/* ---- h0 end ---- */
+
 static void run_case(const case_t *c)
 {
     printf("case %s\n", c->id);
@@ -58517,12 +58556,14 @@ static void run_case(const case_t *c)
     u32 eax = 0;
     g_case = c;
     g_seam_error = 0;
+    h0_start(c);
     b->call(c->reg, &eax);
     g_case = NULL;
     if (g_seam_error == 2)
         printf("error a stub write names argument %u, but 0x%X reports %u arguments\n", g_seam_arg, g_seam_addr, g_seam_nargs);
     else if (g_seam_error) printf("error a stub write outside the image\n");
     else printf("ret eax 0x%X mask 0x%X\n", eax & b->eax_mask, b->eax_mask);
+    h0_end(c);
     scan_image(g_pre, 'w');
     scan_outside(0, CODE_BASE, 'w', 1);              /* the case's writes outside the image, cleared */
     scan_outside(CODE_BASE + g_len, MEM_SIZE, 'w', 1);
@@ -58584,6 +58625,15 @@ static int run_cases(const char *path)
             if (!parse_hex(t[2], &w->off) || !parse_bytes(t[3], &w->p)) {
                 fprintf(stderr, "diffrun: bad swrite line\n"); fclose(f); return 0;
             }
+        } else if (strcmp(t[0], "kbd") == 0 && n == 1) {
+            c.kbd = 1;
+        } else if (strcmp(t[0], "key") == 0 && n == 2 && c.kbd && c.nkey < 16) {
+            if (!parse_hex(t[1], &c.key[c.nkey]) || c.key[c.nkey] > 0xFFFFu) { fprintf(stderr, "diffrun: bad key line\n"); fclose(f); return 0; }
+            c.nkey++;
+        } else if (strcmp(t[0], "outs") == 0 && n == 1) {
+            c.outs = 1;
+        } else if (strcmp(t[0], "aperture") == 0 && n == 1) {
+            c.aperture = 1;
         } else if (strcmp(t[0], "end") == 0) {
             run_case(&c);
             open = 0;

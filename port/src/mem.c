@@ -59,6 +59,9 @@ static int fn_miss_armed;
 /* PORT: the call seam's hook (mem.h, record 2026-10-01-reverse-e3 §E3.3);
  * NULL except in build/diffrun. */
 pr_seam_fn pr_seam;
+/* PORT: the port-I/O seam's hook (mem.h, record 2026-10-14-reverse-h §H.1);
+ * NULL except in build/diffrun. */
+pr_out_fn pr_out;
 
 void (*fn_resolve_from(u32 orig_addr, const char *ctx))(void)
 {

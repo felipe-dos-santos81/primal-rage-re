@@ -36,6 +36,7 @@ class Case:
     regs: dict
     pokes: dict = field(default_factory=dict)      # addr -> bytes
     stub_eax: dict = field(default_factory=dict)   # callee addr -> this case's stub EAX (record E3 §E3.12)
+    machine: object = None                         # an E.Machine: the keys, ports and screen the case models (§H.1)
 
 
 @dataclass
@@ -83,6 +84,9 @@ class PortResult:
     error: str = ""
     calls: list = field(default_factory=list)      # (addr, args tuple), in the order the seam saw them
     call_mem: list = field(default_factory=list)   # per call: {addr: byte} mem[] changed since the start, at that call
+    outs: list = field(default_factory=list)       # (port, value) per PR_OUT, in order (a case with Machine.outs)
+    keys_left: int = None                          # the port's key FIFO left after the run (a case with Machine.keys)
+    aperture: dict = field(default_factory=dict)   # gfx_aperture() bytes changed by the run (Machine.aperture)
 
 
 def cases_text(spec, port_name):
@@ -98,6 +102,7 @@ def cases_text(spec, port_name):
             out.append("stub 0x%X %s 0x%X" % (k.addr, k.mode, k.eax & 0xFFFFFFFF))
             for base, off, data in k.writes:
                 out.append("swrite %s 0x%X %s" % ("abs" if base is None else "arg%d" % base, off, bytes(data).hex()))
+        out += h0_machine_text(c.machine)
         out.append("end")
     return "\n".join(out) + "\n"
 
@@ -144,6 +149,8 @@ def parse_port_output(text):
             if a in cur.writes:
                 raise ValueError("diffrun output: byte 0x%X written twice in one case" % a)
             cur.writes[a] = int(t[2], 16)
+        elif h0_parse_line(cur, t, got):
+            pass
         elif t[0] == "error":
             if got:
                 raise ValueError("diffrun output: a second result line in one case: %r" % line)
@@ -157,6 +164,63 @@ def parse_port_output(text):
     if cur is not None:
         raise ValueError("diffrun output ended inside an open case (truncated?)")
     return res
+
+
+# ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model's text, lines and comparison ----
+H0_DIFFS = ("out #", "keys ", "aperture ")      # compare()'s strings for a machine difference: they detect a mutant
+
+
+def h0_machine_text(m):
+    """The case-file lines of a Machine's port side: `kbd` and a `key` per word (the port's input FIFO),
+    `outs` (record PR_OUT), `aperture` (seed and report gfx_aperture()). The `in` values are the
+    emulator's alone: the port has no `in` to answer."""
+    if m is None:
+        return []
+    out = [] if m.keys is None else ["kbd"] + ["key 0x%X" % k for k in m.keys]
+    return out + (["outs"] if m.outs else []) + (["aperture"] if m.aperture else [])
+
+
+def h0_parse_line(cur, t, got):
+    """One machine line of diffrun's output into `cur`; False when `t` is not one. `o` comes while the
+    function runs (before the result line), `k` and `a` after it."""
+    if t[0] == "o" and len(t) == 3:
+        if got:
+            raise ValueError("diffrun output: an out line after the result line: %s" % " ".join(t))
+        cur.outs.append((int(t[1], 16), int(t[2], 16)))
+    elif t[0] == "k" and len(t) == 2:
+        if not got or cur.keys_left is not None:
+            raise ValueError("diffrun output: a keys line before the result or twice: %s" % " ".join(t))
+        cur.keys_left = int(t[1])
+    elif t[0] == "a" and len(t) == 3:
+        a = int(t[1], 16)
+        if not got or a in cur.aperture:
+            raise ValueError("diffrun output: a screen line before the result or twice: %s" % " ".join(t))
+        cur.aperture[a] = int(t[2], 16)
+    else:
+        return False
+    return True
+
+
+def h0_compare(orig, port):
+    """The machine's discrepancies: the recorded outs in order, the keys left, the screen bytes. A case
+    with no machine has none on either side (the emulator records nothing, the runner prints nothing)."""
+    out = []
+    for i in range(max(len(orig.outs), len(port.outs))):
+        o = orig.outs[i] if i < len(orig.outs) else None
+        p = port.outs[i] if i < len(port.outs) else None
+        if o != p:
+            out.append("out #%d: original %s, port %s (%d and %d outs)" % (
+                i, "none" if o is None else "0x%X <- 0x%02X" % o, "none" if p is None else "0x%X <- 0x%02X" % p,
+                len(orig.outs), len(port.outs)))
+            break
+    if orig.keys_left != port.keys_left:
+        out.append("keys left: original %s, port %s" % (orig.keys_left, port.keys_left))
+    for a in sorted(set(orig.aperture) | set(port.aperture)):
+        if orig.aperture.get(a) != port.aperture.get(a):
+            out.append("aperture 0x%X: original %s, port %s" % (
+                a, _byte_text(orig.aperture.get(a)), _byte_text(port.aperture.get(a))))
+    return out
+# ---- h0 end ----
 
 
 def run_port_many(diffrun, exe, image_path, texts, timeout=60):
@@ -246,7 +310,7 @@ def compare(orig, port, mask=0xFFFFFFFF):
         if orig.writes.get(a) != port.writes.get(a):
             out.append("byte 0x%X: original %s, port %s" % (
                 a, _byte_text(orig.writes.get(a)), _byte_text(port.writes.get(a))))
-    return out
+    return out + h0_compare(orig, port)
 
 
 @dataclass
@@ -275,7 +339,8 @@ def verify_gap(spec, image):
     res = SpecResult(spec.name, spec.entry, "NAMED_GAP", len(spec.cases), 0, len(info.leaders), gap=spec.gap)
     executed = set()
     for c in spec.cases:
-        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c))
+        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c),
+                              machine=c.machine)
         executed |= orig.executed
         if (orig.outcome, orig.detail) != ("unmodeled", spec.gap):
             res.verdict = "MISMATCH"
@@ -290,7 +355,8 @@ def spec_original(spec, image):
     binding, so a function and its mutants share it."""
     info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
                          resolved=E.RESOLVED_JUMPS)
-    return info, [E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c))
+    return info, [E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c),
+                              machine=c.machine)
                   for c in spec.cases]
 
 
@@ -315,7 +381,7 @@ def verify_spec(spec, image, port_results, port_name=None, original=None):
             port_errors.append("%s: %s" % (c.id, port.error))
         for d in compare(orig, port, spec.eax_mask):
             problems.append("%s: %s" % (c.id, d))
-            if d.startswith(("eax ", "byte ", "call #")):   # the strings compare() emits for a real difference
+            if d.startswith(("eax ", "byte ", "call #") + H0_DIFFS):   # the strings compare() emits for a real difference
                 diffs += 1
     hit, unhit = E.coverage(info, executed)
     res = SpecResult(port_name or spec.name, spec.entry, "VERIFIED", len(spec.cases), len(hit),

@@ -32318,5 +32318,79 @@ class DiffrunStubTests(unittest.TestCase):
         self.assertEqual((out["miss"].eax, out["miss"].calls), (0, [(0x10020, ())]))
 
 
+
+# ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model's text, lines and comparison ----
+
+class H0MachineTextTests(unittest.TestCase):
+    def test_a_machine_adds_its_lines_and_no_machine_adds_none(self):
+        m = E.Machine(keys=(0x1E61, 0x0F09), ins=((0x3DA, (8,)),), outs=(0x3C8,), aperture=True)
+        spec = V.Spec("f", 0x10000, [V.Case("a", {}, machine=m), V.Case("b", {}),
+                                     V.Case("c", {}, machine=E.Machine(keys=()))])
+        self.assertEqual(V.cases_text(spec, "f"), "case a\nfn f\nkbd\nkey 0x1E61\nkey 0xF09\nouts\naperture\nend\n"
+                                                  "case b\nfn f\nend\ncase c\nfn f\nkbd\nend\n")
+
+    def test_the_machine_lines_are_parsed_in_their_place_only(self):
+        out = V.parse_port_output("case a\no 0x3C8 0x10\no 0x3C9 0x5\nret eax 0x0 mask 0x0\nk 1\na 0xA0000 0x44\nend\n")
+        self.assertEqual((out["a"].outs, out["a"].keys_left, out["a"].aperture),
+                         ([(0x3C8, 0x10), (0x3C9, 5)], 1, {0xA0000: 0x44}))
+        ok = "ret eax 0x0 mask 0x0\n"
+        for name, text in [("an out after the result", ok + "o 0x3C8 0x1\n"), ("keys before the result", "k 1\n" + ok),
+                           ("keys twice", ok + "k 1\nk 1\n"), ("a screen byte twice", ok + "a 0xA0000 0x1\na 0xA0000 0x2\n"),
+                           ("a screen byte before the result", "a 0xA0000 0x1\n" + ok)]:
+            with self.subTest(name), self.assertRaises(ValueError):
+                V.parse_port_output("case a\n" + text + "end\n")
+
+    def test_each_machine_difference_is_a_discrepancy_that_detects_a_mutant(self):
+        o = orig(0)
+        o.outs, o.keys_left, o.aperture = [(0x3C8, 0x10), (0x3C9, 5)], 1, {0xA0000: 0x44}
+        same = V.PortResult(0, 0xFFFFFFFF, outs=[(0x3C8, 0x10), (0x3C9, 5)], keys_left=1, aperture={0xA0000: 0x44})
+        self.assertEqual(V.compare(o, same), [])
+        for port, want in [
+                (dataclasses.replace(same, outs=[(0x3C8, 0x10), (0x3C9, 6)]),
+                 "out #1: original 0x3C9 <- 0x05, port 0x3C9 <- 0x06 (2 and 2 outs)"),
+                (dataclasses.replace(same, outs=[(0x3C8, 0x10)]), "out #1: original 0x3C9 <- 0x05, port none (2 and 1 outs)"),
+                (dataclasses.replace(same, keys_left=0), "keys left: original 1, port 0"),
+                (dataclasses.replace(same, keys_left=None), "keys left: original 1, port None"),
+                (dataclasses.replace(same, aperture={}), "aperture 0xA0000: original 0x44, port unchanged")]:
+            with self.subTest(want):
+                d = V.compare(o, port)
+                self.assertEqual(d, [want])
+                self.assertTrue(d[0].startswith(V.H0_DIFFS))
+
+
+@unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
+                     "build/diffrun or PRAGE.EXE absent")
+class H0DiffrunMachineTests(unittest.TestCase):
+    """The runner's side: the key FIFO filled and counted, the screen seeded from mem[] and reported."""
+
+    def test_the_keys_fill_the_ports_fifo_and_the_ones_left_are_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"),
+                             "case a\nfn fighter_slot_flag\nkbd\nkey 0x1E61\nkey 0x3062\nend\n"
+                             "case b\nfn fighter_slot_flag\nend\n")
+        self.assertEqual((out["a"].keys_left, out["b"].keys_left), (2, None))
+
+    def test_the_screen_is_seeded_after_the_pokes_and_its_changes_reported(self):
+        # 0x52106 fills gfx_aperture() with the dword EAX; the first dword is poked to that value already
+        with tempfile.TemporaryDirectory() as d:
+            img = os.path.join(d, "img")
+            text = ("case a\nfn gfx_screen_reset\nreg eax 0x11223344\npoke 0xA0000 44332211\n"
+                    "poke 0x1014E4 00000c0000000d00\naperture\nend\n")
+            both = V.run_port(DIFFRUN, EXE, img, text + "case b\nfn fighter_slot_flag\naperture\nend\n")
+            out = both["a"]
+            seed = bytearray(open(img, "rb").read()[0xA0000 - 0x10000:0xAFA00 - 0x10000])
+        seed[0:4] = bytes.fromhex("44332211")
+        self.assertTrue(out.aperture)
+        self.assertNotIn(0xA0000, out.aperture)
+        screen = bytes(out.aperture.get(0xA0000 + i, seed[i]) for i in range(0xFA00))
+        self.assertEqual(screen, bytes.fromhex("44332211") * 0x3E80)
+        self.assertEqual([a for a in out.writes if 0xA0000 <= a < 0xB0000], [])
+        self.assertEqual(both["b"].aperture, {})     # the next case's screen starts from its own seed
+        with tempfile.TemporaryDirectory() as d:
+            out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"), text.replace("aperture\n", ""))["a"]
+        self.assertEqual(out.aperture, {})
+# h0 end
+
+
 if __name__ == "__main__":
     unittest.main()
