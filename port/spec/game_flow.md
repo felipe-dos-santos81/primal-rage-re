@@ -228,10 +228,8 @@ frame loop is reached through `0x20C10`:
   loop body from its top. `game_init_resume()` holds the tail's stores and
   calls except: the controller checks (a named gap: `0x4FBBB`'s game-port
   answer is the hardware's), `0x32970` (host-owned), and the direct
-  `0x38B70`/`0x2BAF4(1)` calls, which are unobservable because
-  `0x10E80` re-runs `0x2BAF4(1)` with nothing reading that state in between
-  (`0x2F920` at `0x20C42` runs as `actors_table_clear()`, record
-  2026-10-13-reverse-i §I.1);
+  `0x38B70`/`0x2F920`/`0x2BAF4(1)` calls, which are unobservable because
+  `0x10E80` re-runs `0x2BAF4(1)` with nothing reading that state in between;
   `0x47370` runs later in the port's order (record named-gaps-b §B.2,
   §B.11). After a restart
   the port's attract palettes sit one slot lower than on the first boot (no
