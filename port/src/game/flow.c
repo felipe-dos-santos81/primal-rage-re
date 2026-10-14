@@ -6053,7 +6053,13 @@ void game_state_init(void)
  * and the single sequence handle live in ail.c; only the sequence is kept here
  * because the title state needs it to start music. The 60 Hz timer is registered
  * and started as in the original, but its callback is never fired: the port has
- * no PIT/ISR and the frame loop owns pacing (see game_audio_service). */
+ * no PIT/ISR and the frame loop owns pacing (see game_audio_service).
+ * PORT: the raw stores its handles in mem[] (record 2026-10-14-reverse-n §N.2): the DIG driver at
+ * 0x1028C8 (0x1CF8E; the port stores 1, below), each slot's sample handle at 0x102860 + 0x18 * i
+ * (0x1CFAC), the MDI driver at 0x1028C4 (0x1CFD6) and the sequence at 0x1028C0 (0x1CFE8); the port
+ * stores none of the last three (the sound-module comment below). It also calls 0x5DC0F on every
+ * slot (0x1CFB2, the port only on a non-NULL handle), registers the ISR 0x1BDF4 (0x1CFED, the port
+ * none), and adds mixer_reset, the 0xA2CB4 store and the FAT.OPL load, which the raw has not. */
 void game_audio_init(void)
 {
     /* PORT: FUN_0001cf40 gates the DIG install and its preferences behind
@@ -6161,7 +6167,15 @@ const u8 *game_music_bank_find(const u8 *base, u32 size)
     return NULL;
 }
 
-/* 0x1C930 (reached from 0x1CF20): loads and starts the pending song. */
+/* 0x1C930 (reached from 0x1CF20): loads and starts the pending song.
+ * PORT: a host replacement (record 2026-10-14-reverse-n §N.2): the raw runs when the pending song
+ * dword 0x1028CC is non-zero (0x1CF30, the call at 0x1CF39) and compares it with the last one
+ * 0x1028DC (0x1C93B); a new song is stored there (0x1C943), resolved by 0x1B544 (0x1C948) and its
+ * size-prefixed bytes copied to the buffer [0x1028D0] (0x1C961..0x1C977); either arm stops the
+ * sequence [0x1028C0] (0x5DEAF, 0x1C956/0x1C9BD), then 0x5DE48 init, 0x5DECA volume [0xA2CB8]
+ * over 500 ms, 0x5DE79 start, and 0x1028CC = 0 (0x1CA08). The port's request is s_music_request
+ * and its bank is S16TITLE's, read in place; it reads and writes none of those dwords, makes no
+ * stop and no copy, and returns early with no bank or no sequence (both host objects). */
 static void title_music_start(void)
 {
     const u8 *bank = title_music_bank();
