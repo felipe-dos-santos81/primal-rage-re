@@ -145,6 +145,137 @@ frame at exactly its named bytes.
 pause and prompt screens are a named gap)" to the narrow frame claim with its named
 limits (the 835 band's cause, the script-end N, under-render/order/coverage unclaimed).
 
-## §G6 — the mode-8 three-frame scan-out (pending, lane B task 6)
+## §G6 — the mode-8 three-frame scan-out (lane B task 6)
+
+**Base and measurements.** Base `93b24171` (`reverse-g2`), `make build`; the three
+re-measured with fresh `make gp-replay scenario=…` runs on this tree — dumps at
+`/tmp/pr_gp_dump/{gp-idle-loss, gp-u9-win, gp-u10-ending}` (6301 / 1977 / 4664
+presented frames; every `fn-miss` set on its pinned known-set, `all checks passed`).
+The per-frame tick log the brief asks for is the driver's own `frames.txt` tick
+column (one line per presented frame: `index f=… tick=… mode=…`) — no extra
+instrumentation was needed, and its ticks advance **exactly +1 per frame** across
+every stretch (idle-loss 1665..1670: 0xCCF..0xCD3; U9 215..221: 0x4E1..0x4E7; U10
+213..221: 0x4DA..0x4E2).
+
+**The composite anatomy, re-measured per row against these dumps** (a row-run pass:
+for each stored capture frame, which dump frames equal each row exactly):
+
+- **gp-idle-loss capture 2064 (raw 5190)**: rows 0..2 = port 1665/1666 (f=0xC70/0xC71,
+  identical there), rows 3..97 = **port 1669 (f=0xC74) exclusively**, rows 98..199 =
+  **port 1670 (f=0xC75) exclusively**. `window.txt` 2062..2065 = raws 5185, 5187,
+  5190, 5191: raw 5186 was deduplicated against 5185 and raws 5188/5189 against 5187,
+  so the original held **port 1666's screen for three consecutive scan-outs** (~43 ms
+  of refresh time) and then put **two new frames' blits inside one scan-out**. Port
+  1667/1668 (f=0xC72/0xC73) differ from every neighbour (row-anatomy `next_diff`) and
+  match no row of any capture frame in the window: their blits never reached VRAM in
+  any form the CRTC could show.
+- **gp-u9-win capture 346 (raw 2830)**: rows 0..4 = port 218 (f=0x48A, the first
+  mode-8 frame, held by dedup across raws 2827..2829), rows 5..199 = port 221 (f=0x48D)
+  exclusively. Ports 219/220 (f=0x48B/0x48C) skipped; capture 347 (raw 2831) shows
+  port 222 whole — the next tick's blit landed after this scan-out ended, so this
+  composite is two segments.
+- **gp-u10-ending capture 331 (raw 2831)**: rows 0..1 = port 216 (f=0x483, the first
+  mode-8 frame, held across raws 2828..2830), rows 2..63 = port 218 (f=0x485)
+  exclusively, rows 64..199 = port 219 (f=0x486) exclusively. Port 217 (f=0x484)
+  skipped; capture 332 (raw 2832) = the 219/220 splice — normal cadence resumes.
+
+**The original-side cadence, from each capture's own `poll.log`** (S records are
+logged only while the loop is caught in its spin state `t50c - 1 == t508`,
+`gp_capture.py` `spinning`/`accept`; P records mark (mode, st) changes):
+
+- idle-loss: `S f=0C70 ms=74174 tick=0x10F1 t508=0x544` → `S f=0C74 ms=74250
+  tick=0x10F5 t508=0x548` → `S f=0C75 ms=74255 tick=0x10F6 t508=0x549`; no S for
+  f=0C71..0C73; `P f=0C71 mode=8 ms=74192` (the poller saw f=0C71 **not** in the
+  spin state — it could log only the P). Δtick = Δt508 = Δf = 4 across the stretch,
+  then 1/1; the f=0C74→0C75 pair was observed 5 wall-ms apart.
+- U9: `S f=0489 … tick=0x908 t508=0xCE` → `S f=048D ms=40520 tick=0x90C t508=0xD2`
+  (Δ3/Δ3 plus the P frame), `P f=048A ms=40483 tick=0x909`; no S for 048A..048C.
+- U10: `S f=0482 … t508=0xCE` → `P f=0483 ms=40492 tick=0x90C` → `S f=0485 ms=40534
+  t508=0xD1` → `S f=0486 ms=40538 t508=0xD2`; no S for 0483/0484.
+
+At every observed endpoint the ISR counters advanced exactly 1 per frame — **no
+counter jump anywhere** — and the missing S records are the loop being caught
+outside its spin state (or the poller starved by the same host CPU; the 76 ms and
+55 ms observation gaps are the poller's wall clock, the blit structure below comes
+from dedup'd raw indices, which count guest refreshes, not wall time).
+
+**The loader re-sync hypothesis, tested and rejected** (0x1B45F/0x1B464 — the
+mechanism the attract2 3545 name rests on, Makefile:288-295, title_compare.py:510-524).
+Three independent grounds on the unpoked gp-idle-loss evidence; U9/U10 share the
+shape (same mode-6→8 entry, same anatomy, same cadence):
+
+1. A mid-game INDEX read goes through 0x1B3AC's draw=1 lazy path, which **always
+   ends with a blit**: the loader draws string 489 (`- LOADING -`) into the aperture,
+   the disk read stalls the loop with the ISR ticking, 0x1B464 re-syncs t50c := t508
+   and the gate (0x25643) then passes on the reading frame — res.c's own comment
+   names that captured presents ("without it the loader's frame — which the capture
+   holds — would never be presented"). Every hold window here is **byte-identical
+   across its raws** (5188/5189 dedup'd against 5187; U9 2828/2829 against 2827;
+   U10 2829/2830 against 2828): no blit landed during any hold, so no read completed
+   inside it.
+2. **The mode-8 entry path reads no INDEX resource at all.** The port implements the
+   same dispatch and models every draw=1 read as a tick advance (res.c); the port
+   replay's tick column advances exactly +1 per frame across each stretch — a read
+   anywhere in f=0C71..0C75 (or the U9/U10 analogues) would jump it. 0x1B3AC is not
+   on the path.
+3. A re-sync changes the *relation* between the counters (t50c pulled up to t508
+   mid-frame, an observable t508-Δ vs f-Δ asymmetry). Observed on all three captures:
+   Δtick = Δt508 = Δf = 1:1 at every endpoint.
+
+**The mechanism: the master loop's own gate + catch-up (0x25643 / 0x256C5).** The
+ported and differentially-verified loop (flow.c:7141-7193): each iteration computes
+(`game_frame` 0x24C5C, then the render passes), blits **only when t50c == t508**
+(sort, render, flush, aperture→VRAM copy, swap — all inside the gate), then t50c++
+(0x256C0) and spins while `t50c - 1 == t508` (0x256C5). Steady state: one present
+per ISR tick, its phase inside the 16.65 ms tick window equal to that iteration's
+own compute time W. When an iteration's compute exceeds the tick gap the gate
+**fails** (t508 has advanced past t50c): that frame's present is skipped entirely
+and the spin condition fails too — the loop burns the backlog without waiting, and
+no blit touches VRAM until t50c catches t508 again. Mode-8's entry chain is exactly
+such a stretch: `game_mode_08_step` (0x28468) walks fight_slot_clear (0x3C5CC), the
+two camera_screen_base/camera_project passes (0x16D58/0x17FA0), camera_decay, the
+fighter passes, fight_slot_pass, two fight_hud_pass walks, fight_effects_pass
+(0x49C78) and camera_y_commit, plus the mode-change setup inside `game_frame`; the
+skipped-iteration chain's compute spans ~2–3 tick intervals on every one of the
+three captures. The reconstruction that fits the idle-loss bytes and counters:
+0C71 blits normally (the held screen, raws 5187..5189), 0C72's compute overruns its
+tick and skips its present, the backlog carries 0C73 (also skipped) and 0C74 —
+whose gate re-opens late in tick 0x548's window (≈10–16 ms in: the skipped chain's
+compute tail), blitting 1669's buffer at raw 5190 row ~3 — and 0C75's blit follows
+≈5–7 ms later just after tick 0x549 (a light iteration at the natural post-tick
+phase), inside the **same** scan-out. 14.27 ms refresh < 16.65 ms tick: two
+sub-tick-spaced blits fit in one capture frame and the rows above them still show
+the held screen; U9's tail blit (0x48E) instead landed after raw 2830's scan ended,
+hence two segments there. Which skipped iteration first overruns a tick is **not**
+isolable from the byte record (no S inside the chain) and the allowance does not
+depend on that attribution.
+
+This is the same mechanism family task 5 named for 3545 — "a present that follows a
+re-sync … or a catch-up (the gate skips presents with no spin while DS_0010150C is
+behind) lands at an arbitrary phase of the ISR tick" (title_compare.py:517-521) —
+and idle-loss's instance is the **catch-up arm driven by the mode-8 entry's own
+compute**, with no read, no re-sync and no poke: its 2064 rows come from the clean
+fight→results transition, as required. **Not a port divergence and not a wrong
+port tick model**: the port's gate/catch-up C is the raw's (differential rows), its
+driver advances exactly one modelled tick per spin, host-side work never overruns a
+modelled tick in a replay, so the port's dump is one frame per f by construction
+and can never express the skipped blits — a comparison-model limit, now with its
+cause isolated (§W.12/§W.14's suspicion confirmed, escalated only in the sense of
+"isolated, modelled by name"; the plan's MISMATCH-escalation carve-out for a wrong
+port tick model does not apply).
+
+**Bound measurements for the named allowance** (full-dump searches over these
+current dumps; the frames themselves and their row boundaries are as above):
+
+| capture frame | top rows [0,r1) equal port | unique adjacent pair (B,B+1) binding [r1,r2)+[r2,200) | top-segment sha256 |
+|---|---|---|---|
+| gp-idle-loss 2064 (r1=3, r2=98) | {1665, 1666} (6301 frames scanned) | **(1669, 1670)** — exactly one | `7bdf2c561c38a264337bc74abd093172ac99ceebb8c818635e189530cf1c58dc` |
+| gp-u9-win 346 (r1=r2=5) | {218} (1977 frames scanned) | **(220, 221)** — exactly one (vacuous middle) | `703828af123edf1a8c3bade8d42bdd56a68576cd87e13de7339bdd203dc8f0b6` |
+| gp-u10-ending 331 (r1=2, r2=64) | {216, 243, 1127} (4664 frames scanned) | **(218, 219)** — exactly one | `2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd` |
+
+(§H.4 names for this allowance, per the plan's rule: it injects no keys — the
+replay scripts and their key counts are unchanged — and reads no screen/data
+bytes in `[0xA0000, 0xAFA00)`; it reads capture `.raw.gz` files and dump `.ipx`
+files only, so the §H.4 hang limit and overlap bound do not bind it.)
 
 ## §G7 — the gp-moves 2139 diagnosis (pending, lane B task 7)
