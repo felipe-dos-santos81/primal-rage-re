@@ -42515,6 +42515,61 @@ I_CS_MUT(nosnap, 6u)   I_CS_MUT(dir, 7u)     I_CS_MUT(step, 8u)     I_CS_MUT(noo
 I_CS_MUT(lo, 11u)      I_CS_MUT(storew, 12u) I_CS_MUT(nostore, 13u) I_CS_MUT(argw, 15u)      I_CS_MUT(camw, 16u)
 /* ---- track I task 1 bindings end ---- */
 
+/* 0x2F9CC game_master_init: no argument; every callee is a stub. One restatement with one choice
+ * flipped per mutant number. No caller reads EAX (0x20C1A `mov eax,0x1044f4`). */
+static void i_2f9cc_core(u32 mut)
+{
+    const u32 *desc = (const u32 *)(mem + ((mut == 23u) ? 0x0009AD98u : 0x0009AD84u));   /* @desc */
+    u32 f = 0u, v;
+    if (mut == 13u) effects_init();                                              /* @swap12 */
+    if (mut != 1u) (void)config_file_load();                                     /* @noload */
+    if (mut != 2u && mut != 13u) effects_init();                                 /* @noeff */
+    if (mut == 14u) actors_reset();                                              /* @swap34 */
+    if (mut != 3u) frontend_input_reset();                                       /* @noinput */
+    if (mut == 22u) actors_reset_al(0u);                                         /* @reset0 */
+    else if (mut != 4u && mut != 14u) actors_reset();                            /* @noreset */
+    if (mut == 16u) DSD(DS_0010740C) = 0x0001D2D0u;                              /* @ptrearly */
+    if (mut == 15u) frontend_spawn_row(desc, 0u, 0u);                            /* @swap56 */
+    if (mut != 5u) frontend_origin_zero();                                       /* @noorigin */
+    if (mut != 6u && mut != 15u)                                                 /* @norow */
+        frontend_spawn_row(desc, (mut == 24u) ? 1u : 0u, (mut == 25u) ? 1u : 0u);    /* @a2 @a3 */
+    if (mut == 33u) DSD(DS_0010740C) = 0x0001D2D4u;                              /* @ptrval */
+    else if (mut == 34u) DSW(DS_0010740C) = 0xD2D0u;                             /* @ptrw */
+    else if (mut != 7u && mut != 16u && mut != 17u) DSD(DS_0010740C) = 0x0001D2D0u;  /* @noptr */
+    if (mut == 18u) f = config_field_get(0x2Au);                                 /* @fieldearly */
+    if (mut != 8u) config_validate();                                            /* @novalidate */
+    if (mut == 17u) DSD(DS_0010740C) = 0x0001D2D0u;                              /* @ptrlate */
+    if (mut != 9u && mut != 18u) f = config_field_get((mut == 26u) ? 0x29u : 0x2Au);   /* @nofield @field29 */
+    v = (mut == 30u) ? f : (mut == 31u) ? (f & 0xFCu) : (mut == 32u) ? (f & 0xFFFFFFFEu)   /* @nomask @mask8 @mask1 */
+      : (f & 0xFFFFFFFCu);
+    if (mut == 35u) DSW(DS_00107410) = (u16)v;                                   /* @fieldw */
+    else if (mut != 9u && mut != 19u && mut != 36u) DSD(DS_00107410) = v;        /* @nostore */
+    if (mut == 20u) (void)attract_config_volumes_unscaled();                     /* @gatelate */
+    if (mut != 10u) (void)config_voice_gate((mut == 27u) ? -1 : 0);              /* @nogate @gatearg */
+    if (mut == 19u) DSD(DS_00107410) = v;                                        /* @storelate */
+    if (mut == 21u) {                                                            /* @volswap */
+        attract_config_volumes();
+        (void)attract_config_volumes_unscaled();
+        return;
+    }
+    if (mut == 28u) attract_config_volumes();                                    /* @volu2 */
+    else if (mut != 11u && mut != 20u) (void)attract_config_volumes_unscaled();  /* @novolu */
+    if (mut == 29u) (void)attract_config_volumes_unscaled();                     /* @vols1 */
+    else if (mut != 12u) attract_config_volumes();                               /* @novols */
+}
+static void b_i_2f9cc(const u32 *r, u32 *eax) { (void)r; game_master_init(); *eax = 0u; }
+#define I_MI_MUT(name, n) \
+    static void m_i_mi_##name(const u32 *r, u32 *eax) { (void)r; i_2f9cc_core(n); *eax = 0u; }
+I_MI_MUT(noload, 1u)     I_MI_MUT(noeff, 2u)      I_MI_MUT(noinput, 3u)   I_MI_MUT(noreset, 4u)   I_MI_MUT(noorigin, 5u)
+I_MI_MUT(norow, 6u)      I_MI_MUT(noptr, 7u)      I_MI_MUT(novalidate, 8u) I_MI_MUT(nofield, 9u)  I_MI_MUT(nogate, 10u)
+I_MI_MUT(novolu, 11u)    I_MI_MUT(novols, 12u)    I_MI_MUT(swap12, 13u)   I_MI_MUT(swap34, 14u)   I_MI_MUT(swap56, 15u)
+I_MI_MUT(ptrearly, 16u)  I_MI_MUT(ptrlate, 17u)   I_MI_MUT(fieldearly, 18u) I_MI_MUT(storelate, 19u) I_MI_MUT(gatelate, 20u)
+I_MI_MUT(volswap, 21u)   I_MI_MUT(reset0, 22u)    I_MI_MUT(desc, 23u)     I_MI_MUT(a2, 24u)       I_MI_MUT(a3, 25u)
+I_MI_MUT(field29, 26u)   I_MI_MUT(gatearg, 27u)   I_MI_MUT(volu2, 28u)    I_MI_MUT(vols1, 29u)    I_MI_MUT(nomask, 30u)
+I_MI_MUT(mask8, 31u)     I_MI_MUT(mask1, 32u)     I_MI_MUT(ptrval, 33u)   I_MI_MUT(ptrw, 34u)     I_MI_MUT(fieldw, 35u)
+I_MI_MUT(nostore, 36u)
+/* ---- track I task 2 bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -57912,6 +57967,43 @@ static const binding_t k_bindings[] = {
     { "camera_y_step@nostore", m_i_cs_nostore, 0x00000000u },
     { "camera_y_step@argw", m_i_cs_argw, 0x00000000u },
     { "camera_y_step@camw", m_i_cs_camw, 0x00000000u },
+    { "game_master_init",                b_i_2f9cc, 0x00000000u },
+    { "game_master_init@noload", m_i_mi_noload, 0x00000000u },
+    { "game_master_init@noeff", m_i_mi_noeff, 0x00000000u },
+    { "game_master_init@noinput", m_i_mi_noinput, 0x00000000u },
+    { "game_master_init@noreset", m_i_mi_noreset, 0x00000000u },
+    { "game_master_init@noorigin", m_i_mi_noorigin, 0x00000000u },
+    { "game_master_init@norow", m_i_mi_norow, 0x00000000u },
+    { "game_master_init@noptr", m_i_mi_noptr, 0x00000000u },
+    { "game_master_init@novalidate", m_i_mi_novalidate, 0x00000000u },
+    { "game_master_init@nofield", m_i_mi_nofield, 0x00000000u },
+    { "game_master_init@nogate", m_i_mi_nogate, 0x00000000u },
+    { "game_master_init@novolu", m_i_mi_novolu, 0x00000000u },
+    { "game_master_init@novols", m_i_mi_novols, 0x00000000u },
+    { "game_master_init@swap12", m_i_mi_swap12, 0x00000000u },
+    { "game_master_init@swap34", m_i_mi_swap34, 0x00000000u },
+    { "game_master_init@swap56", m_i_mi_swap56, 0x00000000u },
+    { "game_master_init@ptrearly", m_i_mi_ptrearly, 0x00000000u },
+    { "game_master_init@ptrlate", m_i_mi_ptrlate, 0x00000000u },
+    { "game_master_init@fieldearly", m_i_mi_fieldearly, 0x00000000u },
+    { "game_master_init@storelate", m_i_mi_storelate, 0x00000000u },
+    { "game_master_init@gatelate", m_i_mi_gatelate, 0x00000000u },
+    { "game_master_init@volswap", m_i_mi_volswap, 0x00000000u },
+    { "game_master_init@reset0", m_i_mi_reset0, 0x00000000u },
+    { "game_master_init@desc", m_i_mi_desc, 0x00000000u },
+    { "game_master_init@a2", m_i_mi_a2, 0x00000000u },
+    { "game_master_init@a3", m_i_mi_a3, 0x00000000u },
+    { "game_master_init@field29", m_i_mi_field29, 0x00000000u },
+    { "game_master_init@gatearg", m_i_mi_gatearg, 0x00000000u },
+    { "game_master_init@volu2", m_i_mi_volu2, 0x00000000u },
+    { "game_master_init@vols1", m_i_mi_vols1, 0x00000000u },
+    { "game_master_init@nomask", m_i_mi_nomask, 0x00000000u },
+    { "game_master_init@mask8", m_i_mi_mask8, 0x00000000u },
+    { "game_master_init@mask1", m_i_mi_mask1, 0x00000000u },
+    { "game_master_init@ptrval", m_i_mi_ptrval, 0x00000000u },
+    { "game_master_init@ptrw", m_i_mi_ptrw, 0x00000000u },
+    { "game_master_init@fieldw", m_i_mi_fieldw, 0x00000000u },
+    { "game_master_init@nostore", m_i_mi_nostore, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

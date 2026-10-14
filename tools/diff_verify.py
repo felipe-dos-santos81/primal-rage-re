@@ -33239,6 +33239,24 @@ def i_cs_case(cid, cam, target, shake=0x0003):
 
 
 I_C = 0x0001FF80                                # a camera y whose 0x100 step up carries into the high word
+# 0x2F9CC's callees with no stub before this row (clobbers: E.callee_clobbers over the image), seamed by it
+I_LOAD = E.Call(0x1AFE8, (), clobbers=("edi", "ebp"))
+I_VALIDATE = E.Call(0x2D6F8, ())
+I_GATE = E.Call(0x2C9B8, ("eax",))
+I_MI_CALLS = (I_LOAD, D4D_EFF_INIT, D5A_INPUT, D5A_RESET, D5A_ORIGIN, D5A_ROW, I_VALIDATE, D4C_DIP, I_GATE, D5I2_VOL)
+I_MI_REG = {"eax": 0xFFFFFFFF, "ebx": 0xFFFFFFFF, "ecx": 0xFFFFFFFF, "edx": 0xFFFFFFFF, "esi": 0xFFFFFFFF,
+            "edi": 0xFFFFFFFF, "ebp": 0xFFFFFFFF}
+
+
+def i_mi_case(cid, regs, field, **eax):
+    """0x2F9CC: the dwords 0x10740C and 0x107410 seeded (no byte of either is one the function
+    stores for this case's field) between two seeded dwords; 0x2D974's stub answers `field`, the other
+    stubs what `eax` names by the callee's last five hex digits (0 otherwise)."""
+    se = {0x2D974: field}
+    se.update({int(k[1:], 16): v for k, v in eax.items()})
+    return Case(cid, regs, {0x00107408: le32(0x08080808) + le32(0xC0C0C0C0) + le32(0xEDEDEDED) + le32(0x14141414)}, se)
+
+
 I_SPECS = [
     # 0x2F920 actors_table_clear: no argument. `push ebx; push edx; mov ebx,0x14d4; mov eax,0x105f38;
     # xor edx,edx; call 0x61a70; pop edx; pop ebx; ret`: the runtime memset 0x61A70 (it runs 0x65490
@@ -33294,6 +33312,29 @@ I_SPECS = [
     ], eax_mask=0,
        mutants=tuple("@" + m for m in "diffrev noabs snapwide snapnarrow unsigned nosnap dir step nooff shr lo "
                                       "storew nostore argw camw".split())),
+    # 0x2F9CC game_master_init: no argument, one block, every callee a stub. In order: 0x1AFE8();
+    # 0x13ADC(); 0x4F1E4 (its EAX = 0 is not read: `mov eax,0x2700` 0x4F1E5); 0x2BAF4(EAX = 1);
+    # 0x4F1D0; 0x38B18(EAX = 0x9AD84, EDX = 0 from 0x2F9F0, EBX = 0 from 0x2F9E7: the stubs of 0x2BAF4
+    # and 0x4F1D0 keep both, as their bytes do); the dword 0x10740C = 0x1D2D0; 0x2D6F8(); 0x2D974(0x2A),
+    # whose result with `and al,0xfc` is the dword 0x107410; 0x2C9B8(0); 0x2C8F0(-1); 0x2C8F0(-2). The
+    # memory at each call places the two stores. m0: both low bits of the field set. m1: every register
+    # dirty at entry (the zeros of call 6 are the function's) and the low bits clear over a set bit 2.
+    # m2/m3: bit 0 alone, bit 1 alone, with high bytes that differ. Every stub but 0x2D974's answers a
+    # value per case that nothing reads (0x2F9D9, 0x2FA10, 0x2FA28 and 0x2FA32 load EAX; the last
+    # 0x2C8F0's is the function's EAX, which the one caller overwrites: 0x20C1A `mov eax,0x1044f4`):
+    # mask 0.
+    Spec("game_master_init", 0x2F9CC, [
+        i_mi_case("m0", {}, 0x12345677),
+        i_mi_case("m1", I_MI_REG, 0xA5A5A5FC, x1AFE8=1, x2D6F8=0x9C94D2C4, x2C9B8=0x10000, x2C8F0=0x12345678,
+                  x38B18=0x0010A300, x2BAF4=0x5A5A5A5A),
+        i_mi_case("m2", {"ebx": 5, "edx": 7}, 0x80010001, x2C9B8=0xFFFFFFFF, x2C8F0=0xA0),
+        i_mi_case("m3", {"eax": 0x2A}, 0x0000FF02, x1AFE8=0x100, x13ADC=0x33333333, x4F1E4=0x44444444,
+                  x4F1D0=0x55555555),
+    ], calls=I_MI_CALLS, eax_mask=0,
+       mutants=tuple("@" + m for m in "noload noeff noinput noreset noorigin norow noptr novalidate nofield nogate "
+                                      "novolu novols swap12 swap34 swap56 ptrearly ptrlate fieldearly storelate "
+                                      "gatelate volswap reset0 desc a2 a3 field29 gatearg volu2 vols1 nomask mask8 "
+                                      "mask1 ptrval ptrw fieldw nostore".split())),
 ]
 D1_SPECS += I_SPECS
 SPECS = [

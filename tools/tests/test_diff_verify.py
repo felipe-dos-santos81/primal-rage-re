@@ -30152,11 +30152,12 @@ SI_CASES = [
 D1_MASKS.update(SI_MASKS)
 D1_KINDS.update(SI_KINDS)
 D1_CASES.extend(SI_CASES)
-# track I task 1 (record 2026-10-13-reverse-i sections I.1-I.3): 0x2F920, 0x11BCC and 0x12CD4 as functions
+# track I (record 2026-10-13-reverse-i sections I.1-I.4): 0x2F920, 0x11BCC, 0x12CD4 and 0x2F9CC as functions
 I_MASKS = {
     "actors_table_clear": 0x0,
     "game_state_timer_exit": 0x0,
     "camera_y_step": 0x0,
+    "game_master_init": 0x0,
 }   # I_MASKS end
 I_KINDS = {
     "actors_table_clear@short": {'byte'},
@@ -30191,6 +30192,42 @@ I_KINDS = {
     "camera_y_step@nostore": {'byte'},
     "camera_y_step@argw": {'byte'},
     "camera_y_step@camw": {'byte'},
+    "game_master_init@noload": {'call #0', 'call #1', 'call #10', 'call #2', 'call #3', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "game_master_init@noeff": {'call #1', 'call #10', 'call #2', 'call #3', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "game_master_init@noinput": {'call #10', 'call #2', 'call #3', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "game_master_init@noreset": {'call #10', 'call #3', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "game_master_init@noorigin": {'call #10', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "game_master_init@norow": {'call #10', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "game_master_init@noptr": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "game_master_init@novalidate": {'call #10', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "game_master_init@nofield": {'byte', 'call #10', 'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "game_master_init@nogate": {'call #10', 'call #8', 'call #9'},
+    "game_master_init@novolu": {'call #10', 'call #9'},
+    "game_master_init@novols": {'call #10'},
+    "game_master_init@swap12": {'call #0', 'call #1'},
+    "game_master_init@swap34": {'call #2', 'call #3'},
+    "game_master_init@swap56": {'call #4', 'call #5'},
+    "game_master_init@ptrearly": {'call #4 memory', 'call #5 memory'},
+    "game_master_init@ptrlate": {'call #6 memory'},
+    "game_master_init@fieldearly": {'call #6', 'call #7'},
+    "game_master_init@storelate": {'call #8 memory'},
+    "game_master_init@gatelate": {'call #8', 'call #9'},
+    "game_master_init@volswap": {'call #10', 'call #9'},
+    "game_master_init@reset0": {'call #3'},
+    "game_master_init@desc": {'call #5'},
+    "game_master_init@a2": {'call #5'},
+    "game_master_init@a3": {'call #5'},
+    "game_master_init@field29": {'call #7'},
+    "game_master_init@gatearg": {'call #8'},
+    "game_master_init@volu2": {'call #9'},
+    "game_master_init@vols1": {'call #10'},
+    "game_master_init@nomask": {'byte', 'call #10 memory', 'call #8 memory', 'call #9 memory'},
+    "game_master_init@mask8": {'byte', 'call #10 memory', 'call #8 memory', 'call #9 memory'},
+    "game_master_init@mask1": {'byte', 'call #10 memory', 'call #8 memory', 'call #9 memory'},
+    "game_master_init@ptrval": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "game_master_init@ptrw": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "game_master_init@fieldw": {'byte', 'call #10 memory', 'call #8 memory', 'call #9 memory'},
+    "game_master_init@nostore": {'byte', 'call #10 memory', 'call #8 memory', 'call #9 memory'},
 }   # I_KINDS end
 I_CASES = [
     ("actors_table_clear@short", ['t2']),
@@ -30225,6 +30262,42 @@ I_CASES = [
     ("camera_y_step@nostore", ['d0', 'd1', 'm0', 'm1', 'm2', 'm3', 'n0', 'n1', 'n2', 'n3', 'n4', 'u0', 'u1', 'w0']),
     ("camera_y_step@argw", ['m0', 'm1', 'm3', 'n0', 'n1', 'n2', 'n3', 'u0', 'u1', 'w0']),
     ("camera_y_step@camw", ['d0', 'd1', 'm1', 'm2', 'n0', 'n1', 'n2', 'n3', 'n4', 'u0', 'u1', 'w0']),
+    ("game_master_init@noload", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@noeff", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@noinput", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@noreset", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@noorigin", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@norow", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@noptr", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@novalidate", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@nofield", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@nogate", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@novolu", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@novols", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@swap12", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@swap34", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@swap56", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@ptrearly", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@ptrlate", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@fieldearly", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@storelate", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@gatelate", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@volswap", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@reset0", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@desc", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@a2", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@a3", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@field29", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@gatearg", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@volu2", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@vols1", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@nomask", ['m0', 'm2', 'm3']),
+    ("game_master_init@mask8", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@mask1", ['m0', 'm3']),
+    ("game_master_init@ptrval", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@ptrw", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@fieldw", ['m0', 'm1', 'm2', 'm3']),
+    ("game_master_init@nostore", ['m0', 'm1', 'm2', 'm3']),
 ]   # I_CASES end
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
@@ -31294,6 +31367,9 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # I (record 2026-10-13-reverse-i section I.4): the stubs the 0x2F9CC row adds
+        0x1AFE8: ("edi", "ebp"), 0x2D6F8: (), 0x2C9B8: (),
+        # I end
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
@@ -31551,11 +31627,12 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (824 after track I task 1: the rows of
-        # 0x2F920 and 0x11BCC, open on the runtime memset 0x61A70 and the ret-only 0x29D60); the 169
-        # without are counted apart (0x12CD4's row is one)
-        self.assertIn("diff-verify: 993/993 functions VERIFIED; 14757/14757 mutants detected; 1 named gaps; "
-                      "635/824 rows with callees closed (169 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (825 after track I: the rows of
+        # 0x2F920 and 0x11BCC, open on the runtime memset 0x61A70 and the ret-only 0x29D60, and the
+        # row of 0x2F9CC, closed: each of its ten callees has a VERIFIED row); the 169 without are
+        # counted apart (0x12CD4's row is one)
+        self.assertIn("diff-verify: 994/994 functions VERIFIED; 14793/14793 mutants detected; 1 named gaps; "
+                      "636/825 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
