@@ -6799,6 +6799,23 @@ void game_init_null(void)
 {
 }
 
+/* 0x2F9CC — record 2026-10-13-reverse-i §I.4 */
+void game_master_init(void)
+{
+    (void)config_file_load();                       /* 0x2F9CF 0x1AFE8; AL is not read (0x2F9D4 calls on) */
+    effects_init();                                 /* 0x2F9D4 0x13ADC */
+    frontend_input_reset();                         /* 0x2F9D9..0x2F9DB 0x4F1E4 (EAX = 0, unread: 0x4F1E5 loads it) */
+    actors_reset();                                 /* 0x2F9E0..0x2F9E9 0x2BAF4 (EAX = 1; ECX = EBX = 0) */
+    frontend_origin_zero();                         /* 0x2F9EE..0x2F9F2 0x4F1D0 (EAX = EDX = 0) */
+    frontend_spawn_row((const u32 *)(mem + 0x9AD84u), 0u, 0u);   /* 0x2F9F7..0x2F9FC 0x38B18 (EDX 0x2F9F0, EBX 0x2F9E7) */
+    DSD(DS_0010740C) = 0x0001D2D0u;                 /* 0x2FA01 (record §K11.2): [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
+    config_validate();                              /* 0x2FA0B 0x2D6F8 */
+    DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
+    (void)config_voice_gate(0);                     /* 0x2FA21..0x2FA23 0x2C9B8; EAX is not read (0x2FA28 loads it) */
+    (void)attract_config_volumes_unscaled();        /* 0x2FA28..0x2FA2D 0x2C8F0(-1); EAX is not read (0x2FA32) */
+    attract_config_volumes();                       /* 0x2FA32..0x2FA37 0x2C8F0(-2) */
+}
+
 void game_init(void)
 {
     char index_path[512];
@@ -6855,14 +6872,10 @@ void game_init(void)
     render_list_init();     /* 0x1C350 */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     (void)sound_buffers_alloc();  /* 0x1C0B1 0x1D0BC (record k7-k12 §0.7.1) */
-    /* 0x20C15 0x2F9CC, before the setjmp (0x20C1F), so a 0x65431 longjmp does
-     * not re-run it (record named-gaps-b §B.2). It runs 0x13ADC (effects_init,
-     * inside actors_init above) and 0x2D6F8 (config_validate), so the field
-     * 0x29 the tail reads is what the defaults path wrote. */
-    (void)config_file_load();         /* 0x2F9CF 0x1AFE8, 0x2F9CC's first call; AL is not read (0x2F9D4 calls on) */
-    DSD(DS_0010740C) = 0x0001D2D0u;   /* 0x2FA01 (record §K11.2): 0x2F9CC's pointer; [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
-    config_validate();          /* 0x2F9CC's 0x2D6F8 */
-    DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
+    /* 0x20C15, before the setjmp (0x20C1F), so a 0x65431 longjmp does not
+     * re-run it (record named-gaps-b §B.2). Its 0x2D6F8 (config_validate)
+     * leaves the field 0x29 the tail reads as the defaults path wrote it. */
+    game_master_init();         /* 0x20C15 0x2F9CC */
     svcmenu_register();         /* PORT: the options-menu table callbacks (record §K11.2) */
     /* 0x20C1A/0x20C1F setjmp(0x1044F4): the restart point is game_loop's
      * (record named-gaps-b §B.2); the tail follows. */

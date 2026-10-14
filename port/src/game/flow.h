@@ -24,6 +24,12 @@ int game_main(void);
 void game_init(void);
 void game_shutdown(void);
 
+/* 0x2F9CC — record 2026-10-13-reverse-i §I.4. The master init: the save file,
+ * the effects pool, a blank screen with the options backdrop, the options
+ * pointer DS_0010740C, the configuration and its volumes. One caller, 0x20C10
+ * (0x20C15), before its setjmp: game_init runs it once, a restart never. */
+void game_master_init(void);
+
 /* 0x20C24..0x20DE3 — record named-gaps-b §B.2. The post-setjmp tail of
  * 0x20C10: game_init runs it last, and a 0x65431 longjmp re-runs it from
  * game_loop's restart point. */

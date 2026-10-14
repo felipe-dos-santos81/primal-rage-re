@@ -380,6 +380,7 @@ void config_storage_validate(u32 defaults)
  * (0x2FA10). */
 void config_validate(void)
 {
+    PR_SEAM0(0x2D6F8u);
     DSB(DS_00105DA5) = 0u;                         /* 0x2D70F */
     DSB(DS_00105DA4) = 0u;                         /* 0x2D715 */
     config_storage_load();                         /* 0x2D71B */
@@ -1366,6 +1367,7 @@ void config_keys_load(u32 rec)
  * after the exit call do (CL = 1 at 0x1B052, `jmp 0x1B05D`), so the next save replaces the short file. */
 u32 config_file_load(void)
 {
+    PR_SEAM_RET0(0x1AFE8u);
     u32 fail = 1u;                                         /* 0x1B05B */
     if (host_save_read(mem + CFG_IMAGE, CFG_IMAGE_LEN)) {
         u8 sum = 0u;                                       /* 0x1B02F */

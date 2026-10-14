@@ -4935,13 +4935,34 @@ int test_run_clock(void)
     return g_failures - before;
 }
 
-/* Track I (record 2026-10-13-reverse-i §I.1-§I.3): the three functions the
+/* Track I (record 2026-10-13-reverse-i §I.1-§I.4): the four functions the
  * port used to inline in their callers, called directly. The voice of the
  * timer exit is voice-site row 195's (test_voice_sites), through
  * game_state_step. */
 #define IF_GRID      DS_00105F38                /* 0x2F927 */
 #define IF_GRID_LEN  0x14D4u                    /* 0x2F922 */
 #define IF_CAM_OFF   (DS_000F0AF4 - 2u)         /* the dword 0x12D03/0x12D1D read */
+#define IF_MI_MAX    16u
+
+/* The master init's callees, each stubbed: the call, its arguments and the two
+ * dwords 0x2F9CC stores as they are when the call arrives. 0x2D974 answers
+ * if_mi_field, every other callee a value 0x2F9CC must not use. */
+static u32 if_mi_n, if_mi_field;
+static struct { u32 addr, nargs, a[3], p40c, p410; } if_mi[IF_MI_MAX];
+
+static int if_mi_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    if (if_mi_n < IF_MI_MAX) {
+        if_mi[if_mi_n].addr = addr;
+        if_mi[if_mi_n].nargs = nargs;
+        for (u32 i = 0u; i < 3u; i++) if_mi[if_mi_n].a[i] = i < nargs ? args[i] : 0u;
+        if_mi[if_mi_n].p40c = DSD(DS_0010740C);
+        if_mi[if_mi_n].p410 = DSD(DS_00107410);
+    }
+    if_mi_n++;
+    *eax = addr == 0x2D974u ? if_mi_field : 0x5A5A5A5Au;
+    return 1;
+}
 int test_inlined_functions(void)
 {
     int before = g_failures;
@@ -5002,6 +5023,50 @@ int test_inlined_functions(void)
             camera_y_step((s32)st[i].target);
             CHECK_EQ_INT((long)DSD(DS_000F0AEC), (long)st[i].want);
         }
+    }
+
+    /* master — 0x2F9CC: the eleven calls in the raw's order with their
+     * arguments (0x2F9CF..0x2FA37), the pointer 0x10740C = 0x1D2D0 stored
+     * between 0x38B18 and 0x2D6F8 (0x2FA01), and 0x107410 = 0x2D974(0x2A) with
+     * its low two bits cleared (`and al,0xfc` 0x2FA1A), stored before 0x2C9B8
+     * (0x2FA1C). No other callee's result is used. */
+    {
+        enum { OLD_C = 0x0C0C0C0C, OLD_10 = 0x10101010, PTR = 0x0001D2D0, FLD = 0x12345674 };
+        static const struct { u32 addr, nargs, a[3], p40c, p410; } want[] = {
+            { 0x1AFE8u, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x13ADCu, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x4F1E4u, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x2BAF4u, 1u, { 1u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x4F1D0u, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x38B18u, 3u, { 0x9AD84u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x2D6F8u, 0u, { 0u, 0u, 0u }, PTR, OLD_10 },
+            { 0x2D974u, 1u, { 0x2Au, 0u, 0u }, PTR, OLD_10 },
+            { 0x2C9B8u, 1u, { 0u, 0u, 0u }, PTR, FLD },
+            { 0x2C8F0u, 1u, { 0xFFFFFFFFu, 0u, 0u }, PTR, FLD },
+            { 0x2C8F0u, 1u, { 0xFFFFFFFEu, 0u, 0u }, PTR, FLD },
+        };
+        const u32 s_40c = DSD(DS_0010740C), s_410 = DSD(DS_00107410);
+        DSD(DS_0010740C) = OLD_C;
+        DSD(DS_00107410) = OLD_10;
+        if_mi_n = 0u;
+        if_mi_field = FLD | 3u;
+        pr_seam = if_mi_probe;
+        game_master_init();
+        pr_seam = NULL;
+        CHECK_EQ_INT((int)if_mi_n, (int)(sizeof want / sizeof want[0]));
+        for (u32 i = 0u; i < sizeof want / sizeof want[0]; i++) {
+            const int ok = i < if_mi_n && memcmp(&if_mi[i], &want[i], sizeof want[i]) == 0;
+            if (!ok)
+                printf("master: call %u is 0x%X(%X, %X, %X) of %u, 0x10740C %X, 0x107410 %X\n", (unsigned)i,
+                       (unsigned)if_mi[i].addr, (unsigned)if_mi[i].a[0], (unsigned)if_mi[i].a[1],
+                       (unsigned)if_mi[i].a[2], (unsigned)if_mi[i].nargs, (unsigned)if_mi[i].p40c,
+                       (unsigned)if_mi[i].p410);
+            CHECK(ok, "0x2F9CC: the call, its arguments and the stores before it");
+        }
+        CHECK_EQ_INT((long)DSD(DS_0010740C), (long)PTR);
+        CHECK_EQ_INT((long)DSD(DS_00107410), (long)FLD);
+        DSD(DS_0010740C) = s_40c;
+        DSD(DS_00107410) = s_410;
     }
 
     tf_voice_put();
