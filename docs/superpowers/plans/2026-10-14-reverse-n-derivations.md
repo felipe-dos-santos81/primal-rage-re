@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 # Track N — the last twelve named gaps — derivation record
 
 Brief: `.superpowers/sdd/2026-10-14-reverse-n/brief.md`. Three batches off `main` `95afed00` (`995/995 functions
@@ -90,13 +88,6 @@ Full `--self-check`: `996/996 functions VERIFIED; 14829/14829 mutants detected; 
 with callees closed (169 have none)` (the new row is open on `0x1B544`, a named non-row, and `0x51E58`). The
 harness suite's counter pin is updated to it. After n1: 17 ported functions without a row (11 named gaps, 6
 named non-rows); 11 weaker rows (`0x51ED8` joins: partial).
-=======
-# Track N derivations: the last twelve named gaps
-
-Brief `.superpowers/sdd/2026-10-14-reverse-n/brief.md`. Sources: Ghidra (project `rage`, read-only), capstone
-over the fixed-up image (`./build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/pr_n2_img.bin`; image
-offset = address − `0x10000`) and the harness's emulator (`tools/diff_emu.py` `run_original`). One section
-per batch; the integrator merges §N.1, §N.2 and §N.3.
 
 ## §N.2 Batch n2: the audio initialisation and the teardown
 
@@ -275,12 +266,6 @@ The row's four mutants are its proofs (all detected, pinned in `N2_KINDS`/`N2_CA
 0x4FB9E`; `unmodeled call 0x61984 from 0x10D48`), so neither is hiding a difference the row could see. A
 set segment word in `t1` (each of the three) stops the original at `call 0x1ADE4` (`0x1BE5C`, `0x1BE82`,
 `0x1BEA6`), the blocks named unhit. No unit assertion was added.
->>>>>>> reverse-n2
-=======
-# Track N — the last twelve named gaps — derivation record
-
-Three batches (`n1`, `n2`, `n3`) re-decide from the original's bytes whether the ported functions that have
-no differential row can take one. Each batch writes its own section; the integrator merges them.
 
 ## §N.3 Batch `n3`: the resource loaders, the string table, the boot logos' player
 
@@ -428,4 +413,3 @@ closed (`0x52106` VERIFIED) and closes `attract_step`'s row (`0x11000` stubs `0x
 on `0x1B3AC` and `0x1C308`, which have no row. Harness suite: 180 tests OK. `run_tests` (PR_ORACLE_REQUIRED=1):
 all checks passed. `tools/port_progress.py`: `787 1203 65`, `747 747 100` (unchanged). Unrowed ported functions:
 18 → 16; the named gaps of this batch: 4 → 2 (`0x1B3AC`, `0x47370`). Weaker rows: 10 → 12.
->>>>>>> reverse-n3
