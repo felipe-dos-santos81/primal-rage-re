@@ -500,8 +500,6 @@ class SwitchScanTests(unittest.TestCase):
         self.assertEqual(info.leaders, [0x10000, 0x10004, 0x10010, 0x10011, 0x10012, 0x10013])
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 # ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model --------------------------------
@@ -593,3 +591,7 @@ class H0MachineTests(unittest.TestCase):
                    {"outs": (0x10000,)}):
             with self.subTest(kw=kw), self.assertRaises(ValueError):
                 E.Machine(**kw)
+
+
+if __name__ == "__main__":
+    unittest.main()

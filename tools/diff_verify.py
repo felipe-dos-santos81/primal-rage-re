@@ -32301,7 +32301,7 @@ D6A_SPECS += [
     # peek gives a non-zero word, read it into the dword 0x105F28 (zero-extended, `xor edx,edx; mov dx,ax`),
     # the dword 0x105F2C = 0x500BB() (the dword 0x101500, seeded apart from 0x101508), and the dword
     # 0x105F30 = its ASCII byte, or its scan code when the ASCII byte is 0 (`and edx,esi`, ESI = 0xFF). k0: a
-    # key whose scan byte is not 0 (0xE048); k1: a key, a scan-only key, then a queued word 0 that ends the
+    # key whose scan byte is not 0 (0x2368, 'h', a word AH = 0 returns); k1: a key, a scan-only key, then a queued word 0 that ends the
     # drain in both passes (two words left); k2: n = -1 returns before the drain (its key left); k3: three
     # keys in one pass with n = -2 (one pass). Mask 0, and EAX is not
     # compared: the port's function is void. The raw's EAX is -1 after the loop, which two callers hand on
@@ -32314,7 +32314,7 @@ D6A_SPECS += [
         d6a_wait("w2", 0, word=0x3333),
         d6a_wait("w3", 2, flag=0x80, regs=D2E_DIRTY),
         d6a_wait("w4", 0xFFFFFFFE, latch=0x00010000),
-        d6a_wait("k0", 0, keys=(0xE048,)),
+        d6a_wait("k0", 0, keys=(0x2368,)),
         d6a_wait("k1", 0, keys=(0x1559, 0x4800, 0x0000, 0x1E61), regs=D2E_DIRTY),
         d6a_wait("k2", 0xFFFFFFFF, keys=(0x1E61,)),
         d6a_wait("k3", 0xFFFFFFFE, keys=(0x3062, 0x00E0, 0x2D78)),

@@ -266,7 +266,7 @@ What the model answers, and why it is exact for these paths:
   which the runner seeds from the same image bytes after the pokes. The screen bytes equal to the image's
   bytes before the fill do not show on either side; so the first and last 0x40 screen bytes are poked to
   0x5A (`D6A_RESET_SEED`), which none of the three tick dwords holds (0x00000000, 0xA1B2C3D4, 0x00000100):
-  the fill's two ends show in every case (measured: 38152, 63879 and 43873 screen bytes compared in s0, s1,
+  the fill's two ends show in every case (measured: 38216, 63879 and 43921 screen bytes compared in s0, s1,
   s2). The offscreen buffers (0xC0000..0xD0802 + 0xFA00) do not overlap the screen (h0's caution).
 - EAX: the raw now returns 0xAFA00 (the third fill's advanced EAX, measured; it was 0xA0000 under the poke).
   Mask 0 kept: the port's function is void and the callers are as before (`0x1C873` hands it to the movie
@@ -386,3 +386,36 @@ presents the whole back buffer on both paths where the original's flag-clear pat
   `0x1B544`, a named non-row).
 - Harness suite: 196 tests OK. `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed.
   `tools/port_progress.py` unchanged (no new function).
+
+## §H.4 Integration and audit (2026-10-14)
+
+The batches merged onto `reverse-h` (`h0` fast-forward; `h1`, `h2` merged, the test file composed, this record
+rebuilt from the sections). A read-only audit (`.superpowers/sdd/2026-10-14-reverse-h/audit-report.md`) found one
+Important and seven Minor findings, none Critical. It confirmed the model's answers at all six `int 0x16` sites,
+the `0x3DA` reads, the DAC device model and the declared-difference mechanism; that every old case and mutant of
+a converted row is kept or strengthened (163 mutants checked); and that 167 mutants of unconverted rows reproduce
+`main`'s pins exactly.
+
+**F1 (Important), fixed.** The DAC comparison read the port's `PR_OUT` report, which `gfx.c` computed beside its
+`gfx_dac` stores rather than from them: deleting `0x52106`'s `memset(gfx_dac, …)` left the row VERIFIED. Both
+report sites now read each channel back from `gfx_dac` (`>> 2`, the six-bit value the port expands), and
+`diffrun` seeds `gfx_dac` with `0xFE` for a case that records `out`s, a byte no six-bit channel expands to, so an
+entry the port does not store reports `0x3F`. Mutation proofs: without `0x52106`'s clear, and without one of
+`0x1C470`'s channel stores, each row reports MISMATCH. What the read-back cannot see is the expansion's low two
+bits (`(v << 2) | (v >> 4)`), a presentation detail of the host.
+
+**Fixed minors.** `config_screen_wait`'s k0 key word was `0xE048`, which AH = 0/1 never return (scan `0xE0` is
+translated); it is now `0x2368`, on the same path (ASCII and scan both non-zero). §H.3.1's screen counts for s0 and
+s2 were 38152 and 43873; measured 38216 and 43921. `H0MachineTests` moved above `test_diff_emu.py`'s
+`unittest.main()` guard (the gate runs `-m unittest` and saw them either way).
+
+**Named limits.**
+- A port that reads one key more than the original, or a case with too few keys, makes the port's
+  `input_get_key` spin (no window close in `diffrun`) until the runner's timeout, 60 s per case file, and the
+  whole run ends `diff-verify: error` without naming the row. It always fails, never passes, and a correct
+  port on valid cases cannot reach it (every blocking port read matches an original AH = 0 read).
+- The emulator's screen `[0xA0000, 0xAFA00)` shares addresses with live data (the quit flag `0xA81A8`, the
+  table `0xA8644`): in a case that compares the screen, a missing data write there could be matched by a pixel
+  of the same value. Neither screen row writes data in that range.
+- Dropping the machine differences from `verify_spec`'s count is caught only by the slow self-check
+  (`RealFunctionTests`, in the gate), not by a fast test.
