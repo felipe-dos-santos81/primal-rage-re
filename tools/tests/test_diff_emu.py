@@ -593,5 +593,136 @@ class H0MachineTests(unittest.TestCase):
                 E.Machine(**kw)
 
 
+
+# ---- track F batch f1 (record 2026-10-14-reverse-f §F.1): the file model ---------------------------------
+# The modelled callees' entry addresses are the runtime's (fopen 0x61C60, fread 0x61CF6, fwrite 0x62031,
+# fclose 0x61EC0); the programs below call them and save EAX to dwords of the 0xEE-seeded field at
+# 0x80020 (a store of zero is then visible against the seed). The arguments follow the rows' call sites
+# and the callees' prologues: fopen's name in EAX and mode in EDX (0x1AFF7/0x1AFFA at 0x1AFFB, §S.7.1);
+# fread's and fwrite's buffer in EAX, size in EDX, count in EBX, stream in ECX (0x61CFC..0x61D00 and
+# 0x62037..0x6203B: they save EAX/EDX, move ECX to the stream register and multiply EBX by EDX);
+# fclose's stream in EAX (0x61EC2 `mov edx,eax`). fclose mirrors the file's final name/mode/length/
+# bytes to its F1_SHADOW slot, which is why the buffer at 0x81000 starts 0xEE: the read must move bytes.
+# 10000: mov eax,0x80000; mov edx,0x80010; call 0x61C60; mov [0x80020],eax; mov ecx,[0x80020];
+#        mov eax,0x81000; mov edx,1; mov ebx,4; call 0x61CF6; mov [0x80024],eax; mov eax,[0x80020];
+#        call 0x61EC0; mov [0x80028],eax; ret
+F1_READ_CLOSE = ("B800000800" "BA10000800" "E8511C0500" "A320000800" "8B0D20000800"
+                 "B800100800" "BA01000000" "BB04000000" "E8C81C0500" "A324000800"
+                 "8B0520000800" "E8821E0500" "A328000800" "C3")
+# 10000: mov eax,0x80000; mov edx,0x80010; call 0x61C60; mov [0x80020],eax; mov eax,0x81000; mov edx,1;
+#        mov ebx,4; mov ecx,[0x80020]; call 0x62031; mov [0x80024],eax; mov eax,[0x80020];
+#        call 0x61EC0; mov [0x80028],eax; ret
+F1_WRITE_CLOSE = ("B800000800" "BA10000800" "E8511C0500" "A320000800" "B800100800"
+                  "BA01000000" "BB04000000" "8B0D20000800" "E803200500" "A324000800"
+                  "8B0520000800" "E8821E0500" "A328000800" "C3")
+# 10000: mov eax,0x80000; mov edx,0x80010; call 0x61C60; mov [0x80020],eax; test eax,eax; je +1; ret; ret
+F1_OPEN_OR_SKIP = "B800000800" "BA10000800" "E8511C0500" "A320000800" "85C0" "7401" "C3" "C3"
+# 10000: mov eax,0x1234; call 0x61EC0; mov [0x80028],eax; ret
+F1_CLOSE_BOGUS = "B834120000" "E8B61E0500" "A328000800" "C3"
+F1_SEED = {0x80000: b"cmos\0\0\0\0\0", 0x80010: b"rb\0\0\0\0\0", 0x81000: bytes([0xEE] * 8),
+           0x80020: bytes([0xEE] * 0xC)}
+
+
+def f1_image(code):
+    """An image from 0x10000 to 0x81100 (`F1_SHADOW` 0x74000 inside it) with `code` at the entry. The
+    file functions' real bytes are never reached: the model answers the call at the entry address."""
+    data = bytearray(0x81100 - 0x10000)
+    b = bytes.fromhex(code)
+    data[:len(b)] = b
+    return E.Image(bytes(data))
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class F1FilesTests(unittest.TestCase):
+    def slot(self, r, i=0):
+        base = E.F1_SHADOW + E.F1_SLOT * i
+        return (bytes(r.writes.get(base + k, 0) for k in range(5)),                   # name + NUL
+                bytes(r.writes.get(base + 0x10 + k, 0) for k in range(3)),            # mode + NUL
+                int.from_bytes(bytes(r.writes.get(base + 0x20 + k, 0) for k in range(4)), "little"),
+                bytes(r.writes.get(base + 0x24 + k, 0) for k in range(4)))            # the content head
+
+    def test_files_needs_a_declared_name_and_at_most_two(self):
+        for files in ({}, {"cmos": b"1"}, {b"": b"1"}, {b"x" * 16: b"1"}, {b"a\0b": b"1"},
+                      {b"a": "1"}, {b"a": b"1" * 2049}, {b"a": 1},
+                      {b"a": b"1", b"b": b"2", b"c": b"3"}):
+            with self.subTest(files=files), self.assertRaises(ValueError):
+                E.Machine(files=files)
+        for files in (None, {b"cmos": E.F1_ABSENT}, {b"cmos": E.F1_GONE}, {b"cmos": b"1"},
+                      {b"a": b"1", b"b": E.F1_ABSENT}):
+            E.Machine(files=files)                                                    # these are accepted
+
+    def test_fread_copies_the_case_file_and_fclose_mirrors_name_mode_and_bytes(self):
+        r = E.run_original(f1_image(F1_READ_CLOSE), 0x10000, pokes=F1_SEED,
+                           machine=E.Machine(files={b"cmos": b"ABCDEFGHIJ"}))
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(r.file_opens, [(b"cmos", b"rb")])                            # read from memory
+        self.assertEqual([r.writes[0x80020], r.writes.get(0x80021, 0xEE), r.writes.get(0x80023, 0xEE)],
+                         [1, 0, 0])                                                    # EAX = the handle, 1
+        self.assertEqual(r.writes.get(0x80024), 4)                                    # four items read
+        self.assertEqual(bytes(r.writes.get(0x81000 + i, 0xEE) for i in range(8)), b"ABCD\xEE\xEE\xEE\xEE")
+        self.assertEqual(self.slot(r), (b"cmos\0", b"rb\0", 10, b"ABCD"))
+        self.assertEqual(r.writes.get(0x80028), 0)                                    # fclose's 0, stored and seen
+
+    def test_fread_is_short_at_end_of_file(self):
+        r = E.run_original(f1_image(F1_READ_CLOSE), 0x10000, pokes=F1_SEED,
+                           machine=E.Machine(files={b"cmos": b"AB"}))
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(r.writes.get(0x80024), 2)                                    # whole items only
+        self.assertEqual(bytes(r.writes.get(0x81000 + i, 0xEE) for i in range(4)), b"AB\xEE\xEE")
+        self.assertEqual(self.slot(r)[2], 2)
+
+    def test_fopen_of_a_missing_file_returns_zero_and_fclose_mirrors_nothing(self):
+        for state in (E.F1_ABSENT, E.F1_GONE):
+            r = E.run_original(f1_image(F1_OPEN_OR_SKIP), 0x10000, pokes=F1_SEED,
+                               machine=E.Machine(files={b"cmos": state}))
+            self.assertEqual(r.outcome, "ok")                                         # je took the skip
+            self.assertEqual(r.file_opens, [(b"cmos", b"rb")])                         # the open is recorded
+            self.assertEqual(r.writes.get(0x80020), 0)                                 # the NULL handle (0x1B002)
+            self.assertNotIn(0x74000, r.writes)                                        # no fclose: nothing mirrored
+
+    def test_fwrite_creates_a_new_file_and_fclose_mirrors_it(self):
+        r = E.run_original(f1_image(F1_WRITE_CLOSE), 0x10000,
+                           pokes={**F1_SEED, **{0x80010: b"wb\0\0\0\0\0", 0x81000: b"WXYZ\xEE\xEE\xEE\xEE"}},
+                           machine=E.Machine(files={b"cmos": E.F1_ABSENT}))
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(r.file_opens, [(b"cmos", b"wb")])
+        self.assertEqual(r.writes.get(0x80024), 4)                                     # fwrite returns the count
+        self.assertEqual(self.slot(r), (b"cmos\0", b"wb\0", 4, b"WXYZ"))
+
+    def test_fwrite_truncates_an_existing_file(self):
+        r = E.run_original(f1_image(F1_WRITE_CLOSE), 0x10000,
+                           pokes={**F1_SEED, **{0x80010: b"wb\0\0\0\0\0", 0x81000: b"WXYZ\xEE\xEE\xEE\xEE"}},
+                           machine=E.Machine(files={b"cmos": b"0123456789"}))
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(self.slot(r), (b"cmos\0", b"wb\0", 4, b"WXYZ"))               # not the old ten bytes
+
+    def test_another_mode_an_unlisted_name_and_a_read_on_a_write_stream_stop_the_run(self):
+        r = E.run_original(f1_image(F1_READ_CLOSE), 0x10000, pokes={**F1_SEED, **{0x80010: b"r+\0\0\0\0"}},
+                           machine=E.Machine(files={b"cmos": E.F1_ABSENT}))
+        self.assertEqual((r.outcome, r.detail.split(": ")[1]),
+                         ("unmodeled", "the mode b'r+' is not one the rows use"))
+        r = E.run_original(f1_image(F1_READ_CLOSE), 0x10000, pokes={**F1_SEED, **{0x80000: b"cfg\0\0\0\0\0"}},
+                           machine=E.Machine(files={b"cmos": E.F1_ABSENT}))
+        self.assertEqual((r.outcome, r.detail.split(": ")[1]),
+                         ("unmodeled", "the name b'cfg' is not declared by the case"))
+        r = E.run_original(f1_image(F1_READ_CLOSE), 0x10000, pokes={**F1_SEED, **{0x80010: b"wb\0\0\0\0\0"}},
+                           machine=E.Machine(files={b"cmos": b"ABCDEFGHIJ"}))
+        self.assertEqual((r.outcome, r.detail.split(": ")[1]),
+                         ("unmodeled", "ECX is not a handle opened for reading"))
+
+    def test_fclose_of_a_handle_the_model_never_opened_returns_minus_one(self):
+        r = E.run_original(f1_image(F1_CLOSE_BOGUS), 0x10000, pokes=F1_SEED,
+                           machine=E.Machine(files={b"cmos": E.F1_ABSENT}))
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(int.from_bytes(bytes(r.writes.get(0x80028 + i, 0xEE) for i in range(4)), "little"),
+                         0xFFFFFFFF)                                     # 0x61ECD's walk-failure answer
+
+    def test_a_case_without_files_still_stops_on_the_call_exactly_as_before(self):
+        img = f1_image(F1_READ_CLOSE)
+        for m in (None, E.Machine(keys=()), E.Machine(aperture=True)):
+            r = E.run_original(img, 0x10000, machine=m)
+            self.assertEqual((r.outcome, r.detail, r.file_opens), ("unmodeled", "call 0x61C60 from 0x1000A", []))
+
+
 if __name__ == "__main__":
     unittest.main()
