@@ -33961,6 +33961,26 @@ N3_SPECS = [
 ]
 D1_SPECS += N3_SPECS
 # ---- n3 end ----
+# ---- track G batch g3aa (record 2026-10-14-reverse-g §G3): the DPMI clock read --------------
+# 0x500BB: `mov eax,[0x101500]; ret` (image bytes a1 00 15 10 00 c3 at 0x500BB, the fixup-applied
+# displacement read from the bytes). A leaf: it reads no register argument, writes nothing, and its
+# bare `ret` (c3, pop 4) pops only the return address. The row compares ONE thing: EAX at the return
+# — the dword the original loads from the tick shadow 0x101500 — against the port's C read of the
+# same dword, DSD(DS_00101500), the inline form every caller uses (e.g. 0x1E814/0x1E819
+# `call 0x500BB; mov [edx+0x10],eax`, flow.c, which stores the full dword — mask 0xFFFFFFFF, the
+# conservative default justified by that caller). The cases vary the dword (0, a typical tick, all
+# ones) and seed the next dword 0x101504 apart: @off4 reads 0x101504 (caught by all three cases),
+# @zero returns 0 without reading (caught by c1 and c2). This is the §C3g.7 named non-row the plan's
+# task-3 brief counts 47 rows depending on as their open callee; rows that allow it keep running it
+# from its bytes (allow mode needs no seam and no row — the row makes its verdict recorded).
+G3AA_SPECS = [
+    Spec("dpmi_clock_read", 0x500BB, [
+        Case("c0", {}, {0x00101500: le32(0x00000000), 0x00101504: le32(0x0F0F0F0F)}),
+        Case("c1", {}, {0x00101500: le32(0x00C0FFEE), 0x00101504: le32(0x00000000)}),
+        Case("c2", {}, {0x00101500: le32(0xFFFFFFFF), 0x00101504: le32(0x7FFFFFFF)}),
+    ], mutants=("@off4", "@zero")),
+]
+D1_SPECS += G3AA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

@@ -42607,6 +42607,15 @@ SC_SV_MUT(writefirst, 16u) SC_SV_MUT(wlen, 17u)  SC_SV_MUT(wsrc, 18u)    SC_SV_M
  * row's cases stub no call at 0x2EA68; the port returns and does nothing (menu.c, PORT, §S.8 F1). */
 static void b_g2_2ea68(const u32 *r, u32 *eax) { menu_fatal_error(r[R_EAX]); *eax = 0u; }
 /* ---- g2 bindings end ---- */
+/* ---- track G batch g3aa (record 2026-10-14-reverse-g §G3): the DPMI clock read ---- */
+/* 0x500BB `mov eax,[0x101500]; ret`: no argument register is read, nothing is written, the bare ret
+ * pops only the return address. The binding mirrors the port's C inline read of the tick shadow,
+ * DSD(DS_00101500) (flow.c 0x1E814/0x1E819's `call 0x500BB; mov [edx+0x10],eax`). @off4 reads the
+ * next dword (0x101504), @zero returns 0 without reading; the cases seed the two dwords apart. */
+static void b_g3aa_500bb(const u32 *r, u32 *eax) { (void)r; *eax = DSD(0x00101500u); }
+static void m_g3aa_500bb_off4(const u32 *r, u32 *eax) { (void)r; *eax = DSD(0x00101504u); }
+static void m_g3aa_500bb_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+/* ---- g3aa bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
 {
@@ -58485,6 +58494,10 @@ static const binding_t k_bindings[] = {
     { "movie_play@exitblank", m_n3_mv_exitblank, 0x00000000u },
     { "movie_play@noopen", m_n3_mv_noopen, 0x00000000u },
     /* track N batch n3 end */
+    /* track G batch g3aa */
+    { "dpmi_clock_read",       b_g3aa_500bb,       0xFFFFFFFFu },
+    { "dpmi_clock_read@off4",  m_g3aa_500bb_off4,  0xFFFFFFFFu },
+    { "dpmi_clock_read@zero",  m_g3aa_500bb_zero,  0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
