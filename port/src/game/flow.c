@@ -6877,6 +6877,10 @@ void game_init_resume(void)
 {
     (void)attract_config_volumes_unscaled();   /* 0x20C24 mov eax,-1; 0x20C2B 0x2C8F0(-1) */
     DSB(DS_00104B1D) = 0u;          /* 0x20C29 xor dl,dl; 0x20C37 (0x2C8F0 keeps EDX) */
+    /* PORT: 0x20C3D 0x38B70 before it and 0x20C58 0x2BAF4(1) after it stay
+     * out (record named-gaps-b §B.11): game_state_init's 0x2BAF4(1) below
+     * runs both before anything reads their state. */
+    actors_table_clear();           /* 0x20C42 0x2F920 (record 2026-10-13-reverse-i §I.1) */
     render_projection_reset(0u);    /* 0x20C47 `xor eax,eax`, 0x20C49 0x4F228 */
     rng_seed(0xABCDu);      /* PORT: 0x20C10 seeds the LCG with a hardcoded 0xABCD. */
     /* PORT: 0x20C5D-0x20CC2: DS_00104528 = 0x2D974(0x29) and the three globals
