@@ -53,7 +53,7 @@ static u32 menu_call(u32 addr, u32 arg)
 void menu_fatal_error(u32 msg)
 {
     PR_SEAM(0x2EA68u, msg);
-    (void)msg;   /* PORT: 0x2EA68 tail-jumps to 0x62003(1) with the message; the runtime's error exit is out of scope (spec §7). */
+    (void)msg;   /* PORT: 0x2EA68's `mov eax,1` discards the message and tail-jumps to the runtime's exit 0x62003(1), which does not return; the runtime's error exit is out of scope (spec §7, track N §N.1). */
 }
 
 /* 0x2FE40 — record §49-X. */

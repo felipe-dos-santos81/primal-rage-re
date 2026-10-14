@@ -177,6 +177,8 @@ int res_load_index(const char *game_dir, const char *index_path)
     /* The original calls FUN_0001D290 (fatal) when the size is not a multiple
      * of 0x14. The port reports failure instead of dying. */
     if (sz <= 0 || sz % (long)RES_REC) { fclose(f); return 0; }
+    /* PORT: a bound on the table the raw does not have (0x1B120 has no
+     * count limit); the shipped INDEX has 69 entries. */
     if (sz / (long)RES_REC > (long)RES_MAX) { fclose(f); return 0; }
 
     DSD(DS_001014F0) = (u32)(sz / (long)RES_REC);         /* 0x1B194, before the table's allocation */

@@ -6861,7 +6861,9 @@ void game_init(void)
     mem_fill(GAME_BIOS_BASE, 0, GAME_BIOS_LEN);
     DSD(DS_000A2CAC) = DSD(DS_00101514);
     /* PORT: no DPMI — the 0x109A0 region locks are no-ops. */
-    /* PORT: 0x1B3AC resource-file setup is replaced by res_load_index(). */
+    /* PORT: 0x1BF51's 0x1B3AC(0xA2C9C) loads the real-mode driver RM.DRV
+     * (preloaded, 0xC00 bytes) into the DOS block [0x101514] (0x1BF47); the
+     * port has no real mode, so nothing loads it (track N §N.4). */
     game_audio_init();      /* 0x1CF40: AIL_startup, prefs, handles, timer */
     /* PORT: extended-memory block list (0x1E2A0/0x1C0F0) unused under flat mem[]. */
     /* PORT: 0x4FB98 (int 10h set mode) — the SDL host owns the window. */
@@ -6869,9 +6871,10 @@ void game_init(void)
     if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return; }
 
     /* PORT: 0x10C30/0x10D34/0x10D0C (CD-ROM drive locate and restore) and the
-     * DPMI real-mode vector get/set 0x1ADAC/0x1ADE4 (INT 31h AX=0x200/0x201, the
-     * saved and restored interrupt vectors; record §50-C, track N §N.2) have no
-     * flat-memory or host equivalent (record §50-E). */
+     * DPMI real-mode vector get/set 0x1ADAC/0x1ADE4 (INT 31h AX=0x200/0x201:
+     * the saved interrupt vectors, then RM.DRV's handlers installed for 9, 0x23
+     * and 0x1B at 0x1C05B/0x1C077/0x1C093; record §50-C, track N §N.2, §N.4)
+     * have no flat-memory or host equivalent (record §50-E). */
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
         return;
