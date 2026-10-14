@@ -391,7 +391,7 @@ def verify_spec(spec, image, port_results, port_name=None, original=None):
         port = port_results[c.id]
         if port.error:
             port_errors.append("%s: %s" % (c.id, port.error))
-        for d in compare(orig, port, spec.eax_mask):
+        for d in h2_compare(c, orig, port, spec.eax_mask):
             problems.append("%s: %s" % (c.id, d))
             if d.startswith(("eax ", "byte ", "call #") + H0_DIFFS):   # the strings compare() emits for a real difference
                 diffs += 1
@@ -33469,6 +33469,41 @@ I_SPECS = [
                                       "nohandle handlew handle4 early nodig digfirst noshut shutfirst order".split())),
 ]
 D1_SPECS += I_SPECS
+
+# ---- track H batch h2 (record 2026-10-14-reverse-h §H.3): a declared difference ----------------------------
+@dataclass
+class H2Case(Case):
+    """A case that declares a difference the port keeps by a documented PORT: deviation (track H h2,
+    record §H.3): `declared` = {addr: (the original's final byte, the port's)}, None for a byte the run
+    leaves unchanged. Each declared byte must differ between the two (a declaration of no difference is
+    stale). h2_compare exempts a declared byte from the byte comparison only when both sides hold exactly
+    the declared values; any other value is a discrepancy. The declaration covers the bytes at return,
+    not the memory at a recorded call."""
+    declared: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        same = sorted(a for a, (o, p) in self.declared.items() if o == p)
+        if same:
+            raise ValueError("case %s: 0x%X is declared with no difference" % (self.id, same[0]))
+
+
+def h2_compare(case, orig, port, mask):
+    """compare() with the case's declared bytes (H2Case) checked against their declared values and then
+    left out; a case with no declaration is compare() itself."""
+    decl = getattr(case, "declared", None)
+    if not decl:
+        return compare(orig, port, mask)
+    out = []
+    for a in sorted(decl):
+        got = (orig.writes.get(a), port.writes.get(a))
+        if got != tuple(decl[a]):
+            out.append("byte 0x%X: declared original %s, port %s; the run gives original %s, port %s" % (
+                a, _byte_text(decl[a][0]), _byte_text(decl[a][1]), _byte_text(got[0]), _byte_text(got[1])))
+    rest = lambda w: {a: v for a, v in w.items() if a not in decl}
+    return out + compare(dataclasses.replace(orig, writes=rest(orig.writes)),
+                         dataclasses.replace(port, writes=rest(port.writes)), mask)
+# ---- h2 end ----
+
 
 # ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ----
 # 0x51ED8 sprite_blit_aperture: EAX = the node. 0x51E5C's shape with the aperture as the base: a zero

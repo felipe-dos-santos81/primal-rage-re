@@ -32438,5 +32438,49 @@ class H0DiffrunMachineTests(unittest.TestCase):
 # h0 end
 
 
+# ---- track H batch h2 (record 2026-10-14-reverse-h §H.3): a declared difference ----
+class H2DeclaredTests(unittest.TestCase):
+    A, B = 0x10A914, 0x10A938
+    DECL = {A: (0x00, None), B: (0x01, None)}
+
+    def run_both(self, owrites, pwrites):
+        c = V.H2Case("d", {}, declared=self.DECL)
+        return V.h2_compare(c, orig(0, owrites), V.PortResult(0, 0xFFFFFFFF, writes=pwrites), 0xFFFFFFFF)
+
+    def test_a_declared_byte_with_its_declared_values_is_left_out_and_no_other(self):
+        self.assertEqual(self.run_both({self.A: 0, self.B: 1}, {}), [])
+        self.assertEqual(self.run_both({self.A: 0, self.B: 1, 0x10A900: 5}, {}),
+                         ["byte 0x10A900: original 0x05, port unchanged"])
+
+    def test_a_declared_byte_with_another_value_on_either_side_is_a_discrepancy(self):
+        for ow, pw, want in [
+                ({self.A: 0, self.B: 1}, {self.A: 3},
+                 "byte 0x10A914: declared original 0x00, port unchanged; the run gives original 0x00, port 0x03"),
+                ({self.A: 0, self.B: 2}, {},
+                 "byte 0x10A938: declared original 0x01, port unchanged; the run gives original 0x02, port unchanged"),
+                ({self.B: 1}, {},      # the declared difference absent: both sides leave the byte
+                 "byte 0x10A914: declared original 0x00, port unchanged; the run gives original unchanged, port unchanged")]:
+            with self.subTest(want):
+                d = self.run_both(ow, pw)
+                self.assertEqual(d, [want])
+                self.assertTrue(d[0].startswith("byte "))     # counted as a difference: it detects a mutant
+
+    def test_a_plain_case_is_compare_itself_and_a_declaration_of_no_difference_is_refused(self):
+        o, p = orig(0, {self.A: 0}), V.PortResult(0, 0xFFFFFFFF)
+        self.assertEqual(V.h2_compare(V.Case("c", {}), o, p, 0xFFFFFFFF), V.compare(o, p))
+        with self.assertRaises(ValueError):
+            V.H2Case("d", {}, declared={self.A: (0x00, 0x00)})
+
+    def test_verify_spec_applies_the_declaration(self):
+        spec = V.Spec("f", 0x10000, [V.H2Case("d", {}, declared=self.DECL), V.Case("e", {})])
+        info = type("Info", (), {"leaders": [], "indirect": [], "truncated": False})()
+        o = orig(0, {self.A: 0, self.B: 1})
+        port = {"d": V.PortResult(0, 0xFFFFFFFF), "e": V.PortResult(0, 0xFFFFFFFF)}
+        r = V.verify_spec(spec, None, port, original=(info, [o, o]))
+        self.assertEqual((r.verdict, r.problems), ("MISMATCH", ["e: byte 0x10A914: original 0x00, port unchanged",
+                                                                "e: byte 0x10A938: original 0x01, port unchanged"]))
+# h2 end
+
+
 if __name__ == "__main__":
     unittest.main()
