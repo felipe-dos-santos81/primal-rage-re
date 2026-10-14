@@ -292,7 +292,7 @@ u32 string_decode(u32 id, u8 *out, u32 outlen)
     return ret;
 }
 
-/* PORT: 0x47370. The original loads the loaded-config language file (index 0 =
+/* 0x47370 — the string table. PORT: the original loads the loaded-config language file (index 0 =
  * english.txt, selected by the DS_00104528 byte 0x20C10 extracts) through the
  * 0x1C308/0x1E6D8 paged-memory manager and the 0x61xxx DOS file I/O, neither of
  * which the port has. The port replaces both with a direct stdio read into
