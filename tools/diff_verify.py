@@ -33383,6 +33383,137 @@ I_SPECS = [
                                       "nohandle handlew handle4 early nodig digfirst noshut shutfirst order".split())),
 ]
 D1_SPECS += I_SPECS
+
+# ---- track N batch n3 (record 2026-10-14-reverse-n §N.3): the INDEX loader 0x1B120 and the boot logos' player
+# 0x1C740, rows under code pokes. 0x1B3AC and 0x47370 stay named gaps (the record says why).
+# 0x1B120: the six file calls (0x61C60 fopen, 0x6225A fseek twice, 0x62356 ftell, 0x61CF6 fread, 0x61EC0
+# fclose: DOS `int 0x21` at 0x6F53A under them) are `mov eax,<result>` (B8 imm32), as track S's rows have them;
+# the binding (diff_runner.c n3_*) writes the case's INDEX bytes, as many as the poked ftell says, to a scratch
+# INDEX file and gives the port a game directory that does not exist, so no payload file is read. Every
+# 0x1C308 is a stub answering N3_TABLE, where the case seeds the INDEX bytes: the poked fread writes nothing
+# and the port's read writes the bytes that are already there, so the row is blind to the INDEX read (the
+# file name 0x805A4, the mode 0x805A0, the handle, the buffer) and to which allocation's block lands in which
+# field (they are all N3_TABLE); it sees the allocation sizes and their order, every store, the memory at each
+# call, and the 0x1B3AC calls. The allocation type in EAX (0x41, 0xE, the retry's 1) is not compared: the
+# port's allocator has none. 0x1B3AC is a stub, so its read, its mark 0x1B47A and its presentation are not
+# in the row: the port reads every payload in res_load_index and marks the preloaded ones it read
+# (res.c, PORT), which the binding's missing directory makes read nothing; 0x1B3AC's EDX (the fatal flag,
+# 1 at 0x1B249) is not compared (res_load_present has no such argument).
+N3_TABLE = 0x0010AC00                           # zero BSS of the image; every 0x1C308 stub answers it
+N3_ALLOC = E.Call(0x1C308, ("edx",), eax=N3_TABLE, clobbers=("edx",))
+N3_LOAD = E.Call(0x1B3AC, ("eax", "ebx"), clobbers=("ebx", "edx", "ebp"))
+N3_GLOBALS = 0x001014E0                         # the table, the two 0xFA00 buffers, 0x4880, the count, 0xEBA0, the max
+N3_FATAL = "0x1D290, the fatal error (the runtime's exit under it), which the port does not reach: " \
+           "res_load_index returns 0 and game_init's game_fatal exits (flow.c, PORT)"
+N3_RETRY = "a 0x1C308 that answers 0, which the stub's one EAX per case cannot give after a non-zero one: " \
+           "the raw retries with EAX = 1, the port returns 0 (res.c)"
+
+
+def n3_entry(name, size, flags=0):
+    """One INDEX entry: the 12-byte name, the size with the flag byte above it, a seeded block dword."""
+    return name.encode().ljust(12, b"\0") + le32((flags << 24) | size) + le32(0x5A5A5A5A)
+
+
+def n3_index_case(cid, entries, top, regs=None, handle=0x0010A040, seek=0, closed=0):
+    """0x1B120: the INDEX bytes at N3_TABLE; the seven dwords 0x1014E0..0x1014F8 seeded (0x1014F8 = `top`,
+    the stored maximum) and the full-copy byte 0x1014FC; fopen answers `handle`, the fseeks `seek`, ftell
+    and fread the table's size, fclose `closed`."""
+    tab = b"".join(entries)
+    p = d1d_chunks(N3_TABLE, tab)
+    p[N3_GLOBALS] = b"".join(le32(0xE0E0E0E0 + 0x01010101 * k) for k in range(6)) + le32(top) + b"\xfc"
+    p.update({0x0001B130: b"\xb8" + le32(handle), 0x0001B148: b"\xb8" + le32(seek),
+              0x0001B14F: b"\xb8" + le32(len(tab)), 0x0001B15E: b"\xb8" + le32(seek),
+              0x0001B1CD: b"\xb8" + le32(len(tab)), 0x0001B1D6: b"\xb8" + le32(closed)})
+    return Case(cid, regs or {}, p)
+
+
+# 0x1C740: the key test 0x62756 (the runtime's kbhit: [0xEF910], then `int 0x21` AH = 0Bh at 0x62767) is
+# `mov eax,<result>`, which the binding gives the port's key queue (a key when it is not 0). The Smacker open
+# (0x1C76C..0x1C778: `push esi; push 0xfe00; push -1; call 0x6345C`, which pops its 12 bytes, `ret 0xc` 0x635EC)
+# is `mov byte [N3_MARK],1; xor eax,eax` and four nops: the open is reached and fails. On the port side the
+# binding's game directory holds both names as two-byte files that are not movies: res_load_file reads one
+# into the bump heap and smk_open rejects it, and when the heap moved the binding clears what was read and
+# stores 1 at N3_MARK. So the row sees whether the open is reached, not its arguments (the name, 0xFE00, -1)
+# or a movie that opens: a non-zero open enters the play loop, whose first call 0x649B0 is the Smacker
+# library's, not exercisable.
+N3_KBHIT, N3_OPEN, N3_MARK = 0x0001C752, 0x0001C76C, 0x0010AF00
+N3_LOOP = "the play loop from 0x1C785: the Smacker library (runtime: 0x649B0, 0x65340, 0x64130, 0x64ED8, 0x643CC, " \
+          "0x65240, 0x63CE8), the retrace `in al,dx` 0x1C7CA, the host-owned blit 0x50D23, the key and pad tests " \
+          "and the exit blank 0x1C873; the port plays through its own decoder (movie.c, smacker.c, PORT)"
+
+
+def n3_movie_case(cid, key, quit_, name=0x00080038, above=0, regs=None):
+    """0x1C740: EAX = the name; kbhit answers `key`; the quit byte 0xA81A8 between a seeded byte and
+    `above`; the open's mark byte seeded 0x5A."""
+    return Case(cid, {**(regs or {}), "eax": name},
+                {N3_KBHIT: b"\xb8" + le32(key), N3_OPEN: b"\xc6\x05" + le32(N3_MARK) + b"\x01\x31\xc0\x90\x90\x90\x90",
+                 0x000A81A7: bytes([0xA7, quit_, above]), N3_MARK: b"\x5a"})
+
+
+N3_SPECS = [
+    # 0x1B120 res_load_index: no argument. The size (ftell) is positive (`jle` 0x1B165) and a multiple of 0x14
+    # (`div`, `jz` 0x1B178); the count size / 0x14 is stored (0x1B194) before the table's 0x1C308(size)
+    # (0x1B1A0) and the table pointer after it (0x1B1A5); fread's count equals the size (`cmp edx,esi`
+    # 0x1B1DB). The walk (ECX = [0x1014E0], `jl` 0x1B29A against [0x1014F0] re-read each entry): an entry
+    # whose +0xC has 0x1000000 (`test` 0x1B210) gets 0x1C308(size & 0xFFFFFF) into +0x10 and 0x1B3AC(entry,
+    # EBX = 0); any other gets 0x1C308(size) into +0x10 and raises the dword 0x1014F8 to its size when the
+    # size is greater, signed (`cmp eax,edx; jle` 0x1B27D), than the stored one. Then 0x1C308(0xFA00) to
+    # 0x1014E8, (0xFA00) to 0x1014E4, (0x4880) to 0x1014EC, (0xEBA0) to 0x1014F4. x0: a preloaded entry is the
+    # largest (it does not count). x1: the stored maximum is above every size; the flag bytes 0x02 and 0x20
+    # beside the preload bit's absence, dirty registers, the handle 0x100. x2: a negative stored maximum,
+    # replaced by the first lazy size (signed); flag byte 0x03. x3: one preloaded entry only (the maximum
+    # stays). x4: six entries, the largest size 0xFFFFFF on a lazy entry with flag byte 0xFE, a preloaded
+    # one with 0x81, fclose -1 and the fseeks -1 (neither EAX is read: 0x1B14D and 0x1B170 load EAX).
+    # Mask 0: the one caller's next call 0x51F45 begins `pushal; mov eax,[0x1014e4]` (0x1C0A2).
+    Spec("res_load_index", 0x1B120, [
+        n3_index_case("x0", [n3_entry("n3a.gra", 0x100), n3_entry("n3b.gra", 0x3000),
+                             n3_entry("n3c.gra", 0x20000, 0x01)], 0),
+        n3_index_case("x1", [n3_entry("n3d.gra", 0x10, 0x01), n3_entry("n3e.gra", 0x7FFF, 0x02),
+                             n3_entry("n3f.gra", 0x40, 0x20)], 0x00800000, regs=D2E_DIRTY, handle=0x100),
+        n3_index_case("x2", [n3_entry("n3g.gra", 0x10), n3_entry("n3h.gra", 0x8),
+                             n3_entry("n3i.gra", 0x400, 0x03)], 0x80000000),
+        n3_index_case("x3", [n3_entry("n3j.gra", 0x1234, 0x01)], 0x777),
+        n3_index_case("x4", [n3_entry("n3k.gra", 0x20), n3_entry("n3l.gra", 0xFFFFFF, 0xFE),
+                             n3_entry("n3m.gra", 0x30, 0x81), n3_entry("abcdefghijkl", 0x500),
+                             n3_entry("n3n.gra", 0xFFFF), n3_entry("n3o.gra", 0x60000, 0x01)], 0,
+                      seek=0xFFFFFFFF, closed=0xFFFFFFFF),
+    ], unhit_named={0x1B17A: "a size that is not a multiple of 0x14: " + N3_FATAL,
+                    0x1B1F5: "the shared 0x1D290 call of the three failures below: " + N3_FATAL,
+                    0x1B1AE: "the table's " + N3_RETRY,
+                    0x1B1DF: "a size not above 0 or a short read: " + N3_FATAL,
+                    0x1B1EB: "no INDEX file: " + N3_FATAL,
+                    0x1B233: "a preloaded entry's " + N3_RETRY,
+                    0x1B2B8: "the first 0xFA00 buffer's " + N3_RETRY,
+                    0x1B2D5: "no first 0xFA00 buffer: " + N3_FATAL,
+                    0x1B2F9: "the second 0xFA00 buffer's " + N3_RETRY,
+                    0x1B316: "no second 0xFA00 buffer: " + N3_FATAL,
+                    0x1B33A: "the 0x4880 buffer's " + N3_RETRY,
+                    0x1B357: "no 0x4880 buffer: " + N3_FATAL,
+                    0x1B37B: "the 0xEBA0 buffer's " + N3_RETRY,
+                    0x1B398: "no 0xEBA0 buffer: " + N3_FATAL},
+       calls=(N3_ALLOC, N3_LOAD), eax_mask=0,
+       mutants=tuple("@" + m for m in "countlate maxall maxuns nopreload preloadall draw noslot nomask count "
+                                      "bufsize nobuf".split())),
+    # 0x1C740 movie_play: EAX = the name (0x80038, 0x80044 at the two calls 0x11050, 0x1105A). 0x52106(0)
+    # (0x1C74D), then a key (`test eax,eax` 0x1C757: k0 1, k1 -1, the BIOS's AL 0xFF widened by `cbw; cwde`
+    # 0x62769) or the quit byte 0xA81A8 (`cmp byte` 0x1C75F: q0 1, q1 0x80, k1 both) leaves for the
+    # epilogue 0x1C878 without the exit blank; else the open is reached (the mark) and fails (`jz` 0x1C77F),
+    # which leaves the same way (o0 with the byte above the quit byte set, o1 the second name). Mask 0: the first call site loads EAX
+    # (0x11055 `mov eax,0x80044`) and the second's is attract_step's, whose row's mask is 0.
+    Spec("movie_play", 0x1C740, [
+        n3_movie_case("k0", 1, 0),
+        n3_movie_case("k1", 0xFFFFFFFF, 1),
+        n3_movie_case("q0", 0, 1),
+        n3_movie_case("q1", 0, 0x80, regs=D2E_DIRTY),
+        n3_movie_case("o0", 0, 0, above=0xFF),
+        n3_movie_case("o1", 0, 0, name=0x00080044, regs=D2E_DIRTY),
+    ], unhit_named={a: N3_LOOP for a in (0x1C785, 0x1C7B0, 0x1C7BD, 0x1C7C3, 0x1C7C8, 0x1C7CF, 0x1C7D5, 0x1C7DB, 0x1C7DD,
+                                                 0x1C7E6, 0x1C7EC, 0x1C7F9, 0x1C834, 0x1C839, 0x1C83F, 0x1C848, 0x1C856,
+                                                 0x1C861, 0x1C86B)}, calls=(D4D_SCREEN,), eax_mask=0,
+       mutants=tuple("@" + m for m in "noreset reset1 nokey noquit quitw exitblank noopen".split())),
+]
+D1_SPECS += N3_SPECS
+# ---- n3 end ----
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
