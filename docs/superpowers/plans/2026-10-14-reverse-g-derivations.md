@@ -189,7 +189,8 @@ logged only while the loop is caught in its spin state `t50c - 1 == t508`,
   spin state — it could log only the P). Δtick = Δt508 = Δf = 4 across the stretch,
   then 1/1; the f=0C74→0C75 pair was observed 5 wall-ms apart.
 - U9: `S f=0489 … tick=0x908 t508=0xCE` → `S f=048D ms=40520 tick=0x90C t508=0xD2`
-  (Δ3/Δ3 plus the P frame), `P f=048A ms=40483 tick=0x909`; no S for 048A..048C.
+  (Δ4/Δ4/Δ4 across the stretch), `P f=048A ms=40483 tick=0x909` (tick 1:1 on the
+  mode-change frame); no S for 048A..048C.
 - U10: `S f=0482 … t508=0xCE` → `P f=0483 ms=40492 tick=0x90C` → `S f=0485 ms=40534
   t508=0xD1` → `S f=0486 ms=40538 t508=0xD2`; no S for 0483/0484.
 
@@ -258,8 +259,12 @@ compute**, with no read, no re-sync and no poke: its 2064 rows come from the cle
 fight→results transition, as required. **Not a port divergence and not a wrong
 port tick model**: the port's gate/catch-up C is the raw's (differential rows), its
 driver advances exactly one modelled tick per spin, host-side work never overruns a
-modelled tick in a replay, so the port's dump is one frame per f by construction
-and can never express the skipped blits — a comparison-model limit, now with its
+modelled tick in a replay, so the port presents every f (its dump, keyed on new
+displayed images sampled at the pump and loader hooks, can hold MORE than one
+image per f but never fewer — the model part below records the U9/U10 dump lines
+that showed this, correcting the shorthand this paragraph first carried), and it
+can never express the skipped presents the original's mode-8 entry had — a
+comparison-model limit, now with its
 cause isolated (§W.12/§W.14's suspicion confirmed, escalated only in the sense of
 "isolated, modelled by name"; the plan's MISMATCH-escalation carve-out for a wrong
 port tick model does not apply).
@@ -277,5 +282,134 @@ current dumps; the frames themselves and their row boundaries are as above):
 replay scripts and their key counts are unchanged — and reads no screen/data
 bytes in `[0xA0000, 0xAFA00)`; it reads capture `.raw.gz` files and dump `.ipx`
 files only, so the §H.4 hang limit and overlap bound do not bind it.)
+
+**Model (step 2): `SCAN3_ALLOWED` in `tools/gp_compare.py`.** The plan's file list
+pointed at `title_compare.py`, but the brief blesses reusing task 5's mechanism and
+its home moved to `gp_compare.py` with `BANDS_ALLOWED` (§G5); the scan-out table
+lives beside it. An entry is `(capture j, r1, r2, top_sha)`; the named frame is
+explained ONLY if (1) the sha256 of its rows `[0,r1)` equals `top_sha` (the still-held
+old screen — the segment no *unique* port frame answers for), (2) EXACTLY ONE adjacent
+pair `(B, B+1)` in the CURRENT dump holds: the capture's rows `[r1,r2)` equal port[B]'s
+and its rows `[r2,200)` equal port[B+1]'s — the middle test is vacuous when `r1 == r2`
+(the U9 two-segment shape), where uniqueness is therefore of the single bottom holder
+and the pair is (holder−1, holder) — and (3) at least one dump frame with index
+A < B holds the capture's rows `[0,r1)`: the old screen being scanned IS one of the
+port's own earlier frames. Classification kind `scan3` exhibits the top holders plus
+B+1, and additionally B when the middle range is non-vacuous (a frame whose bound
+range has no pixels is never exhibited). Like `BANDS_ALLOWED`: consulted only when the
+two-frame model leaves a named frame unexplained; a named frame the model explains is
+reported as a stale name (`retire the name`); a named frame that is not its recipe
+prints `FAIL: allowed capture … is not its named three-frame scan-out: …` and fails
+the enforced run in both modes (`allow_bad`); the summary line gained the
+`scan3-allowed` count (re-checked: no other tool parses that line). Every other
+scenario passes no entries — keys/moves/twop/modes/charsel behaviour is unchanged,
+and task 5's band path is untouched (`make gp-keys-oracle` re-ran green).
+
+**The entries (step 3, measured on the dumps re-played on `93b24171`).**
+
+| scenario | capture (raw) | r1/r2 | top holders A<B (rows [0,r1)) | unique pair (B,B+1) | top sha256 |
+|---|---|---|---|---|---|
+| gp-idle-loss | 2064 (5190) | 3/98 | {1665, 1666} | (1669, 1670) of 6301 | `7bdf2c561c38a264337bc74abd093172ac99ceebb8c818635e189530cf1c58dc` |
+| gp-u9-win | 346 (2830) | 5/5 | {218} (vacuous middle) | (220, 221) of 1977 | `703828af123edf1a8c3bade8d42bdd56a68576cd87e13de7339bdd203dc8f0b6` |
+| gp-u10-ending | 331 (2831) | 2/64 | {216} of {216,243,1127} | (218, 219) of 4664 | `2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd` |
+
+**The pins (step 3).** `make gp-replay` on this tree, then the enforced
+`tools/gp_compare.py` calls with the Makefile pins:
+
+- `GP_IDLE_LOSS_MIN_FIRST 2064 -> 7559`. Measured: `captured frame 2064 (raw 5190)
+  allowed by name as a three-frame scan-out: top rows 0..2 held by port 1665 1666,
+  port 1669 rows 3..97, port 1670 rows 98..199 the named bytes`; `7455 classified:
+  4093 clean, 3352 splice, 8 transition, 1 scan3-allowed, 1 unexplained, 15
+  all-black`; `first unexplained 7559, ratchet N 2064 ok (improved: raise N)`; N =
+  7560 prints `FAIL: first unexplained 7559 < ratchet N 7560` — the pin is exact.
+  7559 (raw 12207) is the first fully-content frame past the replayed script: the
+  port's replay ends `0 restart(s) landed` with last presented f=0x207D while the
+  X record is ms=174412 f=0x207F step=4 end, and the capture goes on to the soft
+  restart's screens (7557 all-black, 7558 six non-black rows still matched). How far
+  the port got, not a divergence — the gp-keys 1136 class. `GP_IDLE_LOSS_MAX_START
+  = 90` unchanged (the window still starts at 90, exact); TRACE 8320 unchanged
+  (`0 differing through 8319; ratchet N 8320 ok`).
+- `GP_WIN_MIN_FIRST 346 -> 2209`. Measured: allowed line `top rows 0..4 held by port
+  218, port 221 rows 5..199 the named bytes`; `2098 classified: 1105 clean, 988
+  splice, 3 transition, 1 scan3-allowed, 1 unexplained, 12 all-black`; first
+  unexplained `capture 2209 (raw 4953): nearest port 1777, rows 192..197, x 0..85
+  (166 px)`; N = 2210 fails (exact). 2209 is NOT the §G6 class: its strip (rows
+  192..197, sha256 `a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa`)
+  is held by NO frame of the 1977-frame dump — including the loader/pump-hook
+  samples of the mode-0x17→0x12 entry (dumps 1775..1777 all at f=0xBA1 with its
+  tick advancing 0xBFA→0xC00 inside the iteration, then one static dedup'ed image
+  through f=0xBBF). The strip lands in the (0,192) text-row region — but the port
+  DID dump that entry's sampled states and none matches, so unlike §K.10 item 2
+  the state is not merely undumped: cause NOT attributed here, a named gap, and
+  the ratchet stops at it. The strip's bytes are IDENTICAL to gp-u10-ending's
+  2062 (same sha) — one state recurring at the mode-0x12 entry of both poked
+  captures. §W.12's then-next-two (356/1374) are explained on the current dump
+  (the P4–P7 batches ported animation targets since §W.12 measured; per-frame
+  re-attribution is not done here); the report's next behind 2209 are
+  2452..2455, past the 1977-frame dump. MAX_START 100,
+  TRACE/WIN/MILESTONES 3503/3503/8 unchanged (`ratchet ok` lines above).
+- `GP_ENDING_MIN_FIRST 331 -> 2062`. Measured: allowed line `top rows 0..1 held by
+  port 216, port 218 rows 2..63, port 219 rows 64..199 the named bytes`; `1968
+  classified: 965 clean, 997 splice, 4 transition, 1 scan3-allowed, 1 unexplained,
+  12 all-black`; first unexplained `capture 2062 (raw 4954): nearest port 1686,
+  rows 192..197, x 0..85 (166 px)` — §W.16's already-named `2062 (port 1686,
+  f=0xB9A, mode 0x12, 166 px)`, the SAME strip bytes (sha above) at the same
+  class of place (dumps 1684..1686 all at f=0xB9A, its tick 0xBF3→0xBF9 inside
+  the iteration, then one static dedup'ed image through f=0xBB8); N = 2063 fails
+  (exact). Not allowed. §W.16's other next-one, 3686, is explained on the current
+  dump since the P4–P7 batches (the report's next unexplained after 2062 are
+  4113..4116). MAX_START 83,
+  TRACE/WIN/MILESTONES 9954/9954/30 unchanged and at the replay's end.
+
+**Proofs (step 4).** Unit (`tools/tests/test_gp_compare.py Scan3Allowance`, 8 cases):
+the named bytes explain (with the message asserted); a mutated MIDDLE-bind dump frame
+un-explains it again (allowance FAILs `no unique adjacent port pair…` and the ratchet
+catches, rc=1, `first unexplained 1 < ratchet N 4`); a mutated top holder answers
+`no port frame before 1 holds its named top rows`; different top bytes (capture side)
+are `not the named…` and fail; two matching pairs are not the named frame; the
+vacuous-middle shape explains with the message `top rows 0..4 held by port 0, port 2
+rows 5..199` and does NOT exhibit the middle-less B; a model-explained named frame
+prints the stale-name note; and the table's three entries are pinned, so a silent
+name change is a test failure. (`test_gp_compare` 46/46; the `make verify` gp tool
+line — k11/gp session/capture/compare/moves/keys — 198/198; `test_title_compare`
+10/10.) Real data on COPIES (`/tmp/g6_mut`, the sources untouched): poking port 1669's
+row 50 index byte (42→0, DAC-differing) gives
+`FAIL: allowed capture 2064 (raw 5190) is not its named three-frame scan-out: no
+unique adjacent port pair binds its rows [3,98) and [98,200)` +
+`FIRST UNEXPLAINED capture 2064 …` + `FAIL: first unexplained 2064 < ratchet N 7559`,
+EXIT 1; the same for 1670's row 150 (bottom bind), U9's port 221 row 100 (FAIL at 346,
+`< ratchet N 2209`, EXIT 1) and U10's port 218 row 30 (FAIL at 331, `< ratchet N 2062`,
+EXIT 1) — per-frame per-bytes, and the traces stayed `ratchet ok` throughout. Mechanism
+sensitivity on the real dumps with `SCAN3_ALLOWED` emptied in-process: all three enforce
+runs print the FIRST UNEXPLAINED at their named frame and `FAIL: first unexplained <
+ratchet N` with rc=1 — the pins depend on the names, and the no-mechanism lines
+reproduce §U6.21/§W.12/§W.14's measured report lines byte-for-byte (idle-loss `1967
+classified: 1024 clean, 941 splice, 1 transition, 1 unexplained, 8 all-black`, 346
+`nearest port 221, rows 0..4, x 0..319 (933 px)`, 331 `nearest port 219, rows 0..63,
+x 0..319 (10336 px)`), so the allowance adds no silent absorption.
+
+**Named limits of the claim.** (a) the top strip is bound by EXISTENCE, not uniqueness:
+several frames share the old screen's first rows (idle-loss {1665,1666}, U10 {216,243,
+1127}), so a mutation of ONE holder while another holds the same rows is not felt by
+THIS frame — the holders' full frames are claimed by the captures below the ratchet
+(2062/2063, 345, 330) and a change to the strip in every earlier holder un-explains
+(rule 3, unit-tested); (b) where `r1 == r2` (U9) the bound is on the single bottom
+holder — the "pair" is (holder−1, holder) and holder−1 contributes no pixels and is
+not exhibited; a bottom holder at dump index 0 would have no predecessor and fail
+closed; (c) the skipped frames (idle-loss 1667/1668, U9 219/220, U10 217) stay
+unexhibited by design — §G6's finding is that the ORIGINAL never blitted them; their
+content is claimed by NO frame comparison, and the coverage line lists them;
+(d) the standard gp_compare limits (§G.16): no under-render detection, order and
+full coverage not claimed, frames at/after the pinned start classified against the
+port's own dump.
+
+**Development notes (fail-first, honest).** The first test run failed 8/8 in this
+class for two test-side bugs found and fixed before green: a doubly-wrapped table
+(`s3 = ((entry,),)` keyed the guard dict by the whole entry instead of the frame —
+the enforced loop then never consulted the recipe: fixed to `(entry,)` as in task 5)
+and a vacuous-shape expectation that printed the bind's dump INDEX (2) not value;
+the model itself needed no behaviour change after those test fixes — the real-data
+enforce lines above were measured before them (the allowance consulted path was
+already exercised there via `main()`) and re-measured after, identical.
 
 ## §G7 — the gp-moves 2139 diagnosis (pending, lane B task 7)

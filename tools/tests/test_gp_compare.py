@@ -487,5 +487,137 @@ class BandAllowance(Dirs):
                            'd9c0ac62f7e0c0d4082fba8d195eae4f767c56a7887bdf7346450511f998cad8'),))
 
 
+class Scan3Allowance(Dirs):
+    # Track G task 6 (record §G6): the named three-frame scan-out allowance, the
+    # BANDS_ALLOWED pattern (§G5) widened to the mode-8 entry's catch-up shape:
+    # rows [0,r1) of the still-held old screen (pinned by hash, and at least one
+    # EARLIER dump frame must hold them), rows [r1,r2) == port[B] and rows
+    # [r2,200) == port[B+1] for EXACTLY ONE adjacent pair (vacuous middle when
+    # r1 == r2 — the U9 shape). Review Focus #1: a mutation of any bound dump
+    # frame un-explains the capture frame again; per-frame per-bytes, never
+    # per-scene, never a third-frame splice in the model itself.
+    #
+    # The fixture: port [1, 2, 3] (ipx(k): flat k except row k = k+1); the named
+    # frame (capture 1) is rgb(1)'s rows 0..1, rgb(2)'s rows 2..3 and rgb(3)'s
+    # rows 4..199 — three segments, no adjacent pair splices them, so the
+    # two-frame model leaves it unexplained and only the recipe can answer.
+    def setUp(self):
+        super().setUp()
+        R = tc.ROW
+        self.c = rgb(1)[:2 * R] + rgb(2)[2 * R:4 * R] + rgb(3)[4 * R:]
+        self.sha = hashlib.sha256(rgb(1)[:2 * R]).hexdigest()
+        self.entry = (1, 2, 4, self.sha)
+        self.s3 = (self.entry,)
+
+    def write_fixture(self):
+        self.write([1, 2, 3], [rgb(1), self.c, rgb(2), rgb(3)])
+
+    def run_scan3(self, n=4, **kw):
+        cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
+        port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
+        rows = [tc.row_hashes(port[m]) for m in range(len(port))]
+        out = []
+        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
+                                      kw.get('report', False), out.append,
+                                      kw.get('max_start', 0), None, self.s3)
+        return rc, first, out
+
+    def test_the_named_scan_out_is_explained(self):
+        self.write_fixture()
+        rc, first, out = self.run_scan3()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('allowed by name as a three-frame scan-out: top rows 0..1 '
+                            'held by port 0, port 1 rows 2..3, port 2 rows 4..199' in l
+                            for l in out), out)
+        self.assertTrue(any('1 scan3-allowed' in l for l in out), out)
+
+    def test_a_mutated_bound_pair_frame_unexplains_it_again(self):
+        # Review Focus #1: mutate the dump's middle-bind frame (port 1: 2 -> 5)
+        # without touching the capture. The unique-pair bind fails, the allowance
+        # FAILs, the frame is unexplained again and the ratchet catches it.
+        self.write_fixture()
+        self.assertEqual(self.run_scan3()[0], 0)
+        with open(os.path.join(self.port, 'frame_00001.ipx'), 'wb') as f:
+            f.write(ipx(5))
+        rc, first, out = self.run_scan3()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'no unique adjacent port pair' in l
+                            for l in out), out)
+        self.assertTrue(any('FAIL: first unexplained 1 < ratchet N 4' in l for l in out), out)
+
+    def test_a_mutated_top_holder_is_named(self):
+        # The top rows are bound by existence, not uniqueness: mutate every
+        # earlier holder's top rows (port 0 rows 0..1 to value 9) and the recipe
+        # refuses — no frame before B holds the named top.
+        R = tc.ROW
+        self.write_fixture()
+        mutated = bytearray(rgb(1))
+        mutated[:2 * R] = bytes([9]) * (2 * R)
+        ex, why = gc.scan3_explain(self.c, [bytes(mutated), rgb(2), rgb(3)], self.entry)
+        self.assertIsNone(ex)
+        self.assertIn('no port frame before 1 holds its named top rows', why)
+
+    def test_different_top_bytes_are_not_the_named_frame(self):
+        # Review Focus #1 (the capture side): the same mid/bottom with a
+        # different top (value 8) is a DIFFERENT byte layout and must not be
+        # silenced (the hash pins the named top rows).
+        R = tc.ROW
+        self.write_fixture()
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(bytes([8]) * (2 * R) + rgb(2)[2 * R:4 * R] + rgb(3)[4 * R:])
+        rc, first, out = self.run_scan3()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'not the named' in l for l in out), out)
+
+    def test_ambiguous_pairs_are_not_the_named_frame(self):
+        # never a class: two adjacent pairs bind the same rows (port [1,2,3,2,3])
+        # -> no unique bind -> the named frame is not explained.
+        self.write([1, 2, 3, 2, 3], [rgb(1), self.c])
+        rc, first, out = self.run_scan3(3)
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('no unique adjacent port pair' in l for l in out), out)
+
+    def test_the_vacuous_middle_shape_is_explained(self):
+        # the U9 two-segment shape (r1 == r2): top rows 0..4 of rgb(1) plus the
+        # bottom rows 5..199 of rgb(3); the pair (2, 3) binds the bottom alone
+        # and frame 2 (no pixel claimed) is NOT exhibited.
+        R = tc.ROW
+        c = rgb(1)[:5 * R] + rgb(3)[5 * R:]
+        s3 = ((1, 5, 5, hashlib.sha256(rgb(1)[:5 * R]).hexdigest()),)
+        self.write([1, 2, 3], [rgb(1), c, rgb(2), rgb(3)])
+        cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
+        port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
+        rows = [tc.row_hashes(port[m]) for m in range(len(port))]
+        out = []
+        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, 4,
+                                      False, out.append, 0, None, s3)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('three-frame scan-out: top rows 0..4 held by port 0, '
+                            'port 2 rows 5..199 the named bytes' in l for l in out), out)
+
+    def test_a_named_frame_the_model_explains_is_a_stale_name(self):
+        self.write_fixture()
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(rgb(2))                          # now clean: the name is stale
+        rc, first, out = self.run_scan3()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('retire the name' in l for l in out), out)
+
+    def test_the_table_names_the_measured_scanouts(self):
+        # the pinned recipes of record §G6: gp-idle-loss 2064 (ports 1666/1669/
+        # 1670), gp-u9-win 346 (218/221, vacuous middle), gp-u10-ending 331
+        # (216/218/219). A changed name is a changed claim: it must move with a
+        # re-measurement in the record, never silently.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-idle-loss'],
+                         ((2064, 3, 98,
+                           '7bdf2c561c38a264337bc74abd093172ac99ceebb8c818635e189530cf1c58dc'),))
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u9-win'],
+                         ((346, 5, 5,
+                           '703828af123edf1a8c3bade8d42bdd56a68576cd87e13de7339bdd203dc8f0b6'),))
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u10-ending'],
+                         ((331, 2, 64,
+                           '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),))
+
+
 if __name__ == '__main__':
     unittest.main()
