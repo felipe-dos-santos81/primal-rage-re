@@ -1094,6 +1094,7 @@ int actors_init(void)
  * after the seventh is dropped. 0x654C7's count is in dwords (7 each). */
 void actor_cursor_reset(void)
 {
+    PR_SEAM0(0x38B70u);
     DSD(DS_000BDFBC) = 0;
     DSD(DS_000BDFC0) = 0;
     DSD(DS_000BDFC4) = 0;
@@ -1104,6 +1105,7 @@ void actor_cursor_reset(void)
 /* 0x2F920 — record 2026-10-13-reverse-i §I.1 */
 void actors_table_clear(void)
 {
+    PR_SEAM0(0x2F920u);
     mem_fill(DS_00105F38, 0, 0x14D4u);              /* 0x2F922..0x2F92E 0x61A70 */
 }
 

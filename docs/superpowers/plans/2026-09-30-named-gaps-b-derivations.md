@@ -717,6 +717,22 @@ b107494=0`; after the tail: record word `+0x24` = `0x64`, devices `0`/`0`).
   | t2 | + the `k11_compare` fix, the comment-only commits | 0 | ORACLES-EQUAL | unchanged | 1198 iterations, passed | IDENTICAL | `cmp` exit 0 |
   | t3 | + the enforced `menuesc` oracle (§B.12), the named-gap wording in `game_init_resume` (comment-only, stripper: `COMMENT-ONLY`) | 0 | ORACLES-EQUAL | the walk's five lines unchanged; `menuesc` 0 unexplained in 283, 2/2, END 388 >= 388 | 1198 iterations, passed | IDENTICAL | `cmp` exit 0 |
 
+
+**2026-10-14 note: the tail's three calls are now made.** The row above that left `0x20C3D 0x38B70`,
+`0x20C42 0x2F920` and `0x20C58 0x2BAF4(1)` out as an equivalent mutant is superseded. Track I
+(record `2026-10-13-reverse-i-derivations.md` §I.4) made the master init `0x2F9CC` run its own
+`0x2BAF4(1)` and `0x38B18(0x9AD84, 0, 0)` at boot, so a live actor and a non-zero row slot
+`0x107A1C` now exist when the tail runs; the original's tail resets them there, and the port's
+`game_init_resume` now makes the three calls at the original's positions (`actor_cursor_reset`,
+`actors_table_clear` before `0x4F228(0)`, `actors_reset` after it, before the `0xABCD` seed at
+`0x20C62`; `0x20C32 0x29D60`, a bare `ret`, stays uncalled). The equivalence argument still holds for
+everything a dumped frame shows (`game_state_init` resets again at `0x10E9C` before any frame), so no
+oracle line is expected to move. The `PR_RESTART` driver counts the arrivals at the three seams: 3, 4
+and 4 during `game_init` (the master init's reset, the tail's three calls, `game_state_init`'s reset,
+each reset making the other two at `0x2BBDA`/`0x2BBDF`), and 3, 4, 4 on the restart iteration, which
+re-runs the tail (before this change: 2, 2, 2 and 2, 2, 2). Dropping any one of the three calls fails
+those counts.
+
 ## §B.12 User decisions and the enforced `menuesc` oracle (unit Z)
 
 Decisions of the user, 2026-09-30, relayed to unit Z by the controller (this

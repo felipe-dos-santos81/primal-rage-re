@@ -13838,6 +13838,10 @@ static u32 rd_frame_hash(void)
  * (0x20C15, 0x20C1F): once per process, never on a restart (record
  * 2026-10-13-reverse-i §I.4). */
 static u32 rd_master_inits, rd_master_strings;
+/* Arrivals at 0x2BAF4 (actors_reset), 0x38B70 (actor_cursor_reset) and 0x2F920
+ * (actors_table_clear): the init tail makes all three (0x20C3D, 0x20C42,
+ * 0x20C58), and every 0x2BAF4 makes the other two (0x2BBDA, 0x2BBDF). */
+static u32 rd_resets[3];
 
 /* Also keeps the string handle DS_001082DC as the master init finds it: 0x1C0B8
  * loads the table before 0x1C0BD calls 0x20C10. */
@@ -13845,6 +13849,9 @@ static int rd_master_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
 {
     (void)nargs; (void)args; (void)eax;
     if (addr == 0x1AFE8u && rd_master_inits++ == 0u) rd_master_strings = DSD(DS_001082DC);
+    if (addr == 0x2BAF4u) rd_resets[0]++;
+    if (addr == 0x38B70u) rd_resets[1]++;
+    if (addr == 0x2F920u) rd_resets[2]++;
     return 0;
 }
 
@@ -13868,8 +13875,14 @@ int test_restart_drive(void)
         host_save_set_path(spath);
         rd_master_inits = 0u;
         rd_master_strings = 0xFEEDFACEu;
+        rd_resets[0] = rd_resets[1] = rd_resets[2] = 0u;
         pr_seam = rd_master_probe;
         game_init();
+        /* game_init: the master init's 0x2BAF4(1) (0x2F9E9), the tail's three calls
+         * (0x20C3D, 0x20C42, 0x20C58) and game_state_init's 0x2BAF4(1) (0x10E9C). */
+        CHECK_EQ_INT((int)rd_resets[0], 3);
+        CHECK_EQ_INT((int)rd_resets[1], 4);
+        CHECK_EQ_INT((int)rd_resets[2], 4);
         host_save_set_path(NULL);
         (void)unlink(spath);
         (void)rmdir(sdir);
@@ -13900,7 +13913,9 @@ int test_restart_drive(void)
     u32 t_prev = 0u, t_last = 0u;
     u16 f_last = 0u;
     int n = 0;
+    u32 rs_before[3] = { 0u, 0u, 0u };
     while (DSW(DS_00104B00) == 0x27u && n < RD_GUARD) {
+        rs_before[0] = rd_resets[0]; rs_before[1] = rd_resets[1]; rs_before[2] = rd_resets[2];
         t_prev = t_last;
         t_last = DSD(DS_00101500);
         f_last = DSW(DS_000EF6DC);
@@ -13909,6 +13924,13 @@ int test_restart_drive(void)
     }
     CHECK(n < RD_GUARD, "the idle timeout restarts within the guard");
     CHECK_EQ_INT((int)(game_restart_landings() - l0), 1);   /* the seam counts the one landing */
+    /* The restart iteration: before track T it made 0x2BAF4 twice (game_state_init's
+     * 0x10E9C and one more reset of the abandoned iteration) and the two others once
+     * inside each; the tail now adds its three calls. The master init does not run
+     * again (0x20C15 is before the setjmp). */
+    CHECK_EQ_INT((int)(rd_resets[0] - rs_before[0]), 3);
+    CHECK_EQ_INT((int)(rd_resets[1] - rs_before[1]), 4);
+    CHECK_EQ_INT((int)(rd_resets[2] - rs_before[2]), 4);
     CHECK(t_last - t0 > 0x4B0u, "0x2EB9F: over 0x4B0 ticks on the restart iteration");
     CHECK(t_prev - t0 <= 0x4B0u, "0x2EB9F: not over on the iteration before");
     CHECK_EQ_INT((int)DSW(DS_00104B00), 3);            /* 0x10EA1 */
