@@ -210,11 +210,22 @@ class Machine:
       dac_effects, the device's view.
     aperture: the bytes changed in APERTURE are the screen's, not mem[]'s: they leave OrigResult.writes
       and the call memory for OrigResult.aperture. A case seeds the screen by poking that range.
+    files: the save file's directory (track F, record 2026-10-14-reverse-f §F.1): a dict from a name
+      (bytes, 1..15, no NUL) to F1_ABSENT (the file is not there but the directory is: fopen rb fails,
+      fopen wb creates), to F1_GONE (no directory: every fopen of the name fails), or to its initial
+      content bytes. With it the runtime's four file calls (fopen 0x61C60, fread 0x61CF6, fwrite
+      0x62031, fclose 0x61EC0) become modelled callees that act on those files instead of running the
+      WATCOM code: their arguments and results follow the callees' bytes (record §F.1), every fopen
+      records its (name, mode) read from memory in OrigResult.file_opens, and every fclose mirrors the
+      file's final name, mode and bytes into mem[] at F1_SHADOW so the comparison sees the real file
+      content. A name the case does not declare, a mode other than rb/wb, a write on a read stream, a
+      read on a write stream and anything else the two rows never do stop the run as `unmodeled`.
     Only the byte forms of in/out are modelled; the word and dword forms stay unmodeled."""
     keys: tuple = None
     ins: tuple = ()
     outs: tuple = ()
     aperture: bool = False
+    files: dict = None
 
     def __post_init__(self):
         if self.keys is not None and not all(0 <= k <= 0xFFFF for k in self.keys):
@@ -224,6 +235,16 @@ class Machine:
                 raise ValueError("machine: in from 0x%X needs one or more byte values" % port)
         if not all(0 <= p <= 0xFFFF for p in self.outs):
             raise ValueError("machine: an out port is not 16 bits: %r" % (self.outs,))
+        if self.files is not None:
+            if not isinstance(self.files, dict) or not 1 <= len(self.files) <= 2:
+                raise ValueError("machine: files needs one or two declared names: %r" % (self.files,))
+            for name, v in self.files.items():
+                if not isinstance(name, bytes) or not 1 <= len(name) <= 15 or b"\0" in name:
+                    raise ValueError("machine: a file name must be 1..15 bytes with no NUL: %r" % (name,))
+                if v is not F1_ABSENT and v is not F1_GONE and \
+                        not (isinstance(v, bytes) and len(v) <= F1_MAXFILE):
+                    raise ValueError("machine: the file %r needs at most %d content bytes, F1_ABSENT or F1_GONE"
+                                     % (name, F1_MAXFILE))
 
 
 class _Devices:
@@ -270,6 +291,195 @@ class _Devices:
         return None
 
 
+# ---- track F batch f1 (record 2026-10-14-reverse-f §F.1): the file model ---------------------------------
+# The four runtime file calls the save rows make, by their entry addresses (§S.7.4).
+F1_FOPEN, F1_FREAD, F1_FWRITE, F1_FCLOSE = 0x61C60, 0x61CF6, 0x62031, 0x61EC0
+F1_FILE_FUNCS = (F1_FOPEN, F1_FREAD, F1_FWRITE, F1_FCLOSE)
+# Machine.files values: F1_ABSENT names a file that is not there in a directory that is (fopen rb fails,
+# fopen wb creates); F1_GONE names a missing directory (every fopen of the name fails, the shape the
+# save row's s0 needs, which the port's binding gives with a path under a subdirectory it never makes).
+# Named classes (not type(...) results) so the process pool's pickles can find them.
+class _F1Absent:
+    __slots__ = ()
+    def __repr__(self): return "F1_ABSENT"
+
+
+class _F1Gone:
+    __slots__ = ()
+    def __repr__(self): return "F1_GONE"
+
+
+F1_ABSENT = _F1Absent()
+F1_GONE = _F1Gone()
+# The mirrored directory: one slot per declared name, in declaration order, in the image's gap between
+# the objects — the gap holds no loaded bytes at all (verified: the dump of [0x73B15, 0x80000) is every
+# byte 0), but it is not free real estate: the track-D4D span-writer rows park their pset pool there,
+# [D4D_PSETS 0x74000, +0x4880) = [0x74000, 0x78880) (tools/diff_verify.py). F1_SHADOW sits above the
+# pool's end with a 0x780-byte margin and below the data object's start: two 0x840-byte slots, a span
+# no harness constant claims (grep of diff_verify.py / diff_runner.c / tools for [0x73B15,0x80000):
+# only D4D_PSETS, in-pool recpos/dst values, dword VALUES like D5B_HEIGHT_RR's 0x0007F000, and
+# title_pin.py's FILE offsets; record §F.1). Slot: name + NUL at +0 (16 bytes), the mode
+# + NUL at +0x10, the byte count as a dword at +0x20, the content at +0x24. fclose mirrors its file's
+# final state there; the port's binding mirrors the scratch directory's real files at the same layout,
+# so a plain mem[] byte comparison compares the two sides' file bytes (track F, record §F.1).
+# diff_runner.c's F1_* defines are the same layout.
+F1_SHADOW, F1_SLOT, F1_MAXFILE = 0x79000, 0x840, 0x800
+
+
+class _F1Files:
+    """One run's file model (track F, record §F.1). A modelled callee arrives at its entry address by a
+    call (the callset stub's entry shape); call() acts on the case's files, sets EAX, and returns to the
+    caller. The arguments and results follow the callees' bytes (§F.1): fopen takes the name in EAX and
+    the mode in EDX and returns a handle or 0; fread and fwrite take the buffer in EAX, the item size in
+    EDX, the item count in EBX and the stream in ECX (the prologues 0x61CFC..0x61D00 and
+    0x62037..0x6203B save EAX/EDX and move ECX to the stream register; `imul ebx,edx` at 0x61D20/0x62056
+    is the byte total) and return the item count in EAX; fclose takes the stream in EAX and returns its
+    result (0x61EC2 `mov edx,eax`; 0x61ECD answers 0xFFFFFFFF for a stream not on the list). The model
+    clobbers nothing but EAX: the rows read only EAX and the count ESI/EDX they reload before the calls,
+    and fclose really keeps EDX (pushes it at 0x61EC1). Only what the two rows rely on is modelled:
+    modes rb and wb, a memory-backed file that never comes back short, and an undeclared name, another
+    mode, or a read on a write stream stop the run as unmodeled. fclose mirrors the file's final name,
+    mode, length and bytes to its F1_SHADOW slot (0x61EC0 is the row's last act on the file); no other
+    call mirrors: a mirror written at the save row's fopen would land in the memory reported at its two
+    stubbed calls, where the port cannot show bytes until after its return (§E3.12)."""
+
+    def __init__(self, m, before):
+        self.before = before
+        self.names = list(m.files)              # declaration order: the slot order
+        self.content = {}                       # name -> bytearray: the files that exist
+        self.gone = set()                       # declared F1_GONE: no directory, every open fails
+        for name, v in m.files.items():
+            # class checks, not `is`: a pool worker gets its own sentinel instances back from the pickle
+            if isinstance(v, _F1Gone):
+                self.gone.add(name)
+            elif not isinstance(v, _F1Absent):
+                self.content[name] = bytearray(v)
+        self.streams = {}                       # handle -> [name, "r"/"w", mode, pos]
+        self.handles = 0
+        self.opens = []
+
+    def _mem_write(self, uc, at, data):
+        """An API write does not fire the memory hooks: seed `before` the way a stub's writes do."""
+        if not data:
+            return
+        for i, b in enumerate(uc.mem_read(at, len(data))):
+            self.before.setdefault(at + i, b)
+        uc.mem_write(at, data)
+
+    def _mirror(self, uc, name, mode):
+        buf, at = self.content[name], F1_SHADOW + F1_SLOT * self.names.index(name)
+        self._mem_write(uc, at, name + b"\0")
+        self._mem_write(uc, at + 0x10, mode + b"\0")
+        self._mem_write(uc, at + 0x20, (len(buf) & 0xFFFFFFFF).to_bytes(4, "little"))
+        self._mem_write(uc, at + 0x24, bytes(buf))
+
+    def _cstr(self, uc, at, what, addr, who):
+        try:
+            raw = bytes(uc.mem_read(at, 16))
+        except UcError:
+            return None, ("unmodeled", "%s at 0x%X: the %s pointer 0x%X is not mapped" % (who, addr, what, at))
+        end = raw.find(b"\0")
+        if end < 0:
+            return None, ("unmodeled", "%s at 0x%X: the %s at 0x%X has no NUL in 16 bytes" % (who, addr, what, at))
+        return raw[:end], None
+
+    def _ret(self, uc, eax):
+        uc.reg_write(ux.UC_X86_REG_EAX, eax & 0xFFFFFFFF)
+        esp = uc.reg_read(ux.UC_X86_REG_ESP)
+        ret = int.from_bytes(uc.mem_read(esp, 4), "little")
+        uc.reg_write(ux.UC_X86_REG_ESP, esp + 4)
+        uc.reg_write(ux.UC_X86_REG_EIP, ret)
+
+    def _fopen(self, uc, addr):
+        name, stop = self._cstr(uc, uc.reg_read(ux.UC_X86_REG_EAX), "name", addr, "fopen")
+        if stop:
+            return stop
+        mode, stop = self._cstr(uc, uc.reg_read(ux.UC_X86_REG_EDX), "mode", addr, "fopen")
+        if stop:
+            return stop
+        self.opens.append((name, mode))
+        if name not in self.names:
+            return ("unmodeled", "fopen at 0x%X: the name %r is not declared by the case" % (addr, name))
+        if mode not in (b"rb", b"wb"):
+            return ("unmodeled", "fopen at 0x%X: the mode %r is not one the rows use" % (addr, mode))
+        if name in self.gone or (mode == b"rb" and name not in self.content):
+            return self._ret(uc, 0)             # the missing file's NULL (0x1B002 `test eax,eax; je`)
+        if mode == b"wb":
+            self.content[name] = bytearray()    # model rule: a write-mode open starts the file at offset 0;
+                                                # the raw's truncate-on-open was not pinned (f-conventions.md
+                                                # OPEN Q1) and is unobservable here (record §F.1)
+        self.handles += 1
+        self.streams[self.handles] = [name, "r" if mode == b"rb" else "w", mode, 0]
+        return self._ret(uc, self.handles)
+
+    def _stream(self, uc, addr, who, rw):
+        st = self.streams.get(uc.reg_read(ux.UC_X86_REG_ECX))
+        if st is None or st[1] != rw:
+            return None, ("unmodeled", "f%s at 0x%X: ECX is not a handle opened for %s"
+                          % ("read" if rw == "r" else "write", addr,
+                             "reading" if rw == "r" else "writing"))
+        return st, None
+
+    def _fread(self, uc, addr):
+        st, stop = self._stream(uc, addr, "fread", "r")
+        if stop:
+            return stop
+        buf = uc.reg_read(ux.UC_X86_REG_EAX)
+        size = uc.reg_read(ux.UC_X86_REG_EDX)
+        count = uc.reg_read(ux.UC_X86_REG_EBX)
+        if size == 0:
+            return self._ret(uc, 0)             # `imul ebx,edx`; total 0 returns 0 (0x61D23..0x61D29)
+        avail = len(self.content[st[0]]) - st[3]
+        items = max(0, min(count, avail // size))   # short at end of file: whole items only
+        try:
+            self._mem_write(uc, buf, bytes(self.content[st[0]][st[3]:st[3] + items * size]))
+        except UcError:
+            return ("unmodeled", "fread at 0x%X: the buffer 0x%X+%d is not mapped"
+                    % (addr, buf, items * size))
+        st[3] += items * size
+        return self._ret(uc, items)
+
+    def _fwrite(self, uc, addr):
+        st, stop = self._stream(uc, addr, "fwrite", "w")
+        if stop:
+            return stop
+        buf = uc.reg_read(ux.UC_X86_REG_EAX)
+        size = uc.reg_read(ux.UC_X86_REG_EDX)
+        count = uc.reg_read(ux.UC_X86_REG_EBX)
+        total = size * count                    # the callee's `imul ebx,edx` (0x62056)
+        if total == 0:
+            return self._ret(uc, 0)             # the same total-0 shape as fread (0x62059..0x6205F)
+        try:
+            data = bytes(uc.mem_read(buf, total))
+        except UcError:
+            return ("unmodeled", "fwrite at 0x%X: the buffer 0x%X+%d is not mapped" % (addr, buf, total))
+        f = self.content[st[0]]
+        if len(f) < st[3] + total:
+            f.extend(bytes(st[3] + total - len(f)))
+        f[st[3]:st[3] + total] = data
+        st[3] += total
+        return self._ret(uc, count)             # a memory-backed file never comes back short
+
+    def _fclose(self, uc, addr):
+        handle = uc.reg_read(ux.UC_X86_REG_EAX)
+        st = self.streams.pop(handle, None)
+        if st is not None:
+            self._mirror(uc, st[0], st[2])
+        return self._ret(uc, 0 if st is not None else 0xFFFFFFFF)
+
+    def call(self, uc, addr):
+        """Model one call's arrival at its entry address; returns None (the model returned to the
+        caller) or the (kind, detail) the run stops with."""
+        if addr == F1_FOPEN:
+            return self._fopen(uc, addr)
+        if addr == F1_FREAD:
+            return self._fread(uc, addr)
+        if addr == F1_FWRITE:
+            return self._fwrite(uc, addr)
+        return self._fclose(uc, addr)
+# ---- f1 mechanism end ----
+
+
 @dataclass
 class OrigResult:
     outcome: str                 # ok | fault | unmodeled | timeout
@@ -283,6 +493,7 @@ class OrigResult:
     outs: list = field(default_factory=list)       # Machine.outs: (port, value) per recorded `out`, in order
     keys_left: int = None                          # Machine.keys: the words left in the queue (None: no key model)
     aperture: dict = field(default_factory=dict)   # Machine.aperture: addr -> final byte of each changed screen byte
+    file_opens: list = field(default_factory=list) # Machine.files: (name, mode) per modelled fopen, in order (§F.1)
 
 
 if capstone is not None:
@@ -333,6 +544,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     and every arrival is recorded in `OrigResult.calls`. With no calls and no allow-list entry for
     it, an indirect call stops the run as E1's "indirect call at" (E1 §E.3).
     machine: a Machine (track H §H.1), or None: the int/in/out instructions stop the run as before.
+    With machine.files (track F §F.1) the four runtime file callees are modelled instead of stopping
+    the run, and every other call target stops it as before.
     """
     if not available():
         raise RuntimeError("unicorn or capstone is not installed (pip install -r tools/requirements-diff.txt)")
@@ -375,6 +588,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     callset = {c.addr: c for c in calls}
     recorded, recorded_mem = [], []
     dev = _Devices(machine) if machine is not None else None
+    fdev = _F1Files(machine, before) if machine is not None and machine.files is not None else None
     screen = (lambda a: APERTURE[0] <= a < APERTURE[1]) if machine is not None and machine.aperture else (lambda a: False)
 
     def arg(uc, esp, a):
@@ -435,6 +649,14 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
                 return
             if callset[addr].mode == "stub":
                 return
+        if (fdev is not None and addr in F1_FILE_FUNCS and prev is not None
+                and (prev[1] is None or prev[1] == addr)):
+            # a modelled file callee: it acts on the case's files and returns to the caller (§F.1)
+            stop = fdev.call(uc, addr)
+            if stop is not None and state["stop"] is None:
+                state["stop"] = stop
+                uc.emu_stop()
+            return
         if addr in seen:
             kind, transfer, ind = seen[addr]
         else:
@@ -451,7 +673,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
                 tgt = _direct_target(ins)
                 if tgt is None:
                     ind = ins
-                elif tgt not in allow and tgt not in callset:
+                elif tgt not in allow and tgt not in callset and not (fdev is not None and tgt in F1_FILE_FUNCS):
                     kind = ("unmodeled", "call 0x%X from 0x%X" % (tgt, addr))
             elif ins.group(capstone.CS_GRP_JUMP) or ins.mnemonic in ("loop", "loope", "loopne"):
                 transfer = ("jump", _direct_target(ins))      # the target: only a taken jcc arrives there
@@ -462,7 +684,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
             except UcError:                           # an operand address nothing maps: E1's stop, not a fault
                 tgt = None
                 kind = ("unmodeled", "indirect call at 0x%X" % addr)
-            if kind is None and tgt not in allow and tgt not in callset:
+            if kind is None and tgt not in allow and tgt not in callset \
+                    and not (fdev is not None and tgt in F1_FILE_FUNCS):
                 kind = ("unmodeled", "indirect call at 0x%X" % addr if not callset and not allow
                         else "indirect call to 0x%X at 0x%X" % (tgt, addr))
         if kind is not None and kind[0] == "machine":
@@ -509,7 +732,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
         if new != old:
             (aperture if screen(a) else writes)[a] = new
     return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside), recorded, recorded_mem,
-                      dev.outs if dev else [], None if dev is None or dev.keys is None else len(dev.keys), aperture)
+                      dev.outs if dev else [], None if dev is None or dev.keys is None else len(dev.keys),
+                      aperture, fdev.opens if fdev else [])
 
 
 # ---- static scan: the function's basic blocks, for the coverage claim (spec §5.3) -------------
