@@ -6,6 +6,7 @@
 
 #include "game/flow.h"
 #include "game/actors.h"
+#include "game/camera.h"
 #include "game/rng.h"
 #include "host.h"
 #include "mem.h"
@@ -4934,6 +4935,245 @@ int test_run_clock(void)
     return g_failures - before;
 }
 
+/* Track I (record 2026-10-13-reverse-i §I.1-§I.5): the five functions the
+ * port used to inline in their callers, called directly. The voice of the
+ * timer exit is voice-site row 195's (test_voice_sites), through
+ * game_state_step. */
+#define IF_GRID      DS_00105F38                /* 0x2F927 */
+#define IF_GRID_LEN  0x14D4u                    /* 0x2F922 */
+#define IF_CAM_OFF   (DS_000F0AF4 - 2u)         /* the dword 0x12D03/0x12D1D read */
+#define IF_MI_MAX    16u
+
+/* The master init's callees, each stubbed: the call, its arguments and the two
+ * dwords 0x2F9CC stores as they are when the call arrives. 0x2D974 answers
+ * if_mi_field, every other callee a value 0x2F9CC must not use. */
+static u32 if_mi_n, if_mi_field;
+static struct { u32 addr, nargs, a[3], p40c, p410; } if_mi[IF_MI_MAX];
+
+static int if_mi_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    if (if_mi_n < IF_MI_MAX) {
+        if_mi[if_mi_n].addr = addr;
+        if_mi[if_mi_n].nargs = nargs;
+        for (u32 i = 0u; i < 3u; i++) if_mi[if_mi_n].a[i] = i < nargs ? args[i] : 0u;
+        if_mi[if_mi_n].p40c = DSD(DS_0010740C);
+        if_mi[if_mi_n].p410 = DSD(DS_00107410);
+    }
+    if_mi_n++;
+    *eax = addr == 0x2D974u ? if_mi_field : 0x5A5A5A5Au;
+    return 1;
+}
+
+/* The sound shutdown's library calls, each stubbed: the call and which of the
+ * eight locations 0x1D018 clears are zero when it arrives (bit 0 the flag
+ * 0xA2CB1, bit 1 0x1028C4, bit 2 0x1028C0, bits 3..6 the slot handles, bit 7
+ * 0x1028C8). 0x5DEED answers if_sd_seq, the k-th 0x5DD03 if_sd_smp[k]. */
+#define IF_SD_MAX    12u
+#define IF_SD_SLOT   DS_00102860                /* 0x1D076 */
+static u32 if_sd_n, if_sd_k, if_sd_seq;
+static const u32 *if_sd_smp;
+static struct { u32 addr, zero; } if_sd[IF_SD_MAX];
+
+static u32 if_sd_zero(void)
+{
+    u32 z = (DSB(DS_000A2CB1) == 0u) | (u32)(DSD(DS_001028C4) == 0u) << 1 | (u32)(DSD(DS_001028C0) == 0u) << 2
+          | (u32)(DSD(DS_001028C8) == 0u) << 7;
+    for (u32 i = 0u; i < 4u; i++) z |= (u32)(DSD(IF_SD_SLOT + i * 0x18u) == 0u) << (3u + i);
+    return z;
+}
+
+static int if_sd_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    (void)nargs;
+    (void)args;
+    if (if_sd_n < IF_SD_MAX) {
+        if_sd[if_sd_n].addr = addr;
+        if_sd[if_sd_n].zero = if_sd_zero();
+    }
+    if_sd_n++;
+    *eax = addr == 0x5DEEDu ? if_sd_seq : addr == 0x5DD03u ? if_sd_smp[if_sd_k++ & 3u] : 0x5A5A5A5Au;
+    return 1;
+}
+int test_inlined_functions(void)
+{
+    int before = g_failures;
+    tf_voice_snap();
+
+    /* table — 0x2F920: 0x14D4 zero bytes from 0x105F38 (0x2F922..0x2F92E), the
+     * byte on either side kept. */
+    {
+        u32 left = 0u;
+        mem_fill(IF_GRID, 0xA5u, IF_GRID_LEN);
+        DSB(IF_GRID - 1u) = 0x5Au;
+        DSB(IF_GRID + IF_GRID_LEN) = 0x5Bu;
+        actors_table_clear();
+        for (u32 i = 0u; i < IF_GRID_LEN; i++) left += (DSB(IF_GRID + i) != 0u);
+        CHECK_EQ_INT((int)left, 0);
+        CHECK_EQ_INT((int)DSB(IF_GRID - 1u), 0x5A);
+        CHECK_EQ_INT((int)DSB(IF_GRID + IF_GRID_LEN), 0x5B);
+    }
+
+    /* timer — 0x11BCC: the bytes 0x104B1B (0x11BCE) and 0x104B15 (0x11BD4)
+     * cleared, the state word 0xF0A64 = the word 0xF0A6C (0x11BDA/0x11BE0);
+     * every byte around them seeded and kept. */
+    {
+        static const u8 want_b[9] = { 0x14u, 0x00u, 0x16u, 0x17u, 0x18u, 0x19u, 0x1Au, 0x00u, 0x1Cu };
+        static const u16 want_w[7] = { 0x6262u, 0x1234u, 0x6666u, 0x6868u, 0x6A6Au, 0x1234u, 0x6E6Eu };
+        int bad_w = 0;
+        for (u32 i = 0u; i < 9u; i++) DSB(DS_00104B14 + i) = (u8)(0x14u + i);
+        DSB(DS_00104B15) = 0x5Bu;
+        DSB(DS_00104B19 + 2u) = 0x5Au;
+        for (u32 i = 0u; i < 7u; i++) DSW(DS_000F0A62 + i * 2u) = want_w[i];
+        DSW(DS_000F0A64) = 0x4321u;
+        game_state_timer_exit();
+        CHECK(memcmp(mem + DS_00104B14, want_b, sizeof want_b) == 0,
+              "0x11BCE/0x11BD4: the bytes 0x104B1B and 0x104B15 alone are cleared");
+        for (u32 i = 0u; i < 7u; i++) bad_w += (DSW(DS_000F0A62 + i * 2u) != want_w[i]);
+        CHECK_EQ_INT(bad_w, 0);                        /* 0x11BE0: a word, from 0xF0A6C */
+    }
+
+    /* step — 0x12CD4: a difference of magnitude 0x100 or less snaps (`jg`
+     * 0x12CF3), a larger one steps 0x100 towards the target (0x12CFD up,
+     * 0x12D17 down, `jle` 0x12CFB), then the dword 0xF0AF2 `sar 16` is added
+     * (0x12D08/0x12D22). The last row is the difference 0x80000000: `neg ecx`
+     * (0x12CE7) leaves it negative, so the signed `jg` is not taken and the
+     * camera takes the target. */
+    {
+        static const struct { u32 cam, off, target, want; } st[] = {
+            { 0x1000u, 0x00030000u, 0x1100u, 0x1103u },
+            { 0x1000u, 0x00030000u, 0x1101u, 0x1103u },
+            { 0x1000u, 0x00030000u, 0x0F00u, 0x0F03u },
+            { 0x1000u, 0x00030000u, 0x0EFFu, 0x0F03u },
+            { 0x1000u, 0x00030000u, 0x1090u, 0x1093u },
+            { 0x1000u, 0xFFFE0000u, 0x1000u, 0x0FFEu },
+            { 0x0000u, 0x00030000u, 0x80000000u, 0x80000003u },
+        };
+        for (u32 i = 0u; i < sizeof st / sizeof st[0]; i++) {
+            DSD(DS_000F0AEC) = st[i].cam;
+            DSD(IF_CAM_OFF) = st[i].off;
+            camera_y_step((s32)st[i].target);
+            CHECK_EQ_INT((long)DSD(DS_000F0AEC), (long)st[i].want);
+        }
+    }
+
+    /* master — 0x2F9CC: the eleven calls in the raw's order with their
+     * arguments (0x2F9CF..0x2FA37), the pointer 0x10740C = 0x1D2D0 stored
+     * between 0x38B18 and 0x2D6F8 (0x2FA01), and 0x107410 = 0x2D974(0x2A) with
+     * its low two bits cleared (`and al,0xfc` 0x2FA1A), stored before 0x2C9B8
+     * (0x2FA1C). No other callee's result is used. */
+    {
+        enum { OLD_C = 0x0C0C0C0C, OLD_10 = 0x10101010, PTR = 0x0001D2D0, FLD = 0x12345674 };
+        static const struct { u32 addr, nargs, a[3], p40c, p410; } want[] = {
+            { 0x1AFE8u, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x13ADCu, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x4F1E4u, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x2BAF4u, 1u, { 1u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x4F1D0u, 0u, { 0u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x38B18u, 3u, { 0x9AD84u, 0u, 0u }, OLD_C, OLD_10 },
+            { 0x2D6F8u, 0u, { 0u, 0u, 0u }, PTR, OLD_10 },
+            { 0x2D974u, 1u, { 0x2Au, 0u, 0u }, PTR, OLD_10 },
+            { 0x2C9B8u, 1u, { 0u, 0u, 0u }, PTR, FLD },
+            { 0x2C8F0u, 1u, { 0xFFFFFFFFu, 0u, 0u }, PTR, FLD },
+            { 0x2C8F0u, 1u, { 0xFFFFFFFEu, 0u, 0u }, PTR, FLD },
+        };
+        const u32 s_40c = DSD(DS_0010740C), s_410 = DSD(DS_00107410);
+        DSD(DS_0010740C) = OLD_C;
+        DSD(DS_00107410) = OLD_10;
+        if_mi_n = 0u;
+        if_mi_field = FLD | 3u;
+        pr_seam = if_mi_probe;
+        game_master_init();
+        pr_seam = NULL;
+        CHECK_EQ_INT((int)if_mi_n, (int)(sizeof want / sizeof want[0]));
+        for (u32 i = 0u; i < sizeof want / sizeof want[0]; i++) {
+            const int ok = i < if_mi_n && memcmp(&if_mi[i], &want[i], sizeof want[i]) == 0;
+            if (!ok)
+                printf("master: call %u is 0x%X(%X, %X, %X) of %u, 0x10740C %X, 0x107410 %X\n", (unsigned)i,
+                       (unsigned)if_mi[i].addr, (unsigned)if_mi[i].a[0], (unsigned)if_mi[i].a[1],
+                       (unsigned)if_mi[i].a[2], (unsigned)if_mi[i].nargs, (unsigned)if_mi[i].p40c,
+                       (unsigned)if_mi[i].p410);
+            CHECK(ok, "0x2F9CC: the call, its arguments and the stores before it");
+        }
+        CHECK_EQ_INT((long)DSD(DS_0010740C), (long)PTR);
+        CHECK_EQ_INT((long)DSD(DS_00107410), (long)FLD);
+        DSD(DS_0010740C) = s_40c;
+        DSD(DS_00107410) = s_410;
+    }
+
+    /* shutdown — 0x1D018: nothing without the flag 0xA2CB1 (`je` 0x1D023);
+     * else the flag is cleared (0x1D02B); with 0x1028C4 (0x1D031) the
+     * sequence's status 0x5DEED and, when it is 4 (`cmp eax,4` 0x1D049), its
+     * stop 0x5DEAF, then 0x1028C4 and 0x1028C0 = 0; with 0x1028C8 (0x1D06B)
+     * each of the four slots' status 0x5DD03 and, when it is not 2 (`cmp
+     * eax,2` 0x1D085), its stop 0x5DC8B, then the slot's handle = 0 (0x1D09E),
+     * and 0x1028C8 = 0 (0x1D0A9); then 0x5D86A. `twice` is the call after
+     * `open`'s, the flag as that one left it. */
+    {
+        enum { EED = 0x5DEED, EAF = 0x5DEAF, D03 = 0x5DD03, C8B = 0x5DC8B, SHUT = 0x5D86A };
+        static const u32 smp_open[4] = { 2u, 4u, 0u, 0x102u }, smp_done[4] = { 2u, 2u, 2u, 2u };
+        static const struct {
+            const char *name;
+            u32 flag, mdi, dig, seq;                    /* flag 0x100: left as the last row's call left it */
+            const u32 *smp;
+            u32 n, zero;                                /* the calls, the zero set at the end */
+            struct { u32 addr, zero; } want[IF_SD_MAX];
+        } sd[] = {
+            { "open", 1u, 0x44444444u, 0x88888888u, 4u, smp_open, 10u, 0xFFu,
+              { { EED, 0x01u }, { EAF, 0x01u }, { D03, 0x07u }, { D03, 0x0Fu }, { C8B, 0x0Fu }, { D03, 0x1Fu },
+                { C8B, 0x1Fu }, { D03, 0x3Fu }, { C8B, 0x3Fu }, { SHUT, 0xFFu } } },
+            { "twice", 0x100u, 0x44444444u, 0x88888888u, 4u, smp_open, 0u, 0x01u, { { 0u, 0u } } },
+            { "idle", 0x80u, 0x44444444u, 0u, 0x104u, smp_open, 2u, 0x87u, { { EED, 0x81u }, { SHUT, 0x87u } } },
+            { "nomdi", 1u, 0u, 0x00000100u, 4u, smp_done, 5u, 0xFBu,
+              { { D03, 0x03u }, { D03, 0x0Bu }, { D03, 0x1Bu }, { D03, 0x3Bu }, { SHUT, 0xFBu } } },
+        };
+        const u32 SD_LO = IF_SD_SLOT - 4u, SD_LEN = DS_001028D0 - (IF_SD_SLOT - 4u);
+        static u8 sv[DS_001028D0 - (IF_SD_SLOT - 4u)];
+        const u8 s_b0 = DSB(DS_000A2CB1 - 1u), s_b1 = DSB(DS_000A2CB1), s_b2 = DSB(DS_000A2CB1 + 1u);
+        tf_snap(sv, SD_LO, SD_LEN);
+        for (u32 r = 0u; r < sizeof sd / sizeof sd[0]; r++) {
+            u32 kept = 0u;
+            mem_fill(SD_LO, 0x6Bu, SD_LEN);             /* every slot field, 0x1028C0 and 0x1028CC */
+            DSD(DS_001028C4) = sd[r].mdi;
+            DSD(DS_001028C8) = sd[r].dig;
+            DSB(DS_000A2CB1 - 1u) = 0xB0u;
+            DSB(DS_000A2CB1 + 1u) = 0xB2u;
+            if (sd[r].flag != 0x100u) DSB(DS_000A2CB1) = (u8)sd[r].flag;
+            if_sd_n = if_sd_k = 0u;
+            if_sd_seq = sd[r].seq;
+            if_sd_smp = sd[r].smp;
+            pr_seam = if_sd_probe;
+            sound_shutdown();
+            pr_seam = NULL;
+            CHECK_EQ_INT((int)if_sd_n, (int)sd[r].n);
+            for (u32 i = 0u; i < sd[r].n; i++) {
+                const int ok = i < if_sd_n && if_sd[i].addr == sd[r].want[i].addr
+                               && if_sd[i].zero == sd[r].want[i].zero;
+                if (!ok)
+                    printf("shutdown %s: call %u is 0x%X with the zero set %02X\n", sd[r].name, (unsigned)i,
+                           (unsigned)if_sd[i].addr, (unsigned)if_sd[i].zero);
+                CHECK(ok, "0x1D018: the call and the stores before it");
+            }
+            CHECK_EQ_INT((int)if_sd_zero(), (int)sd[r].zero);
+            /* what 0x1D018 does not store: the dword below the slots, each
+             * slot's +0x04..+0x17, 0x1028CC and the bytes around the flag. */
+            for (u32 a = SD_LO; a < SD_LO + SD_LEN; a++) {
+                const u32 o = a - IF_SD_SLOT;
+                if (a < IF_SD_SLOT || (a < DS_001028C0 ? o % 0x18u >= 4u : a >= DS_001028C8 + 4u))
+                    kept += (DSB(a) == 0x6Bu);
+            }
+            CHECK_EQ_INT((int)kept, 4 + 4 * 0x14 + 4);
+            CHECK_EQ_INT((int)DSB(DS_000A2CB1 - 1u) << 8 | (int)DSB(DS_000A2CB1 + 1u), 0xB0B2);
+        }
+        tf_put(sv, SD_LO, SD_LEN);
+        DSB(DS_000A2CB1 - 1u) = s_b0;
+        DSB(DS_000A2CB1) = s_b1;
+        DSB(DS_000A2CB1 + 1u) = s_b2;
+    }
+
+    tf_voice_put();
+    return g_failures - before;
+}
+
 /* ---- test_anim.c ---- */
 
 /* port/tests/test_anim.c — the animation-stream interpreter (Task 7).
@@ -5582,7 +5822,7 @@ static int fe_entry_read(u32 e)
  * value: 4100 (3900 before record §47-A, 3500 before §44-A, 3300 before §41,
  * 3200 before §40, 3100 before §39, 2800 before §38) reaches past the
  * capture's last frame, 3616: capture 3546 is loop 3986's frame (cycle-2
- * 2194), and 70 capture frames at the 60.05/70.09 Hz ratio are about 60
+ * 2193), and 70 capture frames at the 60.05/70.09 Hz ratio are about 60
  * loops, so 3616 lies near loop 4046. (The old estimate, loop 3865 from the
  * exit's capture frame 3406, missed that the capture drops the static
  * high-score screen's repeated frames.) */
@@ -6751,7 +6991,7 @@ int test_frontend(void)
          * on 0xE3AAC. */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 2308);
+        CHECK_EQ_INT(fe_cyc2_n, 2307);
         /* Record §45-A. The sound banks' first reads: none before, all after
          * each loop (0x33E51's tails, 0x2C3FC(0x4D)). */
         CHECK_EQ_INT(sd1[0], 0);
@@ -6764,57 +7004,58 @@ int test_frontend(void)
          * state-9 hold 0x12C) hands to state 6 at the end of loop 3984; loop
          * 3985 is the third demo's state-6 entry. It reads its six files
          * there, none before, and presents the frame after the last loader
-         * screen (cycle-2 frame 2193, the middle of capture 3545's
-         * three-frame splice 2192/2193/2194). */
+         * screen (cycle-2 frame 2192, the middle of capture 3545's
+         * three-frame splice 2191/2192/2193). */
         CHECK_EQ_INT(sd3[0], 0);
         CHECK_EQ_INT(sd3[1], 0x3F);
         CHECK_EQ_INT(c2_s6c_i, 3985);
-        CHECK_EQ_INT(c2_s6c_f, 2193);
-        /* The thirteen loader screens the cycle-2 dump holds, with the loop
-         * that drew each: s16title (loop 1973), the second demo's state-6
-         * entry (s16stone, s16kon, s16konsd, s16konsh in loop 2783), s16spisd
-         * (loop 3557, capture 3257), s16hghsc (loop 3684) and the third
-         * demo's state-6 entry (six screens in loop 3985, record §47-A).
-         * 2295 presented frames (loops 1971..4099 and the logo player's 166
-         * screens) + 13 = 2308. The first is this driver's, not the port's:
-         * the original and the port's own boot both read s16title in the
-         * boot attract's phase 2 (0x110D8's palette_acquire(0x396ED28), the
-         * first entry-7 resolve; the headless boot reads it at f 3), but this
-         * driver enters at state 2 and skips that attract, so its first
-         * entry-7 resolve is cycle 2's phase 2 (record §6 of
-         * 2026-09-29-e-open-derivations.md). Seeding entry 7's read bit as
-         * the boot attract leaves it would drop this screen and shift the
-         * cycle-2 dump by one frame (2308 -> 2307, and attract2's named
-         * 2192/2193/2194 splice), an oracle-line move not made here. The f 0/f 3
-         * residue needs a DOSBox-X breakpoint at 0x1B5E9 that logs
-         * DS_000EF6DC (record §6). */
+        CHECK_EQ_INT(c2_s6c_f, 2192);
+        /* The twelve loader screens the cycle-2 dump holds, with the loop
+         * that drew each: the second demo's state-6 entry (s16stone, s16kon,
+         * s16konsd, s16konsh in loop 2783), s16spisd (loop 3557, capture
+         * 3257), s16hghsc (loop 3684) and the third demo's state-6 entry (six
+         * screens in loop 3985, record §47-A). 2295 presented frames (loops
+         * 1971..4099 and the logo player's 166 screens) + 12 = 2307.
+         * s16title's is not among them: game_init() reads entry 7 at boot,
+         * as the original does. 0x2F9CC builds the actor pool (0x2F9E9
+         * 0x2BAF4(1)) and spawns the descriptor 0x9AD84 (0x2F9FC 0x38B18),
+         * whose +0x10 handle 0x0396EB68 is entry 7's first resolve, at frame
+         * word 0 (record 2026-10-13-reverse-i §I.4). Until track I the port
+         * left those two calls out, so entry 7 was first read by the attract's
+         * phase 2 (0x110D8's palette_acquire(0x396ED28)): at f 3 on the
+         * headless boot, and in this driver, which enters at state 2 and
+         * skips the boot attract, in cycle 2's loop 1973 (cycle-2 frame 168,
+         * a thirteenth screen that made the dump 2308 frames and every later
+         * index one higher). That settles the f 0/f 3 residue of record §6
+         * of 2026-09-29-e-open-derivations.md from the bytes; no DOSBox-X
+         * run was made for it. */
         {
-            static const int ld_loop[13] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684,
+            static const int ld_loop[12] = { 2783, 2783, 2783, 2783, 3557, 3684,
                                              3985, 3985, 3985, 3985, 3985, 3985 };
-            static const int ld_frame[13] = { 168, 979, 980, 981, 982, 1757, 1885,
-                                              2187, 2188, 2189, 2190, 2191, 2192 };
-            CHECK_EQ_INT(fe_ld_n, 13);
-            for (int k = 0; k < 13 && k < fe_ld_n; k++) {
+            static const int ld_frame[12] = { 978, 979, 980, 981, 1756, 1884,
+                                              2186, 2187, 2188, 2189, 2190, 2191 };
+            CHECK_EQ_INT(fe_ld_n, 12);
+            for (int k = 0; k < 12 && k < fe_ld_n; k++) {
                 CHECK_EQ_INT(fe_ld_loop[k], ld_loop[k]);
                 CHECK_EQ_INT(fe_ld_frame[k], ld_frame[k]);
             }
         }
         /* Capture 3257's screen: loop 3557's loader screen (cycle-2 frame
-         * 1757) is the frame presented before it (1756) with the `- LOADING -`
+         * 1756) is the frame presented before it (1755) with the `- LOADING -`
          * text over it: every differing pixel is in the text's box, rows
          * 192..197, columns 0..85. */
         {
             char pa[1400], pb[1400];
             static u8 fa[192000], fb[192000];
-            snprintf(pa, sizeof pa, "%s/frame_%04d.raw", fe_cyc2_dir, 1756);
-            snprintf(pb, sizeof pb, "%s/frame_%04d.raw", fe_cyc2_dir, 1757);
+            snprintf(pa, sizeof pa, "%s/frame_%04d.raw", fe_cyc2_dir, 1755);
+            snprintf(pb, sizeof pb, "%s/frame_%04d.raw", fe_cyc2_dir, 1756);
             FILE *xa = fopen(pa, "rb"), *xb = fopen(pb, "rb");
             int ok = xa != NULL && xb != NULL
                   && fread(fa, 1, sizeof fa, xa) == sizeof fa
                   && fread(fb, 1, sizeof fb, xb) == sizeof fb;
             if (xa != NULL) fclose(xa);
             if (xb != NULL) fclose(xb);
-            CHECK(ok, "cycle-2 frames 1756/1757 read back");
+            CHECK(ok, "cycle-2 frames 1755/1756 read back");
             int in_box = 0, out_box = 0;
             for (int px = 0; ok && px < 64000; px++) {
                 if (memcmp(fa + px * 3, fb + px * 3, 3) == 0) continue;
@@ -6822,7 +7063,7 @@ int test_frontend(void)
                 if (y >= 192 && y <= 197 && x <= 85) in_box++;
                 else out_box++;
             }
-            CHECK(in_box > 0, "the loader text is over frame 1756");
+            CHECK(in_box > 0, "the loader text is over frame 1755");
             CHECK_EQ_INT(out_box, 0);
         }
         CHECK_EQ_INT(c2_proj54, 0);
@@ -13572,14 +13813,17 @@ int test_restart(void)
 #define RD_GUARD  5000      /* > 0x4B1 + RD_BOOT: a clock that stops trips it */
 
 /* The displayed frame as the capture sees it: each pixel's DAC colour (the
- * captures are RGB, 320x200x3). After the restart the same colours sit one
- * palette index lower than on the first boot (record named-gaps-b §B.6b): on
- * the first boot a resolve of a not-yet-loaded entry draws '- LOADING -',
- * whose font palette 0x80997C takes slot 1 before the attract's; after the
- * restart the entry is marked loaded (0x1B47A) and the port never evicts it,
- * so no loader draw runs and the attract's palettes start at slot 1. The raw's
- * slot order after a restart is not known (named gap), so the indices are not
- * compared. */
+ * captures are RGB, 320x200x3). Until track I the same colours sat one
+ * palette index lower after the restart than on the first boot (record
+ * named-gaps-b §B.6b): the first boot's attract resolved the not-yet-loaded
+ * entry 7 and drew '- LOADING -', whose font palette 0x80997C took slot 1
+ * before the attract's; after the restart the entry is marked loaded
+ * (0x1B47A), the port never evicts it and no loader draw runs. The master
+ * init now reads entry 7 at boot (0x2F9FC, record 2026-10-13-reverse-i
+ * §I.4), so neither pass draws the loader in the attract, and a hash of the
+ * indices passed this driver too when tried. It is not what is pinned: the
+ * raw's slot order after a restart is not known (named gap), so the colours
+ * are compared. */
 static u32 rd_frame_hash(void)
 {
     const u8 *fb = gfx_display();
@@ -13587,6 +13831,21 @@ static u32 rd_frame_hash(void)
     u32 h = 2166136261u;
     for (u32 i = 0; i < 64000u; i++) h = k11_fnv(h, gfx_dac[fb[i]], 3u);
     return h;
+}
+
+/* Counts 0x1AFE8 (config_file_load) and runs every body. Its one caller is
+ * the master init 0x2F9CC (0x2F9CF), which 0x20C10 calls before its setjmp
+ * (0x20C15, 0x20C1F): once per process, never on a restart (record
+ * 2026-10-13-reverse-i §I.4). */
+static u32 rd_master_inits, rd_master_strings;
+
+/* Also keeps the string handle DS_001082DC as the master init finds it: 0x1C0B8
+ * loads the table before 0x1C0BD calls 0x20C10. */
+static int rd_master_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    (void)nargs; (void)args; (void)eax;
+    if (addr == 0x1AFE8u && rd_master_inits++ == 0u) rd_master_strings = DSD(DS_001082DC);
+    return 0;
 }
 
 int test_restart_drive(void)
@@ -13607,6 +13866,9 @@ int test_restart_drive(void)
         snprintf(spath, sizeof spath, "%s/cmos", sdir);
         CHECK(host_write_file(spath, save, sizeof save), "the scratch save");
         host_save_set_path(spath);
+        rd_master_inits = 0u;
+        rd_master_strings = 0xFEEDFACEu;
+        pr_seam = rd_master_probe;
         game_init();
         host_save_set_path(NULL);
         (void)unlink(spath);
@@ -13664,6 +13926,10 @@ int test_restart_drive(void)
         CHECK_EQ_INT((int)DSW(DS_000F0A64), (int)boot_state[i]);
         CHECK_EQ_INT((long)rd_frame_hash(), (long)boot_hash[i]);
     }
+    pr_seam = NULL;
+    CHECK_EQ_INT((int)rd_master_inits, 1);             /* 0x20C15: before the setjmp, not in the tail */
+    CHECK(DSD(DS_001082DC) != 0u, "the string table is loaded");
+    CHECK_EQ_INT((long)rd_master_strings, (long)DSD(DS_001082DC));   /* 0x1C0B8, before 0x2F9CC */
     printf("test_restart_drive: restart after %d menu iterations (stamp %X, clock %X)\n",
            n, (unsigned)t0, (unsigned)t_last);
     return g_failures - before;

@@ -24,6 +24,23 @@ int game_main(void);
 void game_init(void);
 void game_shutdown(void);
 
+/* 0x1D018 — record 2026-10-13-reverse-i §I.5. The sound shutdown: nothing
+ * unless the sound flag DS_000A2CB1 is set; else it stops the sequence and
+ * the four sample slots that still play, clears their handles and the two
+ * driver handles, and shuts the library down (0x5D86A). One caller, 0x1BE30
+ * (0x1BE33), first in the teardown. */
+void sound_shutdown(void);
+
+/* 0x2F9CC — record 2026-10-13-reverse-i §I.4. The master init, twelve steps:
+ * load the save file (0x1AFE8), build the effects pool (0x13ADC), clear the
+ * input byte (0x4F1E4), reset the actors (0x2BAF4(1)), zero the front-end
+ * origin (0x4F1D0), spawn the descriptor 0x9AD84 (0x38B18; its first resolve
+ * reads s16title.gra), store the options pointer DS_0010740C, validate the
+ * configuration (0x2D6F8), store field 0x2A & ~3 in DS_00107410, then
+ * 0x2C9B8(0) and the volumes 0x2C8F0(-1) and (-2). One caller, 0x20C10
+ * (0x20C15), before its setjmp: game_init runs it once, a restart never. */
+void game_master_init(void);
+
 /* 0x20C24..0x20DE3 — record named-gaps-b §B.2. The post-setjmp tail of
  * 0x20C10: game_init runs it last, and a 0x65431 longjmp re-runs it from
  * game_loop's restart point. */
@@ -86,6 +103,10 @@ void game_key_loop(void);
  * handoff carry PORT markers naming the sub-project that owns them. The coin
  * arm and state 8 call 0x257A4 (game_coin_divert, record §48-W). */
 void game_state_step(void);
+/* 0x11BCC. State 7's timer exit: clears DS_00104B19+2 and DS_00104B15, hands
+ * the state word DS_000F0A64 the word DS_000F0A6C, then voice 0x100. One
+ * caller, game_state_step (0x11E77). */
+void game_state_timer_exit(void);
 
 /* 0x33904: the fixed 0x10-stride list iterator at DS_00107608..DS_00107798.
  * Returns the first entry whose +4 dword is non-zero, or 0 at the end. Exposed

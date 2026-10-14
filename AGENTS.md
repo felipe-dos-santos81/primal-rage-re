@@ -333,15 +333,17 @@ consolidation gate).
   record `docs/superpowers/plans/2026-10-11-reverse-d-derivations.md`). C3g closed
   the callee frontier at 322 rows; track D rows the ported functions the callee
   scan never reached. Track S (record `2026-10-13-reverse-s-derivations.md`) then ported the storage layer
-  (14 functions and the body of `0x2D4EC`), the run clock `0x32970` and the ISR tick `0x2D62C`, with a row each.
-  `make diff-verify`'s counter after it is
-  `990/990 functions VERIFIED; 14725/14725 mutants detected; 1 named gaps;
-  635/822 rows with callees closed (168 have none)`; 23 of the 747 ported functions have no
-  row (17 named gaps and 6 named non-rows, none open; record §D.12, §S.8). The counter does not tell a full row from a
-  weaker one: 10 of the 724 rowed functions have a row that runs the original under code pokes or covers part of it
+  (14 functions and the body of `0x2D4EC`), the run clock `0x32970` and the ISR tick `0x2D62C`, with a row each;
+  track I (record `2026-10-13-reverse-i-derivations.md`) made five inlined functions real ones with rows
+  (`0x2F920`, `0x11BCC`, `0x12CD4`, `0x1D018`, and the master init `0x2F9CC`, which now makes the original's
+  twelve calls). `make diff-verify`'s counter after it is
+  `995/995 functions VERIFIED; 14825/14825 mutants detected; 1 named gaps;
+  636/826 rows with callees closed (169 have none)`; 18 of the 747 ported functions have no
+  row (12 named gaps and 6 named non-rows, none open; record §D.12, §S.8, §I.5). The counter does not tell a full row from a
+  weaker one: 10 of the 729 rowed functions have a row that runs the original under code pokes or covers part of it
   (`0x24C5C`, `game_loop`, `0x2CADC`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`, and track S's
   `0x1AFE8` and `0x1B084`, whose file calls are poked out; `0x1C470` and `0x52106` see none of the hardware
-  writes): count 714 full rows. The open rows are open on the 23 unrowed functions and on the named non-rows
+  writes): count 719 full rows. The open rows are open on the 18 unrowed functions and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and

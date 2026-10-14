@@ -392,6 +392,22 @@ void camera_mode_track_player(void)
     DSD(DS_000F0AF0) = (u32)cam;
 }
 
+/* 0x12CD4 — record 2026-10-13-reverse-i §I.3 */
+void camera_y_step(s32 target)
+{
+    u32 cam = DSD(DS_000F0AEC);                         /* 0x12CD7 */
+    s32 diff = (s32)((u32)target - cam);                /* 0x12CDF sub */
+    s32 mag = diff < 0 ? (s32)(0u - (u32)diff) : diff;  /* 0x12CE7 neg: 0x80000000 stays negative */
+    if (mag <= 0x100) cam = (u32)target;                /* 0x12CF3 jg, 0x12CF5 */
+    else if (diff > 0) cam += 0x100u;                   /* 0x12CFB jle, 0x12CFD */
+    else cam -= 0x100u;                                 /* 0x12D17 */
+    /* PORT: the raw reads the dword 0xF0AF2 `sar 16` (0x12D03/0x12D08), which
+     * is the word DS_000F0AF4 sign-extended (0xF0AF2 is not a global of its
+     * own). */
+    cam += (u32)(s32)(s16)DSW(DS_000F0AF4);
+    DSD(DS_000F0AEC) = cam;                             /* 0x12D0D/0x12D27 */
+}
+
 /* 0x1317C. Camera-y clamp: compute the target from DS_001078F2's high word and
  * step DS_000F0AEC toward it (0x12CD4), then cap at DS_0009AF28[DS_00104AFC]. */
 void camera_y_clamp(void)
@@ -410,21 +426,7 @@ void camera_y_clamp(void)
         target = (s32)(d * (d * c));
     }
 
-    /* 0x12CD4: step or snap DS_000F0AEC, then add the shake offset (the
-     * sign-extended word at DS_000F0AF4, read as DSD(DS_000F0AF2) >> 16). */
-    {
-        s32 cam = (s32)DSD(DS_000F0AEC);
-        s32 diff = (s32)((u32)target - (u32)cam);           /* 0x12CDF sub */
-        s32 mag = diff < 0 ? (s32)(0u - (u32)diff) : diff;  /* 0x12CE7 neg: INT_MIN stays */
-        if (mag <= 0x100) cam = target;
-        else if (diff > 0) cam += 0x100;
-        else cam -= 0x100;
-        /* The raw reads DSD(DS_000F0AF2) >> 16, whose high word is the
-         * sign-extended shake offset at DS_000F0AF4 (DS_000F0AF2 is not a
-         * global of its own). */
-        cam += (s32)(s16)DSW(DS_000F0AF4);
-        DSD(DS_000F0AEC) = (u32)cam;
-    }
+    camera_y_step(target);                          /* 0x131CB 0x12CD4 */
 
     /* 0x131D0: cap camera y at (s32)DSD(0x9AF28 + DS_00104AFC*2) >> 16. */
     {

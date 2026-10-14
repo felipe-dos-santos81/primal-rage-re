@@ -184,6 +184,7 @@ void attract_config_volumes(void)
  * eax,eax`); 0x30864 tests it (0x308C6..0x308CA, record §K11.4). */
 u32 attract_config_volumes_unscaled(void)
 {
+    PR_SEAM_RET(0x2C8F0u, 0xFFFFFFFFu);
     u32 m = config_field_get(0x35u);                /* 0x2C8FD 0x2D974 */
     u32 s;
     /* 0x1CAB8 and 0x1CED4 store into DS_000A2CB8/DS_000A2CB4 and push the
@@ -200,6 +201,7 @@ u32 attract_config_volumes_unscaled(void)
  * 0x2F9CC (0x2FA23, EAX = 0) and 0x30E68. */
 u32 config_voice_gate(s32 v)
 {
+    PR_SEAM_RET(0x2C9B8u, (u32)v);
     if (v >= 0) return 0u;                          /* 0x2C9BA 0x2C9C9 */
     (void)sound_voice(0u);                          /* 0x2C9BE 0x2C3FC */
     return 0x10000u;                                /* 0x2C9C3 */

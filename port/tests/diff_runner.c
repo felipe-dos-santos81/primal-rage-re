@@ -30197,7 +30197,7 @@ D3D_KEY_MUT(swap, 5u)   D3D_KEY_MUT(tick, 6u)
 
 /* 0x1317C camera_y_clamp: no argument. x = the dword 0x1078F2 `sar 16` (0x13185); above 0x1400 the
  * target is d * (d * C) at the x87's 53 bits (0x131AC..0x131B8), truncated by 0x61A4C; then the
- * 0x12CD4 stepper (run on the original side, inlined in the port) and the cap `[0x9AF28 +
+ * 0x12CD4 stepper (run on the original side; the port's camera_y_step) and the cap `[0x9AF28 +
  * word[0x104AFC]*2] sar 16` against the stored camera y (0x131D0..0x131EC). One restatement with
  * one choice flipped per mutant number. */
 static u32 d3e_1317c_core(u32 mut)
@@ -42446,6 +42446,194 @@ static void b_si_2d62c(const u32 *r, u32 *eax) { config_isr_tick(); *eax = r[R_E
 static void m_si_tick_two(const u32 *r, u32 *eax) { DSD(0x00105D88u) += 2u; *eax = r[R_EAX]; }
 static void m_si_tick_word(const u32 *r, u32 *eax) { DSW(0x00105D88u) = (u16)(DSW(0x00105D88u) + 1u); *eax = r[R_EAX]; }
 static void m_si_tick_none(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+
+/* ---- track I task 1: 0x2F920, 0x11BCC and 0x12CD4 become functions (record 2026-10-13-reverse-i
+ * §I.1-§I.3) ---- */
+
+/* 0x2F920 actors_table_clear: `mov ebx,0x14d4; mov eax,0x105f38; xor edx,edx; call 0x61a70`. No
+ * caller reads EAX (0x2BBE8 `xor eax,eax`, 0x2BC08 `mov eax,ecx`, 0x20C47 `xor eax,eax`). */
+static void b_i_2f920(const u32 *r, u32 *eax) { (void)r; actors_table_clear(); *eax = 0u; }
+#define I_TC_MUT(name, base, len) \
+    static void m_i_tc_##name(const u32 *r, u32 *eax) { (void)r; mem_fill((base), 0, (len)); *eax = 0u; }
+I_TC_MUT(short, DS_00105F38, 0x14D3u)      I_TC_MUT(long, DS_00105F38, 0x14D5u)
+I_TC_MUT(base, DS_00105F38 + 1u, 0x14D3u)  I_TC_MUT(low, DS_00105F38 - 1u, 0x14D5u)
+I_TC_MUT(none, DS_00105F38, 0u)
+
+/* 0x11BCC game_state_timer_exit: one restatement with one choice flipped per mutant number. No
+ * caller reads EAX (the tails 0x10DB0, 0x10E18 and 0x2BF08 that follow 0x11E77 load AH first). */
+static void i_11bcc_core(u32 mut)
+{
+    if (mut == 12u) (void)sound_voice(0x100u);                               /* @voicefirst */
+    if (mut == 3u) DSB(DS_00104B19) = 0u;                                    /* @b19 */
+    else if (mut == 4u) DSW(DS_00104B19 + 2u) = 0u;                          /* @b1bw */
+    else if (mut != 1u) DSB(DS_00104B19 + 2u) = 0u;                          /* @nob1b */
+    if (mut == 5u) DSW(DS_00104B15) = 0u;                                    /* @b15w */
+    else if (mut != 2u) DSB(DS_00104B15) = 0u;                               /* @nob15 */
+    if (mut == 6u) DSW(DS_000F0A6C) = DSW(DS_000F0A64);                      /* @swap */
+    else if (mut == 8u) DSD(DS_000F0A64) = DSD(DS_000F0A6C);                 /* @stated */
+    else if (mut == 9u) DSB(DS_000F0A64) = DSB(DS_000F0A6C);                 /* @stateb */
+    else if (mut != 7u) DSW(DS_000F0A64) = DSW(DS_000F0A6C);                 /* @nostate */
+    if (mut == 10u) (void)sound_voice(0u);                                   /* @voice0 */
+    else if (mut != 11u && mut != 12u) (void)sound_voice(0x100u);            /* @novoice */
+}
+static void b_i_11bcc(const u32 *r, u32 *eax) { (void)r; game_state_timer_exit(); *eax = 0u; }
+#define I_TE_MUT(name, n) \
+    static void m_i_te_##name(const u32 *r, u32 *eax) { (void)r; i_11bcc_core(n); *eax = 0u; }
+I_TE_MUT(nob1b, 1u)  I_TE_MUT(nob15, 2u)   I_TE_MUT(b19, 3u)     I_TE_MUT(b1bw, 4u)    I_TE_MUT(b15w, 5u)
+I_TE_MUT(swap, 6u)   I_TE_MUT(nostate, 7u) I_TE_MUT(stated, 8u)  I_TE_MUT(stateb, 9u)  I_TE_MUT(voice0, 10u)
+I_TE_MUT(novoice, 11u) I_TE_MUT(voicefirst, 12u)
+
+/* 0x12CD4 camera_y_step: EAX = the target. One restatement with one choice flipped per mutant
+ * number. No caller reads EAX (0x131D0 `xor eax,eax`). */
+static void i_12cd4_core(u32 target, u32 mut)
+{
+    u32 cam = (mut == 16u) ? (u32)DSW(DS_000F0AEC) : DSD(DS_000F0AEC);       /* @camw */
+    if (mut == 15u) target &= 0xFFFFu;                                       /* @argw */
+    s32 diff = (mut == 1u) ? (s32)(cam - target) : (s32)(target - cam);      /* @diffrev */
+    s32 mag = (diff < 0 && mut != 2u) ? (s32)(0u - (u32)diff) : diff;        /* @noabs */
+    int snap = (mut == 3u) ? (mag <= 0x101)                                  /* @snapwide */
+             : (mut == 4u) ? (mag <= 0xFE)                                   /* @snapnarrow */
+             : (mut == 5u) ? ((u32)mag <= 0x100u)                            /* @unsigned */
+             : (mut == 6u) ? 0                                               /* @nosnap */
+             : (mag <= 0x100);
+    const u32 st = (mut == 8u) ? 0x80u : 0x100u;                             /* @step */
+    if (snap) cam = target;
+    else if ((mut == 7u) ? diff < 0 : diff > 0) cam += st;                   /* @dir */
+    else cam -= st;
+    if (mut == 9u) { }                                                       /* @nooff */
+    else if (mut == 10u) cam += (u32)DSW(DS_000F0AF4);                       /* @shr */
+    else if (mut == 11u) cam += (u32)(s32)(s16)DSW(DS_000F0AF4 - 2u);        /* @lo */
+    else cam += (u32)(s32)(s16)DSW(DS_000F0AF4);
+    if (mut == 12u) DSW(DS_000F0AEC) = (u16)cam;                             /* @storew */
+    else if (mut != 13u) DSD(DS_000F0AEC) = cam;                             /* @nostore */
+}
+static void b_i_12cd4(const u32 *r, u32 *eax) { camera_y_step((s32)r[R_EAX]); *eax = 0u; }
+#define I_CS_MUT(name, n) \
+    static void m_i_cs_##name(const u32 *r, u32 *eax) { i_12cd4_core(r[R_EAX], n); *eax = 0u; }
+I_CS_MUT(diffrev, 1u)  I_CS_MUT(noabs, 2u)   I_CS_MUT(snapwide, 3u) I_CS_MUT(snapnarrow, 4u) I_CS_MUT(unsigned, 5u)
+I_CS_MUT(nosnap, 6u)   I_CS_MUT(dir, 7u)     I_CS_MUT(step, 8u)     I_CS_MUT(nooff, 9u)      I_CS_MUT(shr, 10u)
+I_CS_MUT(lo, 11u)      I_CS_MUT(storew, 12u) I_CS_MUT(nostore, 13u) I_CS_MUT(argw, 15u)      I_CS_MUT(camw, 16u)
+/* ---- track I task 1 bindings end ---- */
+
+/* 0x2F9CC game_master_init: no argument; every callee is a stub. One restatement with one choice
+ * flipped per mutant number. No caller reads EAX (0x20C1A `mov eax,0x1044f4`). */
+static void i_2f9cc_core(u32 mut)
+{
+    const u32 *desc = (const u32 *)(mem + ((mut == 23u) ? 0x0009AD98u : 0x0009AD84u));   /* @desc */
+    u32 f = 0u, v;
+    if (mut == 13u) effects_init();                                              /* @swap12 */
+    if (mut != 1u) (void)config_file_load();                                     /* @noload */
+    if (mut != 2u && mut != 13u) effects_init();                                 /* @noeff */
+    if (mut == 14u) actors_reset();                                              /* @swap34 */
+    if (mut != 3u) frontend_input_reset();                                       /* @noinput */
+    if (mut == 22u) actors_reset_al(0u);                                         /* @reset0 */
+    else if (mut != 4u && mut != 14u) actors_reset();                            /* @noreset */
+    if (mut == 16u) DSD(DS_0010740C) = 0x0001D2D0u;                              /* @ptrearly */
+    if (mut == 15u) frontend_spawn_row(desc, 0u, 0u);                            /* @swap56 */
+    if (mut != 5u) frontend_origin_zero();                                       /* @noorigin */
+    if (mut != 6u && mut != 15u)                                                 /* @norow */
+        frontend_spawn_row(desc, (mut == 24u) ? 1u : 0u, (mut == 25u) ? 1u : 0u);    /* @a2 @a3 */
+    if (mut == 33u) DSD(DS_0010740C) = 0x0001D2D4u;                              /* @ptrval */
+    else if (mut == 34u) DSW(DS_0010740C) = 0xD2D0u;                             /* @ptrw */
+    else if (mut != 7u && mut != 16u && mut != 17u) DSD(DS_0010740C) = 0x0001D2D0u;  /* @noptr */
+    if (mut == 18u) f = config_field_get(0x2Au);                                 /* @fieldearly */
+    if (mut != 8u) config_validate();                                            /* @novalidate */
+    if (mut == 17u) DSD(DS_0010740C) = 0x0001D2D0u;                              /* @ptrlate */
+    if (mut != 9u && mut != 18u) f = config_field_get((mut == 26u) ? 0x29u : 0x2Au);   /* @nofield @field29 */
+    v = (mut == 30u) ? f : (mut == 31u) ? (f & 0xFCu) : (mut == 32u) ? (f & 0xFFFFFFFEu)   /* @nomask @mask8 @mask1 */
+      : (f & 0xFFFFFFFCu);
+    if (mut == 35u) DSW(DS_00107410) = (u16)v;                                   /* @fieldw */
+    else if (mut != 9u && mut != 19u && mut != 36u) DSD(DS_00107410) = v;        /* @nostore */
+    if (mut == 20u) (void)attract_config_volumes_unscaled();                     /* @gatelate */
+    if (mut != 10u) (void)config_voice_gate((mut == 27u) ? -1 : 0);              /* @nogate @gatearg */
+    if (mut == 19u) DSD(DS_00107410) = v;                                        /* @storelate */
+    if (mut == 21u) {                                                            /* @volswap */
+        attract_config_volumes();
+        (void)attract_config_volumes_unscaled();
+        return;
+    }
+    if (mut == 28u) attract_config_volumes();                                    /* @volu2 */
+    else if (mut != 11u && mut != 20u) (void)attract_config_volumes_unscaled();  /* @novolu */
+    if (mut == 29u) (void)attract_config_volumes_unscaled();                     /* @vols1 */
+    else if (mut != 12u) attract_config_volumes();                               /* @novols */
+}
+static void b_i_2f9cc(const u32 *r, u32 *eax) { (void)r; game_master_init(); *eax = 0u; }
+#define I_MI_MUT(name, n) \
+    static void m_i_mi_##name(const u32 *r, u32 *eax) { (void)r; i_2f9cc_core(n); *eax = 0u; }
+I_MI_MUT(noload, 1u)     I_MI_MUT(noeff, 2u)      I_MI_MUT(noinput, 3u)   I_MI_MUT(noreset, 4u)   I_MI_MUT(noorigin, 5u)
+I_MI_MUT(norow, 6u)      I_MI_MUT(noptr, 7u)      I_MI_MUT(novalidate, 8u) I_MI_MUT(nofield, 9u)  I_MI_MUT(nogate, 10u)
+I_MI_MUT(novolu, 11u)    I_MI_MUT(novols, 12u)    I_MI_MUT(swap12, 13u)   I_MI_MUT(swap34, 14u)   I_MI_MUT(swap56, 15u)
+I_MI_MUT(ptrearly, 16u)  I_MI_MUT(ptrlate, 17u)   I_MI_MUT(fieldearly, 18u) I_MI_MUT(storelate, 19u) I_MI_MUT(gatelate, 20u)
+I_MI_MUT(volswap, 21u)   I_MI_MUT(reset0, 22u)    I_MI_MUT(desc, 23u)     I_MI_MUT(a2, 24u)       I_MI_MUT(a3, 25u)
+I_MI_MUT(field29, 26u)   I_MI_MUT(gatearg, 27u)   I_MI_MUT(volu2, 28u)    I_MI_MUT(vols1, 29u)    I_MI_MUT(nomask, 30u)
+I_MI_MUT(mask8, 31u)     I_MI_MUT(mask1, 32u)     I_MI_MUT(ptrval, 33u)   I_MI_MUT(ptrw, 34u)     I_MI_MUT(fieldw, 35u)
+I_MI_MUT(nostore, 36u)
+/* ---- track I task 2 bindings end ---- */
+
+/* 0x1D018 sound_shutdown: no argument; the five library calls are stubs (ail.c's seams, which
+ * fire before the handle is read, so the mutants pass the slot's host handle or none). One
+ * restatement with one choice flipped per mutant number. No caller reads EAX (0x1BE42 `mov
+ * eax,edx` or 0x1BEAB `mov eax,[0x101504]` after 0x1BE33). */
+static void i_1d018_slots(u32 mut)
+{
+    const u32 n = (mut == 22u) ? 3u : (mut == 23u) ? 5u : 4u;                    /* @three @five */
+    if (mut == 29u) DSD(DS_001028C8) = 0u;                                       /* @digfirst */
+    for (u32 k = 0u; k < n; k++) {
+        const u32 h = DS_00102860 + k * 0x18u;
+        s32 st;
+        if (mut == 27u) DSD(h) = 0u;                                             /* @early */
+        st = AIL_sample_status(sound_slot_handle(k));
+        if ((mut == 17u) ? st == 2                                               /* @smpeq */
+          : (mut == 18u) ? (u8)st != 2u                                          /* @smpal */
+          : (mut == 19u) ? st == 4                                               /* @smp4 */
+          : (mut == 20u) ? st > 2                                                /* @smpgt */
+          : (mut == 21u) ? 0                                                     /* @nostopsmp */
+          : st != 2)
+            AIL_stop_sample(sound_slot_handle(k));
+        if (mut == 25u) DSW(h) = 0u;                                             /* @handlew */
+        else if (mut == 26u) DSD(h + 4u) = 0u;                                   /* @handle4 */
+        else if (mut != 24u && mut != 27u) DSD(h) = 0u;                          /* @nohandle */
+    }
+    if (mut != 28u && mut != 29u) DSD(DS_001028C8) = 0u;                         /* @nodig */
+}
+static void i_1d018_core(u32 mut)
+{
+    if (((mut == 2u) ? (u32)DSW(DS_000A2CB1) : (u32)DSB(DS_000A2CB1)) == 0u      /* @flagw */
+        && mut != 1u) return;                                                    /* @noret */
+    if (mut == 4u) DSW(DS_000A2CB1) = 0u;                                        /* @clearw */
+    else if (mut != 3u) DSB(DS_000A2CB1) = 0u;                                   /* @noclear */
+    if (mut == 31u) AIL_shutdown();                                              /* @shutfirst */
+    if (mut == 32u && DSD(DS_001028C8) != 0u) i_1d018_slots(0u);                 /* @order */
+    if (mut == 5u || ((mut == 6u) ? (u32)DSW(DS_001028C4) : DSD(DS_001028C4)) != 0u) {   /* @mdigate @mdiw */
+        const s32 st = AIL_sequence_status(NULL);
+        if ((mut == 7u) ? st != 4                                                /* @seqne */
+          : (mut == 8u) ? (u8)st == 4u                                           /* @seqal */
+          : (mut == 9u) ? 0                                                      /* @nostopseq */
+          : st == 4)
+            AIL_stop_sequence(NULL);
+        if (mut == 12u) DSW(DS_001028C4) = 0u;                                   /* @c4w */
+        else if (mut != 10u) DSD(DS_001028C4) = 0u;                              /* @noc4 */
+        if (mut == 13u) DSW(DS_001028C0) = 0u;                                   /* @c0w */
+        else if (mut != 11u) DSD(DS_001028C0) = 0u;                              /* @noc0 */
+    } else if (mut == 14u) {
+        DSD(DS_001028C0) = 0u;                                                   /* @c0always */
+    }
+    if (mut != 32u
+        && (mut == 15u || ((mut == 16u) ? (u32)DSW(DS_001028C8) : DSD(DS_001028C8)) != 0u))   /* @diggate @digw */
+        i_1d018_slots(mut);
+    if (mut != 30u && mut != 31u) AIL_shutdown();                                /* @noshut */
+}
+static void b_i_1d018(const u32 *r, u32 *eax) { (void)r; sound_shutdown(); *eax = 0u; }
+#define I_SD_MUT(name, n) \
+    static void m_i_sd_##name(const u32 *r, u32 *eax) { (void)r; i_1d018_core(n); *eax = 0u; }
+I_SD_MUT(noret, 1u)     I_SD_MUT(flagw, 2u)     I_SD_MUT(noclear, 3u)   I_SD_MUT(clearw, 4u)    I_SD_MUT(mdigate, 5u)
+I_SD_MUT(mdiw, 6u)      I_SD_MUT(seqne, 7u)     I_SD_MUT(seqal, 8u)     I_SD_MUT(nostopseq, 9u) I_SD_MUT(noc4, 10u)
+I_SD_MUT(noc0, 11u)     I_SD_MUT(c4w, 12u)      I_SD_MUT(c0w, 13u)      I_SD_MUT(c0always, 14u) I_SD_MUT(diggate, 15u)
+I_SD_MUT(digw, 16u)     I_SD_MUT(smpeq, 17u)    I_SD_MUT(smpal, 18u)    I_SD_MUT(smp4, 19u)     I_SD_MUT(smpgt, 20u)
+I_SD_MUT(nostopsmp, 21u) I_SD_MUT(three, 22u)   I_SD_MUT(five, 23u)     I_SD_MUT(nohandle, 24u) I_SD_MUT(handlew, 25u)
+I_SD_MUT(handle4, 26u)  I_SD_MUT(early, 27u)    I_SD_MUT(nodig, 28u)    I_SD_MUT(digfirst, 29u) I_SD_MUT(noshut, 30u)
+I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
+/* ---- track I task 3 bindings end ---- */
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57809,6 +57997,111 @@ static const binding_t k_bindings[] = {
     { "config_file_save@writefirst", m_sc_sv_writefirst, 0x000000FFu },
     { "config_file_save@wlen", m_sc_sv_wlen, 0x000000FFu },
     { "config_file_save@wsrc", m_sc_sv_wsrc, 0x000000FFu },
+    { "actors_table_clear",              b_i_2f920, 0x00000000u },
+    { "actors_table_clear@short", m_i_tc_short, 0x00000000u },
+    { "actors_table_clear@long", m_i_tc_long, 0x00000000u },
+    { "actors_table_clear@base", m_i_tc_base, 0x00000000u },
+    { "actors_table_clear@low", m_i_tc_low, 0x00000000u },
+    { "actors_table_clear@none", m_i_tc_none, 0x00000000u },
+    { "game_state_timer_exit",           b_i_11bcc, 0x00000000u },
+    { "game_state_timer_exit@nob1b", m_i_te_nob1b, 0x00000000u },
+    { "game_state_timer_exit@nob15", m_i_te_nob15, 0x00000000u },
+    { "game_state_timer_exit@b19", m_i_te_b19, 0x00000000u },
+    { "game_state_timer_exit@b1bw", m_i_te_b1bw, 0x00000000u },
+    { "game_state_timer_exit@b15w", m_i_te_b15w, 0x00000000u },
+    { "game_state_timer_exit@swap", m_i_te_swap, 0x00000000u },
+    { "game_state_timer_exit@nostate", m_i_te_nostate, 0x00000000u },
+    { "game_state_timer_exit@stated", m_i_te_stated, 0x00000000u },
+    { "game_state_timer_exit@stateb", m_i_te_stateb, 0x00000000u },
+    { "game_state_timer_exit@voice0", m_i_te_voice0, 0x00000000u },
+    { "game_state_timer_exit@novoice", m_i_te_novoice, 0x00000000u },
+    { "game_state_timer_exit@voicefirst", m_i_te_voicefirst, 0x00000000u },
+    { "camera_y_step",                   b_i_12cd4, 0x00000000u },
+    { "camera_y_step@diffrev", m_i_cs_diffrev, 0x00000000u },
+    { "camera_y_step@noabs", m_i_cs_noabs, 0x00000000u },
+    { "camera_y_step@snapwide", m_i_cs_snapwide, 0x00000000u },
+    { "camera_y_step@snapnarrow", m_i_cs_snapnarrow, 0x00000000u },
+    { "camera_y_step@unsigned", m_i_cs_unsigned, 0x00000000u },
+    { "camera_y_step@nosnap", m_i_cs_nosnap, 0x00000000u },
+    { "camera_y_step@dir", m_i_cs_dir, 0x00000000u },
+    { "camera_y_step@step", m_i_cs_step, 0x00000000u },
+    { "camera_y_step@nooff", m_i_cs_nooff, 0x00000000u },
+    { "camera_y_step@shr", m_i_cs_shr, 0x00000000u },
+    { "camera_y_step@lo", m_i_cs_lo, 0x00000000u },
+    { "camera_y_step@storew", m_i_cs_storew, 0x00000000u },
+    { "camera_y_step@nostore", m_i_cs_nostore, 0x00000000u },
+    { "camera_y_step@argw", m_i_cs_argw, 0x00000000u },
+    { "camera_y_step@camw", m_i_cs_camw, 0x00000000u },
+    { "game_master_init",                b_i_2f9cc, 0x00000000u },
+    { "game_master_init@noload", m_i_mi_noload, 0x00000000u },
+    { "game_master_init@noeff", m_i_mi_noeff, 0x00000000u },
+    { "game_master_init@noinput", m_i_mi_noinput, 0x00000000u },
+    { "game_master_init@noreset", m_i_mi_noreset, 0x00000000u },
+    { "game_master_init@noorigin", m_i_mi_noorigin, 0x00000000u },
+    { "game_master_init@norow", m_i_mi_norow, 0x00000000u },
+    { "game_master_init@noptr", m_i_mi_noptr, 0x00000000u },
+    { "game_master_init@novalidate", m_i_mi_novalidate, 0x00000000u },
+    { "game_master_init@nofield", m_i_mi_nofield, 0x00000000u },
+    { "game_master_init@nogate", m_i_mi_nogate, 0x00000000u },
+    { "game_master_init@novolu", m_i_mi_novolu, 0x00000000u },
+    { "game_master_init@novols", m_i_mi_novols, 0x00000000u },
+    { "game_master_init@swap12", m_i_mi_swap12, 0x00000000u },
+    { "game_master_init@swap34", m_i_mi_swap34, 0x00000000u },
+    { "game_master_init@swap56", m_i_mi_swap56, 0x00000000u },
+    { "game_master_init@ptrearly", m_i_mi_ptrearly, 0x00000000u },
+    { "game_master_init@ptrlate", m_i_mi_ptrlate, 0x00000000u },
+    { "game_master_init@fieldearly", m_i_mi_fieldearly, 0x00000000u },
+    { "game_master_init@storelate", m_i_mi_storelate, 0x00000000u },
+    { "game_master_init@gatelate", m_i_mi_gatelate, 0x00000000u },
+    { "game_master_init@volswap", m_i_mi_volswap, 0x00000000u },
+    { "game_master_init@reset0", m_i_mi_reset0, 0x00000000u },
+    { "game_master_init@desc", m_i_mi_desc, 0x00000000u },
+    { "game_master_init@a2", m_i_mi_a2, 0x00000000u },
+    { "game_master_init@a3", m_i_mi_a3, 0x00000000u },
+    { "game_master_init@field29", m_i_mi_field29, 0x00000000u },
+    { "game_master_init@gatearg", m_i_mi_gatearg, 0x00000000u },
+    { "game_master_init@volu2", m_i_mi_volu2, 0x00000000u },
+    { "game_master_init@vols1", m_i_mi_vols1, 0x00000000u },
+    { "game_master_init@nomask", m_i_mi_nomask, 0x00000000u },
+    { "game_master_init@mask8", m_i_mi_mask8, 0x00000000u },
+    { "game_master_init@mask1", m_i_mi_mask1, 0x00000000u },
+    { "game_master_init@ptrval", m_i_mi_ptrval, 0x00000000u },
+    { "game_master_init@ptrw", m_i_mi_ptrw, 0x00000000u },
+    { "game_master_init@fieldw", m_i_mi_fieldw, 0x00000000u },
+    { "game_master_init@nostore", m_i_mi_nostore, 0x00000000u },
+    { "sound_shutdown",                  b_i_1d018, 0x00000000u },
+    { "sound_shutdown@noret", m_i_sd_noret, 0x00000000u },
+    { "sound_shutdown@flagw", m_i_sd_flagw, 0x00000000u },
+    { "sound_shutdown@noclear", m_i_sd_noclear, 0x00000000u },
+    { "sound_shutdown@clearw", m_i_sd_clearw, 0x00000000u },
+    { "sound_shutdown@mdigate", m_i_sd_mdigate, 0x00000000u },
+    { "sound_shutdown@mdiw", m_i_sd_mdiw, 0x00000000u },
+    { "sound_shutdown@seqne", m_i_sd_seqne, 0x00000000u },
+    { "sound_shutdown@seqal", m_i_sd_seqal, 0x00000000u },
+    { "sound_shutdown@nostopseq", m_i_sd_nostopseq, 0x00000000u },
+    { "sound_shutdown@noc4", m_i_sd_noc4, 0x00000000u },
+    { "sound_shutdown@noc0", m_i_sd_noc0, 0x00000000u },
+    { "sound_shutdown@c4w", m_i_sd_c4w, 0x00000000u },
+    { "sound_shutdown@c0w", m_i_sd_c0w, 0x00000000u },
+    { "sound_shutdown@c0always", m_i_sd_c0always, 0x00000000u },
+    { "sound_shutdown@diggate", m_i_sd_diggate, 0x00000000u },
+    { "sound_shutdown@digw", m_i_sd_digw, 0x00000000u },
+    { "sound_shutdown@smpeq", m_i_sd_smpeq, 0x00000000u },
+    { "sound_shutdown@smpal", m_i_sd_smpal, 0x00000000u },
+    { "sound_shutdown@smp4", m_i_sd_smp4, 0x00000000u },
+    { "sound_shutdown@smpgt", m_i_sd_smpgt, 0x00000000u },
+    { "sound_shutdown@nostopsmp", m_i_sd_nostopsmp, 0x00000000u },
+    { "sound_shutdown@three", m_i_sd_three, 0x00000000u },
+    { "sound_shutdown@five", m_i_sd_five, 0x00000000u },
+    { "sound_shutdown@nohandle", m_i_sd_nohandle, 0x00000000u },
+    { "sound_shutdown@handlew", m_i_sd_handlew, 0x00000000u },
+    { "sound_shutdown@handle4", m_i_sd_handle4, 0x00000000u },
+    { "sound_shutdown@early", m_i_sd_early, 0x00000000u },
+    { "sound_shutdown@nodig", m_i_sd_nodig, 0x00000000u },
+    { "sound_shutdown@digfirst", m_i_sd_digfirst, 0x00000000u },
+    { "sound_shutdown@noshut", m_i_sd_noshut, 0x00000000u },
+    { "sound_shutdown@shutfirst", m_i_sd_shutfirst, 0x00000000u },
+    { "sound_shutdown@order", m_i_sd_order, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

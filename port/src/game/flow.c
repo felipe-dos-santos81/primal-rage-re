@@ -292,7 +292,7 @@ u32 string_decode(u32 id, u8 *out, u32 outlen)
     return ret;
 }
 
-/* PORT: 0x47370. The original loads the loaded-config language file (index 0 =
+/* 0x47370 — the string table. PORT: the original loads the loaded-config language file (index 0 =
  * english.txt, selected by the DS_00104528 byte 0x20C10 extracts) through the
  * 0x1C308/0x1E6D8 paged-memory manager and the 0x61xxx DOS file I/O, neither of
  * which the port has. The port replaces both with a direct stdio read into
@@ -6799,6 +6799,23 @@ void game_init_null(void)
 {
 }
 
+/* 0x2F9CC — record 2026-10-13-reverse-i §I.4 */
+void game_master_init(void)
+{
+    (void)config_file_load();                       /* 0x2F9CF 0x1AFE8; AL is not read (0x2F9D4 calls on) */
+    effects_init();                                 /* 0x2F9D4 0x13ADC */
+    frontend_input_reset();                         /* 0x2F9D9..0x2F9DB 0x4F1E4 (EAX = 0, unread: 0x4F1E5 loads it) */
+    actors_reset();                                 /* 0x2F9E0..0x2F9E9 0x2BAF4 (EAX = 1; ECX = EBX = 0) */
+    frontend_origin_zero();                         /* 0x2F9EE..0x2F9F2 0x4F1D0 (EAX = EDX = 0) */
+    frontend_spawn_row((const u32 *)(mem + 0x9AD84u), 0u, 0u);   /* 0x2F9F7..0x2F9FC 0x38B18 (EDX 0x2F9F0, EBX 0x2F9E7) */
+    DSD(DS_0010740C) = 0x0001D2D0u;                 /* 0x2FA01 (record §K11.2): [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
+    config_validate();                              /* 0x2FA0B 0x2D6F8 */
+    DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
+    (void)config_voice_gate(0);                     /* 0x2FA21..0x2FA23 0x2C9B8; EAX is not read (0x2FA28 loads it) */
+    (void)attract_config_volumes_unscaled();        /* 0x2FA28..0x2FA2D 0x2C8F0(-1); EAX is not read (0x2FA32) */
+    attract_config_volumes();                       /* 0x2FA32..0x2FA37 0x2C8F0(-2) */
+}
+
 void game_init(void)
 {
     char index_path[512];
@@ -6855,14 +6872,16 @@ void game_init(void)
     render_list_init();     /* 0x1C350 */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     (void)sound_buffers_alloc();  /* 0x1C0B1 0x1D0BC (record k7-k12 §0.7.1) */
-    /* 0x20C15 0x2F9CC, before the setjmp (0x20C1F), so a 0x65431 longjmp does
-     * not re-run it (record named-gaps-b §B.2). It runs 0x13ADC (effects_init,
-     * inside actors_init above) and 0x2D6F8 (config_validate), so the field
-     * 0x29 the tail reads is what the defaults path wrote. */
-    (void)config_file_load();         /* 0x2F9CF 0x1AFE8, 0x2F9CC's first call; AL is not read (0x2F9D4 calls on) */
-    DSD(DS_0010740C) = 0x0001D2D0u;   /* 0x2FA01 (record §K11.2): 0x2F9CC's pointer; [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
-    config_validate();          /* 0x2F9CC's 0x2D6F8 */
-    DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
+    /* 0x1C0B6 xor eax,eax; 0x1C0B8 0x47370(0): the string table, before
+     * 0x1C0BD 0x20C10, so the loader screen of the master init's entry-7
+     * resolve (0x2F9FC) draws `- LOADING -` (record 2026-10-13-reverse-i
+     * §I.4). The tail loads it again (0x20C7F); the port's loader returns at
+     * once the second time. */
+    game_string_table_load(s_game_dir);
+    /* 0x20C15, before the setjmp (0x20C1F), so a 0x65431 longjmp does not
+     * re-run it (record named-gaps-b §B.2). Its 0x2D6F8 (config_validate)
+     * leaves the field 0x29 the tail reads as the defaults path wrote it. */
+    game_master_init();         /* 0x20C15 0x2F9CC */
     svcmenu_register();         /* PORT: the options-menu table callbacks (record §K11.2) */
     /* 0x20C1A/0x20C1F setjmp(0x1044F4): the restart point is game_loop's
      * (record named-gaps-b §B.2); the tail follows. */
@@ -6912,9 +6931,10 @@ void game_init_resume(void)
     config_set_credit_row_init();
     (void)config_run_clock(0u);                        /* 0x20CD1/0x20CD5 0x32970 */
     DSW(DS_00104AFC) = 0u;  /* 0x20CD3 xor ebx,ebx; 0x20CDF (0x32970, 0x13ADC keep EBX) */
-    /* 0x47370 loads the localisation table (0x20C10 calls it before 0x10E80);
-     * the port reads ENGLISH.TXT directly rather than the DOS memory/file
-     * managers. 0x121A0's caption comes from it. */
+    /* 0x20C7F 0x47370 reloads the localisation table (0x1C0B8 loaded it
+     * first, game_init above); the port reads ENGLISH.TXT directly rather
+     * than the DOS memory/file managers, once. 0x121A0's caption comes from
+     * it. */
     game_string_table_load(s_game_dir);
 
     game_state_init();      /* 0x20C10's FUN_00010E80 */
@@ -6940,19 +6960,43 @@ void game_init_resume(void)
      * does not have and no capture pins. */
 }
 
+/* 0x1D018 — record 2026-10-13-reverse-i §I.5. Nothing unless the sound flag
+ * DS_000A2CB1 is set (0x1D01C). Else the flag is cleared; with an MDI driver
+ * (DS_001028C4) a sequence whose 0x5DEED status is 4 is stopped (0x5DEAF) and
+ * DS_001028C4 and DS_001028C0 are zeroed; with a DIG driver (DS_001028C8)
+ * each of the four slots whose 0x5DD03 status is not 2 is ended (0x5DC8B) and
+ * its handle dword zeroed, then DS_001028C8; then 0x5D86A.
+ * PORT: the four handle arguments are the port's host objects, not the
+ * dwords the raw pushes: s_sequence for [0x1028C0] (0x1D03A, 0x1D04E) and
+ * s_samples[i] for [esi+0x102860] (0x1D076, 0x1D08A); see the sound-module
+ * comment above. game_audio_init leaves DS_001028C4 at 0, so in a run of the
+ * port the sequence arm is not taken and the sequence is stopped by
+ * AIL_shutdown's own seq_stop. */
+void sound_shutdown(void)
+{
+    if (DSB(DS_000A2CB1) == 0u) return;                    /* 0x1D01C/0x1D023 */
+    DSB(DS_000A2CB1) = 0u;                                 /* 0x1D029/0x1D02B */
+    if (DSD(DS_001028C4) != 0u) {                          /* 0x1D031 */
+        if (AIL_sequence_status(s_sequence) == 4)          /* 0x1D041 0x5DEED, 0x1D049 `cmp eax,4` */
+            AIL_stop_sequence(s_sequence);                 /* 0x1D055 0x5DEAF */
+        DSD(DS_001028C4) = 0u;                             /* 0x1D05F */
+        DSD(DS_001028C0) = 0u;                             /* 0x1D065 */
+    }
+    if (DSD(DS_001028C8) != 0u) {                          /* 0x1D06B */
+        for (u32 off = 0; off != SND_SLOT_END; off += SND_SLOT_STRIDE) {   /* 0x1D074 0x1D0A4 */
+            if (snd_slot_status(off) != 2)                 /* 0x1D07D 0x5DD03, 0x1D085 `cmp eax,2` */
+                AIL_stop_sample(s_samples[off / SND_SLOT_STRIDE]);   /* 0x1D091 0x5DC8B */
+            DSD(DS_00102860 + off) = 0u;                   /* 0x1D09E */
+        }
+        DSD(DS_001028C8) = 0u;                             /* 0x1D0A9 */
+    }
+    AIL_shutdown();                                        /* 0x1D0AF 0x5D86A */
+}
+
 /* 0x1BE30 teardown. */
 void game_shutdown(void)
 {
-    /* 0x1D018 clears its enable flag, stops the sequence and the sample
-     * voices, then calls AIL_shutdown. AIL_shutdown releases the sample and
-     * sequence handles itself, so the explicit stop mirrors the original's
-     * ordering; clearing DS_000A2CB1 makes game_audio_init() idempotent. */
-    if (DSB(DS_000A2CB1)) {
-        DSB(DS_000A2CB1) = 0;
-        DSD(DS_001028C8) = 0;          /* 0x1D0A9, after the voices stop */
-        AIL_stop_sequence(s_sequence);
-        AIL_shutdown();     /* 0x5d86a */
-    }
+    sound_shutdown();                                      /* 0x1BE33 0x1D018 */
     /* PORT: the memory frees (0x1BE38..0x1BEA6 0x1ADE4) are no-ops under flat mem[]; 0x1BEB0 0x4FB98
      * (int 10h set mode) and 0x1BEBA 0x10D34 (the CD-drive restore) are the host's. */
     (void)config_file_save();   /* 0x1BEB5 0x1B084; AL is not read (0x1BEBA calls on) */
@@ -7694,6 +7738,16 @@ void game_frame(void)
     }
 }
 
+/* 0x11BCC — record 2026-10-13-reverse-i §I.2 */
+void game_state_timer_exit(void)
+{
+    DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCC/0x11BCE */
+    DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
+    DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BDA/0x11BE0 */
+    /* PORT: 0x11BE6 0x29D60 is a ret-only no-op, not called. */
+    (void)sound_voice(0x100u);              /* 0x11BEB/0x11BF0 `jmp 0x2C3FC` */
+}
+
 /* 0x11F28 — record §47-M. One coin/start event: requires a credit (0x2C060),
  * then tests the event's mask in the DS_0009ACBC table against the
  * newly-pressed bits DS_001088E4, and debits one credit through 0x2CA7C.
@@ -7760,13 +7814,7 @@ void game_state_step(void)
              * the one whose PRE value is 1. */
             DSW(DS_000F0A6A) = (u16)sVar1;              /* 0x11E67 */
             if (sVar1 == 0) {                           /* 0x11E72 (jge) */
-                /* 0x11BCC the timer exit. */
-                DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCE */
-                DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
-                DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BE0 */
-                /* PORT: 0x11BE6 0x29D60 is a ret-only no-op, not called;
-                 * then 0x11BF0 `jmp 0x2C3FC`. */
-                (void)sound_voice(0x100u);              /* 0x11BEB/0x11BF0 0x2C3FC */
+                game_state_timer_exit();                /* 0x11E77 0x11BCC */
             } else {
                 fight_arena_frame();                    /* 0x11E8F 0x263F4 */
                 fight_health_bars();                    /* 0x11E94 0x33F08 */

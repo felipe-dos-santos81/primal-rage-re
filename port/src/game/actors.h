@@ -16,6 +16,11 @@ void actors_reset(void);
 /* 0x2BAF4 with AL = al: non-zero runs 0x52106/0x336C0, zero copies the
  * 0xFA00-byte buffer [0xE87A0] into [0xE87A4] instead (record §47-C). */
 void actors_reset_al(u32 al);
+/* 0x2F920. Zeroes the 0x14D4 bytes of the record grid DS_00105F38. Called by
+ * actors_reset (0x2BBDF).
+ * PORT: the original's second caller, the init tail at 0x20C42, is left out
+ * with 0x38B70 and 0x2BAF4(1) around it (record named-gaps-b §B.11). */
+void actors_table_clear(void);
 /* 0x38B70. Zeroes the actor cursors and the two 7-dword arrays DS_00107A00 and
  * the front-end row table DS_00107A1C; actors_reset calls it (0x2BBDA). */
 void actor_cursor_reset(void);

@@ -21639,7 +21639,7 @@ D3E_SPECS = [
     # 0x1318D) gives the target 0, else `fild` d = x - 0x1400, `fstp dword` (exact: d < 2^24),
     # `fld; fld st(0); fmul dword [0x804a8]; fmulp` = d * (d * C) at the control word's 53 bits and
     # 0x61A4C (`frndint` under a control word whose high byte is 0x1F: chop), `fistp`. Then 0x12CD4
-    # (its one caller is 0x131CB: run on the original side, inlined in the port): snap when
+    # (its one caller is 0x131CB: run on the original side; the port's camera_y_step, its own row): snap when
     # |target - cam| <= 0x100 (`jg` 0x12CF3), else step 0x100 toward it, plus the dword 0xF0AF2
     # `sar 16` (the shake word 0xF0AF4, signed). Then the cap `[0x9AF28 + word[0x104AFC]*2] sar 16`
     # (the index zero-extended, `xor eax,eax; mov ax,..` 0x131D0), stored when below the camera y
@@ -24430,7 +24430,7 @@ D4D_SPECS += [
     # 0x4880 bytes, the record pool 0xEBA0, the ring 0x80), the two list heads, the 580 records
     # appended to the free list (0x249C0, tail insert; `jb` 0x2BBB6 against the re-read pool base
     # + 0xEBA0), 0x13ADC (a stub), 0x4F228 with AL = 0, the pair 0x105B44/0x105B48, 0x1C350,
-    # 0x38B70, 0x2F920 (the 0x14D4-byte fill, no port function: the port fills inline), then by the
+    # 0x38B70, 0x2F920 (the 0x14D4-byte fill, the port's actors_table_clear; its own row), then by the
     # flag 0x52106(0) (a stub: `in`/`out`) and 0x336C0, or the 0xFA00-byte copy [0xE87A0] ->
     # [0xE87A4]; the byte 0x105BED = 1. The lock byte 0xBCD60 is 0 or 0x80: with a 1 (the image's
     # value) 0x2EA30 holds it at 0 across the body, which every stub call's memory shows and the
@@ -29805,8 +29805,8 @@ D5H_SPECS += [
                 "@one")),
     # States 5, 7, 8 and 9. 5: voice 0x100, 0x1EA08, 0x2C06C(0x1D), the run clock, then the bytes
     # 0xF0A6F/0xF0A72 = 0, the words 0xF0A6A = 0x12C, 0xF0A6C = 6, 0xF0A64 = 9. 7: the timer word
-    # 0xF0A6A - 1 is stored; zero-extended and below 1 (`jge`: only 0) it runs 0x11BCC (inlined in the
-    # port: the bytes 0x104B1B/0x104B15 = 0, 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60, voice
+    # 0xF0A6A - 1 is stored; zero-extended and below 1 (`jge`: only 0) it runs 0x11BCC (the port's
+    # game_state_timer_exit, its own row: the bytes 0x104B1B/0x104B15 = 0, 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60, voice
     # 0x100 by a tail jump), else 0x263F4 and 0x33F08. 8: the run clock and 0x257A4(3), then the tails.
     # 9: the timer the same way; at 0 the state takes the word 0xF0A6C and, with the byte 0xF0A71 set,
     # 0x10EE4 runs (0x11EF2/0x11EF6; the port left this call out until D5, record §3). 0x11BCC, 0x29D60
@@ -33209,6 +33209,180 @@ SI_SPECS = [
     ], eax_mask=0xFFFFFFFF, mutants=("@two", "@word", "@none")),
 ]
 D1_SPECS += SI_SPECS
+
+# ---- track I task 1: 0x2F920, 0x11BCC and 0x12CD4 become functions (record 2026-10-13-reverse-i) ------
+I_GRID, I_GRID_LEN = 0x00105F38, 0x14D4         # `mov eax,0x105f38` 0x2F927, `mov ebx,0x14d4` 0x2F922
+
+
+def i_tc_case(cid, regs, k, fill):
+    """0x2F920: the grid's 0x14D4 bytes seeded non-zero (`fill(i)`) with the byte on either side
+    (0x105F37 = 0x5A, 0x10740C = 0x5B), cut in 0x40-byte pokes of which this case takes every third,
+    from the k-th (a case holds 40 pokes; the 84 are spread over three cases). The other bytes are
+    the image's, which are zero there."""
+    chunks = sorted(d1d_chunks(I_GRID - 1, b"\x5a" + bytes(fill(i) for i in range(I_GRID_LEN)) + b"\x5b").items())
+    return Case(cid, regs, dict(chunks[k::3]))
+
+
+def i_te_case(cid, regs, state, nxt, stub=None):
+    """0x11BCC: the bytes 0x104B15 and 0x104B1B between seeded neighbours, and the state block
+    0xF0A62..0xF0A6F: the state word 0xF0A64, the next-state word 0xF0A6C, every other word seeded."""
+    return Case(cid, regs, {0x00104B14: bytes([0x14, 0x5B, 0x16]), 0x00104B19: bytes([0x19, 0x1A, 0x5A, 0x1C, 0x1D]),
+                            0x000F0A62: b"".join(le16(w) for w in (0x6262, state, 0x6666, 0x6868, 0x6A6A, nxt,
+                                                                   0x6E6E))}, stub or {})
+
+
+def i_cs_case(cid, cam, target, shake=0x0003):
+    """0x12CD4: EAX = the target; the camera block (y = cam, the shake word 0xF0AF4; the x dword's high
+    word 0xC1C2 is the low word of the dword 0xF0AF2) and the dword before it."""
+    return Case(cid, {"eax": target & 0xFFFFFFFF}, {**d1h_cam(y=cam & 0xFFFFFFFF, shake=shake),
+                                                    0x000F0AE8: le32(0xE8E9EAEB)})
+
+
+I_C = 0x0001FF80                                # a camera y whose 0x100 step up carries into the high word
+# 0x2F9CC's callees with no stub before this row (clobbers: E.callee_clobbers over the image), seamed by it
+I_LOAD = E.Call(0x1AFE8, (), clobbers=("edi", "ebp"))
+I_VALIDATE = E.Call(0x2D6F8, ())
+I_GATE = E.Call(0x2C9B8, ("eax",))
+I_MI_CALLS = (I_LOAD, D4D_EFF_INIT, D5A_INPUT, D5A_RESET, D5A_ORIGIN, D5A_ROW, I_VALIDATE, D4C_DIP, I_GATE, D5I2_VOL)
+I_MI_REG = {"eax": 0xFFFFFFFF, "ebx": 0xFFFFFFFF, "ecx": 0xFFFFFFFF, "edx": 0xFFFFFFFF, "esi": 0xFFFFFFFF,
+            "edi": 0xFFFFFFFF, "ebp": 0xFFFFFFFF}
+
+
+def i_mi_case(cid, regs, field, **eax):
+    """0x2F9CC: the dwords 0x10740C and 0x107410 seeded (no byte of either is one the function
+    stores for this case's field) between two seeded dwords; 0x2D974's stub answers `field`, the other
+    stubs what `eax` names by the callee's last five hex digits (0 otherwise)."""
+    se = {0x2D974: field}
+    se.update({int(k[1:], 16): v for k, v in eax.items()})
+    return Case(cid, regs, {0x00107408: le32(0x08080808) + le32(0xC0C0C0C0) + le32(0xEDEDEDED) + le32(0x14141414)}, se)
+
+
+# 0x1D018's callees: the five library wrappers, stubbed through ail.c's seams. A wrapper's seam passes no
+# argument (the handle the raw pushes is a mem[] dword, the port's a host pointer: record C3b §C3b.5), so
+# the calls record none. 0x5D86A had no stub before this row.
+I_SD_SHUT = E.Call(0x5D86A, (), clobbers=("ebx", "ecx", "edx"))
+I_SD_CALLS = (E.Call(0x5DEED, (), eax=0), E.Call(0x5DEAF, (), clobbers=("ebx", "ecx", "edx")),
+              E.Call(0x5DD03, (), eax=0), E.Call(0x5DC8B, (), clobbers=("ebx", "ecx", "edx")), I_SD_SHUT)
+
+
+def i_sd_case(cid, regs, flag, mdi, dig, seq=4, smp=2, shut=0):
+    """0x1D018: the flag byte 0xA2CB1 between two seeded bytes; the dword below the slots, the four
+    0x18-byte slot records (a handle that differs per slot, every other byte seeded non-zero), then
+    the dwords 0x1028C0 (the sequence handle), 0x1028C4 (`mdi`), 0x1028C8 (`dig`) and 0x1028CC. The
+    stubs of 0x5DEED, 0x5DD03 and 0x5D86A answer `seq`, `smp` and `shut`."""
+    slots = b"".join(le32(0x0010C000 + k * 0x18) + bytes(0x64 + k * 0x18 + i for i in range(0x14)) for k in range(4))
+    buf = le32(0x5C5C5C5C) + slots + le32(0x0010B0C0) + le32(mdi) + le32(dig) + le32(0xCCCCCCCC)
+    return Case(cid, regs, {0x000A2CB0: bytes([0xB0, flag, 0xB2]), **d1d_chunks(0x0010285C, buf)},
+                {0x5DEED: seq, 0x5DD03: smp, 0x5D86A: shut})
+
+
+I_SPECS = [
+    # 0x2F920 actors_table_clear: no argument. `push ebx; push edx; mov ebx,0x14d4; mov eax,0x105f38;
+    # xor edx,edx; call 0x61a70; pop edx; pop ebx; ret`: the runtime memset 0x61A70 (it runs 0x65490
+    # and 0x654C7, and keeps EAX and ECX: `push eax; push ecx` 0x61A70, `pop ecx; pop eax` 0x61A85) of
+    # 0x14D4 zero bytes at 0x105F38. The three cases seed every byte of the range between them (t0
+    # the first byte and the byte below, t2 the last byte and the byte above); t1 enters with every
+    # register dirty. The original's two callers load EAX before reading it (0x2BBE8 `xor eax,eax`
+    # and 0x2BC08 `mov eax,ecx` after 0x2BBDF; 0x20C47 `xor eax,eax` after 0x20C42, a call the port
+    # leaves out, record named-gaps-b §B.11): mask 0.
+    Spec("actors_table_clear", 0x2F920, [
+        i_tc_case("t0", {}, 0, lambda i: 0xA5),
+        i_tc_case("t1", D2E_DIRTY, 1, lambda i: 1 + i % 255),
+        i_tc_case("t2", {}, 2, lambda i: 0xFF),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7), eax_mask=0, mutants=("@short", "@long", "@base", "@low", "@none")),
+    # 0x11BCC game_state_timer_exit: no argument. `xor ah,ah`, the bytes 0x104B1B and 0x104B15 = AH,
+    # the word 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60 (run in the original, not called by
+    # the port), then `mov eax,0x100; jmp 0x2c3fc`: the voice, a stub whose call and the memory at it
+    # are recorded. e1 enters with every register dirty (AH = 0xFF before the `xor`) and a
+    # next-state word whose two bytes differ from the state's. Its EAX is the voice's; after its one
+    # call site 0x11E77 the tails 0x10DB0, 0x10E18 and 0x2BF08 each load AH before reading it
+    # (0x10DB1, 0x10E19, 0x2BF0E) and 0x11D04's own EAX is not read (record d5h §1): mask 0.
+    Spec("game_state_timer_exit", 0x11BCC, [
+        i_te_case("e0", {}, 0x4321, 0x1234),
+        i_te_case("e1", D2E_DIRTY, 0x0007, 0x8001, {0x2C3FC: 0}),
+    ], allow_calls=(0x29D60,), calls=(VOICE,), eax_mask=0,
+       mutants=tuple("@" + m for m in "nob1b nob15 b19 b1bw b15w swap nostate stated stateb voice0 novoice "
+                                      "voicefirst".split())),
+    # 0x12CD4 camera_y_step: EAX = the target. diff = target - [0xF0AEC] (`sub` 0x12CDF, wrapping);
+    # its magnitude (`neg ecx` 0x12CE7 when negative) at or below 0x100 (`jg` 0x12CF3, signed) takes
+    # the target, else a positive diff (`jle` 0x12CFB) adds 0x100 and the others subtract it; then
+    # the dword 0xF0AF2 `sar 16` is added and the dword 0xF0AEC stored. n0..n4: the snap at 0, +-0xFF
+    # and +-0x100 (a snap at exactly 0x100 is what a step gives too). u0/d0: +-0x101, the first
+    # step. u1/d1: far, with a positive and a negative offset; w0: the offset 0x8000. m0: the
+    # difference 0x80000000, which `neg` leaves negative, so the signed `jg` is not taken and the
+    # camera takes the target. m1: a step up that wraps past 0x7FFFFFFF. m2: a step down that wraps
+    # below 0x80000000. m3: the difference 0x80000001, magnitude 0x7FFFFFFF, a step down from 0.
+    # Its one caller clears EAX at once (0x131D0 `xor eax,eax` after 0x131CB): mask 0.
+    Spec("camera_y_step", 0x12CD4, [
+        i_cs_case("n0", I_C, I_C),
+        i_cs_case("n1", I_C, I_C + 0xFF),
+        i_cs_case("n2", I_C, I_C - 0xFF),
+        i_cs_case("n3", I_C, I_C + 0x100),
+        i_cs_case("n4", I_C, I_C - 0x100),
+        i_cs_case("u0", I_C, I_C + 0x101),
+        i_cs_case("d0", I_C, I_C - 0x101),
+        i_cs_case("u1", I_C, I_C + 0x5000, shake=0x0030),
+        i_cs_case("d1", I_C, I_C - 0x5000, shake=0xFFF0),
+        i_cs_case("w0", I_C, I_C + 0x40, shake=0x8000),
+        i_cs_case("m0", 0, 0x80000000),
+        i_cs_case("m1", 0x7FFFFF80, 0x80000200),
+        i_cs_case("m2", 0x80000080, 0x7FFFFE00),
+        i_cs_case("m3", 0, 0x80000001),
+    ], eax_mask=0,
+       mutants=tuple("@" + m for m in "diffrev noabs snapwide snapnarrow unsigned nosnap dir step nooff shr lo "
+                                      "storew nostore argw camw".split())),
+    # 0x2F9CC game_master_init: no argument, one block, every callee a stub. In order: 0x1AFE8();
+    # 0x13ADC(); 0x4F1E4 (its EAX = 0 is not read: `mov eax,0x2700` 0x4F1E5); 0x2BAF4(EAX = 1);
+    # 0x4F1D0; 0x38B18(EAX = 0x9AD84, EDX = 0 from 0x2F9F0, EBX = 0 from 0x2F9E7: the stubs of 0x2BAF4
+    # and 0x4F1D0 keep both, as their bytes do); the dword 0x10740C = 0x1D2D0; 0x2D6F8(); 0x2D974(0x2A),
+    # whose result with `and al,0xfc` is the dword 0x107410; 0x2C9B8(0); 0x2C8F0(-1); 0x2C8F0(-2). The
+    # memory at each call places the two stores. m0: both low bits of the field set. m1: every register
+    # dirty at entry (the zeros of call 6 are the function's) and the low bits clear over a set bit 2.
+    # m2/m3: bit 0 alone, bit 1 alone, with high bytes that differ. Every stub but 0x2D974's answers a
+    # value per case that nothing reads (0x2F9D9, 0x2FA10, 0x2FA28 and 0x2FA32 load EAX; the last
+    # 0x2C8F0's is the function's EAX, which the one caller overwrites: 0x20C1A `mov eax,0x1044f4`):
+    # mask 0.
+    Spec("game_master_init", 0x2F9CC, [
+        i_mi_case("m0", {}, 0x12345677),
+        i_mi_case("m1", I_MI_REG, 0xA5A5A5FC, x1AFE8=1, x2D6F8=0x9C94D2C4, x2C9B8=0x10000, x2C8F0=0x12345678,
+                  x38B18=0x0010A300, x2BAF4=0x5A5A5A5A),
+        i_mi_case("m2", {"ebx": 5, "edx": 7}, 0x80010001, x2C9B8=0xFFFFFFFF, x2C8F0=0xA0),
+        i_mi_case("m3", {"eax": 0x2A}, 0x0000FF02, x1AFE8=0x100, x13ADC=0x33333333, x4F1E4=0x44444444,
+                  x4F1D0=0x55555555),
+    ], calls=I_MI_CALLS, eax_mask=0,
+       mutants=tuple("@" + m for m in "noload noeff noinput noreset noorigin norow noptr novalidate nofield nogate "
+                                      "novolu novols swap12 swap34 swap56 ptrearly ptrlate fieldearly storelate "
+                                      "gatelate volswap reset0 desc a2 a3 field29 gatearg volu2 vols1 nomask mask8 "
+                                      "mask1 ptrval ptrw fieldw nostore".split())),
+    # 0x1D018 sound_shutdown: no argument. The flag byte 0xA2CB1 zero returns at once (`je` 0x1D023), else
+    # it is cleared (0x1D02B). With the dword 0x1028C4: 0x5DEED and, when its whole EAX is 4 (`cmp eax,4`
+    # 0x1D049), 0x5DEAF; then 0x1028C4 and 0x1028C0 = 0. With the dword 0x1028C8: for each of the four
+    # slots 0x5DD03 and, when its whole EAX is not 2 (`cmp eax,2` 0x1D085), 0x5DC8B, then the slot's
+    # handle dword = 0 (0x1D09E, before the next slot's status call); then 0x1028C8 = 0 (0x1D0A9). Then
+    # 0x5D86A. The handle each of the four calls takes ([0x1028C0] at 0x1D03A and 0x1D04E, [esi+0x102860]
+    # at 0x1D076 and 0x1D08A, pushed and popped by the caller) is not compared: the port passes its host
+    # objects. s0: the flag clear between two set bytes, every register dirty, both drivers set: nothing.
+    # s1: both drivers, every status playing. s2: a flag of 0x80, driver dwords whose low word is zero,
+    # the statuses 0x104 and 2 (no stop). s3: no MDI driver (0x1028C0 is kept), a DIG driver dword whose
+    # low three bytes are zero, the status 0x102 (stopped: the whole EAX). s4: an MDI driver dword whose
+    # low three bytes are zero, the status 3, no DIG driver (the handles are kept). s5: the statuses 2
+    # (the sequence is not stopped) and 0 (the slots are). The stub of 0x5D86A answers a value per case
+    # that nothing reads; the function's EAX is that or, in s0, the caller's: the one caller loads EAX
+    # before reading it on both paths (0x1BE40 `je`: 0x1BE42 `mov eax,edx`, 0x1BEAB `mov eax,[0x101504]`):
+    # mask 0.
+    Spec("sound_shutdown", 0x1D018, [
+        i_sd_case("s0", D2E_DIRTY, 0x00, 0x0010B100, 0x0010B200),
+        i_sd_case("s1", {}, 0x01, 0x0010B100, 0x0010B200, seq=4, smp=4, shut=0x12345678),
+        i_sd_case("s2", {"esi": 0x18}, 0x80, 0x00010000, 0x00010000, seq=0x104, smp=2),
+        i_sd_case("s3", {}, 0x01, 0, 0x01000000, smp=0x102, shut=0xFFFFFFFF),
+        i_sd_case("s4", D2E_DIRTY, 0x01, 0x01000000, 0, seq=3, smp=4),
+        i_sd_case("s5", {}, 0xFF, 0x0010B100, 0x0010B200, seq=2, smp=0, shut=1),
+    ], calls=I_SD_CALLS, eax_mask=0,
+       mutants=tuple("@" + m for m in "noret flagw noclear clearw mdigate mdiw seqne seqal nostopseq noc4 noc0 c4w "
+                                      "c0w c0always diggate digw smpeq smpal smp4 smpgt nostopsmp three five "
+                                      "nohandle handlew handle4 early nodig digfirst noshut shutfirst order".split())),
+]
+D1_SPECS += I_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

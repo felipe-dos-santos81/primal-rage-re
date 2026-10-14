@@ -286,9 +286,12 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # 3544 is now the port's own loader screen (3543 is all-black, excluded), 3546..3592
 # its third demo fight, and 3545
 # (raw 8338) is allowed by name as a three-frame splice (ATTRACT2_SPLICE3_ALLOWED,
-# cycle-2 2192/2193/2194: the last loader screen, the load frame's present and the
+# cycle-2 2191/2192/2193: the last loader screen, the load frame's present and the
 # next, which the read's tick re-sync 0x1B45F/0x1B464 lets fall inside one capture
-# scan). The driver lists the loader screens in cycle2/loader.txt for that check.
+# scan; they were 2192/2193/2194, and the dump 2308 frames, not 2307, until track I's
+# master init read s16title at boot as the original does, 0x2F9E9/0x2F9FC, which took
+# the driver's s16title loader screen out of the dump: record 2026-10-13-reverse-i §I.4).
+# The driver lists the loader screens in cycle2/loader.txt for that check.
 # 3593 (raw 8386) was the third demo's first fight frame the port did not match.)
 # (Before it, N = 3545 was measured on 1251af7 (§46-A): the high-score tables 0x2DB58/0x2DBC4/
 # 0x2DCA0, their boot fill 0x1E824 (0x1E918's ten factory records and the champion
