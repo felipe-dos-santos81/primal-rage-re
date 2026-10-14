@@ -1395,6 +1395,7 @@ u32 config_file_load(void)
  * 0x1B0FC, `jmp 0x1B10B`). */
 u32 config_file_save(void)
 {
+    PR_SEAM_RET0(0x1B084u);
     if (!host_save_writable()) return 1u;                  /* 0x1B0A0, 0x1B109 */
     config_storage_touch(1u);                              /* 0x1B0A7 */
     config_storage_touch(2u);                              /* 0x1B0B3 */

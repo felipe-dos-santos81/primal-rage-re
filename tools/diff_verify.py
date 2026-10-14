@@ -33432,6 +33432,68 @@ N1_SPECS = [
        mutants=tuple("@" + m for m in "nostore clipt nowidth norows".split())),
 ]
 D1_SPECS += N1_SPECS
+
+# ---- track N batch n2 (record 2026-10-14-reverse-n §N.2): the teardown 0x1BE30 --------------------------
+# A row under one code poke and a partial row (the weaker class). 0x1BE30: 0x1D018; with the dword
+# 0x101514 non-zero (`test edx,edx; je` 0x1BE3E) three word tests, each guarding 0x1ADE4 (DPMI 0x201,
+# set real-mode vector: `mov ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, the runtime's int386 0x61564):
+# vector 9 from [0x101514]+0x14/+0x16 (0x1BE44), 0x23 from 0x10151A/0x10151C (0x1BE61), 0x1B from
+# 0x101518/0x10151E (0x1BE87); then 0x4FB98 with EAX = [0x101504] (0x1BEAB), 0x1B084, 0x10D34. The port
+# (flow.c game_shutdown) makes 0x1D018 and 0x1B084 and leaves the rest to the host (PORT).
+# - The poke: `int 0x10` at 0x4FB9E is `cmp eax,eax` (39 C0). 0x4FB98 is `pushad; and eax,0xff; int
+#   0x10; popad; ret`: the popad restores all eight registers and no flag is read after it (0x1BEB5 is a
+#   call), so the poke is exact for every path but the BIOS's mode set itself, which the row does not
+#   see (and with it the mode byte [0x101504]). Unpoked, the original stops there (`unmodeled: int`).
+# - 0x10D34 runs from its bytes with the -f byte 0x101520 = 1 (`cmp byte [0x101520],0; jne` 0x10D38),
+#   which returns at once keeping EAX and EDX, as in the rows of 0x1AFE8 and 0x1B084 (track S, SC_NO_CD).
+#   Its other path, the runtime's drive calls 0x61984/0x61A22, is not seen.
+# - The three restores are named unhit: with a segment word set the original reaches 0x1ADE4 -> 0x61564
+#   -> int 0x31, which a stub of 0x1ADE4 would record and the port does not make. In a run of the port
+#   no restore is reached by the raw's own tests: [0x101514] is GAME_BIOS_BASE, zeroed at init and never
+#   written at +0x14..+0x17, and 0x101518..0x10151F are written only by 0x1ADAC at 0x1C017..0x1C03F,
+#   which the port does not make (PORT, game_init).
+N2_TEARDOWN_INT10 = {0x0004FB9E: b"\x39\xc0"}
+N2_SHUT = E.Call(0x1D018, ())                                  # sound_shutdown, seamed here
+N2_SAVE = E.Call(0x1B084, (), clobbers=("edi", "ebp"))          # config_file_save, seamed here
+N2_PTR = 0x0010A900                                            # a [0x101514] inside the image
+N2_UNHIT = {
+    0x1BE4B: "0x1ADE4(9, [0x101514]+0x14, +0x16): the keyboard vector's real-mode restore (DPMI 0x201 through "
+             "the runtime's int386 0x61564, int 0x31); the port has no real mode and its word is zero "
+             "(GAME_BIOS_BASE, zeroed at init), a named part of a partial row (record 2026-10-14-reverse-n N.2)",
+    0x1BE6B: "0x1ADE4(0x23, 0x10151A, 0x10151C): the Ctrl-C vector's real-mode restore (DPMI 0x201, int 0x31); "
+             "the port never writes 0x10151C (0x1ADAC at 0x1C02B is not made), a named part of a partial row",
+    0x1BE93: "0x1ADE4(0x1B, 0x101518, 0x10151E): the Ctrl-Break vector's real-mode restore (DPMI 0x201, "
+             "int 0x31); the port never writes 0x10151E (0x1ADAC at 0x1C03F is not made), a named part of a "
+             "partial row"}
+
+
+def n2_teardown(cid, regs, ptr, shut=0, save=0):
+    """0x1BE30: the poke; the -f byte; the mode dword 0x101504; [0x101514] = `ptr`, then the two
+    vectors' offset words 0x101518/0x10151A seeded and both segment words 0x10151C/0x10151E zero (with
+    `ptr` = 0, seeded too: the `je` 0x1BE40 skips their tests); at `ptr` + 0x12..+0x1B every byte seeded
+    but the segment word +0x16/+0x17. The stubs of 0x1D018 and 0x1B084 answer `shut` and `save`."""
+    words = le32(ptr) + le32(0x5A5A1A1A) + (le32(0x1C1C1E1E) if ptr == 0 else le32(0))
+    p = {**N2_TEARDOWN_INT10, **SC_NO_CD, 0x00101504: le32(0x00000003), 0x00101514: words}
+    if ptr:
+        p[ptr + 0x12] = bytes([0x12, 0x13, 0x14, 0x15, 0, 0, 0x18, 0x19, 0x1A, 0x1B])
+    return Case(cid, regs, p, {0x1D018: shut, 0x1B084: save})
+
+
+N2_SPECS = [
+    # 0x1BE30 game_shutdown: no argument. t0: [0x101514] = 0 (the `je` 0x1BE40), every register dirty,
+    # both segment words set (their tests are not reached). t1: a pointer whose segment word is zero
+    # between seeded bytes, both DOS segment words zero with their offset words seeded: every test is
+    # made and none restores. The calls, in order: 0x1D018, 0x1B084, with the memory at each. The
+    # original's EAX is 0x1B084's stub's (0x10D34's fast path keeps it); none of the four call sites
+    # reads it (0x1C0CC `xor eax,eax`; 0x1C1C9 and 0x1D298 push and call 0x62734; 0x1C2C2 `mov eax,edx`
+    # after 0x1C2AF): mask 0.
+    Spec("game_shutdown", 0x1BE30, [
+        n2_teardown("t0", D2E_DIRTY, 0, shut=0x11111111, save=0x12345678),
+        n2_teardown("t1", {}, N2_PTR, shut=0xFFFFFFFF, save=1),
+    ], unhit_named=N2_UNHIT, allow_calls=(0x4FB98, 0x10D34), calls=(N2_SHUT, N2_SAVE), eax_mask=0,
+       mutants=("@noshut", "@nosave", "@order", "@free")),
+]
+D1_SPECS += N2_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

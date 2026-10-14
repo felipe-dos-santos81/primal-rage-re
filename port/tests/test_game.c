@@ -4986,6 +4986,7 @@ static int if_sd_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
 {
     (void)nargs;
     (void)args;
+    if (addr == 0x1D018u) return 0;   /* sound_shutdown's own seam (track N n2): run its body, unrecorded */
     if (if_sd_n < IF_SD_MAX) {
         if_sd[if_sd_n].addr = addr;
         if_sd[if_sd_n].zero = if_sd_zero();

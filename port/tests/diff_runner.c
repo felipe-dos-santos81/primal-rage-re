@@ -42666,6 +42666,24 @@ static void b_n1_51ed8(const u32 *r, u32 *eax) { n1_51ed8_run(r, 0u); *eax = 0u;
 N1_BA_MUT(nostore, 1u)  N1_BA_MUT(clipt, 2u)    N1_BA_MUT(nowidth, 3u)  N1_BA_MUT(norows, 4u)
 /* ---- track N batch n1 bindings end ---- */
 
+/* ---- track N batch n2 bindings (record 2026-10-14-reverse-n §N.2) ---- */
+/* 0x1BE30 game_shutdown: no argument; 0x1D018 and 0x1B084 are stubs (their seams). The raw's three
+ * vector restores (0x1BE4B, 0x1BE6B, 0x1BE93) are named unhit, 0x4FB98 runs under the int 0x10 poke
+ * and 0x10D34 with the byte 0x101520 set: the port makes neither (PORT). No call site reads EAX
+ * (0x1C0CC `xor eax,eax`, 0x1C1C9 and 0x1D298 push and call on, 0x1C2C2 `mov eax,edx`). */
+static void b_n2_1be30(const u32 *r, u32 *eax) { (void)r; game_shutdown(); *eax = 0u; }
+/* @noshut: 0x1D018 dropped; @nosave: 0x1B084 dropped; @order: 0x1B084 before 0x1D018 */
+static void m_n2_1be30_noshut(const u32 *r, u32 *eax) { (void)r; (void)config_file_save(); *eax = 0u; }
+static void m_n2_1be30_nosave(const u32 *r, u32 *eax) { (void)r; sound_shutdown(); *eax = 0u; }
+static void m_n2_1be30_order(const u32 *r, u32 *eax) { (void)r; (void)config_file_save(); sound_shutdown(); *eax = 0u; }
+/* @free: the old PORT note's reading (0x1BE38..0x1BEA6 as frees of the DOS block) made code: the
+ * block pointer 0x101514 dropped after 0x1D018 */
+static void m_n2_1be30_free(const u32 *r, u32 *eax)
+{
+    (void)r; sound_shutdown(); DSD(DS_00101514) = 0u; (void)config_file_save(); *eax = 0u;
+}
+/* ---- track N batch n2 bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -58139,6 +58157,12 @@ static const binding_t k_bindings[] = {
     { "sprite_blit_aperture@clipt",      m_n1_ba_clipt, 0x00000000u },
     { "sprite_blit_aperture@nowidth",    m_n1_ba_nowidth, 0x00000000u },
     { "sprite_blit_aperture@norows",     m_n1_ba_norows, 0x00000000u },
+    /* track N batch n2 */
+    { "game_shutdown",            b_n2_1be30, 0x00000000u },
+    { "game_shutdown@noshut", m_n2_1be30_noshut, 0x00000000u },
+    { "game_shutdown@nosave", m_n2_1be30_nosave, 0x00000000u },
+    { "game_shutdown@order", m_n2_1be30_order, 0x00000000u },
+    { "game_shutdown@free", m_n2_1be30_free, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
