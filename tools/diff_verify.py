@@ -33352,8 +33352,11 @@ def sc_load(cid, content, image, regs=None):
 
 def sc_save(cid, content, image, regs=None, touch=None):
     """0x1B084: `content` = the directory's state (E.F1_GONE for the missing directory whose fopen the
-    model answers 0, E.F1_ABSENT for a write that creates the file, bytes for one that truncates it);
-    the buffer holds the image the original's fwrite copies; `touch` = the EAX of the 0x2D4EC stub."""
+    model answers 0, E.F1_ABSENT for a write that creates the file, bytes for a stale file the
+    write-mode open replaces); the model starts a write-open's file at offset 0 — a declared model
+    rule: the raw's truncate-on-open was not pinned (f-conventions.md OPEN Q1) and every case's stale
+    file is shorter than the 0x7F8 write, so truncate and write-at-0 cannot be told apart here. The
+    buffer holds the image the original's fwrite copies; `touch` = the EAX of the 0x2D4EC stub."""
     p = d1d_chunks(SC_IMAGE - 4, b"\xc1\xc2\xc3\xc4" + image + b"\xd1\xd2\xd3\xd4")
     p.update(SC_NO_CD)
     return Case(cid, regs or {}, p, {} if touch is None else {0x2D4EC: touch},
@@ -33392,14 +33395,17 @@ SC_SPECS = [
                                       "flag".split())),
     # 0x1B084 config_file_save: no argument. The missing directory (s0: F1_GONE, `test eax,eax; je`
     # 0x1B09E) sets the flag and does nothing else (the seeded last byte stays, no file appears); else
-    # (s1, a file created; s2, created with dirty registers; s3, the zero image; s4, an existing file
-    # the open truncates) 0x2D4EC(1) and 0x2D4EC(2) (stubs: their EAX is not read, `mov eax,2` 0x1B0AC
+    # (s1, a file created; s2, created with dirty registers; s3, the zero image; s4, a stale file the
+    # write-mode open replaces — the model's write-at-offset-0 rule, see sc_save and §F.1) 0x2D4EC(1)
+    # and 0x2D4EC(2) (stubs: their EAX is not read, `mov eax,2` 0x1B0AC
     # and `xor eax,eax` 0x1B0B8 follow; s1 has 0x12345678), the XOR of bytes 0..0x7F6 (`cmp eax,0x7f7;
     # jl` 0x1B0C3) stored in the byte 0x1014DB (seeded with another value), and the real fwrite's count
     # 0x7F8 (`cmp edx,0x7f8; je` 0x1B0EF) clears the flag, which is AL. The file the port wrote is
     # compared byte for byte against the bytes the original's fwrite recorded (the fclose mirror, §F.1):
     # a port write of another length, from another address, before the XOR store, into another file, or
-    # in append instead of truncate mode differs there. Mask 0xFF: `mov al,dl` 0x1B110; no call site
+    # in append instead of at offset 0 differs there (append differs under either reading of the
+    # unpinned open-time behaviour — f-conventions.md OPEN Q1 — because s4's stale file is non-empty).
+    # Mask 0xFF: `mov al,dl` 0x1B110; no call site
     # reads it (`call 0x10d34` 0x1BEBA, `mov edx,1; mov eax,0x1044f4` 0x24AA6, `call 0x2c304` 0x2CBB4).
     Spec("config_file_save", 0x1B084, [
         sc_save("s0", E.F1_GONE, sc_image(7, 3, bad=0x5A)),

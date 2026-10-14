@@ -42399,8 +42399,11 @@ SB_CF_MUT(postlate, SB_M_AUDITLATE)
  * directory into the image's gap at F1_SHADOW — the name + NUL, the declared mode + NUL, the byte
  * count as a dword, the bytes — the layout the emulator's model mirrors at its fclose, so the
  * ordinary write comparison compares the two sides' real file bytes, and a difference shows as the
- * usual `byte` problems (record §F.1). */
-#define F1_SHADOW 0x00074000u
+ * usual `byte` problems (record §F.1). F1_SHADOW (0x79000, two 0x840 slots) sits above the
+ * track-D4D pset pool [0x74000, 0x78880) and below the data object: the gap holds no loaded bytes
+ * (the image's [0x73B15, 0x80000) reads all zero) and no harness constant claims 0x79000
+ * (record §F.1). */
+#define F1_SHADOW 0x00079000u
 #define F1_SLOT   0x840u
 #define F1_MAXFILE 0x800u
 #define SC_IMAGE 0x00100CE4u
@@ -42456,7 +42459,12 @@ static void f1_path(u32 i, char *out, size_t n)   /* a gone file lives under a s
 {
     snprintf(out, n, "%s/%s%.*s", sc_dir, f1_dec[i].gone ? "none/" : "", (int)f1_dec[i].nlen, f1_dec[i].name);
 }
-static int f1_append(const u8 *src, u32 len)      /* the @wmode mutant: append instead of the raw's fopen "wb" truncate */
+static int f1_append(const u8 *src, u32 len)      /* the @wmode mutant: append at the file's end instead
+                                                   * of the model's write at offset 0 (the raw's
+                                                   * truncate-on-open was not pinned, f-conventions.md
+                                                   * OPEN Q1; every stale file in the rows is shorter
+                                                   * than the write, so truncate and write-at-0 look
+                                                   * alike and append differs under either reading) */
 {
     char path[64];
     f1_path(0, path, sizeof path);

@@ -52,7 +52,17 @@ the rows never do stops the run as `unmodeled`, never a guess:
   handle's value is model-internal: the rows use it only as a token (`0x1B000 mov esi,eax`,
   re-fed to fclose/fread), never compare it, and it never reaches memory. A name not declared
   stops (the case must cover its own vocabulary); a mode other than `rb`/`wb` stops (the game
-  has only those two strings, `0x80598/0x8059C`).
+  has only those two strings, `0x80598/0x8059C`). A write-mode open **starts the file at offset
+  0** (the model empties it): the raw's open-time behaviour on an existing file is a **named gap
+  of the model**, not a byte fact — recon (`.superpowers/sdd/2026-10-14-reverse-f/f-conventions.md`
+  OPEN Q1) found the truncating int 0x3C only on the open-FAILS path (`0x61674→0x616AA`) and did
+  not locate a truncate for a successful open of an existing file (`0x615A3`, candidates
+  `0x6B52D`/`0x6B64D`). The choice cannot change any row's outcome: every stale file in `s4`
+  (12 bytes) is shorter than the 0x7F8-byte write, so truncate-then-write, write-at-0-without-
+  truncating and (at an untruncated offset-0 stream position) the bytes the fclose mirrors are the
+  same on all readings, and `@wmode` (append at the end) is caught under all of them. §S.7.3's
+  "the raw truncates the file at the open" therefore rests on the C semantics of `fopen("wb")`,
+  not on a pinned path, and is reported as such.
 - **fread**: `min(count, (len - pos) // size)` whole items copied from the file into the buffer
   (a memory write the run's own `writes`/call memory see — API writes seed `before` the way the
   stub writes do, since unicorn fires no hooks for them), EAX = the count; short at end of
@@ -65,13 +75,27 @@ the rows never do stops the run as `unmodeled`, never a guess:
   0xFFFFFFFF (`0x61ECD`); either way the rows ignore it (§S.7.1).
 
 **The mirror — how the two sides' files get compared.** fclose writes the file's final state
-into `mem[]` at `F1_SHADOW` (0x74000: the gap between the objects — the code object ends
-`0x73B14`, the data object starts `0x80000`, the dump holds zeros there and neither the rows'
-bytes nor the port's `host_save_*` paths ever touch it), one slot per declared name in
-declaration order, stride 0x840: name + NUL at +0, mode + NUL at +0x10, the byte count as a
-dword at +0x20, the content at +0x24. The port's binding mirrors the scratch directory's real
-files at the same layout (the name it pointed the port at as basename, and the mode the row
-declares the original to pass), after the call. A plain `mem[]` byte comparison then compares
+into `mem[]` at `F1_SHADOW`, one slot per declared name in declaration order, stride 0x840: name +
+NUL at +0, mode + NUL at +0x10, the byte count as a dword at +0x20, the content at +0x24. The span:
+`F1_SHADOW = 0x79000`, two slots reaching 0x79880. The choice, with its evidence (a review caught
+the first pick): the image's gap between the objects, `[0x73B15, 0x80000)`, holds **no loaded
+bytes** — verified, every byte of that span in `/tmp/pr_f1_img.bin` reads 0 — but it is NOT free:
+the track-D4D span-writer rows park their pset pool there, `D4D_PSETS = 0x00074000` with 0x4880
+bytes (tools/diff_verify.py:24520), i.e. `[0x74000, 0x78880)`, and its cases seed 0x74000, +0x2440
+and +0x487C and run the real span-writers over it. A grep of every literal in
+`[0x73B15, 0x80000)` across `tools/diff_verify.py`, `tools/diff_emu.py`, `port/tests/diff_runner.c`
+and the rest of `tools/*.py` finds only: D4D's pool base; the fighter rows' recpos/dst **values**
+0x77000/0x78000 (inside the pool range, records poked by those rows); `D5B_HEIGHT_RR`'s stored
+**value** 0x0007F000 (a dword at 0x100B54, not an address claim); title-pin's 0x78505/0x7852A/
+0x7E289 (EXE **file** offsets, not linear addresses); and the object-bound comments 0x73B14/0x73B15/
+0x80000. The span `[0x79000, 0x79880)` — above the pool's end with a 0x780 margin, below the data
+object — is claimed by none of them. No case both declares files and seeds the pool (no row that
+uses `files` passes a pset base), and rows run in isolated children, but the claim recorded here is
+the stronger one: the two owners' spans are disjoint.
+
+The port's binding mirrors the scratch directory's real files at the same layout (the name it
+pointed the port at as basename, and the mode the row declares the original to pass), after the
+call. A plain `mem[]` byte comparison then compares
 the two sides' file bytes — the file the port wrote against the bytes the original's fwrite
 recorded — with no new output channel, and a difference shows as the ordinary `byte` lines.
 fclose mirrors and nothing else: at the save row's fopen the mirror would land in the memory
@@ -85,8 +109,8 @@ constructor raises and the attribute is missing — proven by running them with 
 stashed: 18 errors): the read program (fopen/fread/fclose) copies the file into an 0xEE-seeded
 buffer and mirrors name/mode/length/content; a short file reads short (whole items only); a
 missing file answers 0 with the open still recorded and no mirror; fwrite creates a new file,
-returns the count, and its bytes arrive in the slot; fwrite truncates an existing file (the old
-bytes are gone); an `r+` mode, an undeclared name, and a read on a write stream each stop the
+returns the count, and its bytes arrive in the slot; a write-mode open replaces an existing file
+(model rule: the old bytes are gone, the file starts at offset 0); an `r+` mode, an undeclared name, and a read on a write stream each stop the
 run with their reason; fclose of a handle never opened answers 0xFFFFFFFF; and a case with no
 `files` stops on `call 0x61C60` exactly as before.
 
@@ -126,7 +150,7 @@ if the model read anything else — including the failed-open cases, whose mirro
 | Row | Before (track S) | After (track F) |
 |---|---|---|
 | `config_file_load` `0x1AFE8` | 3 pokes (`0x1AFFB`/`0x1B017`/`0x1B020` `mov eax,<result>`); 6 cases `l0..l5` (handle/closed values); 10/11 blocks, `0x1B04D` named unhit; 12 mutants | **no pokes**; 6 cases `l0..l5` with `Machine.files` (`l0` a real missing file `F1_ABSENT`; `l1` a valid image; `l2` one bit off + dirty regs; `l3` the sum of the first `0x7F6` stored; `l4` the captures' zero image; `l5` a second valid image) and `opens=((b"cmos", b"rb"),)`; the buffer seeded every byte XOR `0x5A` so the modelled fread and `host_save_read` each move the file's bytes on both sides; 10/11 blocks, `0x1B04D` named unhit (see below); the same 12 mutants, measured catch-sets identical to the track S pins |
-| `config_file_save` `0x1B084` | 3 pokes (`0x1B097`/`0x1B0E1`/`0x1B0EA`); 4 cases `s0..s3`; the verdict byte `0x3900200` (the binding's own file-vs-memory check); 7/8 blocks, `0x1B0F7` named; 18 mutants | **no pokes**; 5 cases: `s0` `F1_GONE` (the missing directory, whose fopen answers 0 and does nothing else, the seeded last byte stays), `s1..s3` `F1_ABSENT` (the open creates the file; `s1` the touch-stub EAX `0x12345678`, `s2` dirty regs, `s3` the zero image), and **new `s4`**: an existing file (`b"stale cmos!!"`) the `wb` open truncates; `opens=((b"cmos", b"wb"),)`; 7/8 blocks, `0x1B0F7` named (below); 19 mutants — the same 18 plus **`@wmode`** (`f1_append`: write in append mode instead of the truncate the raw's `fopen("cmos","wb")` does at `0x1B097`), caught by `s4` alone, exactly what the new case is for |
+| `config_file_save` `0x1B084` | 3 pokes (`0x1B097`/`0x1B0E1`/`0x1B0EA`); 4 cases `s0..s3`; the verdict byte `0x3900200` (the binding's own file-vs-memory check); 7/8 blocks, `0x1B0F7` named; 18 mutants | **no pokes**; 5 cases: `s0` `F1_GONE` (the missing directory, whose fopen answers 0 and does nothing else, the seeded last byte stays), `s1..s3` `F1_ABSENT` (the open creates the file; `s1` the touch-stub EAX `0x12345678`, `s2` dirty regs, `s3` the zero image), and **new `s4`**: a stale file (`b"stale cmos!!"`, shorter than the write) that the write-mode open replaces — the model's write-at-offset-0 rule (see §F.1's fopen bullet and OPEN Q1 below); `opens=((b"cmos", b"wb"),)`; 7/8 blocks, `0x1B0F7` named (below); 19 mutants — the same 18 plus **`@wmode`** (`f1_append`: write at the file's end instead of at offset 0), caught by `s4` alone, exactly what the new case is for. Append differs from write-at-0 whichever way the raw's unpinned open-time behaviour resolves (f-conventions.md OPEN Q1), and write-at-0 equals the model's truncate-then-write here because every stale file in the rows is shorter than the 0x7F8 write |
 
 The verdict byte is gone and nothing is lost: its load-side counterpart never existed, and on the
 save side the mirror compares the port's written file against the bytes the original recorded
@@ -160,7 +184,8 @@ save file and not the current directory's `cmos`; the `ab` probe and the reporte
 left as they are and reported here, not corrected.
 
 **Mechanism mutation proofs** (each run against `F1FilesTests` and turning it red): fread asked
-for more items than the file holds returns `count` (no EOF cap); the `wb` open does not truncate;
+for more items than the file holds returns `count` (no EOF cap); the write-open no longer replaces
+the file at offset 0;
 fclose of an unknown handle answers 0; the undeclared-name stop removed; the unknown-mode stop
 removed. The `F1FilesTests` all fail without the mechanism (proven: 18 errors with `diff_emu.py`
 stashed). The mirror-trigger claim — nothing mirrors at the `wb` open — is proven at the row level,
@@ -170,7 +195,7 @@ cannot show until after its return — the save row would go MISMATCH.
 
 **Measured pins** (jobs=1, on the merge): the load row's 12 mutants' catch-sets and kinds are
 identical to track S's pins; the save row's write-path and call mutants also catch `s4`
-(the mirror shows the truncated file's bytes on `s4` too), `@len6`/`@len8` stay at `['s1','s2']`
+(the mirror shows the replaced file's bytes on `s4` too), `@len6`/`@len8` stay at `['s1','s2']`
 (the zero buffer of `s3`/`s4` makes them invisible there), `@flag` gains `s4`, and `@wmode` is
 caught by `['s4']` alone with kind `byte`. The counter pin is `1000/1000 functions VERIFIED;
 14885/14885 mutants detected; 1 named gaps; 638/831 rows with callees closed (169 have none)` —
@@ -184,6 +209,8 @@ moves the file's bytes into the buffer for every present case (the 0x5A seed pro
 them too), the checksum and fill paths agree byte for byte, `0x10D34`/`0x10D0C`/`0x61A70` run from
 their bytes as before, and the opened name/mode, the handle's non-zero-ness, the count's source
 (the real file length) and the file's final bytes all agree; `config_file_save`: the same for the
-open's real mode `wb`, the create-from-absent and truncate-existing paths, the fwrite's real count
+open's real mode `wb`, the create-from-absent and stale-file-replacing paths (the model's
+write-at-offset-0 rule — the raw's open-time behaviour on an existing file stays the named gap of
+f-conventions.md OPEN Q1, unobservable under either reading), the fwrite's real count
 and the bytes the port wrote. The narrowness unchanged: equivalence on the exercised blocks and
 inputs only; the exit block is not exercised by either row and never can be.

@@ -312,13 +312,18 @@ class _F1Gone:
 F1_ABSENT = _F1Absent()
 F1_GONE = _F1Gone()
 # The mirrored directory: one slot per declared name, in declaration order, in the image's gap between
-# the objects (the code object ends 0x73B14, the data object starts 0x80000: nothing is loaded there and
-# the rows' code and the port's host calls never touch it). Slot: name + NUL at +0 (16 bytes), the mode
+# the objects — the gap holds no loaded bytes at all (verified: the dump of [0x73B15, 0x80000) is every
+# byte 0), but it is not free real estate: the track-D4D span-writer rows park their pset pool there,
+# [D4D_PSETS 0x74000, +0x4880) = [0x74000, 0x78880) (tools/diff_verify.py). F1_SHADOW sits above the
+# pool's end with a 0x780-byte margin and below the data object's start: two 0x840-byte slots, a span
+# no harness constant claims (grep of diff_verify.py / diff_runner.c / tools for [0x73B15,0x80000):
+# only D4D_PSETS, in-pool recpos/dst values, dword VALUES like D5B_HEIGHT_RR's 0x0007F000, and
+# title_pin.py's FILE offsets; record §F.1). Slot: name + NUL at +0 (16 bytes), the mode
 # + NUL at +0x10, the byte count as a dword at +0x20, the content at +0x24. fclose mirrors its file's
 # final state there; the port's binding mirrors the scratch directory's real files at the same layout,
 # so a plain mem[] byte comparison compares the two sides' file bytes (track F, record §F.1).
 # diff_runner.c's F1_* defines are the same layout.
-F1_SHADOW, F1_SLOT, F1_MAXFILE = 0x74000, 0x840, 0x800
+F1_SHADOW, F1_SLOT, F1_MAXFILE = 0x79000, 0x840, 0x800
 
 
 class _F1Files:
@@ -400,7 +405,9 @@ class _F1Files:
         if name in self.gone or (mode == b"rb" and name not in self.content):
             return self._ret(uc, 0)             # the missing file's NULL (0x1B002 `test eax,eax; je`)
         if mode == b"wb":
-            self.content[name] = bytearray()    # fopen's write mode truncates (the raw's O_TRUNC)
+            self.content[name] = bytearray()    # model rule: a write-mode open starts the file at offset 0;
+                                                # the raw's truncate-on-open was not pinned (f-conventions.md
+                                                # OPEN Q1) and is unobservable here (record §F.1)
         self.handles += 1
         self.streams[self.handles] = [name, "r" if mode == b"rb" else "w", mode, 0]
         return self._ret(uc, self.handles)
