@@ -30060,8 +30060,10 @@ D1_CASES.extend(SA_CASES)
 # S sa end
 # S sc (record 2026-10-13-reverse-s §S.7, the rows converted by 2026-10-14-reverse-f §F.1): the
 # save file's two rows; measured pins. The load row's sets are unchanged by the conversion; the save
-# row gains s4 (the existing file whose open truncates), which every write-path mutant also catches,
-# and @wmode (append instead of truncate) is caught by s4 alone (track F f1, jobs=1).
+# row gains s4 (the stale file a write-mode open replaces at offset 0 — the model's rule, the raw's
+# open-time truncate unpinned: f-conventions.md OPEN Q1), which every write-path mutant also
+# catches, and @wmode (append at the file's end instead of at offset 0) is caught by s4 alone
+# (track F f1, jobs=1).
 SC_MASKS = {
     "config_file_load": 0xFF,
     "config_file_save": 0xFF,

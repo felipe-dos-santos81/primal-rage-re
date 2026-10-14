@@ -67,18 +67,24 @@ the rows never do stops the run as `unmodeled`, never a guess:
   (a memory write the run's own `writes`/call memory see — API writes seed `before` the way the
   stub writes do, since unicorn fires no hooks for them), EAX = the count; short at end of
   file. A read on a stream the model opened for writing stops the run (the real callee checks
-  the stream's flag byte; the rows never read a write stream).
+  the stream's flag byte; the rows never read a write stream). The size == 0 answer of 0 is
+  modelled for fidelity to the callee's total-0 shape (`0x61D23..0x61D29`), not because a row
+  uses it: both rows call fread with size 1, count 0x7F8 (`0x1B00B/0x1B006`).
 - **fwrite**: `count * size` bytes copied from the buffer into the file at its position,
   EAX = the count. A memory-backed file never comes back short — that is the model's one place
-  where the hardware could disagree, and the record says so where it matters to the rows.
+  where the hardware could disagree, and the record says so where it matters to the rows. The
+  total == 0 answer of 0 is likewise modelled for fidelity to the callee (`0x62059..0x6205F`),
+  unused by the row (size 1, count 0x7F8 at `0x1B0DC/0x1B0CA`).
 - **fclose**: a stream the model opened returns 0 (`0x61EEF`'s clean result), any other value
   0xFFFFFFFF (`0x61ECD`); either way the rows ignore it (§S.7.1).
 
 **The mirror — how the two sides' files get compared.** fclose writes the file's final state
 into `mem[]` at `F1_SHADOW`, one slot per declared name in declaration order, stride 0x840: name +
 NUL at +0, mode + NUL at +0x10, the byte count as a dword at +0x20, the content at +0x24. The span:
-`F1_SHADOW = 0x79000`, two slots reaching 0x7A080 (content at +0x24 of 0x800 bytes or less: the
-most used byte is 0x7A064). The choice, with its evidence (a review caught
+`F1_SHADOW = 0x79000`, two slots reaching 0x7A080; the content area runs from +0x24 for at most
+0x800 bytes, so the general bound of the span ends at **0x7A064 exclusive**, and as the rows run it
+(a 0x7F8-byte image) the most byte written is **0x7A05B**. The choice, with its evidence (a review
+caught
 the first pick): the image's gap between the objects, `[0x73B15, 0x80000)`, holds **no loaded
 bytes** — verified, every byte of that span in `/tmp/pr_f1_img.bin` reads 0 — but it is NOT free:
 the track-D4D span-writer rows park their pset pool there, `D4D_PSETS = 0x00074000` with 0x4880
