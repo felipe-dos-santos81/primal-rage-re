@@ -42598,6 +42598,15 @@ SC_SV_MUT(notouch2, 6u)  SC_SV_MUT(touchorder, 7u) SC_SV_MUT(touch0, 8u) SC_SV_M
 SC_SV_MUT(len8, 11u)     SC_SV_MUT(add, 12u)     SC_SV_MUT(sumat, 13u)   SC_SV_MUT(flag, 14u)   SC_SV_MUT(nowrite, 15u)
 SC_SV_MUT(writefirst, 16u) SC_SV_MUT(wlen, 17u)  SC_SV_MUT(wsrc, 18u)    SC_SV_MUT(wmode, 19u)
 /* ---- sc bindings end ---- */
+/* ---- track G batch g2 (record 2026-10-14-reverse-g §G2): the fatal menu exit ---- */
+/* 0x2EA68 menu_fatal_error: EAX = the message pointer (e.g. "Null Menu" at 0x80B54). The original
+ * discards it — `mov eax,1` 0x2EA68 — and tail-jumps to the runtime's exit with code 1 (0x62003..
+ * 0x62723, record §G1): nothing returns. Every case of the row declares that terminal difference,
+ * so a matched-terminal case compares no port value, bytes or calls (§G1's skip) and the row carries
+ * no mutant (the precedent: 0x18428's read-only row). The C function's PR_SEAM is inert here: the
+ * row's cases stub no call at 0x2EA68; the port returns and does nothing (menu.c, PORT, §S.8 F1). */
+static void b_g2_2ea68(const u32 *r, u32 *eax) { menu_fatal_error(r[R_EAX]); *eax = 0u; }
+/* ---- g2 bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
 {
@@ -58343,6 +58352,8 @@ static const binding_t k_bindings[] = {
     { "config_file_save@wlen", m_sc_sv_wlen, 0x000000FFu },
     { "config_file_save@wsrc", m_sc_sv_wsrc, 0x000000FFu },
     { "config_file_save@wmode", m_sc_sv_wmode, 0x000000FFu },
+    /* track G, batch g2 */
+    { "menu_fatal_error",                b_g2_2ea68, 0xFFFFFFFFu },
     { "actors_table_clear",              b_i_2f920, 0x00000000u },
     { "actors_table_clear@short", m_i_tc_short, 0x00000000u },
     { "actors_table_clear@long", m_i_tc_long, 0x00000000u },

@@ -93,7 +93,147 @@ exist in a fresh worktree; it was copied read-only from the main repository's wo
 into this worktree, where it stays untracked (git-ignored, never staged), and nothing C-side is
 touched by this task.
 
-## §G2 — save-row exit blocks + rowing 0x2EA68 (pending, lane A task 2)
+## §G2 — save-row exit blocks + rowing 0x2EA68 (lane A task 2: done)
+
+**Byte evidence.** Read twice and agrees, on 2026-10-14, from the fixup-applied image
+(`./build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/pr_g2_img.bin`, capstone over it) and
+from the live Ghidra instance (project `primal-rage`, program `/PRAGE.EXE`, `read_memory`); the raw
+EXE bytes were not used (pre-fixup). §G1 already dual-read the chain `0x62003..0x62723`; this section
+dual-reads what §G1 left to task 2 — the reachability of the rows' exit arms and the callees the
+replayed chain meets — plus the new row's own entry:
+
+- `0x2EA68` is ten bytes: `B8 01000000` `mov eax,1` and `E9 91350300` `jmp 0x62003` (0x2EA6D + 5 +
+  0x33591 = 0x62003). It reads nothing: the message pointer its callers pass in EAX (e.g. `mov
+  eax,0x80b54` 0x2FDCB — Ghidra shows the string `"Null Menu"` at 0x80B54) is overwritten before the
+  tail jump and never dereferenced. Track S's callers already model it as the stub `SA_FATAL`
+  (args `("eax",)`), and `menu_fatal_error` opens with `PR_SEAM(0x2EA68u, msg)` (menu.c:55), so the
+  seam rule (§E3.3) was satisfied before this batch: `port/src` is unchanged.
+- The arm into the exit on the load row is `0x1B025 cmp edx,0x7f8` (`81 FA F8 07 00 00`) `jne
+  0x1B04D` (`75 20`), and 0x1B04D is `B8 01000000` `mov eax,1`, `B1 01` `mov cl,1`, `E8 AA6F0400`
+  `call 0x62003` (0x1B059 + 0x46FAA = 0x62003) — as §G1 stated. The count EDX is fread's EAX
+  (`89 C2` 0x1B01C), and the model answers the short count for a short file (§F.1), so the arm is
+  reachable under the file model: l6 states a 0x7F7-byte file (one byte short of the 0x7F8 the body
+  requests at `mov ebx,0x7f8` 0x1B00B / `mov edx,1` 0x1B00C) and the run terminates —
+  `("exit", 1)`, `terminate with code 1 at 0x62723`, opens `[(b"cmos", b"rb")]` (probe, and the row
+  with the case in it: 11/11 blocks).
+- The save arm `0x1B0F7` is **not** reachable with the file model as built — named, not poked. Its
+  only feeder is `0x1B0EF cmp edx,0x7f8` `je 0x1B105`, and EDX is fwrite's EAX (`89 C2` 0x1B0E6)
+  whose three sources are the body's own constants: `mov ebx,0x7f8` 0x1B0CA (item count), `mov
+  edx,1` 0x1B0DC (item size) and the buffer 0x100CE4..0x1014DB, wholly in the image; the model's
+  fwrite (§F.1) returns the whole-items count of a memory-backed file — `0x7F8 * 1` — and there is
+  no full disk to refuse it. An `F1_ABSENT` file under the write-open case is what s1..s3 already
+  are: the open creates the file and the write of 0x7F8 bytes to a file that has no bytes yet is
+  still whole. The brief's suggested forcing (s4's stale file) cannot make it short either: the
+  model replaces the file at offset 0 with the write's bytes (§F.1's fopen bullet), never a partial
+  transfer. The unhit reason in the save Spec now states exactly this and drops the old §S.7-era
+  sentence (that an exit-reaching case would stop the original's run), which §G1's `exits` model made
+  false.
+- What a replayed chain actually meets (§G1 limit (b), now measured): `0x62003` and `0x6201B` run
+  from their bytes (allowed; §G1's disassembly), the three cleanup vectors `[0xEF934]`, `[0xEF938]`,
+  `[0xEF93C]` all hold `0x62002` (Ghidra: `02 20 06 00` ×3; the image agrees) and its one byte is
+  `C3` `ret` — allowed and run, it returns to the site. The flush `call 0x6C4CF` 0x6271B **cannot
+  run**: its stream table at 0xF0A0E (in the image, Ghidra-confirmed) holds two live close pointers
+  — slot 0x000F0A0E: byte 0, byte 0x01, `call`-able `0x00061A47`; slot 0x000F0A14: byte 0, byte
+  0x20, `0x00072B05` — and the flush walks the table, picks a slot and reaches `FF D0` `call eax`
+  0x6C511: a replayed run stops there (`unmodeled indirect call to 0x72B05 at 0x6C511`, probe over
+  the real image). It is therefore a stub — `SC_FLUSH = E.Call(0x6C4CF, (),
+  clobbers=("ecx", "edx", "ebp"))`, the clobbers the §E3.10-item-3 analyzer derives from its bytes
+  (`E.callee_clobbers`), re-pinned in `test_each_stub_declares_the_registers_its_callee_clobbers`
+  (a shared entry: both exit-reaching rows stub the same callee and the harness requires one
+  declared set). Its EAX (the stub answers 0) is discarded by `58` `pop eax` 0x62720, which restores
+  the code the chain pushed — the caller reads no register of the flush; that is why one case value
+  (0, the default) needs no per-case variation (§E3.10 item 4). With it, the chain reaches
+  `B4 4C` 0x62721 `mov ah,0x4c` and `CD 21` 0x62723 and the run stops `("exit", 1)`.
+
+**The load row converted (step 1).** Case l6 (7th) declares `terminal=("exit", 1)`; `sc_load`'s
+`exits` flag sets `Machine(files=..., exits=True)` and the declaration together, so the case cannot
+run one without the other. The Spec's exit block is now exercised: `unhit_named` emptied, coverage
+10/11 → 11/11. The row's allow set grows by SC_EXIT (0x62002, 0x62003, 0x6201B) and its calls by
+SC_FLUSH; the other six cases do not reach any of them, their runs are byte-identical to §F.1's, and
+every mutant keeps its exact catching case set (the `SC_KINDS`/`SC_CASES` pins pass unchanged — see
+the gates). The claim in the Spec comment names the skip: the terminal case compares no port value,
+bytes or calls (§G1), the row's equivalence claim is the other six cases. The port side of the short
+read is *not* left unverified repo-wide: `test_game.c`'s load case pins the failed-open behaviour
+itself (a 0x7F7-byte file gives the 0xFF image and flag 1) — the row simply cannot compare it, and
+AGENTS.md's weaker-list entry says so in those words (the row stays weaker, not because the block is
+missing — it is no longer — but because one case compares nothing on the port side).
+
+**The save row left named (step 2).** No case added; the 19 mutants and the s0..s4 sets are
+untouched. The unhit reason rewritten above is the deliverable: evidence, not a shrug. The Spec
+comment's pointer (see l6 in §F.1's table) is unchanged.
+
+**The 0x2EA68 row (step 3).** `G2_SPECS` (placed after the SC rows it shares the chain constants
+with — the file has no per-subsystem sections; `D1_SPECS += G2_SPECS` follows the batch convention):
+`Spec("menu_fatal_error", 0x2EA68, [...], allow_calls=SC_EXIT, calls=(SC_FLUSH,), mutants=())`,
+cases f0 (EAX = 0x80B54, a caller's real message pointer) and f1 (EAX = 0), each
+`terminal=("exit", 1)`. The arg convention follows §E3.10 item 1 from the callee's bytes: the body
+reads no register and touches no stack — EAX is its only input in the callers' convention (the
+`SA_FATAL` stub's `("eax",)` is the same reading) — and its starting value varies between the two
+cases precisely to show it is discarded: AL = 1 either way. The static scan of the tail jump follows
+into `0x62003`, so the row covers two blocks (2/2, hit by both cases); the two `FF 15` sites in that
+block are indirect *calls*, excluded from the jumps check by the §E3.7 rule, and the run resolves
+them into SC_EXIT. The binding `b_g2_2ea68` (diff_runner.c, after the sc bindings, with the
+`k_bindings` entry mask 0xFFFFFFFF): calls the ported `menu_fatal_error(r[R_EAX])` and answers
+*eax = 0 — never compared (mask moot, §E3.10 item 7: the conservative default stated). The function's
+`PR_SEAM` is inert on this row: the case text declares a stub at 0x6C4CF only, and `seam_hook` runs
+a function whose seam address the case does not stub.
+
+**No mutant on the 0x2EA68 row — the brief's expectation was impossible, ruled by the bytes.** The
+brief's step 3 asked "mutant = the C body skipping its observable side". The body has none to skip:
+menu.c:52-56 is the seam line and `(void)msg` — no store, no output, no return value anyone reads
+(§N.1's own row would-compare-nothing argument). And a matched-terminal case skips the port's EAX,
+writes and calls (§G1's limit, the same reason `mutant_detection` cannot see a difference: the skip
+emits no `diffs`). Since the function *cannot* be called without exiting, every case of the row is
+terminal and no mutant of the port's body could be caught by any case — the row would print NOT
+DETECTED and the self-check would fail. The precedent is `0x18428`'s row: effect-free, `mutants=()`,
+with the limit named in the Spec comment and this record — the same treatment here. The row is still
+worth the +1 function it adds: it proves from the bytes that 0x2EA68 discards its argument and
+carries exit code 1 into the modelled chain (the two starting values differ to prove discarding,
+and `opens`/`executed`/`outside`/port-refusal checks still run on its cases), and it closes
+`config_image_store`'s callee column (below). AGENTS.md lists it among the weaker rows, honestly.
+
+**Re-measured counter and pins (step 4).** Base `1000/1000 functions VERIFIED; 14885/14885 mutants
+detected; 1 named gaps; 638/831 rows with callees closed (169 have none)` → **`1001/1001 functions
+VERIFIED; 14885/14885 mutants detected; 1 named gaps; 639/832 rows with callees closed (169 have
+none)`**. Line by line: functions 1000 → 1001 (the new row, VERIFIED — its mutants=() adds none, so
+the mutant figure is unchanged at 14885/14885 and every existing mutant still detects); named gaps
+unchanged at 1 (the batch added no `gap=` Spec); with-callees rows 831 → 832 (the new row has
+callees) and closed 638 → 639 — the single closure is `config_image_store` (0x2D498), whose only
+callee was the 0x2EA68 stub, now VERIFIED by its own row; `config_storage_touch` and the other
+SA_FATAL users keep their 0x2EA68 column flipped to VERIFIED but stay open on 0x61A70/0x65490/
+0x654C7 (runtime, no rows); rows-without-callees 169 unchanged (1001 − 832). The full `--self-check`
+diff against the recorded base output touches exactly these lines: the new row's table line, the
+callee-column flips on 0x2D498/0x2D4EC rows and their mutants, the load row's case/block/callee
+columns and its twelve mutants' columns, and the counter line — no other row's numbers, problems or
+catch-sets moved (the pins and every other table line compare identical). The `0x2EA68` name is
+added to the row-name and mask pins (G2_MASKS, merged into D1_MASKS) and `0x6C4CF` to the stub-
+clobbers pin; the counter sentence re-pinned with a track G g2 comment naming the deltas.
+
+**Review Focus #2, row-level.** The fail-first the plan asks of this task: with l6's `terminal`
+declaration removed while the run still exits, `--function config_file_load` reports MISMATCH with
+`l6: terminal: the original exit with AL=0x1 (exit: terminate with code 1 at 0x62723), the case
+declares no terminal exit`; the declared row then passes (11/11 blocks, VERIFIED). The other two
+directions on the real rows: declaring AL=2 on f0 — MISMATCH `the original exit with AL=0x1 ... the
+case declares exit with AL=0x2`; and l6's machine without `exits` (declaration kept) — MISMATCH `the
+original no terminal exit (unmodeled: int at 0x62723), the case declares exit with AL=0x1`. The
+terminal verdict is matched, never permitted.
+
+**Limits this section creates (§H.4-style).** SC_EXIT/SC_FLUSH allowances are per Spec, not global: a
+future row that reaches the chain must name the same allowances (and the stub at 0x6C4CF says one
+clobbers set across specs). The flush's modelled EAX 0 answers where the real close-callers would
+have run — the row claims only that the chain discards it (`pop eax` 0x62720). A matched-terminal
+case's block-coverage credit can make an unhit entry reachable in the table while its port side is
+compared nowhere — the claim strings and AGENTS.md's weaker list carry that, not the counter. The
+load row's l6 exercises the arm with a file one byte short only: other short lengths run the same
+`jne 0x1B04D` (one equivalence class, plus the boundary). The `0x2EA68` row proves discarding and
+the code, not that any caller reaches it (callers were §S.7's and §H's business; the menu rows name
+their wrap arms unhit for the same exit).
+
+**Gates.** Full `--self-check` with the pins green (the counter above, rc 0); harness suite
+`python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify` — **211 tests OK** with
+the conversion (the SC mutant catch-set pins pass unchanged); `PR_ORACLE_REQUIRED=1 ./build/run_tests`
+— `all checks passed` (no `port/src` byte changed: the batch's C edit is the test-only diff_runner.c
+binding and its table entry).
 
 ## §G3 — the six non-rows (pending, lane A task 3)
 

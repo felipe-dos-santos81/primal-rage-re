@@ -33360,9 +33360,15 @@ D1_SPECS += SB_SPECS
 SC_IMAGE, SC_LEN = 0x00100CE4, 0x7F8            # the stored image; its last byte 0x1014DB is the XOR of the others
 SC_NO_CD = {0x00101520: b"\x01"}
 SC_REAL = (0x10D34, 0x10D0C, 0x61A70, 0x65490, 0x654C7)
-SC_SC_UNHIT = "the runtime's exit, `call 0x62003` with EAX = 1 (0x62003..0x62723 `mov ah,0x4c; int 0x21`), which " \
-              "does not return: a case reaching it would stop the original's run, so no case does (the port takes " \
-              "the failed call's result instead, config.c, PORT)"
+# track G g2 (record 2026-10-14-reverse-g §G2): the exit chain the load row's l6 reaches. The chain
+# head 0x62003 and its second block 0x6201B run from their bytes (record §G1 for the disassembly),
+# as do the three cleanup vectors' shared target 0x62002 (one `C3` ret: the no-op default the image
+# holds at [0xEF934], [0xEF938] and [0xEF93C]). The flush `call 0x6C4CF` 0x6271B cannot run: its
+# stream table at 0xF0A0E holds live close pointers (dwords 0x61A47 and 0x72B05, read from the image
+# and Ghidra alike) and its `call eax` 0x6C511 stops a replayed run (`indirect call to 0x72B05 at
+# 0x6C511`): a stub. Its EAX is discarded by `pop eax` 0x62720, which restores the exit code.
+SC_EXIT = (0x62002, 0x62003, 0x6201B)
+SC_FLUSH = E.Call(0x6C4CF, (), clobbers=("ecx", "edx", "ebp"))
 
 
 def sc_image(mul, add, bad=0):
@@ -33374,13 +33380,17 @@ def sc_image(mul, add, bad=0):
     return body + bytes([x ^ bad])
 
 
-def sc_load(cid, content, image, regs=None):
+def sc_load(cid, content, image, regs=None, exits=False):
     """0x1AFE8: the directory holds `content` (E.F1_ABSENT for the missing file whose fopen the model
     answers 0); the buffer starts as the image XOR 0x5A, so only the read puts the file's bytes in
-    place on both sides."""
+    place on both sides. `exits` (the g2 short-read case l6, record 2026-10-14-reverse-g §G2): the
+    machine also answers the runtime's exit chain and the case declares its terminal difference —
+    the original ends in `terminate with code 1` and the port takes its documented failed-open
+    path and returns (config.c, PORT)."""
     p = d1d_chunks(SC_IMAGE - 4, b"\xc1\xc2\xc3\xc4" + bytes(b ^ 0x5A for b in image) + b"\xd1\xd2\xd3\xd4")
     p.update(SC_NO_CD)
-    return Case(cid, regs or {}, p, machine=E.Machine(files={b"cmos": content}), opens=((b"cmos", b"rb"),))
+    return Case(cid, regs or {}, p, machine=E.Machine(files={b"cmos": content}, exits=exits),
+                opens=((b"cmos", b"rb"),), terminal=("exit", 1) if exits else None)
 
 
 def sc_save(cid, content, image, regs=None, touch=None):
@@ -33406,7 +33416,12 @@ SC_SPECS = [
     # `cmp edx,0x7f8` against the real read), the XOR of bytes 0..0x7F6 (`cmp eax,0x7f7; jl` 0x1B03A)
     # against the byte 0x1014DB: equal (l1; l4, the captures' zero image; l5, a second valid image, AL
     # zero) clears the flag, else (l2 one bit off; l3 the sum of the first 0x7F6 bytes stored) sets it.
-    # The flag fills the image with 0xFF (0x61A70, run) and is AL. The file itself never changes: both
+    # The flag fills the image with 0xFF (0x61A70, run) and is AL. l6 (track G g2, record
+    # 2026-10-14-reverse-g §G2): a file one byte short of the read — the model answers the short count
+    # and the original walks `mov eax,1` 0x1B04D into the exit chain, declaring the terminal difference
+    # against the port's documented failed-open return (config.c, PORT): the original ends the run with
+    # exit code 1 and that case compares no port value, bytes or calls (§G1's skip); the row's claim is
+    # the other six cases' equivalence plus this arm's reachability. The file itself never changes: both
     # sides mirror its name, mode, length and bytes at the fclose (the model from memory and its own
     # read, the binding from the scratch directory), so a read past the file's end, of another name, or
     # with another mode than the case states is a difference. The handle is model-internal (never
@@ -33422,8 +33437,8 @@ SC_SPECS = [
                  sc_image(5, 0x81, bad=(0x7F6 * 5 + 0x81) & 0xFF)),
         sc_load("l4", bytes(SC_LEN), bytes(SC_LEN), regs=D2E_DIRTY),
         sc_load("l5", sc_image(5, 0x81), sc_image(5, 0x81)),
-    ], unhit_named={0x1B04D: "a count other than 0x7F8: the model answers one for a short file, but " + SC_SC_UNHIT},
-       allow_calls=SC_REAL, eax_mask=0xFF,
+        sc_load("l6", sc_image(7, 3)[:SC_LEN - 1], sc_image(7, 3), exits=True),
+    ], allow_calls=SC_REAL + SC_EXIT, calls=(SC_FLUSH,), eax_mask=0xFF,
        mutants=tuple("@" + m for m in "noread dst readlen len6 len8 add sumbyte nofill fill0 filllen fillall "
                                       "flag".split())),
     # 0x1B084 config_file_save: no argument. The missing directory (s0: F1_GONE, `test eax,eax; je`
@@ -33447,7 +33462,11 @@ SC_SPECS = [
         sc_save("s3", E.F1_ABSENT, bytes(SC_LEN), regs=D2E_DIRTY),
         sc_save("s4", b"stale cmos!!", bytes(SC_LEN)),
     ], unhit_named={0x1B0F7: "a count other than 0x7F8: the modelled fwrite never comes back short (a "
-                             "memory-backed file has no full disk) and " + SC_SC_UNHIT},
+                             "memory-backed file has no full disk) and its count's sources are the body's "
+                             "own constants — `mov ebx,0x7f8` 0x1B0CA, `mov edx,1` 0x1B0DC, the buffer "
+                             "0x100CE4..0x1014DB wholly in the image — so no case reaches the arm even with "
+                             "the exit chain modelled (§G2; the load row's l6 shows the arm's shape). The "
+                             "port's failed write takes the flag path instead (config.c, PORT)"},
        allow_calls=SC_REAL, calls=(SC_TOUCH,),
        eax_mask=0xFF,
        mutants=tuple("@" + m for m in "gatelate nogate sumfirst summid notouch1 notouch2 touchorder touch0 nosum "
@@ -33455,6 +33474,32 @@ SC_SPECS = [
 ]
 
 D1_SPECS += SC_SPECS
+
+# ---- track G batch g2 (record 2026-10-14-reverse-g §G2): the fatal menu exit --------------------
+G2_SPECS = [
+    # 0x2EA68 menu_fatal_error: EAX = the message pointer the callers pass (e.g. `mov eax,0x80b54`
+    # 0x2FDCB, "Null Menu"). The body is `mov eax,1` 0x2EA68 and `jmp 0x62003` 0x2EA6D: the argument
+    # is discarded, never dereferenced, and the tail-jump carries exit code 1 into the runtime's exit
+    # chain (0x62003..0x62723 `mov ah,0x4c; int 0x21`, record §G1); nothing returns. The row compares
+    # what the terminal verdict sees — that the original ends its run in `terminate with code 1`
+    # whichever value EAX starts with (f0 the real message pointer, f1 zero) — against the port's
+    # documented return with no side effect (menu.c PORT, record §S.8 F1): a declared terminal
+    # difference (§G1). It carries no mutant: every case is terminal, and a matched-terminal case
+    # skips the port's values, bytes and calls (§G1's limit), so no case of this row could catch a
+    # mutation of menu_fatal_error's body (a named limit, the precedent 0x18428's read-only row).
+    # The chain's vector calls reach 0x62002 (one `ret`) and its `call 0x6201B` runs from bytes
+    # (allowed, SC_EXIT); the flush `call 0x6C4CF` 0x6271B is SC_FLUSH's stub — it cannot run (its
+    # stream table at 0xF0A0E holds live close pointers: `call eax` 0x6C511 stops a replayed run at
+    # 0x72B05) and its EAX is discarded by `pop eax` 0x62720, which restores the code. The scan of
+    # the tail jump covers the chain's head block 0x62003 too, hit by every case. Mask 0xFFFFFFFF:
+    # the conservative default — the comparison it guards is never reached.
+    Spec("menu_fatal_error", 0x2EA68, [
+        Case("f0", {"eax": 0x80B54}, machine=E.Machine(exits=True), terminal=("exit", 1)),
+        Case("f1", {"eax": 0}, machine=E.Machine(exits=True), terminal=("exit", 1)),
+    ], allow_calls=SC_EXIT, calls=(SC_FLUSH,), mutants=()),
+]
+
+D1_SPECS += G2_SPECS
 
 # ---- track S integration: the run clock and the ISR tick (record 2026-10-13-reverse-s §S.9) ----------
 SI_RC = 0x0010746C                              # acc[0..3], last tick, 0x107480, total, counters[0..2], mask

@@ -30058,9 +30058,10 @@ D1_MASKS.update(SA_MASKS)
 D1_KINDS.update(SA_KINDS)
 D1_CASES.extend(SA_CASES)
 # S sa end
-# S sc (record 2026-10-13-reverse-s §S.7, the rows converted by 2026-10-14-reverse-f §F.1): the
-# save file's two rows; measured pins. The load row's sets are unchanged by the conversion; the save
-# row gains s4 (the stale file a write-mode open replaces at offset 0 — the model's rule, the raw's
+# S sc (record 2026-10-13-reverse-s §S.7, the rows converted by 2026-10-14-reverse-f §F.1 and
+# 2026-10-14-reverse-g §G2): the save file's two rows; measured pins. The load row's sets are
+# unchanged by either conversion: g2's l6 is a terminal case and §G1's skip means no mutant is caught
+# by it (measured — the per-mutant case sets below are exactly the f1 ones). The save row gains s4 (the stale file a write-mode open replaces at offset 0 — the model's rule, the raw's
 # open-time truncate unpinned: f-conventions.md OPEN Q1), which every write-path mutant also
 # catches, and @wmode (append at the file's end instead of at offset 0) is caught by s4 alone
 # (track F f1, jobs=1).
@@ -30134,7 +30135,16 @@ SC_CASES = [
     ("config_file_save@wsrc", ['s1', 's2', 's3', 's4']),
     ("config_file_save@wmode", ['s4']),
 ]   # SC_CASES end
+# G2 (record 2026-10-14-reverse-g §G2): the menu_fatal_error row. Every case of it declares the
+# terminal difference (§G1), so a matched-terminal case compares no port value, bytes or calls and no
+# mutant could ever be caught on the row: it carries none (the precedent 0x18428's read-only row) and
+# joins the mask/name pins only. Measured: 2 cases, blocks 2/2 (the tail jump's scan covers the chain
+# head 0x62003 too), callees SC_EXIT + the SC_FLUSH stub, all unverified: the row is open on them.
+G2_MASKS = {
+    "menu_fatal_error": 0xffffffff,
+}   # G2_MASKS end
 D1_MASKS.update(SC_MASKS)
+D1_MASKS.update(G2_MASKS)
 D1_KINDS.update(SC_KINDS)
 D1_CASES.extend(SC_CASES)
 # track S integration (record 2026-10-13-reverse-s section S.9): the run clock and the ISR tick
@@ -31622,6 +31632,9 @@ class RealFunctionTests(unittest.TestCase):
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
         # S sa end
+        # G2 (record 2026-10-14-reverse-g §G2): the flush stub the two exit-reaching rows share
+        0x6C4CF: ("ecx", "edx", "ebp"),
+        # G2 end
         # S sb (record 2026-10-13-reverse-s §S.6): the stubs its rows add
         0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"), 0x2DAE4: ("edx",), 0x2E934: ("edx",), 0x32B94: ("edx",), 0x32BB0: ("edx",),
         # S sb end
@@ -31890,9 +31903,13 @@ class RealFunctionTests(unittest.TestCase):
         # 27 mutants (7 + 3 + 14 + 3; record §H.2). Track H batch h2: 0x52106's row runs unpoked and gains seven
         # DAC and screen mutants, and 0x51ED8's drawing cases four (record §H.3). Track F batch f1: the
         # two save rows (0x1AFE8, 0x1B084) run unpoked under the file model, the save row gains the @wmode
-        # append mutant and the case s4 (record 2026-10-14-reverse-f §F.1). Measured on the merge.
-        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps; "
-                      "638/831 rows with callees closed (169 have none).", out.getvalue())
+        # append mutant and the case s4 (record 2026-10-14-reverse-f §F.1). Track G batch g2: the load
+        # row gains the terminal case l6 (the short read reaches the modelled exit, all 11 blocks now
+        # hit) and the exit-chain callees, and 0x2EA68 gains its row with no mutant (every case declares
+        # the terminal difference, §G2): functions 1000 -> 1001, with-callees rows 831 -> 832, and
+        # config_image_store closes on its callee 0x2EA68 (638 -> 639). Measured on the merge.
+        self.assertIn("diff-verify: 1001/1001 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps; "
+                      "639/832 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
