@@ -180,13 +180,12 @@ int res_load_index(const char *game_dir, const char *index_path)
     if (sz <= 0 || sz % (long)RES_REC) { fclose(f); return 0; }
     if (sz / (long)RES_REC > (long)RES_MAX) { fclose(f); return 0; }
 
+    DSD(DS_001014F0) = (u32)(sz / (long)RES_REC);         /* 0x1B194, before the table's allocation */
     u32 table = res_block_alloc((u32)sz);                 /* 0x1B1A0 0x1C308 */
+    DSD(DS_001014E0) = table;                             /* 0x1B1A5 */
     if (table == 0) { fclose(f); return 0; }
     if (fread(mem + table, 1, (size_t)sz, f) != (size_t)sz) { fclose(f); return 0; }
     fclose(f);
-
-    DSD(DS_001014E0) = table;
-    DSD(DS_001014F0) = (u32)(sz / (long)RES_REC);
 
     /* Walk the entries exactly as 0x1B120 does, and additionally read each
      * resource's bytes from disk: the original reads them through 0x1B3AC,
