@@ -13729,6 +13729,19 @@ static u32 rd_frame_hash(void)
     return h;
 }
 
+/* Counts 0x1AFE8 (config_file_load) and runs every body. Its one caller is
+ * the master init 0x2F9CC (0x2F9CF), which 0x20C10 calls before its setjmp
+ * (0x20C15, 0x20C1F): once per process, never on a restart (record
+ * 2026-10-13-reverse-i §I.4). */
+static u32 rd_master_inits;
+
+static int rd_master_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    (void)nargs; (void)args; (void)eax;
+    if (addr == 0x1AFE8u) rd_master_inits++;
+    return 0;
+}
+
 int test_restart_drive(void)
 {
     const int before = g_failures;
@@ -13747,6 +13760,8 @@ int test_restart_drive(void)
         snprintf(spath, sizeof spath, "%s/cmos", sdir);
         CHECK(host_write_file(spath, save, sizeof save), "the scratch save");
         host_save_set_path(spath);
+        rd_master_inits = 0u;
+        pr_seam = rd_master_probe;
         game_init();
         host_save_set_path(NULL);
         (void)unlink(spath);
@@ -13804,6 +13819,8 @@ int test_restart_drive(void)
         CHECK_EQ_INT((int)DSW(DS_000F0A64), (int)boot_state[i]);
         CHECK_EQ_INT((long)rd_frame_hash(), (long)boot_hash[i]);
     }
+    pr_seam = NULL;
+    CHECK_EQ_INT((int)rd_master_inits, 1);             /* 0x20C15: before the setjmp, not in the tail */
     printf("test_restart_drive: restart after %d menu iterations (stamp %X, clock %X)\n",
            n, (unsigned)t0, (unsigned)t_last);
     return g_failures - before;
