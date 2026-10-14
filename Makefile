@@ -554,7 +554,10 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves 
 # the port does not reproduce must number >= GP_KEYS_MIN_EFFECTS). Skips without
 # the capture; with it, an unpinned value or another poll.log fails. Narrow: an
 # event is judged on the latch, the pause bytes, the pad words, mode, b1f, cred
-# and rng only; the pause/prompt frames are not compared (record §K.10).
+# and rng only. Track G task 5 (record 2026-10-14-reverse-g §G5) added the frame
+# ratchet below: the pause and prompt frames are now compared, with capture 835
+# the one frame allowed by name (its band is the never-dumped present state, the
+# §K.10 gap).
 # MIN_EFFECTS: the port reproduces the first 11 of the 11 events of record §K.6 on
 # data/k11-captures/gp-keys-fight (Task 6, record §K.12: "effects: first not reproduced 11,
 # ratchet N 0 ok (improved: raise N)"); raise it when gp_keys prints "improved: raise N".
@@ -562,13 +565,41 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves 
 # (Task 5 Step 1) and both values re-pinned.
 GP_KEYS_MIN_EFFECTS = 11
 GP_KEYS_CAPTURE_SHA256 = 8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae
-gp-keys-oracle: build ## In-match keys: evidence + effects ratchet on gp-keys-fight (skips without data/k11-captures/gp-keys-fight)
-	@echo "== in-match keys oracle: gp-keys-fight (evidence, effects ratchet) =="
+# The frame + trace ratchet (track G task 5, plan 2026-10-14-reverse-g-widening, record
+# 2026-10-14-reverse-g-derivations.md §G5): tools/gp_compare.py over the same replay.
+# Provenance, measured on 5f874678 (the replay's 789-frame dump at $(GP_DUMP)/gp-keys-fight):
+#   MIN_FIRST: the allowance (gp_compare.BANDS_ALLOWED['gp-keys-fight']: capture 835 = raw
+#     3934, rows 0..80 byte-bound to port 592 (f=0x832), rows 92..199 to port 593 (f=0x833),
+#     band rows 81..91 pinned by sha256 d9c0ac62f7e0c0d4082fba8d195eae4f767c56a7887bdf7346450511f998cad8,
+#     the dump's unique matching adjacent pair; §G5: 2442 band bytes equal neither frame, no
+#     splice point, no port frame holds the band) explains 835, leaving ZERO unexplained
+#     frames inside the replay's range: "first unexplained 1136, ratchet N 1136 ok".
+#     1136 (raw 5027)
+#     is the end of the port's script (the capture's X record f=0873, step=19 end; captures
+#     1136..1165 are the restart's boot movies the port never ran) — like gp-twop's 612, how
+#     far the port got, not a divergence. Raise only if the script is lengthened.
+#   TRACE_MIN_FIRST: "trace: 0 differing through 2163; ratchet N 2164 ok (every item is
+#     explained: N = 2164 is the exact pin)" — 0x873 + 1, the replay's last traced f.
+#   MAX_START: "frames: window from capture 100 (raw 1747)".
+#   CAPTURE_FRAMES: 1166 frame_*.raw.gz (§K.14); CAPTURE_SHA256 above is unchanged (the
+#     same capture — track G pinned no new hash). No moves pin: the capture has the move
+#     fields and the report pass shows 0 differing, but the moves claim is out of this
+#     task's scope (§G5).
+GP_KEYS_MIN_FIRST = 1136
+GP_KEYS_TRACE_MIN_FIRST = 2164
+GP_KEYS_MAX_START = 100
+GP_KEYS_CAPTURE_FRAMES = 1166
+gp-keys-oracle: build ## In-match keys: evidence + effects ratchet and the frame ratchet on gp-keys-fight (skips without data/k11-captures/gp-keys-fight)
+	@echo "== in-match keys oracle: gp-keys-fight (evidence, effects ratchet, frames ratchet) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-keys-fight GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_keys.py evidence --capture $(K11_CAPTURES)/gp-keys-fight \
 		--capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)"
 	@$(PYTHON) tools/gp_keys.py effects --capture $(K11_CAPTURES)/gp-keys-fight --port $(GP_DUMP)/gp-keys-fight \
 		--min-effects "$(GP_KEYS_MIN_EFFECTS)" --capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)"
+	@$(PYTHON) tools/gp_compare.py --scenario gp-keys-fight --capture $(K11_CAPTURES)/gp-keys-fight \
+		--port $(GP_DUMP)/gp-keys-fight --min-first "$(GP_KEYS_MIN_FIRST)" \
+		--trace-min-first "$(GP_KEYS_TRACE_MIN_FIRST)" --max-start "$(GP_KEYS_MAX_START)" \
+		--capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)" --capture-frames "$(GP_KEYS_CAPTURE_FRAMES)"
 
 # Gameplay U7 oracle (plan docs/superpowers/plans/2026-10-01-gameplay-u7-two-players.md, record
 # docs/superpowers/plans/2026-10-01-gameplay-u7-derivations.md): data/k11-captures/gp-twop, LEFT

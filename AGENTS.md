@@ -278,12 +278,24 @@ consolidation gate).
   `make gp-moves-oracle` does the same for `data/k11-captures/gp-u6-moves-b` and adds a
   third ratchet, `moves`, over the snapshot's move bytes (`c0 c1 r0 r1 s0_43`, record
   gameplay-u6 §U6.11); its claim is as narrow.
-  `make gp-keys-oracle` (in `make verify`; record gameplay-u11 §K.10/§K.14) judges the 11 in-match
-  key events of `data/k11-captures/gp-keys-fight` on state only: at each event's capture frame the
+  `make gp-keys-oracle` (in `make verify`; record gameplay-u11 §K.10/§K.14 and
+  track-G §G5) judges the 11 in-match
+  key events of `data/k11-captures/gp-keys-fight` on state: at each event's capture frame the
   capture shows the raw-derived change (`evidence`) and the port's replay shows the same one
   (`effects`, ratchet `GP_KEYS_MIN_EFFECTS` = 11, `poll.log` sha256 pinned), judged on the latch,
-  pause bytes, pad words, `mode`, `b1f`, `cred` and `rng` only; no frame is compared (the pause and
-  prompt screens are a named gap); it skips without the capture.
+  pause bytes, pad words, `mode`, `b1f`, `cred` and `rng`; and (track G task 5) ratchets the
+  frames: every content-bearing capture frame of the pinned window (start ≤ `GP_KEYS_MAX_START`
+  = 100) below `GP_KEYS_MIN_FIRST` = 1136 is explained (clean/splice/transition) against the
+  port's replay — the pause, ABANDON and QUIT screens' first pixel claim — with capture 835
+  (the QUIT event's scan-out catch-up) allowed by name ONLY at its pinned bytes (rows 0..80
+  and 92..199 byte-bound to the port's current `f = 0x832`/`0x833` frames, the 11-row band
+  pinned by sha256; that band holds a present state no port frame carries — the §K.10 item 2
+  named gap stays its cause, not isolated); N = 1136 is the end of the port's script (the
+  capture's X record; its 30-frame boot-movie tail is how far the port got, not claimed),
+  the trace ratchets at `GP_KEYS_TRACE_MIN_FIRST` = 2164 and the capture identity is pinned
+  (sha256 + `GP_KEYS_CAPTURE_FRAMES` = 1166, the same capture U11 pinned); the claim is narrow
+  the same way — no under-render detection, order and coverage not claimed; it skips without
+  the capture.
   `make gp-twop-oracle` (in `make verify`; record gameplay-u7 §T.8-§T.11) checks that
   `data/k11-captures/gp-twop` is a two-human match from P2's join in the character select (f=2C3, `cred 4 -> 4`)
   to the scenario's end (`tools/gp_twop.py check`, from the raw's command-word writers), then ratchets as

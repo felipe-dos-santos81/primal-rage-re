@@ -1,5 +1,5 @@
 # tools/tests/test_gp_compare.py
-import contextlib, gzip, io, os, shutil, sys, tempfile, unittest
+import contextlib, gzip, hashlib, io, os, shutil, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
@@ -393,6 +393,98 @@ class TestCli(Dirs):
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                            '--min-first', '1', '--trace-min-first', '1', '--max-start', '0')
         self.assertEqual(rc, 1, out)
+
+
+class BandAllowance(Dirs):
+    # Track G task 5 (record §G5): the per-frame named allowance, the pattern
+    # title_compare.ATTRACT2_SPLICE3_ALLOWED (3545) sets. A named capture frame is
+    # explained ONLY if its band bytes equal the pinned sha256 AND exactly one
+    # adjacent port pair (P, P+1) in the CURRENT dump byte-binds the rows outside
+    # the band. Review Focus #1: a mutation of a bound port frame's dump bytes
+    # un-explains the capture frame again; the allowance is per-frame per-bytes,
+    # never per-scene.
+    #
+    # The fixture: port [1, 2, 3] (ipx(k): flat k except row k = k+1); the allowed
+    # synthetic frame (capture 1) is port0's rows 0..80, an 11-row band of value 7
+    # (a third state: no port frame holds it, no splice point produces it, and 11
+    # rows are more than the transition model's one), and port1's rows 92..199.
+    # Capture 0 is rgb(1) clean (the window start), captures 2 and 3 rgb(2), rgb(3).
+    def setUp(self):
+        super().setUp()
+        R = tc.ROW
+        self.c = rgb(1)[:81 * R] + bytes(bytearray(b'\x07') * (11 * R)) + rgb(2)[92 * R:]
+        self.sha = hashlib.sha256(self.c[81 * R:92 * R]).hexdigest()
+        self.bands = ((1, 81, 92, self.sha),)
+
+    def write_fixture(self):
+        self.write([1, 2, 3], [rgb(1), self.c, rgb(2), rgb(3)])
+
+    def run_band(self, n=4, **kw):
+        cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
+        port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
+        rows = [tc.row_hashes(port[m]) for m in range(len(port))]
+        out = []
+        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
+                                      kw.get('report', False), out.append,
+                                      kw.get('max_start', 0), self.bands)
+        return rc, first, out
+
+    def test_the_named_bytes_are_explained(self):
+        self.write_fixture()
+        rc, first, out = self.run_band()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('allowed by name as a band splice: port 0/1' in l for l in out), out)
+        self.assertTrue(any('1 band-allowed' in l for l in out), out)
+
+    def test_a_mutated_bound_port_frame_unexplains_it_again(self):
+        # Review Focus #1: mutate the dump's bottom-bind frame (port 1: 2 -> 5)
+        # without touching the capture. The unique-pair bind fails, the allowance
+        # FAILs, the frame is unexplained again, and the ratchet catches it.
+        self.write_fixture()
+        self.assertEqual(self.run_band()[0], 0)
+        with open(os.path.join(self.port, 'frame_00001.ipx'), 'wb') as f:
+            f.write(ipx(5))
+        rc, first, out = self.run_band()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'no unique adjacent port pair' in l
+                            for l in out), out)
+        self.assertTrue(any('FAIL: first unexplained 1 < ratchet N 4' in l for l in out), out)
+
+    def test_different_band_bytes_are_not_the_named_frame(self):
+        # Review Focus #1 (the capture side): the same top/bottom with a different
+        # band (value 8) is a DIFFERENT byte layout and must not be silenced.
+        R = tc.ROW
+        self.write_fixture()
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(rgb(1)[:81 * R] + bytes(bytearray(b'\x08') * (11 * R)) + rgb(2)[92 * R:])
+        rc, first, out = self.run_band()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'not the named' in l for l in out), out)
+
+    def test_ambiguous_pairs_are_not_the_named_frame(self):
+        # never a class: two adjacent pairs bind the same rows (port [1,2,1,2]) ->
+        # no unique bind -> the named frame is not explained.
+        self.write([1, 2, 1, 2], [rgb(1), self.c])
+        rc, first, out = self.run_band(3)
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('no unique adjacent port pair' in l for l in out), out)
+
+    def test_a_named_frame_the_model_explains_is_a_stale_name(self):
+        self.write_fixture()
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(rgb(2))                          # now clean: the name is stale
+        rc, first, out = self.run_band()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('retire the name' in l for l in out), out)
+
+    def test_the_table_names_the_measured_gp_keys_fight_frame(self):
+        # the pinned recipe of record §G5: capture 835 (raw 3934), rows 0..80 to
+        # port f=0x832 / 92..199 to f=0x833, band sha d9c0ac62.. (§K.12's finding
+        # re-measured at 5f874678). A changed name is a changed claim: it must move
+        # with a re-measurement in the record, never silently.
+        self.assertEqual(gc.BANDS_ALLOWED['gp-keys-fight'],
+                         ((835, 81, 92,
+                           'd9c0ac62f7e0c0d4082fba8d195eae4f767c56a7887bdf7346450511f998cad8'),))
 
 
 if __name__ == '__main__':
