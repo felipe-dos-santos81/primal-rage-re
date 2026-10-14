@@ -200,13 +200,19 @@ int res_load_index(const char *game_dir, const char *index_path)
      * are kept, so 0x1B544's first resolve of a non-preloaded entry still runs
      * the presentation. Only the preloaded entries (0x1B210) mark themselves
      * read at init; the rest stay unread-flagged and draw on first resolve. */
-    u32 biggest = 0, missing = 0;
+    u32 missing = 0;
     for (u32 i = 0; i < DSD(DS_001014F0); i++) {
         u32 size = DSD(table + i * RES_REC + 12) & 0xFFFFFFu;
+        u32 lazy = (DSD(table + i * RES_REC + 12) & RES_FLAG_PRELOAD) == 0u;   /* 0x1B210 */
         u32 data = res_block_alloc(size);                 /* 0x1B227 / 0x1B267 0x1C308 */
         if (data == 0) return 0;
         DSD(table + i * RES_REC + 16) = data;
-        if (size > biggest) biggest = size;
+        /* 0x1B26F..0x1B289: an entry that is not preloaded raises the stored
+         * maximum DS_001014F8 to its size, read again after the allocation,
+         * when it is greater, signed (`cmp eax,edx; jle`); a preloaded one
+         * leaves it. */
+        if (lazy && (s32)(DSD(table + i * RES_REC + 12) & 0xFFFFFFu) > (s32)DSD(DS_001014F8))
+            DSD(DS_001014F8) = DSD(table + i * RES_REC + 12) & 0xFFFFFFu;
 
         FILE *rf = res_open(game_dir, i);
         int read_ok = 0;
@@ -230,7 +236,6 @@ int res_load_index(const char *game_dir, const char *index_path)
             res_load_present(table + i * RES_REC, 0u);         /* 0x1B250 (BL=0) */
         }
     }
-    DSD(DS_001014F8) = biggest;
     if (missing) fprintf(stderr, "res: %u of %u resources not read\n",
                          missing, DSD(DS_001014F0));
     /* 0x1B120 allocates four buffers after the entry walk (disassembly
