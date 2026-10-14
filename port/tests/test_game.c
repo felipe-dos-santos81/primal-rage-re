@@ -13712,14 +13712,17 @@ int test_restart(void)
 #define RD_GUARD  5000      /* > 0x4B1 + RD_BOOT: a clock that stops trips it */
 
 /* The displayed frame as the capture sees it: each pixel's DAC colour (the
- * captures are RGB, 320x200x3). After the restart the same colours sit one
- * palette index lower than on the first boot (record named-gaps-b §B.6b): on
- * the first boot a resolve of a not-yet-loaded entry draws '- LOADING -',
- * whose font palette 0x80997C takes slot 1 before the attract's; after the
- * restart the entry is marked loaded (0x1B47A) and the port never evicts it,
- * so no loader draw runs and the attract's palettes start at slot 1. The raw's
- * slot order after a restart is not known (named gap), so the indices are not
- * compared. */
+ * captures are RGB, 320x200x3). Until track I the same colours sat one
+ * palette index lower after the restart than on the first boot (record
+ * named-gaps-b §B.6b): the first boot's attract resolved the not-yet-loaded
+ * entry 7 and drew '- LOADING -', whose font palette 0x80997C took slot 1
+ * before the attract's; after the restart the entry is marked loaded
+ * (0x1B47A), the port never evicts it and no loader draw runs. The master
+ * init now reads entry 7 at boot (0x2F9FC, record 2026-10-13-reverse-i
+ * §I.4), so neither pass draws the loader in the attract, and a hash of the
+ * indices passed this driver too when tried. It is not what is pinned: the
+ * raw's slot order after a restart is not known (named gap), so the colours
+ * are compared. */
 static u32 rd_frame_hash(void)
 {
     const u8 *fb = gfx_display();

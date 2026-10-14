@@ -311,10 +311,9 @@ on their other callees. No seam was added.
 
 ## §I.4 `0x2F9CC` — `game_master_init` (`flow.c`)
 
-**State: the function, four seams and the unit case are in (commit `7113e155`); the differential row,
-the `PR_RESTART` assertion and the counter are not.** The eight added calls moved the boot output, and
-the plan's risk rule stops the task there for the controller's gate. What moved is under "The boot
-comparison" below.
+The function, its four seams and the unit case came first (commit `7113e155`). The eight added calls
+moved the boot output, and the plan's risk rule stopped the task there; the controller accepted the move
+("The ruling" below), and the front-end driver's pins, the `PR_RESTART` assertion and the row followed.
 
 ```
 02F9CC  push ebx
@@ -390,11 +389,6 @@ does not stub, so no existing row changed): `PR_SEAM_RET0(0x1AFE8u)` in `config_
 `PR_SEAM(0x2C8F0u, 0xFFFFFFFEu)`). Measured after them: the full `--self-check` prints the same counter
 (`993/993`, `14757/14757`, 1, `635/824`, 169) and the harness suite passes (180 tests).
 
-**For the row** (not written): `E.callee_clobbers` over the image gives `0x1AFE8` (`edi`, `ebp`),
-`0x2D6F8` (), `0x2C9B8` () for the three new stub addresses, and the existing constants cover the rest
-(`0x13ADC` (), `0x4F1E4` (), `0x2BAF4` (), `0x4F1D0` (), `0x38B18` (`ebx`, `ecx`, `edx`), `0x2D974` (),
-`0x2C8F0` (`esi`, `edi`)).
-
 ### The boot comparison
 
 Baseline on `62a1f5a8`, before any source change: `make check frames=60`, the 60 frames copied to
@@ -444,14 +438,125 @@ at `0x2F9FC` it is at boot (the frame word 0), inside `game_master_init`. In ite
 screen is drawn any more, the font palette does not take its slot before the attract's palettes, and
 those sit one slot lower until frame 690. The one new `0x5D812` miss is the spawned record's.
 
-**Not measured** (not the implementer's to run): every oracle, `make verify`. Two things the gate may
-show, from the code alone: (1) the K11, gameplay and front-end drivers install their loader-screen dump
-hook (`res_set_screen_hook`, `test_game.c` `k11_loader`, `gp_loader`, `fe_cyc2_loader`) after
-`game_init()`, so the loader screen of entry 7, which they could dump in iteration 3, is now presented
-before the hook exists; (2) the tail's `0x2BAF4(1)` (`0x20C58`), which the port leaves out (record
-named-gaps-b §B.11), is the raw's reset after this spawn; in the port the spawned record lives until
-`game_state_init`'s `actors_reset` (`0x10E9C`), across `hiscore_init`, `config_run_clock` and
-`game_string_table_load`.
+**The original does the same.** Entry 7's INDEX flags are `0x02`, lazy, and `0x2F9CC` runs before the
+first loop iteration, so the raw's first entry-7 resolve is the spawn at `0x2F9FC`. Record
+`2026-09-29-e-open-derivations.md` §6 had the original's poll read entry 7 at f 0 and the port at f 3 and
+left that residue open; its list of entry-7 handles covers code immediates and misses this one, which is
+in data (`0x9AD84 + 0x10`). The residue is settled from the bytes. No DOSBox-X run was made.
+
+### The ruling, and the pins the move shifts
+
+The controller ran the gate on `8c8917fe`: it stopped at `frontend-oracle`, on the `PR_FRONTEND_DUMP`
+driver's own pins. That driver enters at state 2 and skips the boot attract, so before the change its
+first entry-7 resolve was cycle 2's phase 2 (loop 1973), a loader screen its comment already called "this
+driver's, not the port's" and whose removal it predicted to the number (§6's table). Ruling: the move is
+accepted; re-measure the pins.
+
+Re-measured from the driver's output (`/tmp/pr_frontend_dump/run1.log`, both determinism runs agree):
+
+| Pin (`test_game.c`) | Before | After |
+|---|---|---|
+| `fe_cyc2_n` | 2308 | 2307 |
+| `c2_s6c_f` | 2193 | 2192 |
+| `fe_ld_n` | 13 | 12 |
+| `ld_loop` | 1973, 2783 x4, 3557, 3684, 3985 x6 | 2783 x4, 3557, 3684, 3985 x6 |
+| `ld_frame` | 168, 979..982, 1757, 1885, 2187..2192 | 978..981, 1756, 1884, 2186..2191 |
+| capture 3257's screen (the frame pair read back) | 1756 / 1757 | 1755 / 1756 |
+
+No other pin of the driver moved (`c2_start` 1971, the sound-bank counts, `c2_s6c_i` 3985 and every
+loop number are as they were). The comment above the lists now says why the screen is gone.
+
+`make frontend-oracle`, `make demo-fight-oracle` and `make attract2-oracle` against the last green gate
+before track I (`/tmp/claude-501/fast_verify.log`, the sections from the front-end oracle to the attract
+cycle-2 one): of the 18 `title_compare`/`all checks passed` lines, 16 are byte-identical, the splice-byte
+and missing-frame lists included (window distinct `[560..1884]`; 1325 frames, 517 clean, 801 splice, 3
+transition, 2 unexplained, the two named frames `(832, 3671)` and `(833, 3740)`; demo-fight 0 unexplained,
+the window claim exact; attract2 1732 frames, 1078 clean, 630 splice, 17 transition, 1 unexplained, 6
+all-black, 0 unexplained in the region). Two differ, both port-dump numbers:
+
+```
+- attract2: … cycle-2 dump 2308 frames
++ attract2: … cycle-2 dump 2307 frames
+- attract2: captured frame 3545 (raw 8338) allowed by name as a three-frame splice: cycle-2 2192/2193/2194 at bytes 120000/172800 (rows 125/180)
++ attract2: captured frame 3545 (raw 8338) allowed by name as a three-frame splice: cycle-2 2191/2192/2193 at bytes 120000/172800 (rows 125/180)
+```
+
+No capture-side number moved and no capture frame became unexplained. `tools/title_compare.py` needed no
+change: it reads the splice's frames from `cycle2/loader.txt`. The `Makefile` comment, `port/spec/game_flow.md`
+and a dated note in the e-open record's §6 carry the new numbers.
+
+**A side effect at the restart.** The `PR_RESTART` driver compares colours, not indices, because the
+first boot's attract drew the loader and the restart's did not (record named-gaps-b §B.6b). With entry 7
+read at boot neither does: the driver also passed with `rd_frame_hash` hashing the indices (tried, not
+pinned; its comment says so).
+
+**Not measured** (not the implementer's to run): `make verify`, the K11 and gameplay oracles, the title,
+smk and attract-prefix oracles. Where a later gate could stop: the K11 and gameplay drivers install the
+same dump hook (`res_set_screen_hook(k11_loader)`, `gp_loader`) after `game_init()`; if either dumped
+entry 7's loader screen in its first iterations before, that screen is gone from its dump too. The tail's
+`0x2BAF4(1)` (`0x20C58`), which the port leaves out (record named-gaps-b §B.11), is the raw's reset after
+the spawn; in the port the spawned record lives until `game_state_init`'s `actors_reset` (`0x10E9C`),
+across `hiscore_init`, `config_run_clock` and `game_string_table_load`.
+
+### The `PR_RESTART` assertion
+
+`test_restart_drive` installs a seam hook that runs every body and counts `0x1AFE8` (`config_file_load`),
+whose one caller is the master init (`0x2F9CF`; no other `call rel32`, `jmp rel32` or dword in the image),
+from before `game_init()` to the end of the fifty iterations after the restart, and asserts the count is 1
+(`test_game.c:13826`). The driver's output is unchanged. Mutation: `game_master_init()` also at the head
+of `game_init_resume` gives `test_game.c:13826: 3 != 1` (the boot's tail and the restart's) and no other
+failure.
+
+### The row
+
+`Spec("game_master_init", 0x2F9CC)`: 4 cases, 1/1 blocks, 36 mutants, mask 0, every callee a recorded
+stub. The call set, in the port's argument order:
+
+| Callee | `E.Call` | Clobbers (`E.callee_clobbers`) | Stub |
+|---|---|---|---|
+| `0x1AFE8` | `()` | `edi`, `ebp` | new (`I_LOAD`) |
+| `0x13ADC` | `()` | none | `D4D_EFF_INIT` |
+| `0x4F1E4` | `()` | none | `D5A_INPUT` |
+| `0x2BAF4` | `("eax",)` | none | `D5A_RESET` |
+| `0x4F1D0` | `()` | none | `D5A_ORIGIN` |
+| `0x38B18` | `("eax", "edx", "ebx")` | `ebx`, `ecx`, `edx` | `D5A_ROW` |
+| `0x2D6F8` | `()` | none | new (`I_VALIDATE`) |
+| `0x2D974` | `("eax",)` | none | `D4C_DIP` |
+| `0x2C9B8` | `("eax",)` | none | new (`I_GATE`) |
+| `0x2C8F0` | `("eax",)` | `esi`, `edi` | `D5I2_VOL` |
+
+The three new addresses are in the pinned dictionary of
+`test_each_stub_declares_the_registers_its_callee_clobbers`. Each case seeds the dwords `0x107408..0x107417`
+(`0x08080808`, `0xC0C0C0C0`, `0xEDEDEDED`, `0x14141414`), and the memory at every recorded call places the
+two stores between the calls.
+
+| Case | Entry registers | `0x2D974` answers | Other stub answers |
+|---|---|---|---|
+| `m0` | none | `0x12345677` (both low bits) | 0 |
+| `m1` | EAX, EBX, ECX, EDX, ESI, EDI, EBP = `0xFFFFFFFF` | `0xA5A5A5FC` (clear) | `0x1AFE8` 1, `0x2D6F8` `0x9C94D2C4`, `0x2C9B8` `0x10000`, `0x2C8F0` `0x12345678`, `0x38B18` `0x10A300`, `0x2BAF4` `0x5A5A5A5A` |
+| `m2` | EBX = 5, EDX = 7 | `0x80010001` (bit 0) | `0x2C9B8` `0xFFFFFFFF`, `0x2C8F0` `0xA0` |
+| `m3` | EAX = `0x2A` | `0x0000FF02` (bit 1) | `0x1AFE8` `0x100`, `0x13ADC` `0x33333333`, `0x4F1E4` `0x44444444`, `0x4F1D0` `0x55555555` |
+
+`m1` and `m2` show that call 6's EDX and EBX are the function's own zeros. The only stub answer the raw
+reads is `0x2D974`'s; every other is varied and changes nothing.
+
+Mutants, with what catches each (measured four times, identical; pinned in `I_KINDS`/`I_CASES`):
+
+| Mutants | Caught by |
+|---|---|
+| `@noload @noeff @noinput @noreset @noorigin @norow @novalidate @nogate @novolu @novols` (a call dropped) | the call list from the dropped call on (and the memory at the shifted calls) |
+| `@swap12 @swap34 @swap56 @gatelate @volswap @fieldearly` (two adjacent calls swapped) | the two calls |
+| `@reset0` (`0x2BAF4(0)`), `@desc` (`0x9AD98`), `@a2`, `@a3` (1 for 0), `@field29`, `@gatearg` (−1), `@volu2` (−2 twice), `@vols1` (−1 twice) | the one call's arguments, nothing else |
+| `@ptrearly` (the pointer stored before `0x4F1D0`), `@ptrlate` (after `0x2D6F8`), `@storelate` (`0x107410` after `0x2C9B8`) | the memory at a call, nothing else |
+| `@noptr @ptrval` (`0x1D2D4`) `@ptrw` (a word store) | the bytes and the memory at calls 6 to 10 |
+| `@nofield` (no read, no store), `@nostore`, `@fieldw` (a word store), `@mask8` (`& 0xFC`, the high bytes lost) | the bytes and the memory at calls 8 to 10 |
+| `@nomask` | the same, on `m0`, `m2`, `m3` (not `m1`, whose bits are clear) |
+| `@mask1` (`& ~1`) | the same, on `m0` and `m3` (bit 1 set) |
+
+The counter, measured: `994/994 functions VERIFIED; 14793/14793 mutants detected; 1 named gaps; 636/825
+rows with callees closed (169 have none)` (before: `993/993`, `14757/14757`, `635/824`). The row is
+closed: each of its ten callees has a VERIFIED row (`0x1AFE8`'s row runs the original with its file
+calls poked out, record track S). No existing row, mask, case or pin moved.
 
 ### The unit case `master` (`test_inlined_functions`)
 
