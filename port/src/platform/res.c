@@ -54,11 +54,13 @@ static u32 g_heap = RES_HEAP;
  * Closing it needs a DOSBox-X trace: a breakpoint at 0x1B45F logging
  * DS_00101508 for each read. */
 
-/* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
- * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).
+/* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `entry` is the original's
+ * EAX, the INDEX entry being read (0x1B3B2 `mov esi,eax`); its size is the
+ * read-stall model's. `draw` is the original's BL: 0 from the init walk's call
+ * (0x1B250 `xor ebx,ebx`), 1 from the lazy resolve (0x1B5E0 `mov ebx,1`).
  * With draw set, string 489 is read through 0x1C500 and blitted at (0,192)
  * through 0x1C65C; either way the master loop's full-copy flag DS_001014FC is
- * set (0x1B3F8). `index` is the entry being read, for the read-stall model.
+ * set (0x1B3F8).
  *
  * The read's tail re-syncs the master loop's tick gate: 0x1B3AC ends with
  * `MOV EAX,[0x101508]` / `MOV [0x10150C],EAX` (0x1B45F/0x1B464), so
@@ -81,13 +83,14 @@ static void (*s_screen_hook)(void);
 
 void res_set_screen_hook(void (*hook)(void)) { s_screen_hook = hook; }
 
-static void res_load_present(u32 draw, u32 index)
+void res_load_present(u32 entry, u32 draw)
 {
+    PR_SEAM(0x1B3ACu, entry, draw);
     if (draw != 0u) {
         text_blit_string(game_string_get(0x1E9u), 0, 0xE6);   /* 0x1B3EA/0x1B3EF */
         if (s_screen_hook != NULL) s_screen_hook();
         /* PORT: the read's stall, advanced on the tick counter the gate reads. */
-        u32 size = res_size(index);
+        u32 size = DSD(entry + 12u) & 0xFFFFFFu;
         game_isr_ticks((size + RES_READ_BYTES_PER_TICK - 1u) / RES_READ_BYTES_PER_TICK);
         DSD(DS_0010150C) = DSD(DS_00101508);   /* 0x1B45F/0x1B464 */
     }
@@ -177,7 +180,7 @@ int res_load_index(const char *game_dir, const char *index_path)
     if (sz <= 0 || sz % (long)RES_REC) { fclose(f); return 0; }
     if (sz / (long)RES_REC > (long)RES_MAX) { fclose(f); return 0; }
 
-    u32 table = res_alloc((u32)sz);
+    u32 table = res_block_alloc((u32)sz);                 /* 0x1B1A0 0x1C308 */
     if (table == 0) { fclose(f); return 0; }
     if (fread(mem + table, 1, (size_t)sz, f) != (size_t)sz) { fclose(f); return 0; }
     fclose(f);
@@ -201,7 +204,7 @@ int res_load_index(const char *game_dir, const char *index_path)
     u32 biggest = 0, missing = 0;
     for (u32 i = 0; i < DSD(DS_001014F0); i++) {
         u32 size = DSD(table + i * RES_REC + 12) & 0xFFFFFFu;
-        u32 data = res_alloc(size);
+        u32 data = res_block_alloc(size);                 /* 0x1B227 / 0x1B267 0x1C308 */
         if (data == 0) return 0;
         DSD(table + i * RES_REC + 16) = data;
         if (size > biggest) biggest = size;
@@ -225,7 +228,7 @@ int res_load_index(const char *game_dir, const char *index_path)
              * the resident bit regardless, making the difference unobservable
              * on a complete install. */
             if (read_ok) DSD(table + i * RES_REC + 12) |= RES_FLAG_LOADED;
-            res_load_present(0u, (u32)i);                      /* 0x1B250 (BL=0) */
+            res_load_present(table + i * RES_REC, 0u);         /* 0x1B250 (BL=0) */
         }
     }
     DSD(DS_001014F8) = biggest;
@@ -239,10 +242,10 @@ int res_load_index(const char *game_dir, const char *index_path)
      * E8/E4 are the pair 0x51F45 later assigns to DAT_000E87A0/DAT_000E87A4;
      * their contents are set up by the ported title path, not this loader, so
      * allocate all four and leave them zeroed. */
-    DSD(DS_001014E8) = res_alloc(0xFA00u);
-    DSD(DS_001014E4) = res_alloc(0xFA00u);
-    DSD(DS_001014EC) = res_alloc(0x4880u);
-    DSD(DS_001014F4) = res_alloc(0xEBA0u);
+    DSD(DS_001014E8) = res_block_alloc(0xFA00u);          /* 0x1B2AA */
+    DSD(DS_001014E4) = res_block_alloc(0xFA00u);          /* 0x1B2EB */
+    DSD(DS_001014EC) = res_block_alloc(0x4880u);          /* 0x1B32C */
+    DSD(DS_001014F4) = res_block_alloc(0xEBA0u);          /* 0x1B36D */
     return (int)DSD(DS_001014F0);
 }
 
@@ -315,7 +318,7 @@ void *res_resolve(u32 handle)
          * rules out. Marking first makes such a re-entrant resolve return
          * instead of presenting the same entry again. */
         DSD(entry + 12) = flags | RES_FLAG_LOADED;    /* 0x1B47A */
-        res_load_present(1u, index);                  /* 0x1B5E0-0x1B5E9 (BL=1) */
+        res_load_present(entry, 1u);                  /* 0x1B5E0-0x1B5E9 (BL=1) */
     }
     return mem + data + (handle & 0x7FFFFFu);
 }
