@@ -41615,11 +41615,11 @@ static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; config_screen_wait(
 static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; config_screen_wait(-1); *eax = 0u; }
 static void m_d6a_swz_eax(const u32 *r, u32 *eax) { config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
 
-/* 0x249F0 game_quit_prompt: AL = hard_quit. The raw's blocking BIOS read `int 0x16` (AH = 0, 0x24A64) is
- * `mov al,K` (B0 K) in every case; the binding feeds the same K, read from the poked byte 0x24A65, to
- * the port's BIOS-style key queue (input.c). One key a case. The mutants restate flow.c's body for one
- * key (a key that matches neither answer leaves the prompt flag set instead of reading another). */
-static void d6a_249f0_key(void) { input_clear(); input_push(0u, DSB(0x00024A65u)); }
+/* 0x249F0 game_quit_prompt: AL = hard_quit. The raw's blocking BIOS read `int 0x16` (AH = 0, 0x24A64) takes
+ * the case's key queue from the machine model (track H h1, record 2026-10-14-reverse-h §H.2), which
+ * h0_start loads into the port's key queue before the binding. The mutants restate flow.c's body; their
+ * loop ends on an empty queue, where the original stops, so a mutant that reads past the case's keys
+ * returns instead of waiting. @once is the d6a restatement (one key). */
 static void d6a_249f0_core(const u32 *r, u32 mut)
 {
     u32 hard = r[R_EAX];
@@ -41632,34 +41632,33 @@ static void d6a_249f0_core(const u32 *r, u32 mut)
     config_screen_wait((mut == 8u) ? 0 : -1);                                    /* @wait0 */
     s32 yes = (s8)game_string_get((mut == 9u) ? 0x1F1u : 0x1F0u)[0];             /* @answers */
     s32 no = (s8)game_string_get((mut == 9u) ? 0x1F0u : 0x1F1u)[0];
-    s32 key = (s32)(input_get_key() & 0xFFu);
-    if (mut != 10u && key >= ((mut == 11u) ? 0x60 : 0x61) && key <= ((mut == 12u) ? 0x7B : 0x7A)) key -= 0x20;   /* @noupper @lo @hi */
-    int isyes = (key == yes), isno = (key == no);
-    if (mut == 13u && isno) isyes = 0;                                           /* @order */
-    if (isyes) {
-        if (mut != 14u) DSB(0x00104B22u) = 0u;                                   /* @flagkeep */
-        if (!h) { if (mut == 16u) DSD(0x000A81A8u) = 1u; else if (mut != 15u) DSB(0x000A81A8u) = 1u; }   /* @noquit @quitw */
-        else return;                                   /* the soft-restart arm: no case */
-    } else if (isno) {
-        DSB(0x00104B22u) = 0u;
-        if (mut != 17u) text_cells_release(-1, 0xA, game_string_get((mut == 18u) ? (id ^ 1u) : id),
-                                           (mut == 19u) ? 0x2000u : 0x1000u);    /* @norelease @relid @relmode */
-    }
+    do {
+        if (!input_has_key()) break;
+        s32 key = (s32)(input_get_key() & ((mut == 22u) ? 0xFFFFu : 0xFFu));      /* @ax */
+        if (mut != 10u && key >= ((mut == 11u) ? 0x60 : 0x61) && key <= ((mut == 12u) ? 0x7B : 0x7A)) key -= 0x20;   /* @noupper @lo @hi */
+        int isyes = (key == yes), isno = (key == no);
+        if (mut == 13u && isno) isyes = 0;                                       /* @order */
+        if (isyes) {
+            if (mut != 14u) DSB(0x00104B22u) = 0u;                               /* @flagkeep */
+            if (!h) { if (mut == 16u) DSD(0x000A81A8u) = 1u; else if (mut != 15u) DSB(0x000A81A8u) = 1u; }   /* @noquit @quitw */
+            else return;                               /* the soft-restart arm: no case */
+        } else if (isno) {
+            DSB(0x00104B22u) = 0u;
+            if (mut != 17u) text_cells_release(-1, 0xA, game_string_get((mut == 18u) ? (id ^ 1u) : id),
+                                               (mut == 19u) ? 0x2000u : 0x1000u);   /* @norelease @relid @relmode */
+        }
+        if (mut == 21u) break;                                                   /* @once */
+    } while (DSB(0x00104B22u) != 0u || (mut == 23u && input_has_key()));        /* @more */
     if (mut != 20u) sound_resume();                                              /* @noresume */
 }
-static void b_d6a_249f0(const u32 *r, u32 *eax)
-{
-    d6a_249f0_key();
-    game_quit_prompt(r[R_EAX]);
-    input_clear();
-    *eax = 0u;
-}
+static void b_d6a_249f0(const u32 *r, u32 *eax) { game_quit_prompt(r[R_EAX]); *eax = 0u; }
 #define D6A_QP_MUT(name, n) \
-    static void m_d6a_qp_##name(const u32 *r, u32 *eax) { d6a_249f0_key(); d6a_249f0_core(r, n); input_clear(); *eax = 0u; }
+    static void m_d6a_qp_##name(const u32 *r, u32 *eax) { d6a_249f0_core(r, n); *eax = 0u; }
 D6A_QP_MUT(hard32, 1u)  D6A_QP_MUT(id, 2u)     D6A_QP_MUT(noflag, 3u)  D6A_QP_MUT(nopause, 4u)  D6A_QP_MUT(col, 5u)
 D6A_QP_MUT(row, 6u)     D6A_QP_MUT(mode, 7u)   D6A_QP_MUT(wait0, 8u)   D6A_QP_MUT(answers, 9u)  D6A_QP_MUT(noupper, 10u)
 D6A_QP_MUT(lo, 11u)     D6A_QP_MUT(hi, 12u)    D6A_QP_MUT(order, 13u)  D6A_QP_MUT(flagkeep, 14u) D6A_QP_MUT(noquit, 15u)
 D6A_QP_MUT(quitw, 16u)  D6A_QP_MUT(norelease, 17u) D6A_QP_MUT(relid, 18u) D6A_QP_MUT(relmode, 19u) D6A_QP_MUT(noresume, 20u)
+D6A_QP_MUT(once, 21u)   D6A_QP_MUT(ax, 22u)    D6A_QP_MUT(more, 23u)
 
 /* 0x1C470 gfx_flush_palette: no argument. The raw runs unpoked under the machine model (track H h0, record
  * §H.1): its retrace read takes the case's bytes and its DAC writes are compared, through the DAC's view,
@@ -57689,6 +57688,9 @@ static const binding_t k_bindings[] = {
     { "game_quit_prompt@relid", m_d6a_qp_relid, 0x00000000u },
     { "game_quit_prompt@relmode", m_d6a_qp_relmode, 0x00000000u },
     { "game_quit_prompt@noresume", m_d6a_qp_noresume, 0x00000000u },
+    { "game_quit_prompt@once", m_d6a_qp_once, 0x00000000u },
+    { "game_quit_prompt@ax", m_d6a_qp_ax, 0x00000000u },
+    { "game_quit_prompt@more", m_d6a_qp_more, 0x00000000u },
     { "gfx_flush_palette",               b_d6a_1c470, 0x00000000u },
     { "gfx_flush_palette@noclamp", m_d6a_fp_noclamp, 0x00000000u },
     { "gfx_flush_palette@unsigned", m_d6a_fp_unsigned, 0x00000000u },
