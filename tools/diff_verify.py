@@ -33435,8 +33435,9 @@ N2_SPECS = [
     # both segment words set (their tests are not reached). t1: a pointer whose segment word is zero
     # between seeded bytes, both DOS segment words zero with their offset words seeded: every test is
     # made and none restores. The calls, in order: 0x1D018, 0x1B084, with the memory at each. The
-    # original's EAX is 0x1B084's stub's (0x10D34's fast path keeps it); the three callers do not read
-    # it (0x1C0CC `xor eax,eax`; 0x1C1C9 and 0x1D298 push and call 0x62734): mask 0.
+    # original's EAX is 0x1B084's stub's (0x10D34's fast path keeps it); none of the four call sites
+    # reads it (0x1C0CC `xor eax,eax`; 0x1C1C9 and 0x1D298 push and call 0x62734; 0x1C2C2 `mov eax,edx`
+    # after 0x1C2AF): mask 0.
     Spec("game_shutdown", 0x1BE30, [
         n2_teardown("t0", D2E_DIRTY, 0, shut=0x11111111, save=0x12345678),
         n2_teardown("t1", {}, N2_PTR, shut=0xFFFFFFFF, save=1),

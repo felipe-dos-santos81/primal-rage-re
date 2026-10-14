@@ -42638,8 +42638,8 @@ I_SD_MUT(shutfirst, 31u) I_SD_MUT(order, 32u)
 /* ---- track N batch n2 bindings (record 2026-10-14-reverse-n §N.2) ---- */
 /* 0x1BE30 game_shutdown: no argument; 0x1D018 and 0x1B084 are stubs (their seams). The raw's three
  * vector restores (0x1BE4B, 0x1BE6B, 0x1BE93) are named unhit, 0x4FB98 runs under the int 0x10 poke
- * and 0x10D34 with the byte 0x101520 set: the port makes neither (PORT). No caller reads EAX
- * (0x1C0CC `xor eax,eax`, 0x1C1C9 and 0x1D298 push and call on). */
+ * and 0x10D34 with the byte 0x101520 set: the port makes neither (PORT). No call site reads EAX
+ * (0x1C0CC `xor eax,eax`, 0x1C1C9 and 0x1D298 push and call on, 0x1C2C2 `mov eax,edx`). */
 static void b_n2_1be30(const u32 *r, u32 *eax) { (void)r; game_shutdown(); *eax = 0u; }
 /* @noshut: 0x1D018 dropped; @nosave: 0x1B084 dropped; @order: 0x1B084 before 0x1D018 */
 static void m_n2_1be30_noshut(const u32 *r, u32 *eax) { (void)r; (void)config_file_save(); *eax = 0u; }
