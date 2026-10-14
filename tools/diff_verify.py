@@ -38,6 +38,15 @@ class Case:
     stub_eax: dict = field(default_factory=dict)   # callee addr -> this case's stub EAX (record E3 §E3.12)
     machine: object = None                         # an E.Machine: the keys, ports and screen the case models (§H.1)
     opens: tuple = None                            # ((name, mode), ...): the fopens the original must make (§F.1)
+    terminal: tuple = None                         # the terminal verdict the original must reach (§G1):
+                                                   # ("exit", AL). Declaring it states the row's terminal
+                                                   # difference: the original ends in the runtime's exit
+                                                   # chain and its registers, calls and bytes at that stop
+                                                   # are its own, compared against nothing on the port's
+                                                   # side (the precedent: H2Case's declared bytes, §H.3.2).
+                                                   # The verdict is matched, never merely permitted: a run
+                                                   # that reaches the exit without the declaration, or
+                                                   # misses it with the declaration, is a discrepancy.
 
 
 @dataclass
@@ -420,6 +429,10 @@ def spec_original(spec, image):
                   for c in spec.cases]
 
 
+def _terminal_text(t):
+    return "no terminal exit" if t is None else "exit with AL=0x%X" % t[1]
+
+
 def verify_spec(spec, image, port_results, port_name=None, original=None):
     """Compare every case of `spec` against `port_results` (case id -> PortResult). `original` is
     spec_original's result when the caller already has it."""
@@ -431,6 +444,26 @@ def verify_spec(spec, image, port_results, port_name=None, original=None):
     executed, outside, problems, blocked = set(), set(), [], []
     port_errors, diffs = [], 0
     for c, orig in zip(spec.cases, origs):
+        if c.terminal is not None or orig.terminal is not None:
+            # §G1: the terminal verdict is matched, never merely permitted. A declared terminal
+            # difference replaces the value comparison: the original ends inside the runtime's exit
+            # chain (0x62003..0x62723), and its registers, calls and bytes at that stop are the
+            # chain's own, with nothing on the port's returning side to hold them against. Coverage,
+            # the reads outside the image, the case's declared opens and the port's refusal are still
+            # checked. A mismatch in either direction — an exit that was not declared, a declaration
+            # the run did not reach — is a discrepancy (the MISMATCH verdict).
+            if orig.terminal != c.terminal:
+                problems.append("%s: terminal: the original %s (%s%s), the case declares %s" % (
+                    c.id, _terminal_text(orig.terminal), orig.outcome,
+                    (": " + orig.detail) if orig.detail else "", _terminal_text(c.terminal)))
+            executed |= orig.executed
+            outside |= set(orig.outside)
+            port = port_results[c.id]
+            if port.error:
+                port_errors.append("%s: %s" % (c.id, port.error))
+            for d in f1_opens_diff(c, orig):
+                problems.append("%s: %s" % (c.id, d))
+            continue
         if orig.outcome != "ok":
             blocked.append("%s: %s (%s)" % (c.id, orig.outcome, orig.detail))
             continue

@@ -220,12 +220,24 @@ class Machine:
       file's final name, mode and bytes into mem[] at F1_SHADOW so the comparison sees the real file
       content. A name the case does not declare, a mode other than rb/wb, a write on a read stream, a
       read on a write stream and anything else the two rows never do stop the run as `unmodeled`.
+    exits: the runtime's exit chain answers DOS Terminate Process (track G, record
+      2026-10-14-reverse-g §G1). The chain 0x62003..0x62723 (record §S.7.1; the bytes re-verified over
+      the fixup-applied image and in Ghidra on 2026-10-14) keeps the caller's EAX, the exit code,
+      through the cleanups (`mov edx,eax` 0x62005 / `mov eax,edx` 0x62016, and again in 0x6201B),
+      tail-jumps 0x6202C -> 0x626EB -> 0x62710, saves the code (`push eax`), destroys EAX for the flush
+      (`mov eax,0; mov edx,0xff; call 0x6C4CF`), restores it (`pop eax` 0x62720), selects the function
+      without touching AL (`mov ah,0x4C` 0x62721) and ends the process at `int 0x21` 0x62723. With
+      exits, that int with AH = 0x4C is the run's end: OrigResult.terminal = ("exit", AL) and the
+      outcome "exit", stopping AT the int (a process that terminates returns nothing). The same int
+      with any other AH, and every other int/in/out, stop as `unmodeled`, and without exits the
+      terminate stops exactly as it does today.
     Only the byte forms of in/out are modelled; the word and dword forms stay unmodeled."""
     keys: tuple = None
     ins: tuple = ()
     outs: tuple = ()
     aperture: bool = False
     files: dict = None
+    exits: bool = False
 
     def __post_init__(self):
         if self.keys is not None and not all(0 <= k <= 0xFFFF for k in self.keys):
@@ -255,11 +267,20 @@ class _Devices:
         self.m, self.outs = m, []
         self.keys = None if m.keys is None else list(m.keys)
         self.ins = {p: list(v) for p, v in m.ins}
+        self.terminal = None
 
     def step(self, uc, ins, addr):
         op = ins.bytes[0]
         stop = ("unmodeled", "%s at 0x%X" % (ins.mnemonic, addr))
         if op == 0xCD:                                    # int imm8
+            if ins.bytes[1] == 0x21 and self.m.exits:
+                # the runtime's exit chain ends in DOS Terminate Process (record §G1): AH selects the
+                # function and AL carries the exit code the chain preserved; the process stops here.
+                eax = uc.reg_read(ux.UC_X86_REG_EAX)
+                if (eax >> 8) & 0xFF != 0x4C:
+                    return stop
+                self.terminal = ("exit", eax & 0xFF)
+                return ("exit", "terminate with code %d at 0x%X" % (eax & 0xFF, addr))
             if ins.bytes[1] != 0x16 or self.keys is None:
                 return stop
             eax = uc.reg_read(ux.UC_X86_REG_EAX)
@@ -494,6 +515,8 @@ class OrigResult:
     keys_left: int = None                          # Machine.keys: the words left in the queue (None: no key model)
     aperture: dict = field(default_factory=dict)   # Machine.aperture: addr -> final byte of each changed screen byte
     file_opens: list = field(default_factory=list) # Machine.files: (name, mode) per modelled fopen, in order (§F.1)
+    terminal: tuple = None                         # Machine.exits: ("exit", AL) if the run stopped at the DOS
+                                                   # terminate the exit chain ends on, else None (§G1)
 
 
 if capstone is not None:
@@ -545,7 +568,9 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     it, an indirect call stops the run as E1's "indirect call at" (E1 §E.3).
     machine: a Machine (track H §H.1), or None: the int/in/out instructions stop the run as before.
     With machine.files (track F §F.1) the four runtime file callees are modelled instead of stopping
-    the run, and every other call target stops it as before.
+    the run, and every other call target stops it as before. With machine.exits (track G §G1) the
+    DOS terminate the runtime's exit chain ends on stops the run as the outcome "exit", recording
+    OrigResult.terminal = ("exit", AL) at the int; without it that int stops as `unmodeled`, as today.
     """
     if not available():
         raise RuntimeError("unicorn or capstone is not installed (pip install -r tools/requirements-diff.txt)")
@@ -733,7 +758,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
             (aperture if screen(a) else writes)[a] = new
     return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside), recorded, recorded_mem,
                       dev.outs if dev else [], None if dev is None or dev.keys is None else len(dev.keys),
-                      aperture, fdev.opens if fdev else [])
+                      aperture, fdev.opens if fdev else [], dev.terminal if dev else None)
 
 
 # ---- static scan: the function's basic blocks, for the coverage claim (spec §5.3) -------------

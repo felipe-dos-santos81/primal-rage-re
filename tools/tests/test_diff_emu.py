@@ -726,5 +726,49 @@ class F1FilesTests(unittest.TestCase):
             self.assertEqual((r.outcome, r.detail, r.file_opens), ("unmodeled", "call 0x61C60 from 0x1000A", []))
 
 
+# ---- track G batch g1 (record 2026-10-14-reverse-g §G1): the terminal exit --------------------------------
+# The runtime's exit chain 0x62003..0x62723 (record 2026-10-13-reverse-s §S.7.1, the bytes re-verified
+# over the fixup-applied image and in Ghidra on 2026-10-14): 0x62003 keeps the caller's EAX, the exit
+# code (`mov edx,eax` 0x62005, restored `mov eax,edx` 0x62016), calls the cleanup vectors, and 0x6201B
+# does the same again and tail-jumps (0x6202C -> 0x626EB -> 0x62710), where `push eax` saves the code,
+# `mov eax,0; mov edx,0xff; call 0x6C4CF` flushes with EAX destroyed, `pop eax` 0x62720 restores the
+# code, `mov ah,0x4C` 0x62721 replaces only the high byte, and `int 0x21` 0x62723 — DOS Terminate
+# Process — ends the run with AL as its return code. The fixture below is that shape: the exit code 1
+# arrives in EAX, survives the zeroing (the pop restores it), and nothing after the int executes.
+# 10000: mov eax,1; push eax; mov eax,0; mov edx,0xff; pop eax; mov ah,0x4c; int 0x21;
+#        mov [0x80000],eax; ret
+G1_EXIT = "B801000000" "50" "B800000000" "BAFF000000" "58" "B44C" "CD21" "A300000800" "C3"
+# 10000: mov eax,0x3d41; int 0x21; ret — the same int, a function the exit model does not answer
+G1_INT21_OTHER = "B8413D0000" "CD21" "C3"
+# 10000: mov eax,[0x80000]; inc eax; mov [0x80004],eax; ret — a run that never exits
+G1_NO_EXIT = "A100000800" "FFC0" "A304000800" "C3"
+G1_SEED = {0x80000: b"\xee" * 8}    # the canary's destination and the loader's source, both seeded apart
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class G1ExitTests(unittest.TestCase):
+    def test_g1_an_exit_run_under_exits_records_the_terminal_and_stops_cleanly(self):
+        r = E.run_original(image(bytes.fromhex(G1_EXIT)), 0x10000, pokes=G1_SEED, machine=E.Machine(exits=True))
+        self.assertEqual((r.outcome, r.terminal), ("exit", ("exit", 1)))
+        # the run stops AT the int: the store after it never executes, so the seeded bytes stay unwritten
+        self.assertEqual(r.writes, {})
+        self.assertNotIn(0x10015, r.executed)
+
+    def test_g1_without_the_exit_model_the_exit_int_stops_unmodeled_exactly_as_today(self):
+        img = image(bytes.fromhex(G1_EXIT))
+        for m in (None, E.Machine()):                    # no machine, and the all-default machine
+            r = E.run_original(img, 0x10000, pokes=G1_SEED, machine=m)
+            self.assertEqual((r.outcome, r.detail, r.terminal), ("unmodeled", "int at 0x10013", None))
+        # with exits the same int stops unmodeled when AH is not 0x4C: the model answers only the terminate
+        r = E.run_original(image(bytes.fromhex(G1_INT21_OTHER)), 0x10000, machine=E.Machine(exits=True))
+        self.assertEqual((r.outcome, r.detail, r.terminal), ("unmodeled", "int at 0x10005", None))
+
+    def test_g1_a_run_that_never_exits_returns_with_no_terminal(self):
+        r = E.run_original(image(bytes.fromhex(G1_NO_EXIT)), 0x10000, pokes=G1_SEED, machine=E.Machine(exits=True))
+        self.assertEqual(r.outcome, "ok")
+        self.assertIsNone(r.terminal)
+        self.assertEqual(r.writes[0x80004], 0xEF)        # 0xEEEEEEEE + 1, the run completed
+
+
 if __name__ == "__main__":
     unittest.main()
