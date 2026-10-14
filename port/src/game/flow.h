@@ -31,9 +31,13 @@ void game_shutdown(void);
  * (0x1BE33), first in the teardown. */
 void sound_shutdown(void);
 
-/* 0x2F9CC — record 2026-10-13-reverse-i §I.4. The master init: the save file,
- * the effects pool, a blank screen with the options backdrop, the options
- * pointer DS_0010740C, the configuration and its volumes. One caller, 0x20C10
+/* 0x2F9CC — record 2026-10-13-reverse-i §I.4. The master init, twelve steps:
+ * load the save file (0x1AFE8), build the effects pool (0x13ADC), clear the
+ * input byte (0x4F1E4), reset the actors (0x2BAF4(1)), zero the front-end
+ * origin (0x4F1D0), spawn the descriptor 0x9AD84 (0x38B18; its first resolve
+ * reads s16title.gra), store the options pointer DS_0010740C, validate the
+ * configuration (0x2D6F8), store field 0x2A & ~3 in DS_00107410, then
+ * 0x2C9B8(0) and the volumes 0x2C8F0(-1) and (-2). One caller, 0x20C10
  * (0x20C15), before its setjmp: game_init runs it once, a restart never. */
 void game_master_init(void);
 

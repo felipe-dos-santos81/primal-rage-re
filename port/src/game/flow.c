@@ -6872,6 +6872,12 @@ void game_init(void)
     render_list_init();     /* 0x1C350 */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     (void)sound_buffers_alloc();  /* 0x1C0B1 0x1D0BC (record k7-k12 §0.7.1) */
+    /* 0x1C0B6 xor eax,eax; 0x1C0B8 0x47370(0): the string table, before
+     * 0x1C0BD 0x20C10, so the loader screen of the master init's entry-7
+     * resolve (0x2F9FC) draws `- LOADING -` (record 2026-10-13-reverse-i
+     * §I.4). The tail loads it again (0x20C7F); the port's loader returns at
+     * once the second time. */
+    game_string_table_load(s_game_dir);
     /* 0x20C15, before the setjmp (0x20C1F), so a 0x65431 longjmp does not
      * re-run it (record named-gaps-b §B.2). Its 0x2D6F8 (config_validate)
      * leaves the field 0x29 the tail reads as the defaults path wrote it. */
@@ -6925,9 +6931,10 @@ void game_init_resume(void)
     config_set_credit_row_init();
     (void)config_run_clock(0u);                        /* 0x20CD1/0x20CD5 0x32970 */
     DSW(DS_00104AFC) = 0u;  /* 0x20CD3 xor ebx,ebx; 0x20CDF (0x32970, 0x13ADC keep EBX) */
-    /* 0x47370 loads the localisation table (0x20C10 calls it before 0x10E80);
-     * the port reads ENGLISH.TXT directly rather than the DOS memory/file
-     * managers. 0x121A0's caption comes from it. */
+    /* 0x20C7F 0x47370 reloads the localisation table (0x1C0B8 loaded it
+     * first, game_init above); the port reads ENGLISH.TXT directly rather
+     * than the DOS memory/file managers, once. 0x121A0's caption comes from
+     * it. */
     game_string_table_load(s_game_dir);
 
     game_state_init();      /* 0x20C10's FUN_00010E80 */

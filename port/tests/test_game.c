@@ -13837,12 +13837,14 @@ static u32 rd_frame_hash(void)
  * the master init 0x2F9CC (0x2F9CF), which 0x20C10 calls before its setjmp
  * (0x20C15, 0x20C1F): once per process, never on a restart (record
  * 2026-10-13-reverse-i §I.4). */
-static u32 rd_master_inits;
+static u32 rd_master_inits, rd_master_strings;
 
+/* Also keeps the string handle DS_001082DC as the master init finds it: 0x1C0B8
+ * loads the table before 0x1C0BD calls 0x20C10. */
 static int rd_master_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
 {
     (void)nargs; (void)args; (void)eax;
-    if (addr == 0x1AFE8u) rd_master_inits++;
+    if (addr == 0x1AFE8u && rd_master_inits++ == 0u) rd_master_strings = DSD(DS_001082DC);
     return 0;
 }
 
@@ -13865,6 +13867,7 @@ int test_restart_drive(void)
         CHECK(host_write_file(spath, save, sizeof save), "the scratch save");
         host_save_set_path(spath);
         rd_master_inits = 0u;
+        rd_master_strings = 0xFEEDFACEu;
         pr_seam = rd_master_probe;
         game_init();
         host_save_set_path(NULL);
@@ -13925,6 +13928,8 @@ int test_restart_drive(void)
     }
     pr_seam = NULL;
     CHECK_EQ_INT((int)rd_master_inits, 1);             /* 0x20C15: before the setjmp, not in the tail */
+    CHECK(DSD(DS_001082DC) != 0u, "the string table is loaded");
+    CHECK_EQ_INT((long)rd_master_strings, (long)DSD(DS_001082DC));   /* 0x1C0B8, before 0x2F9CC */
     printf("test_restart_drive: restart after %d menu iterations (stamp %X, clock %X)\n",
            n, (unsigned)t0, (unsigned)t_last);
     return g_failures - before;
