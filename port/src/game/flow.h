@@ -24,6 +24,13 @@ int game_main(void);
 void game_init(void);
 void game_shutdown(void);
 
+/* 0x1D018 — record 2026-10-13-reverse-i §I.5. The sound shutdown: nothing
+ * unless the sound flag DS_000A2CB1 is set; else it stops the sequence and
+ * the four sample slots that still play, clears their handles and the two
+ * driver handles, and shuts the library down (0x5D86A). One caller, 0x1BE30
+ * (0x1BE33), first in the teardown. */
+void sound_shutdown(void);
+
 /* 0x2F9CC — record 2026-10-13-reverse-i §I.4. The master init: the save file,
  * the effects pool, a blank screen with the options backdrop, the options
  * pointer DS_0010740C, the configuration and its volumes. One caller, 0x20C10

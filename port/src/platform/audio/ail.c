@@ -92,6 +92,7 @@ void AIL_startup(void)
 /* 0x5d86a — spec audio.md "AIL surface" (row 2). */
 void AIL_shutdown(void)
 {
+    PR_SEAM0(0x5D86Au);
     for (int i = 0; i < AIL_MAX_SAMPLES; i++)
         AIL_release_sample_handle(&g_samples[i]);
     for (int i = 0; i < AIL_MAX_TIMERS; i++) {

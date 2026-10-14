@@ -4935,7 +4935,7 @@ int test_run_clock(void)
     return g_failures - before;
 }
 
-/* Track I (record 2026-10-13-reverse-i §I.1-§I.4): the four functions the
+/* Track I (record 2026-10-13-reverse-i §I.1-§I.5): the five functions the
  * port used to inline in their callers, called directly. The voice of the
  * timer exit is voice-site row 195's (test_voice_sites), through
  * game_state_step. */
@@ -4961,6 +4961,37 @@ static int if_mi_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
     }
     if_mi_n++;
     *eax = addr == 0x2D974u ? if_mi_field : 0x5A5A5A5Au;
+    return 1;
+}
+
+/* The sound shutdown's library calls, each stubbed: the call and which of the
+ * eight locations 0x1D018 clears are zero when it arrives (bit 0 the flag
+ * 0xA2CB1, bit 1 0x1028C4, bit 2 0x1028C0, bits 3..6 the slot handles, bit 7
+ * 0x1028C8). 0x5DEED answers if_sd_seq, the k-th 0x5DD03 if_sd_smp[k]. */
+#define IF_SD_MAX    12u
+#define IF_SD_SLOT   DS_00102860                /* 0x1D076 */
+static u32 if_sd_n, if_sd_k, if_sd_seq;
+static const u32 *if_sd_smp;
+static struct { u32 addr, zero; } if_sd[IF_SD_MAX];
+
+static u32 if_sd_zero(void)
+{
+    u32 z = (DSB(DS_000A2CB1) == 0u) | (u32)(DSD(DS_001028C4) == 0u) << 1 | (u32)(DSD(DS_001028C0) == 0u) << 2
+          | (u32)(DSD(DS_001028C8) == 0u) << 7;
+    for (u32 i = 0u; i < 4u; i++) z |= (u32)(DSD(IF_SD_SLOT + i * 0x18u) == 0u) << (3u + i);
+    return z;
+}
+
+static int if_sd_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    (void)nargs;
+    (void)args;
+    if (if_sd_n < IF_SD_MAX) {
+        if_sd[if_sd_n].addr = addr;
+        if_sd[if_sd_n].zero = if_sd_zero();
+    }
+    if_sd_n++;
+    *eax = addr == 0x5DEEDu ? if_sd_seq : addr == 0x5DD03u ? if_sd_smp[if_sd_k++ & 3u] : 0x5A5A5A5Au;
     return 1;
 }
 int test_inlined_functions(void)
@@ -5067,6 +5098,76 @@ int test_inlined_functions(void)
         CHECK_EQ_INT((long)DSD(DS_00107410), (long)FLD);
         DSD(DS_0010740C) = s_40c;
         DSD(DS_00107410) = s_410;
+    }
+
+    /* shutdown — 0x1D018: nothing without the flag 0xA2CB1 (`je` 0x1D023);
+     * else the flag is cleared (0x1D02B); with 0x1028C4 (0x1D031) the
+     * sequence's status 0x5DEED and, when it is 4 (`cmp eax,4` 0x1D049), its
+     * stop 0x5DEAF, then 0x1028C4 and 0x1028C0 = 0; with 0x1028C8 (0x1D06B)
+     * each of the four slots' status 0x5DD03 and, when it is not 2 (`cmp
+     * eax,2` 0x1D085), its stop 0x5DC8B, then the slot's handle = 0 (0x1D09E),
+     * and 0x1028C8 = 0 (0x1D0A9); then 0x5D86A. `twice` is the call after
+     * `open`'s, the flag as that one left it. */
+    {
+        enum { EED = 0x5DEED, EAF = 0x5DEAF, D03 = 0x5DD03, C8B = 0x5DC8B, SHUT = 0x5D86A };
+        static const u32 smp_open[4] = { 2u, 4u, 0u, 0x102u }, smp_done[4] = { 2u, 2u, 2u, 2u };
+        static const struct {
+            const char *name;
+            u32 flag, mdi, dig, seq;                    /* flag 0x100: left as the last row's call left it */
+            const u32 *smp;
+            u32 n, zero;                                /* the calls, the zero set at the end */
+            struct { u32 addr, zero; } want[IF_SD_MAX];
+        } sd[] = {
+            { "open", 1u, 0x44444444u, 0x88888888u, 4u, smp_open, 10u, 0xFFu,
+              { { EED, 0x01u }, { EAF, 0x01u }, { D03, 0x07u }, { D03, 0x0Fu }, { C8B, 0x0Fu }, { D03, 0x1Fu },
+                { C8B, 0x1Fu }, { D03, 0x3Fu }, { C8B, 0x3Fu }, { SHUT, 0xFFu } } },
+            { "twice", 0x100u, 0x44444444u, 0x88888888u, 4u, smp_open, 0u, 0x01u, { { 0u, 0u } } },
+            { "idle", 0x80u, 0x44444444u, 0u, 0x104u, smp_open, 2u, 0x87u, { { EED, 0x81u }, { SHUT, 0x87u } } },
+            { "nomdi", 1u, 0u, 0x00000100u, 4u, smp_done, 5u, 0xFBu,
+              { { D03, 0x03u }, { D03, 0x0Bu }, { D03, 0x1Bu }, { D03, 0x3Bu }, { SHUT, 0xFBu } } },
+        };
+        const u32 SD_LO = IF_SD_SLOT - 4u, SD_LEN = DS_001028D0 - (IF_SD_SLOT - 4u);
+        static u8 sv[DS_001028D0 - (IF_SD_SLOT - 4u)];
+        const u8 s_b0 = DSB(DS_000A2CB1 - 1u), s_b1 = DSB(DS_000A2CB1), s_b2 = DSB(DS_000A2CB1 + 1u);
+        tf_snap(sv, SD_LO, SD_LEN);
+        for (u32 r = 0u; r < sizeof sd / sizeof sd[0]; r++) {
+            u32 kept = 0u;
+            mem_fill(SD_LO, 0x6Bu, SD_LEN);             /* every slot field, 0x1028C0 and 0x1028CC */
+            DSD(DS_001028C4) = sd[r].mdi;
+            DSD(DS_001028C8) = sd[r].dig;
+            DSB(DS_000A2CB1 - 1u) = 0xB0u;
+            DSB(DS_000A2CB1 + 1u) = 0xB2u;
+            if (sd[r].flag != 0x100u) DSB(DS_000A2CB1) = (u8)sd[r].flag;
+            if_sd_n = if_sd_k = 0u;
+            if_sd_seq = sd[r].seq;
+            if_sd_smp = sd[r].smp;
+            pr_seam = if_sd_probe;
+            sound_shutdown();
+            pr_seam = NULL;
+            CHECK_EQ_INT((int)if_sd_n, (int)sd[r].n);
+            for (u32 i = 0u; i < sd[r].n; i++) {
+                const int ok = i < if_sd_n && if_sd[i].addr == sd[r].want[i].addr
+                               && if_sd[i].zero == sd[r].want[i].zero;
+                if (!ok)
+                    printf("shutdown %s: call %u is 0x%X with the zero set %02X\n", sd[r].name, (unsigned)i,
+                           (unsigned)if_sd[i].addr, (unsigned)if_sd[i].zero);
+                CHECK(ok, "0x1D018: the call and the stores before it");
+            }
+            CHECK_EQ_INT((int)if_sd_zero(), (int)sd[r].zero);
+            /* what 0x1D018 does not store: the dword below the slots, each
+             * slot's +0x04..+0x17, 0x1028CC and the bytes around the flag. */
+            for (u32 a = SD_LO; a < SD_LO + SD_LEN; a++) {
+                const u32 o = a - IF_SD_SLOT;
+                if (a < IF_SD_SLOT || (a < DS_001028C0 ? o % 0x18u >= 4u : a >= DS_001028C8 + 4u))
+                    kept += (DSB(a) == 0x6Bu);
+            }
+            CHECK_EQ_INT((int)kept, 4 + 4 * 0x14 + 4);
+            CHECK_EQ_INT((int)DSB(DS_000A2CB1 - 1u) << 8 | (int)DSB(DS_000A2CB1 + 1u), 0xB0B2);
+        }
+        tf_put(sv, SD_LO, SD_LEN);
+        DSB(DS_000A2CB1 - 1u) = s_b0;
+        DSB(DS_000A2CB1) = s_b1;
+        DSB(DS_000A2CB1 + 1u) = s_b2;
     }
 
     tf_voice_put();

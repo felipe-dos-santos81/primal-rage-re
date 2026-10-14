@@ -6953,19 +6953,43 @@ void game_init_resume(void)
      * does not have and no capture pins. */
 }
 
+/* 0x1D018 — record 2026-10-13-reverse-i §I.5. Nothing unless the sound flag
+ * DS_000A2CB1 is set (0x1D01C). Else the flag is cleared; with an MDI driver
+ * (DS_001028C4) a sequence whose 0x5DEED status is 4 is stopped (0x5DEAF) and
+ * DS_001028C4 and DS_001028C0 are zeroed; with a DIG driver (DS_001028C8)
+ * each of the four slots whose 0x5DD03 status is not 2 is ended (0x5DC8B) and
+ * its handle dword zeroed, then DS_001028C8; then 0x5D86A.
+ * PORT: the four handle arguments are the port's host objects, not the
+ * dwords the raw pushes: s_sequence for [0x1028C0] (0x1D03A, 0x1D04E) and
+ * s_samples[i] for [esi+0x102860] (0x1D076, 0x1D08A); see the sound-module
+ * comment above. game_audio_init leaves DS_001028C4 at 0, so in a run of the
+ * port the sequence arm is not taken and the sequence is stopped by
+ * AIL_shutdown's own seq_stop. */
+void sound_shutdown(void)
+{
+    if (DSB(DS_000A2CB1) == 0u) return;                    /* 0x1D01C/0x1D023 */
+    DSB(DS_000A2CB1) = 0u;                                 /* 0x1D029/0x1D02B */
+    if (DSD(DS_001028C4) != 0u) {                          /* 0x1D031 */
+        if (AIL_sequence_status(s_sequence) == 4)          /* 0x1D041 0x5DEED, 0x1D049 `cmp eax,4` */
+            AIL_stop_sequence(s_sequence);                 /* 0x1D055 0x5DEAF */
+        DSD(DS_001028C4) = 0u;                             /* 0x1D05F */
+        DSD(DS_001028C0) = 0u;                             /* 0x1D065 */
+    }
+    if (DSD(DS_001028C8) != 0u) {                          /* 0x1D06B */
+        for (u32 off = 0; off != SND_SLOT_END; off += SND_SLOT_STRIDE) {   /* 0x1D074 0x1D0A4 */
+            if (snd_slot_status(off) != 2)                 /* 0x1D07D 0x5DD03, 0x1D085 `cmp eax,2` */
+                AIL_stop_sample(s_samples[off / SND_SLOT_STRIDE]);   /* 0x1D091 0x5DC8B */
+            DSD(DS_00102860 + off) = 0u;                   /* 0x1D09E */
+        }
+        DSD(DS_001028C8) = 0u;                             /* 0x1D0A9 */
+    }
+    AIL_shutdown();                                        /* 0x1D0AF 0x5D86A */
+}
+
 /* 0x1BE30 teardown. */
 void game_shutdown(void)
 {
-    /* 0x1D018 clears its enable flag, stops the sequence and the sample
-     * voices, then calls AIL_shutdown. AIL_shutdown releases the sample and
-     * sequence handles itself, so the explicit stop mirrors the original's
-     * ordering; clearing DS_000A2CB1 makes game_audio_init() idempotent. */
-    if (DSB(DS_000A2CB1)) {
-        DSB(DS_000A2CB1) = 0;
-        DSD(DS_001028C8) = 0;          /* 0x1D0A9, after the voices stop */
-        AIL_stop_sequence(s_sequence);
-        AIL_shutdown();     /* 0x5d86a */
-    }
+    sound_shutdown();                                      /* 0x1BE33 0x1D018 */
     /* PORT: the memory frees (0x1BE38..0x1BEA6 0x1ADE4) are no-ops under flat mem[]; 0x1BEB0 0x4FB98
      * (int 10h set mode) and 0x1BEBA 0x10D34 (the CD-drive restore) are the host's. */
     (void)config_file_save();   /* 0x1BEB5 0x1B084; AL is not read (0x1BEBA calls on) */
