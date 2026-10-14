@@ -49,7 +49,7 @@ the rows never do stops the run as `unmodeled`, never a guess:
 - **fopen**: reads both strings from memory (NUL within 16 bytes, else stop), records the
   `(name, mode)` pair in `OrigResult.file_opens` — even a failed open is recorded, the call
   happened — and answers a handle (a fresh non-zero integer) or 0 per the table above. The
-  handle's value is model-internal: the rows use it only as a token (`0x1B004 mov esi,eax`,
+  handle's value is model-internal: the rows use it only as a token (`0x1B000 mov esi,eax`,
   re-fed to fclose/fread), never compare it, and it never reaches memory. A name not declared
   stops (the case must cover its own vocabulary); a mode other than `rb`/`wb` stops (the game
   has only those two strings, `0x80598/0x8059C`).
@@ -89,3 +89,101 @@ returns the count, and its bytes arrive in the slot; fwrite truncates an existin
 bytes are gone); an `r+` mode, an undeclared name, and a read on a write stream each stop the
 run with their reason; fclose of a handle never opened answers 0xFFFFFFFF; and a case with no
 `files` stops on `call 0x61C60` exactly as before.
+
+### The port side (`port/tests/diff_runner.c`, `tools/diff_verify.py`)
+
+**The case text** (`f1_machine_text`, wired into `cases_text`): a case with `Machine.files` emits
+`files`, then per name (declaration order) `fdec <hexname> present|absent|gone`, its
+`fmode <hexmode>` from the case's `opens`, and the content in `fd <hex>` chunks of at most 32
+bytes. The C parser (`run_cases`) keeps them in file-scope state reset at every `case` line
+(`f1_reset`, the `f1_parse_decl/f1_parse_mode/f1_parse_data` helpers); a malformed line fails
+diffrun outright (the driver's `run_port` raises), never silently. A case without `files` parses
+exactly as before (proven: the full `--self-check` byte-identical with the wiring in and no row
+converted — `wire_selfcheck.txt`).
+
+**The binding** (`sc_begin`/`f1_mirror`/`sc_end`): mkdtemp a scratch directory, write each
+`present` declaration's bytes at `dir/<name>` (a `gone` name's path lives under `none/`, the
+subdirectory never created — the port's `fopen` fails exactly as the model answers 0), point
+`host_save_set_path` at the declared file with `host_save_set_fallback(NULL)`, run the port, then
+mirror every file that now really exists in the directory into its F1_SHADOW slot — the declared
+name + NUL, the declared mode + NUL, the byte count as a dword, the real bytes read back through
+`host_read_file` — and clear the path (`sc_end`). The port's save path is only ever the scratch
+directory's file: the game dir's `CMOS` is never opened, so the drop-writes mode of the test runs
+cannot leak into the rows and `data/` stays untouched. The emulator's model mirrors the same
+layout at its fclose (its own name/mode strings read from memory); the ordinary byte comparison
+then compares the two sides' file names, modes, lengths and contents — the file the port wrote
+against the bytes the original's fwrite recorded, and the name and mode the port opened (the
+binding hands the port the name; the mode string is what the case states the original passes, and
+a mismatch shows as differing mirror bytes).
+
+**The opens check** (`Case.opens`, `f1_opens_diff`, wired into `verify_spec`): every modelled
+fopen records its (name, mode) read from memory in `OrigResult.file_opens`, whether it succeeded
+or not; a case that states its opens gets a difference (`opens: original …, the case states …`)
+if the model read anything else — including the failed-open cases, whose mirror carries nothing.
+
+### The rows converted (the pokes removed, cases and blocks before and after)
+
+| Row | Before (track S) | After (track F) |
+|---|---|---|
+| `config_file_load` `0x1AFE8` | 3 pokes (`0x1AFFB`/`0x1B017`/`0x1B020` `mov eax,<result>`); 6 cases `l0..l5` (handle/closed values); 10/11 blocks, `0x1B04D` named unhit; 12 mutants | **no pokes**; 6 cases `l0..l5` with `Machine.files` (`l0` a real missing file `F1_ABSENT`; `l1` a valid image; `l2` one bit off + dirty regs; `l3` the sum of the first `0x7F6` stored; `l4` the captures' zero image; `l5` a second valid image) and `opens=((b"cmos", b"rb"),)`; the buffer seeded every byte XOR `0x5A` so the modelled fread and `host_save_read` each move the file's bytes on both sides; 10/11 blocks, `0x1B04D` named unhit (see below); the same 12 mutants, measured catch-sets identical to the track S pins |
+| `config_file_save` `0x1B084` | 3 pokes (`0x1B097`/`0x1B0E1`/`0x1B0EA`); 4 cases `s0..s3`; the verdict byte `0x3900200` (the binding's own file-vs-memory check); 7/8 blocks, `0x1B0F7` named; 18 mutants | **no pokes**; 5 cases: `s0` `F1_GONE` (the missing directory, whose fopen answers 0 and does nothing else, the seeded last byte stays), `s1..s3` `F1_ABSENT` (the open creates the file; `s1` the touch-stub EAX `0x12345678`, `s2` dirty regs, `s3` the zero image), and **new `s4`**: an existing file (`b"stale cmos!!"`) the `wb` open truncates; `opens=((b"cmos", b"wb"),)`; 7/8 blocks, `0x1B0F7` named (below); 19 mutants — the same 18 plus **`@wmode`** (`f1_append`: write in append mode instead of the truncate the raw's `fopen("cmos","wb")` does at `0x1B097`), caught by `s4` alone, exactly what the new case is for |
+
+The verdict byte is gone and nothing is lost: its load-side counterpart never existed, and on the
+save side the mirror compares the port's written file against the bytes the original recorded
+(what the verdict byte approximated against the port's own memory) — `@nowrite`/`@wlen`/`@wsrc`/
+`@writefirst` are each caught by mirror bytes on every case the verdict caught them on, and now
+also on `s4`. The `closed` values (`-1`, `0x100`) and the arbitrary handle values (`0x10A040`,
+`1`, `0x100`) the pokes carried are gone with the pokes: `fclose`'s EAX is not read (0x1B02D and
+0x1B04D load EAX, §S.7.1; the model answers 0/0xFFFFFFFF per the callee's bytes) and the handle
+never reaches memory (it lives in ESI and is re-fed to the callees as a token; the mask 0xFF keeps
+EAX's upper half out of the comparison).
+
+**Why the exit blocks stay named unhit.** The brief asks for a short-read case; the model answers
+one (the harness tests prove it), but such a case takes the original to `0x1B04D`/`0x1B0F7`, whose
+`call 0x62003` is the runtime's exit — 0x62003..0x62723 ends `mov ah,0x4c; int 0x21` and never
+returns (§S.7.1) — so the case cannot produce a return value to compare and every case reaching it
+blocks the row (NOT_EXERCISABLE). A short write cannot happen at all: a memory-backed file has no
+full disk, and the model's fwrite always returns the count (§F.1). The port's path for both is its
+documented deviation — it takes the failed-open result instead (config.c PORT, §S.7.3). A long file
+(no case added): the raw reads its first `0x7F8` bytes and may accept them while
+`host_save_read` refuses another length (the §S.7.3 PORT row) — a case whose two sides differ by
+a documented deviation cannot be compared on a VERIFIED row either. So both rows end with **no
+poke** but still **one named unhit block each**, and stay in the weaker-row list for that reason
+(AGENTS.md and README updated with the new reason, the 9/723 counts unchanged).
+
+### Corrections, mutation proofs, pins
+
+**No port correction**: both rows VERIFIED at the first run after the C build — the pokes' blind
+spots (the name and mode strings, the buffer moving through the read, the written bytes) matched
+with the port's real host calls. The two documented host deviations (§S.7.3: the save path is the
+save file and not the current directory's `cmos`; the `ab` probe and the reported failed close) are
+left as they are and reported here, not corrected.
+
+**Mechanism mutation proofs** (each run against `F1FilesTests` and turning it red): fread asked
+for more items than the file holds returns `count` (no EOF cap); the `wb` open does not truncate;
+fclose of an unknown handle answers 0; the undeclared-name stop removed; the unknown-mode stop
+removed. The `F1FilesTests` all fail without the mechanism (proven: 18 errors with `diff_emu.py`
+stashed). The mirror-trigger claim — nothing mirrors at the `wb` open — is proven at the row level,
+not in the unit tests: moving the mirror to the fopen would write the slot before the save row's
+two stubbed `0x2D4EC` calls, and their recorded memory (§E3.12) would show bytes the port's binding
+cannot show until after its return — the save row would go MISMATCH.
+
+**Measured pins** (jobs=1, on the merge): the load row's 12 mutants' catch-sets and kinds are
+identical to track S's pins; the save row's write-path and call mutants also catch `s4`
+(the mirror shows the truncated file's bytes on `s4` too), `@len6`/`@len8` stay at `['s1','s2']`
+(the zero buffer of `s3`/`s4` makes them invisible there), `@flag` gains `s4`, and `@wmode` is
+caught by `['s4']` alone with kind `byte`. The counter pin is `1000/1000 functions VERIFIED;
+14885/14885 mutants detected; 1 named gaps; 638/831 rows with callees closed (169 have none)` —
+14884 + the one new `@wmode` mutant; the rows-with-callees count is unchanged (the two rows' callee
+lists are unchanged: the file calls are modelled, not allowed or stubbed, so they never enter
+`SpecResult.callees`). README.md's counter and AGENTS.md's weaker-row reasons updated to match.
+
+**What the rows now claim.** `config_file_load`: with the case's directory holding the file, the
+original's fopen returns non-zero for `present` and 0 for the missing file (`0x1B002`), the fread
+moves the file's bytes into the buffer for every present case (the 0x5A seed proves the port moved
+them too), the checksum and fill paths agree byte for byte, `0x10D34`/`0x10D0C`/`0x61A70` run from
+their bytes as before, and the opened name/mode, the handle's non-zero-ness, the count's source
+(the real file length) and the file's final bytes all agree; `config_file_save`: the same for the
+open's real mode `wb`, the create-from-absent and truncate-existing paths, the fwrite's real count
+and the bytes the port wrote. The narrowness unchanged: equivalence on the exercised blocks and
+inputs only; the exit block is not exercised by either row and never can be.
