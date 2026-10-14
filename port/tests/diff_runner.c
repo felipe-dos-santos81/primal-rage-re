@@ -39151,6 +39151,63 @@ static void d5h_24c5c_sides(u32 mut, int gated)
         }
     }
 }
+/* ---- track H batch h1 (record 2026-10-14-reverse-h §H.2): 0x24C5C's key loop for the d5h restatement ---- */
+/* d5h_24c5c_core runs this at the raw's place. h1_kmut = 0 (every d5h mutant, whose cases queue no key) is
+ * flow.c's game_key_loop restated; the game_frame_keys/keys2 mutants set one choice flipped. Every read is
+ * guarded by the queue (the original stops on an empty one), so a mutant that reads past the case's keys
+ * returns instead of waiting. */
+enum { H1_K_NONE, H1_K_knone, H1_K_kmode1, H1_K_kscan, H1_K_klatchw, H1_K_kzero, H1_K_kname, H1_K_kenter,
+       H1_K_kesc27, H1_K_kescarg, H1_K_kspace, H1_K_khook, H1_K_kpausew, H1_K_kpauserow, H1_K_kpauseflag,
+       H1_K_kaltq, H1_K_kaltsm };
+static u32 h1_kmut;
+static void d5h_24c5c_core(u32 mut, u32 dm);
+#define H1_K(x) (h1_kmut == H1_K_##x)
+static void h1_24c5c_keys(void)
+{
+    u32 mode0 = DSW(0x00104B00u);
+    for (;;) {
+        if (H1_K(knone)) break;                                                  /* @knone */
+        if (H1_K(kzero) ? !input_has_key() : ((u32)input_check_key() & 0xFFFFu) == 0u) break;   /* @kzero */
+        u32 key = (u32)input_get_key() & 0xFFFFu, bl = key & 0xFFu;
+        u32 latch = (bl != 0u || H1_K(kscan)) ? key : key >> 8;                 /* @kscan */
+        DSD(0x00105F30u) = H1_K(klatchw) ? latch : latch & 0xFFu;                /* @klatchw */
+        u32 mode = H1_K(kmode1) ? mode0 : DSW(0x00104B00u);                     /* @kmode1 */
+        if (mode == 0x1Eu && (bl != 0u || H1_K(kname))) { nameentry_key(bl); continue; }   /* @kname */
+        if (bl == 0x0Du) {
+            if (mode == 3u || H1_K(kenter)) DSW(0x00104B00u) = 0x27u;           /* @kenter */
+        } else if (bl == 0x1Bu) {
+            if (mode == 3u) game_quit_prompt(H1_K(kescarg) ? 1u : 0u);         /* @kescarg */
+            else if (mode != 0x27u || H1_K(kesc27)) game_quit_prompt(1u);       /* @kesc27 */
+        } else if (bl == 0x20u) {
+            if ((mode == 3u || mode == 0x27u) && !H1_K(kspace)) continue;       /* @kspace */
+            if (mode == 0x17u && (H1_K(khook) || DSD(0x00104AE4u) == 0x00010E80u)) continue;   /* @khook */
+            DSB(0x00104B22u) = 1u;
+            sound_pause();
+            text_cursor_set(-1, H1_K(kpauserow) ? 0xA : 0xF, game_string_get(0x1E8u), 0x1000u);   /* @kpauserow */
+            config_screen_wait(-1);
+            while (input_has_key()) {
+                u32 k = (u32)input_get_key();
+                if ((k & (H1_K(kpausew) ? 0xFFFFu : 0xFFu)) == 0x20u) break;     /* @kpausew */
+            }
+            text_cells_release(-1, 0xF, game_string_get(0x1E8u), 0x1000u);
+            sound_resume();
+            if (!H1_K(kpauseflag)) DSB(0x00104B22u) = 0u;                        /* @kpauseflag */
+        } else if (bl == 0u) {
+            switch (key >> 8) {
+            case 0x10u: game_quit_prompt(H1_K(kaltq) ? 1u : 0u); break;          /* @kaltq */
+            case 0x1Fu: if (H1_K(kaltsm)) sound_music_pause_toggle(); else sound_sample_pause_toggle(); break;   /* @kaltsm */
+            case 0x32u: if (H1_K(kaltsm)) sound_sample_pause_toggle(); else sound_music_pause_toggle(); break;
+            default: break;
+            }
+        }
+    }
+}
+#define X(n) static void m_h1_gf_##n(const u32 *r, u32 *eax) \
+    { (void)r; h1_kmut = H1_K_##n; d5h_24c5c_core(D5H_F_NONE, 0u); h1_kmut = 0u; *eax = 0u; }
+X(knone) X(kmode1) X(kscan) X(klatchw) X(kzero) X(kname) X(kenter) X(kesc27) X(kescarg) X(kspace) X(khook)
+X(kpausew) X(kpauserow) X(kpauseflag) X(kaltq) X(kaltsm)
+#undef X
+/* ---- h1 end ---- */
 static void d5h_24c5c_core(u32 mut, u32 dm)
 {
     u32 mode = DSW(0x00104B00u);                                 /* 0x24C61/0x24C63 */
@@ -39191,7 +39248,7 @@ table:
     }
     if (D5H_F(tblearly)) goto track;
 keys:
-    /* 0x24CFE..0x24EE7: no keystroke */
+    h1_24c5c_keys();                                             /* 0x24CFE..0x24EE7 (track H h1) */
     if (!D5H_F(modecache)) mode = D5H_F(swb) ? DSB(0x00104B00u) : DSW(0x00104B00u);   /* 0x24EEC */
     if (D5H_F(sw33) ? mode < 0x33u : mode <= 0x33u) {            /* 0x24EF2/0x24EF6 `ja` */
         switch (mode) {
@@ -56532,6 +56589,25 @@ static const binding_t k_bindings[] = {
     { "game_frame_start@hook", m_d5h_24c5c_hook, 0x00000000u },
     { "game_frame_start@m17", m_d5h_24c5c_m17, 0x00000000u },
     { "game_frame_rr", b_d5h_24c5c, 0x00000000u },
+    { "game_frame_keys", b_d5h_24c5c, 0x00000000u },
+    { "game_frame_keys@knone", m_h1_gf_knone, 0x00000000u },
+    { "game_frame_keys@kmode1", m_h1_gf_kmode1, 0x00000000u },
+    { "game_frame_keys@kscan", m_h1_gf_kscan, 0x00000000u },
+    { "game_frame_keys@klatchw", m_h1_gf_klatchw, 0x00000000u },
+    { "game_frame_keys@kzero", m_h1_gf_kzero, 0x00000000u },
+    { "game_frame_keys@kenter", m_h1_gf_kenter, 0x00000000u },
+    { "game_frame_keys@kesc27", m_h1_gf_kesc27, 0x00000000u },
+    { "game_frame_keys@kescarg", m_h1_gf_kescarg, 0x00000000u },
+    { "game_frame_keys@kspace", m_h1_gf_kspace, 0x00000000u },
+    { "game_frame_keys@kpausew", m_h1_gf_kpausew, 0x00000000u },
+    { "game_frame_keys@kpauserow", m_h1_gf_kpauserow, 0x00000000u },
+    { "game_frame_keys@kpauseflag", m_h1_gf_kpauseflag, 0x00000000u },
+    { "game_frame_keys@kaltq", m_h1_gf_kaltq, 0x00000000u },
+    { "game_frame_keys@kaltsm", m_h1_gf_kaltsm, 0x00000000u },
+    { "game_frame_keys2", b_d5h_24c5c, 0x00000000u },
+    { "game_frame_keys2@knone", m_h1_gf_knone, 0x00000000u },
+    { "game_frame_keys2@kname", m_h1_gf_kname, 0x00000000u },
+    { "game_frame_keys2@khook", m_h1_gf_khook, 0x00000000u },
     { "game_frame_rr@modecache", m_d5h_24c5c_modecache, 0x00000000u },
     { "game_frame_rr@tailcache", m_d5h_24c5c_tailcache, 0x00000000u },
     { "game_frame_rr@b1acache", m_d5h_24c5c_b1acache, 0x00000000u },
