@@ -337,16 +337,20 @@ consolidation gate).
   track I (record `2026-10-13-reverse-i-derivations.md`) made five inlined functions real ones with rows
   (`0x2F920`, `0x11BCC`, `0x12CD4`, `0x1D018`, and the master init `0x2F9CC`, which now makes the original's
   twelve calls); track N (record `2026-10-14-reverse-n-derivations.md`) re-decided the twelve named gaps from
-  the bytes: three got a weaker row, nine stay gaps with the instruction that stops each. `make diff-verify`'s
-  counter after it is
-  `998/998 functions VERIFIED; 14840/14840 mutants detected; 1 named gaps;
-  638/829 rows with callees closed (169 have none)`; 15 of the 747 ported functions have no
+  the bytes: three got a weaker row, nine stay gaps with the instruction that stops each; track H (record
+  `2026-10-14-reverse-h-derivations.md`) gave the emulator a machine model (`E.Machine`: BIOS `int 0x16` from a
+  per-case key queue, `in` answers, the VGA DAC through a device model fed by the port's `PR_OUT`, the aperture
+  against `gfx_aperture()`) and ran the keyboard and VGA rows unpoked. `make diff-verify`'s counter after it is
+  `1000/1000 functions VERIFIED; 14884/14884 mutants detected; 1 named gaps;
+  638/831 rows with callees closed (169 have none)` (`0x24C5C` has ten rows); 15 of the 747 ported functions have no
   row (9 named gaps and 6 named non-rows, none open; record §D.12, §S.8, §I.5, §N.4). The counter does not tell a full row from a
-  weaker one: 13 of the 732 rowed functions have a row that runs the original under code pokes or covers part of it
-  (`0x24C5C`, `game_loop`, `0x2CADC`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`, track S's
-  `0x1AFE8` and `0x1B084`, whose file calls are poked out, and track N's `0x51ED8` (no drawing case),
-  `0x1BE30` and `0x1C740` (4 of 23 blocks); `0x1C470` and `0x52106` see none of the hardware
-  writes): count 719 full rows. A closed row may rest on a weaker callee row (`attract_step` on `0x1C740`'s).
+  weaker one: 9 of the 732 rowed functions have a row that runs the original under code pokes or leaves reachable
+  blocks out (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls; track S's `0x1AFE8` and
+  `0x1B084`, whose file calls are poked out; track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
+  `0x24C5C`, `0x2EA78` and `0x2EA74`, unpoked since track H but missing the key paths into `0x5004A`, the
+  port's documented omission): count 723 full rows, of which `0x51ED8`'s carries one declared difference (the
+  renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
+  callee row (`attract_step` on `0x1C740`'s).
   The open rows are open on the 15 unrowed functions and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
