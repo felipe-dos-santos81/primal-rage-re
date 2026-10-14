@@ -42447,6 +42447,20 @@ static void m_si_tick_two(const u32 *r, u32 *eax) { DSD(0x00105D88u) += 2u; *eax
 static void m_si_tick_word(const u32 *r, u32 *eax) { DSW(0x00105D88u) = (u16)(DSW(0x00105D88u) + 1u); *eax = r[R_EAX]; }
 static void m_si_tick_none(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
 
+/* ---- track I task 1: 0x2F920, 0x11BCC and 0x12CD4 become functions (record 2026-10-13-reverse-i
+ * §I.1-§I.3) ---- */
+
+/* 0x2F920 actors_table_clear: `mov ebx,0x14d4; mov eax,0x105f38; xor edx,edx; call 0x61a70`. No
+ * caller reads EAX (0x2BBE8 `xor eax,eax`, 0x2BC08 `mov eax,ecx`, 0x20C47 `xor eax,eax`). */
+static void b_i_2f920(const u32 *r, u32 *eax) { (void)r; actors_table_clear(); *eax = 0u; }
+#define I_TC_MUT(name, base, len) \
+    static void m_i_tc_##name(const u32 *r, u32 *eax) { (void)r; mem_fill((base), 0, (len)); *eax = 0u; }
+I_TC_MUT(short, DS_00105F38, 0x14D3u)      I_TC_MUT(long, DS_00105F38, 0x14D5u)
+I_TC_MUT(base, DS_00105F38 + 1u, 0x14D3u)  I_TC_MUT(low, DS_00105F38 - 1u, 0x14D5u)
+I_TC_MUT(none, DS_00105F38, 0u)
+
+/* ---- track I task 1 bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -57809,6 +57823,12 @@ static const binding_t k_bindings[] = {
     { "config_file_save@writefirst", m_sc_sv_writefirst, 0x000000FFu },
     { "config_file_save@wlen", m_sc_sv_wlen, 0x000000FFu },
     { "config_file_save@wsrc", m_sc_sv_wsrc, 0x000000FFu },
+    { "actors_table_clear",              b_i_2f920, 0x00000000u },
+    { "actors_table_clear@short", m_i_tc_short, 0x00000000u },
+    { "actors_table_clear@long", m_i_tc_long, 0x00000000u },
+    { "actors_table_clear@base", m_i_tc_base, 0x00000000u },
+    { "actors_table_clear@low", m_i_tc_low, 0x00000000u },
+    { "actors_table_clear@none", m_i_tc_none, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

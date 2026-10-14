@@ -124,6 +124,7 @@ extern int g_failures;
     X(test_p8_29cfc) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
+    X(test_inlined_functions) \
     X(test_restart)
 
 /* One line per env-gated driver; each runs alone, before the unit cases. Every

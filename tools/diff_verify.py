@@ -24430,7 +24430,7 @@ D4D_SPECS += [
     # 0x4880 bytes, the record pool 0xEBA0, the ring 0x80), the two list heads, the 580 records
     # appended to the free list (0x249C0, tail insert; `jb` 0x2BBB6 against the re-read pool base
     # + 0xEBA0), 0x13ADC (a stub), 0x4F228 with AL = 0, the pair 0x105B44/0x105B48, 0x1C350,
-    # 0x38B70, 0x2F920 (the 0x14D4-byte fill, no port function: the port fills inline), then by the
+    # 0x38B70, 0x2F920 (the 0x14D4-byte fill, the port's actors_table_clear; its own row), then by the
     # flag 0x52106(0) (a stub: `in`/`out`) and 0x336C0, or the 0xFA00-byte copy [0xE87A0] ->
     # [0xE87A4]; the byte 0x105BED = 1. The lock byte 0xBCD60 is 0 or 0x80: with a 1 (the image's
     # value) 0x2EA30 holds it at 0 across the body, which every stub call's memory shows and the
@@ -33209,6 +33209,35 @@ SI_SPECS = [
     ], eax_mask=0xFFFFFFFF, mutants=("@two", "@word", "@none")),
 ]
 D1_SPECS += SI_SPECS
+
+# ---- track I task 1: 0x2F920, 0x11BCC and 0x12CD4 become functions (record 2026-10-13-reverse-i) ------
+I_GRID, I_GRID_LEN = 0x00105F38, 0x14D4         # `mov eax,0x105f38` 0x2F927, `mov ebx,0x14d4` 0x2F922
+
+
+def i_tc_case(cid, regs, k, fill):
+    """0x2F920: the grid's 0x14D4 bytes seeded non-zero (`fill(i)`) with the byte on either side
+    (0x105F37 = 0x5A, 0x10740C = 0x5B), cut in 0x40-byte pokes of which this case takes every third,
+    from the k-th (a case holds 40 pokes; the 84 are spread over three cases). The other bytes are
+    the image's, which are zero there."""
+    chunks = sorted(d1d_chunks(I_GRID - 1, b"\x5a" + bytes(fill(i) for i in range(I_GRID_LEN)) + b"\x5b").items())
+    return Case(cid, regs, dict(chunks[k::3]))
+
+
+I_SPECS = [
+    # 0x2F920 actors_table_clear: no argument. `push ebx; push edx; mov ebx,0x14d4; mov eax,0x105f38;
+    # xor edx,edx; call 0x61a70; pop edx; pop ebx; ret`: the runtime memset 0x61A70 (it runs 0x65490
+    # and 0x654C7, and keeps EAX and ECX: `push eax; push ecx` 0x61A70, `pop ecx; pop eax` 0x61A85) of
+    # 0x14D4 zero bytes at 0x105F38. The three cases seed every byte of the range between them (t0
+    # the first byte and the byte below, t2 the last byte and the byte above); t1 enters with every
+    # register dirty. Its two callers load EAX before reading it (0x2BBE8 `xor eax,eax` and 0x2BC08
+    # `mov eax,ecx` after 0x2BBDF; 0x20C47 `xor eax,eax` after 0x20C42): mask 0.
+    Spec("actors_table_clear", 0x2F920, [
+        i_tc_case("t0", {}, 0, lambda i: 0xA5),
+        i_tc_case("t1", D2E_DIRTY, 1, lambda i: 1 + i % 255),
+        i_tc_case("t2", {}, 2, lambda i: 0xFF),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7), eax_mask=0, mutants=("@short", "@long", "@base", "@low", "@none")),
+]
+D1_SPECS += I_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

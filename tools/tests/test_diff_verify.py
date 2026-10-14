@@ -30152,6 +30152,27 @@ SI_CASES = [
 D1_MASKS.update(SI_MASKS)
 D1_KINDS.update(SI_KINDS)
 D1_CASES.extend(SI_CASES)
+# track I task 1 (record 2026-10-13-reverse-i sections I.1-I.3): 0x2F920, 0x11BCC and 0x12CD4 as functions
+I_MASKS = {
+    "actors_table_clear": 0x0,
+}   # I_MASKS end
+I_KINDS = {
+    "actors_table_clear@short": {'byte'},
+    "actors_table_clear@long": {'byte'},
+    "actors_table_clear@base": {'byte'},
+    "actors_table_clear@low": {'byte'},
+    "actors_table_clear@none": {'byte'},
+}   # I_KINDS end
+I_CASES = [
+    ("actors_table_clear@short", ['t2']),
+    ("actors_table_clear@long", ['t2']),
+    ("actors_table_clear@base", ['t0']),
+    ("actors_table_clear@low", ['t0']),
+    ("actors_table_clear@none", ['t0', 't1', 't2']),
+]   # I_CASES end
+D1_MASKS.update(I_MASKS)
+D1_KINDS.update(I_KINDS)
+D1_CASES.extend(I_CASES)
 
 
 @needs_unicorn
@@ -31474,10 +31495,10 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (822 after track S, the storage layer
-        # and the run clock); the 168 without are counted apart
-        self.assertIn("diff-verify: 990/990 functions VERIFIED; 14725/14725 mutants detected; 1 named gaps; "
-                      "635/822 rows with callees closed (168 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (823 after track I's 0x2F920 row, open
+        # on the runtime memset 0x61A70); the 168 without are counted apart
+        self.assertIn("diff-verify: 991/991 functions VERIFIED; 14730/14730 mutants detected; 1 named gaps; "
+                      "635/823 rows with callees closed (168 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

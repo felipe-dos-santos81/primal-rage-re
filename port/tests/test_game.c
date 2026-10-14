@@ -4934,6 +4934,35 @@ int test_run_clock(void)
     return g_failures - before;
 }
 
+/* Track I (record 2026-10-13-reverse-i §I.1-§I.3): the three functions the
+ * port used to inline in their callers, called directly. The voice of the
+ * timer exit is voice-site row 195's (test_voice_sites), through
+ * game_state_step. */
+#define IF_GRID      DS_00105F38                /* 0x2F927 */
+#define IF_GRID_LEN  0x14D4u                    /* 0x2F922 */
+int test_inlined_functions(void)
+{
+    int before = g_failures;
+    tf_voice_snap();
+
+    /* table — 0x2F920: 0x14D4 zero bytes from 0x105F38 (0x2F922..0x2F92E), the
+     * byte on either side kept. */
+    {
+        u32 left = 0u;
+        mem_fill(IF_GRID, 0xA5u, IF_GRID_LEN);
+        DSB(IF_GRID - 1u) = 0x5Au;
+        DSB(IF_GRID + IF_GRID_LEN) = 0x5Bu;
+        actors_table_clear();
+        for (u32 i = 0u; i < IF_GRID_LEN; i++) left += (DSB(IF_GRID + i) != 0u);
+        CHECK_EQ_INT((int)left, 0);
+        CHECK_EQ_INT((int)DSB(IF_GRID - 1u), 0x5A);
+        CHECK_EQ_INT((int)DSB(IF_GRID + IF_GRID_LEN), 0x5B);
+    }
+
+    tf_voice_put();
+    return g_failures - before;
+}
+
 /* ---- test_anim.c ---- */
 
 /* port/tests/test_anim.c — the animation-stream interpreter (Task 7).

@@ -1101,6 +1101,12 @@ void actor_cursor_reset(void)
     mem_fill(DS_00107A1C, 0, 28u);
 }
 
+/* 0x2F920 — record 2026-10-13-reverse-i §I.1 */
+void actors_table_clear(void)
+{
+    mem_fill(DS_00105F38, 0, 0x14D4u);              /* 0x2F922..0x2F92E 0x61A70 */
+}
+
 /* 0x2BAF4 — record §47-C. AL is saved at [esp] (0x2BAFD) and reloaded into DL
  * at 0x2BBBD; 0x4F228, 0x1C350, 0x38B70 and 0x2F920 push and pop EDX, so the
  * 0x2BBE4 `test dl,dl` sees it. Non-zero: 0x52106 and 0x336C0. Zero (only
@@ -1142,7 +1148,7 @@ void actors_reset_al(u32 al)
     DSD(DS_00105B48) = 0;
     render_list_init();                             /* 0x1C350 */
     actor_cursor_reset();                           /* 0x38B70 */
-    mem_fill(DS_00105F38, 0, 0x14D4u);              /* 0x2F920 */
+    actors_table_clear();                           /* 0x2BBDF 0x2F920 */
     if ((al & 0xFFu) != 0u) {                       /* 0x2BBE4 test dl,dl */
         /* The non-zero arm: 0x52106 clears both offscreen buffers, blacks the
          * DAC and clears the screen aperture, and zeroes the tick counters. */
