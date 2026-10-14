@@ -29109,23 +29109,23 @@ D6A_KINDS = {
     "config_screen_wait@swapearly": {'call #2 memory'},
     "config_screen_wait@noflush": {'call #10', 'call #10 memory', 'call #11', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
     "config_screen_wait@flushfirst": {'call #3 memory'},
-    "config_screen_wait@m1": {'call #4', 'call #5'},
+    "config_screen_wait@m1": {'byte', 'call #4', 'call #5', 'keys'},
     "config_screen_wait@passes": {'call #10', 'call #11', 'call #6', 'call #7'},
     "config_screen_wait@ge": {'call #12', 'call #13', 'call #8', 'call #9'},
     "config_screen_wait@pumpfirst": {'byte', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #4', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
     "config_screen_wait_zero@n1": {'call #8', 'call #9'},
-    "config_screen_wait_zero@m1": {'call #4', 'call #5', 'call #6', 'call #7'},
-    "config_screen_wait_zero@eax": {'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "config_screen_wait_zero@m1": {'byte', 'call #4', 'call #5', 'call #6', 'call #7', 'keys'},
+    "config_screen_wait_zero@eax": {'byte', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9', 'keys'},
     "game_quit_prompt@hard32": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4 memory'},
     "game_quit_prompt@id": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
-    "game_quit_prompt@noflag": {'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "game_quit_prompt@noflag": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'keys'},
     "game_quit_prompt@nopause": {'call #0', 'call #0 memory', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4'},
     "game_quit_prompt@col": {'call #1'},
     "game_quit_prompt@row": {'call #1'},
     "game_quit_prompt@mode": {'call #1'},
     "game_quit_prompt@wait0": {'call #2'},
     "game_quit_prompt@answers": {'byte', 'call #3', 'call #3 memory', 'call #4'},
-    "game_quit_prompt@noupper": {'byte', 'call #3', 'call #3 memory', 'call #4'},
+    "game_quit_prompt@noupper": {'byte', 'call #3', 'call #3 memory', 'call #4', 'keys'},
     "game_quit_prompt@lo": {'byte', 'call #3 memory'},
     "game_quit_prompt@hi": {'byte', 'call #3 memory'},
     "game_quit_prompt@order": {'byte', 'call #3', 'call #3 memory', 'call #4'},
@@ -29230,45 +29230,45 @@ D6A_CASES = [
     ("config_set_defaults@f2a", ['t0', 't1', 't2']),
     ("config_set_defaults@nokeys", ['t0', 't1', 't2']),
     ("config_set_defaults@keysfirst", ['t0', 't1', 't2']),
-    ("config_screen_wait@nolatch", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@latchw", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@noupdate", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@nosort", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@nolist", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@order", ['w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nolatch", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@latchw", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@noupdate", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nosort", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@nolist", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@order", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
     ("config_screen_wait@flagkeep", ['w1', 'w3']),
     ("config_screen_wait@flagw", ['w1', 'w3']),
-    ("config_screen_wait@noswap", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@swapearly", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@noflush", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@flushfirst", ['w0', 'w1', 'w2', 'w3', 'w4']),
-    ("config_screen_wait@m1", ['w0', 'w1']),
-    ("config_screen_wait@passes", ['w2', 'w3']),
-    ("config_screen_wait@ge", ['w2', 'w3']),
-    ("config_screen_wait@pumpfirst", ['w2', 'w3', 'w4']),
+    ("config_screen_wait@noswap", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@swapearly", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@noflush", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@flushfirst", ['k0', 'k1', 'k2', 'k3', 'w0', 'w1', 'w2', 'w3', 'w4']),
+    ("config_screen_wait@m1", ['k2', 'w0', 'w1']),
+    ("config_screen_wait@passes", ['k0', 'k1', 'w2', 'w3']),
+    ("config_screen_wait@ge", ['k0', 'k1', 'w2', 'w3']),
+    ("config_screen_wait@pumpfirst", ['k0', 'k1', 'k3', 'w2', 'w3', 'w4']),
     ("config_screen_wait_zero@n1", ['z0', 'z1']),
     ("config_screen_wait_zero@m1", ['z0', 'z1']),
     ("config_screen_wait_zero@eax", ['z0', 'z1']),
     ("game_quit_prompt@hard32", ['q0', 'q4']),
-    ("game_quit_prompt@id", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@noflag", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@nopause", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@col", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@row", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@mode", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@wait0", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
-    ("game_quit_prompt@answers", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'qa']),
-    ("game_quit_prompt@noupper", ['q1', 'q2', 'q7', 'q8', 'qa']),
+    ("game_quit_prompt@id", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@noflag", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@nopause", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@col", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@row", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@mode", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@wait0", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@answers", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'qa', 'qb', 'qc', 'qd']),
+    ("game_quit_prompt@noupper", ['q1', 'q2', 'q7', 'q8', 'qa', 'qc']),
     ("game_quit_prompt@lo", ['q6']),
     ("game_quit_prompt@hi", ['q5']),
     ("game_quit_prompt@order", ['q9']),
-    ("game_quit_prompt@flagkeep", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
-    ("game_quit_prompt@noquit", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
-    ("game_quit_prompt@quitw", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
-    ("game_quit_prompt@norelease", ['q2', 'q3', 'q4', 'qa']),
-    ("game_quit_prompt@relid", ['q2', 'q3', 'q4', 'qa']),
-    ("game_quit_prompt@relmode", ['q2', 'q3', 'q4', 'qa']),
-    ("game_quit_prompt@noresume", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@flagkeep", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9', 'qb', 'qd']),
+    ("game_quit_prompt@noquit", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9', 'qb', 'qd']),
+    ("game_quit_prompt@quitw", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9', 'qb', 'qd']),
+    ("game_quit_prompt@norelease", ['q2', 'q3', 'q4', 'qa', 'qc']),
+    ("game_quit_prompt@relid", ['q2', 'q3', 'q4', 'qa', 'qc']),
+    ("game_quit_prompt@relmode", ['q2', 'q3', 'q4', 'qa', 'qc']),
+    ("game_quit_prompt@noresume", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa', 'qb', 'qc', 'qd']),
     ("gfx_flush_palette@noclamp", ['f2', 'f3']),
     ("gfx_flush_palette@unsigned", ['f3']),
     ("gfx_flush_palette@clampby", ['f2', 'f3']),
@@ -30447,6 +30447,74 @@ D1_KINDS.update(N3_KINDS)
 D1_CASES.extend(N3_CASES)
 # N n3 end
 
+# ---- track H batch h1 (record 2026-10-14-reverse-h §H.2): the keyboard rows' new rows and mutants; measured pins ----
+H1_MASKS = {
+    "game_frame_keys": 0x0,
+    "game_frame_keys2": 0x0,
+}
+H1_KINDS = {
+    "config_screen_wait@nokeys": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "config_screen_wait@klatchw": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kscan": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kwordw": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@ktime": {'byte', 'call #6 memory', 'call #7 memory'},
+    "config_screen_wait@kone": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "config_screen_wait@kany": {'byte', 'call #6 memory', 'call #7 memory', 'keys'},
+    "game_quit_prompt@once": {'byte', 'call #3 memory', 'keys'},
+    "game_quit_prompt@ax": {'byte', 'call #3', 'call #3 memory', 'call #4', 'keys'},
+    "game_quit_prompt@more": {'call #4', 'keys'},
+    "game_frame_keys@knone": {'byte', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7', 'keys'},
+    "game_frame_keys@kmode1": {'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "game_frame_keys@kscan": {'byte', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_frame_keys@klatchw": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_frame_keys@kzero": {'byte', 'call #2 memory', 'keys'},
+    "game_frame_keys@kenter": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},
+    "game_frame_keys@kesc27": {'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "game_frame_keys@kescarg": {'call #2'},
+    "game_frame_keys@kspace": {'byte', 'call #1', 'call #1 memory', 'call #10', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "game_frame_keys@kpausew": {'byte', 'call #7 memory'},
+    "game_frame_keys@kpauserow": {'call #3'},
+    "game_frame_keys@kpauseflag": {'byte', 'call #7 memory'},
+    "game_frame_keys@kaltq": {'call #2'},
+    "game_frame_keys@kaltsm": {'call #2', 'call #3'},
+    "game_frame_keys2@knone": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'keys'},
+    "game_frame_keys2@kname": {'call #4', 'call #5', 'call #6'},
+    "game_frame_keys2@khook": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8'},
+}
+H1_CASES = [
+    ("config_screen_wait@nokeys", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@klatchw", ['k0', 'k3']),
+    ("config_screen_wait@kscan", ['k1']),
+    ("config_screen_wait@kwordw", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@ktime", ['k0', 'k1', 'k3']),
+    ("config_screen_wait@kone", ['k1', 'k3']),
+    ("config_screen_wait@kany", ['k1']),
+    ("game_quit_prompt@once", ['qb']),
+    ("game_quit_prompt@ax", ['qb', 'qc', 'qd']),
+    ("game_quit_prompt@more", ['qc']),
+    ("game_frame_keys@knone", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'ka', 'kb']),
+    ("game_frame_keys@kmode1", ['k3']),
+    ("game_frame_keys@kscan", ['k2', 'k6']),
+    ("game_frame_keys@klatchw", ['k0', 'k1', 'k3', 'k4', 'k5', 'ka', 'kb']),
+    ("game_frame_keys@kzero", ['k1']),
+    ("game_frame_keys@kenter", ['k1']),
+    ("game_frame_keys@kesc27", ['k3', 'kb']),
+    ("game_frame_keys@kescarg", ['k4']),
+    ("game_frame_keys@kspace", ['k3', 'k4', 'kb']),
+    ("game_frame_keys@kpausew", ['ka']),
+    ("game_frame_keys@kpauserow", ['ka']),
+    ("game_frame_keys@kpauseflag", ['ka']),
+    ("game_frame_keys@kaltq", ['k6']),
+    ("game_frame_keys@kaltsm", ['k2']),
+    ("game_frame_keys2@knone", ['k7', 'k8', 'k9']),
+    ("game_frame_keys2@kname", ['k7']),
+    ("game_frame_keys2@khook", ['k9']),
+]   # H1_CASES end
+D1_MASKS.update(H1_MASKS)
+D1_KINDS.update(H1_KINDS)
+D1_CASES.extend(H1_CASES)
+# h1 end
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
@@ -31517,6 +31585,9 @@ class RealFunctionTests(unittest.TestCase):
         # N n2 (record 2026-10-14-reverse-n section N.2): the stubs the 0x1BE30 row adds
         0x1D018: (), 0x1B084: ("edi", "ebp"),
         # N n2 end
+        # H h1 (record 2026-10-14-reverse-h section H.2): the stubs the game_frame_keys rows add
+        0x20860: (), 0x249F0: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x1D220: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
+        # H h1 end
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
@@ -31784,8 +31855,11 @@ class RealFunctionTests(unittest.TestCase):
         # of 0x1C740 (closed: 0x52106 is VERIFIED), which also closes attract_step's (0x11000 stubs 0x1C740);
         # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge. Track H batch h0: 0x1C470's
         # row runs unpoked under the machine model and gains six DAC mutants (record 2026-10-14-reverse-h §H.1).
-        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14846/14846 mutants detected; 1 named gaps; "
-                      "638/829 rows with callees closed (169 have none).", out.getvalue())
+        # Track H batch h1: 0x2EA78, 0x2EA74, 0x249F0 and 0x24C5C's eight rows run unpoked under the key model;
+        # two rows for 0x24C5C's key loop (game_frame_keys, game_frame_keys2, open on 0x500BB and 0x65431) and
+        # 27 mutants (7 + 3 + 14 + 3; record §H.2).
+        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14873/14873 mutants detected; 1 named gaps; "
+                      "638/831 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

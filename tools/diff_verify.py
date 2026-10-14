@@ -29925,11 +29925,11 @@ D5H_SPECS += [
 ]
 
 # ---- 0x24C5C game_frame (record §2.2, §2.3): the per-frame update and the mode dispatcher -------
-# The BIOS keyboard call `int 0x16` (AH = 1) at 0x24D0E is replaced in every case by `cmp eax,eax`
-# (39 C0): ZF = 1, the BIOS's "no keystroke" answer, so 0x24D10..0x24D20 fall to the mode switch.
-# Unpatched, the original stops there (`unmodeled: int at 0x24D0E`, measured). The key loop
-# 0x24D26..0x24EE7 is a named gap (record §4): it needs a BIOS keyboard queue.
-D5H_NOKEY = {0x00024D0E: b"\x39\xc0"}
+# No code poke since track H h1 (record 2026-10-14-reverse-h §H.2; d5h poked the BIOS peek `int 0x16`
+# (AH = 1) at 0x24D0E to `cmp eax,eax`). Every case of the eight d5h rows runs with an empty key queue
+# (E.Machine(keys=()), d5h_gf_spec): the peek sets ZF = 1, the BIOS's "no keystroke" answer, so
+# 0x24D10..0x24D20 fall to the mode switch, as under the poke, and the port's queue is empty too. The key
+# loop 0x24D26..0x24EE7 is the row game_frame_keys (track H h1 block below).
 D5H_INPUT, D5H_TRACK, D5H_UPDATE = E.Call(0x4F644, ()), E.Call(0x38990, ()), E.Call(0x2A31C, (), clobbers=("edi", "ebp"))
 # the runtime's longjmp: a tail jump at 0x2520B that never returns here. No case reaches it; the entry
 # keeps the static scan out of the runtime (a jump to a call-set address is not followed)
@@ -29974,7 +29974,7 @@ D5H_GF_P = 0x000F8000               # the pset base the mode-0xC tail's cases st
 
 def d5h_gf_case(mode, frame=0x1233, ae8=0, b12=0, b15=0, b1a=0, b1b=0, b1d=0, b25=0, b26=0, tgt=(0, 0),
                 recs=(E3_REC, E3_REC2), f41=(0x41, 0x41), cmd=(0xE0E0, 0xE2E2), extra=None):
-    """0x24C5C: the no-key patch; the mode word 0x104B00 after the seeded words 0x104AFA..0x104AFE; the
+    """0x24C5C: the mode word 0x104B00 after the seeded words 0x104AFA..0x104AFE; the
     hook dword 0x104AE4, the update mask 0x104AE8 = `ae8` and the render mask 0x104AEC; the bytes
     0x104B10..0x104B27 seeded with their own low address byte except 0x104B12/15/1A/1B/1D/25/26 (the
     arguments); the frame word 0xEF6DC between seeded words; the camera targets 0x1077A8[side] = `tgt`,
@@ -29982,7 +29982,7 @@ def d5h_gf_case(mode, frame=0x1233, ae8=0, b12=0, b15=0, b1a=0, b1b=0, b1d=0, b2
     b = bytearray(range(0x10, 0x28))
     for off, v in ((0x12, b12), (0x15, b15), (0x1A, b1a), (0x1B, b1b), (0x1D, b1d), (0x25, b25), (0x26, b26)):
         b[off - 0x10] = v
-    p = dict(D5H_NOKEY)
+    p = {}
     p.update({
         0x00104AE4: le32(0xE4E4E4E4) + le32(ae8) + le32(0xECECECEC),
         0x00104AF4: le16(0xF4F4) + le16(0x5A5A),
@@ -30021,24 +30021,20 @@ D5H_GF_START_SEED = {
     0x001088EC: le16(0xECEC) + le16(0xEEEE) + le16(0xF0F0),
 }
 
-# The blocks no row hits, and why (record §4).
-D5H_GF_KEYS = (0x24D26, 0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73,
-               0x24D79, 0x24D7E, 0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0,
-               0x24DB5, 0x24DBA, 0x24DBF, 0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19,
-               0x24E50, 0x24E58, 0x24E5F, 0x24E61, 0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0)
+# The blocks no row hits, and why (record §4; the key loop's since track H h1, record 2026-10-14-reverse-h §H.2).
 D5H_GF_RESTART = (0x25201,)
-D5H_GF_ROWS = ("head", "fight", "tails", "m25", "match", "front", "start", "rr")
+D5H_GF_ROWS = ("head", "fight", "tails", "m25", "match", "front", "start", "rr", "keys", "keys2")
 D5H_GF_UNHIT = {}                   # row -> the blocks it does not hit (measured), filled below
 
 
 def d5h_gf_unhit(row):
-    """The blocks a row of 0x24C5C does not hit, each with the reason: the key loop and the restart
-    are named gaps; any other block is owned by the first row (in D5H_GF_ROWS order) that hits it."""
+    """The blocks a row of 0x24C5C does not hit, each with the reason: the restart and the key loop's
+    three (H1_GF_UNHIT) are named gaps; any other block is owned by the first row (in D5H_GF_ROWS order)
+    that hits it."""
     out = {}
     for b in D5H_GF_UNHIT.get(row, ()):
-        if b in D5H_GF_KEYS:
-            out[b] = ("the key loop: reached only on a keystroke from the BIOS (int 16h at 0x24D0E, 0x24D2E, "
-                      "0x24E54), which every case answers with none; a named gap (record §4)")
+        if b in H1_GF_UNHIT:
+            out[b] = H1_GF_UNHIT[b]
         elif b in D5H_GF_RESTART:
             out[b] = ("the soft restart: `jmp 0x65431`, the runtime's longjmp(0x1044F4, 1), does not return "
                       "into 0x24C5C; a named gap (record §4)")
@@ -30049,6 +30045,7 @@ def d5h_gf_unhit(row):
 
 
 def d5h_gf_spec(row, cases, calls, mutants, allow=()):
+    cases = [c if c.machine else dataclasses.replace(c, machine=E.Machine(keys=())) for c in cases]   # track H h1
     return Spec("game_frame_%s" % row, 0x24C5C, cases, unhit_named=d5h_gf_unhit(row), allow_calls=allow,
                 calls=D5H_GF_COMMON + calls, eax_mask=0, mutants=mutants)
 
@@ -30209,6 +30206,99 @@ D5H_GF_MUT = {
 def d5h_gf_muts(row):
     return tuple("@" + m for m in D5H_GF_MUT[row].split())
 
+
+# ---- track H batch h1 (record 2026-10-14-reverse-h §H.2): 0x24C5C's key loop, the row game_frame_keys ----
+# The loop 0x24D08..0x24EE7 under the machine model's key queue. While the peek (AH = 1, 0x24D0E) gives a
+# non-zero word (`mov bx,ax; test ebx,ebx` 0x24D1B: a queued word 0 ends the loop as an empty queue does),
+# the read (AH = 0, 0x24D2E) takes it into BX; the dword 0x105F30 = its ASCII byte, or its scan code when
+# the ASCII byte is 0 (`and eax,esi`, ESI = 0xFF from 0x24CFE). The mode word 0x104B00 is read again for
+# each key. Mode 0x1E with an ASCII byte: 0x20860(it). Else, on the ASCII byte (unsigned compares): 0xD in
+# mode 3 stores EDI (0x27, from 0x24D03) as the mode; 0x1B: mode 3 0x249F0(0), mode 0x27 nothing, else
+# 0x249F0(1); 0x20, except in modes 3 and 0x27 and in mode 0x17 with the hook dword 0x104AE4 = 0x10E80,
+# is the pause: the byte 0x104B22 = 1, 0x1D250, string 0x1E8 at row 0xF (0x1C500, run; 0x2F198), 0x2EA78(-1),
+# then blocking reads (AH = 0, 0x24E54) until one's ASCII byte is 0x20, then 0x1C500, 0x2F280, 0x1D270 and
+# the byte 0x104B22 = 0; 0 (an extended key), on the scan code: 0x10 0x249F0(0), 0x1F 0x1D220, 0x32
+# 0x1D1B0 (0x24 is 0x5004A, below). Every other key loops. Then the mode switch, as in the d5h rows.
+# What a case may not do: a key after one that reaches 0x249F0 or 0x1D220, or an Enter in mode 3 after a
+# pause. The stubs poison what E.callee_clobbers derives (0x249F0 and 0x1D220: every register, from the
+# longjmp 0x65431 and 0x1CD9C's tree; 0x2EA78: EDI and EBP), and the loop keeps ESI and EDI across those
+# calls; so those keys come last in their queues. The port is game_key_loop (flow.c), which game_frame calls.
+H1_GF_UNHIT = {
+    0x24D39: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24D37 always jumps)",
+    0x24E5F: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24E5D always jumps)",
+    0x24DD3: "the scan code 0x24 (Alt-J): 0x5004A, the joystick calibration (the PIT and the game port 0x201), "
+             "which the port leaves out (game_key_loop, PORT); a named gap (record 2026-10-14-reverse-h section H.2)",
+}
+H1_GF_PROMPT = E.Call(0x249F0, ("eax",), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+H1_GF_NAME = E.Call(0x20860, ("eax",))
+H1_GF_SAMPLES = E.Call(0x1D220, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+# diffrun takes 16 stubs a case, so the cases are two rows: modes 0, 3 and 0x27 (keys), 0x1E and 0x17 (keys2)
+H1_GF_PAUSE_CALLS = (E.Call(0x1D250, ()), D1D_CURSOR, E.Call(0x2EA78, ("eax",), clobbers=("edi", "ebp")),
+                     D1D_RELEASE, E.Call(0x1D270, ()))
+H1_GF_CALLS = d5h_hs(0x11D04) + (D5H_REPEAT, D5H_MENU, H1_GF_PROMPT, D2C_TOGGLE, H1_GF_SAMPLES) + H1_GF_PAUSE_CALLS
+H1_GF_CALLS2 = d5h_hs(0x1EEB0, 0x4F318) + (H1_GF_NAME,) + H1_GF_PAUSE_CALLS
+H1_GF_PAUSE = d1d_str_pokes({0x1E8: b"PAUSED-1E8"})
+H1_GF_HOOK = {0x00104AE4: le32(0x00010E80) + le32(0) + le32(0xECECECEC)}
+
+
+def h1_gf_keys(cid, mode, keys, extra=None, stubs=None, regs=None):
+    """0x24C5C with the key queue `keys` (d5h_gf_case's seeds, mode `mode`)."""
+    return Case(cid, regs or {}, d5h_gf_case(mode, extra=extra), stubs or {}, machine=E.Machine(keys=keys))
+
+
+D5H_GF_UNHIT["keys"] = (    # measured
+    0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D39,
+    0x24D5F, 0x24D63, 0x24DD3, 0x24E09, 0x24E5F, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071, 0x250CE, 0x2512B,
+    0x25187, 0x2519E, 0x251A8, 0x251B2, 0x251BC, 0x251F7, 0x251FC, 0x25201, 0x2521A, 0x25224, 0x2522E, 0x25242,
+    0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287, 0x25296, 0x252A0, 0x252A9, 0x252AD, 0x252B2,
+    0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D, 0x25317, 0x25321, 0x2532B, 0x25335, 0x2533F, 0x25349,
+    0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B, 0x25385, 0x2538F, 0x253BD, 0x253C4, 0x253CB, 0x253D2, 0x253D9,
+    0x253E0, 0x253E7, 0x253EE, 0x253F5, 0x253FC, 0x25403, 0x2540A, 0x2541D, 0x2542D, 0x25436, 0x25448, 0x25457,
+    0x25491, 0x254B7, 0x254CF, 0x25509, 0x2551C, 0x2552D, 0x25534, 0x25540, 0x2554B, 0x2557F, 0x25591, 0x2559C,
+    0x255AD, 0x255B4, 0x255C0,
+)
+D5H_GF_UNHIT["keys2"] = (    # measured
+    0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D39,
+    0x24D89, 0x24DB5, 0x24DBA, 0x24DBF, 0x24DC9, 0x24DD3, 0x24DDD, 0x24E5F, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0,
+    0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071, 0x250CE, 0x2512B, 0x25187, 0x2519E, 0x251A8,
+    0x251B2, 0x251BC, 0x251C6, 0x251F7, 0x251FC, 0x25201, 0x25210, 0x2521A, 0x25224, 0x2522E, 0x25238, 0x25242,
+    0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287, 0x25296, 0x252A0, 0x252A9, 0x252AD, 0x252B2,
+    0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D, 0x25317, 0x25321, 0x2532B, 0x25335, 0x2533F, 0x25349,
+    0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B, 0x25385, 0x2538F, 0x253BD, 0x253C4, 0x253D2, 0x253D9, 0x253E0,
+    0x253E7, 0x253F5, 0x253FC, 0x25403, 0x2540A, 0x2541D, 0x2542D, 0x25436, 0x25448, 0x25457, 0x25468, 0x2546E,
+    0x25478, 0x25482, 0x25491, 0x254B7, 0x254CF, 0x25509, 0x2551C, 0x2552D, 0x25534, 0x25540, 0x2554B, 0x2557F,
+    0x25591, 0x2559C, 0x255AD, 0x255B4, 0x255C0,
+)
+D5H_GF_MUT["keys"] = ("knone kmode1 kscan klatchw kzero kenter kesc27 kescarg kspace kpausew kpauserow "
+                      "kpauseflag kaltq kaltsm")
+D5H_GF_MUT["keys2"] = "knone kname khook"
+D5H_SPECS += [
+    # Modes 0, 3 and 0x27. k0: an ASCII key. k1: Backspace, Enter outside mode 3, 0x1A and 0x1C (each loops), then a queued word 0,
+    # which ends the loop with two words left. k2: extended keys that loop (scan 0x0F, 0x21, 0x48), Alt-M,
+    # then Alt-S. k3: in mode 3, Enter (the mode becomes 0x27), then Esc and space, which mode 0x27 ignores
+    # (the mode read again per key). k4: space in mode 3, then Esc (0x249F0(0)). k5: Esc in mode 0
+    # (0x249F0(1)). k6: Alt-Q (0x249F0(0)). ka: the pause in mode 0 (a key that is not space, then space,
+    # scan byte 0x39: the compare is of AL), then a key after it. kb: Esc, space and Enter in mode 0x27.
+    d5h_gf_spec("keys", [
+        h1_gf_keys("k0", 0, (0x1E61,)),
+        h1_gf_keys("k1", 0, (0x0E08, 0x1C0D, 0x2C1A, 0x2B1C, 0x0000, 0x1E61), regs=D2E_DIRTY),
+        h1_gf_keys("k2", 0, (0x0F00, 0x2100, 0x4800, 0x3200, 0x1F00)),
+        h1_gf_keys("k3", 3, (0x1C0D, 0x011B, 0x3920), stubs={0x2FFC4: 0}),
+        h1_gf_keys("k4", 3, (0x3920, 0x011B)),
+        h1_gf_keys("k5", 0, (0x011B,)),
+        h1_gf_keys("k6", 0, (0x1000,), regs=D2E_DIRTY),
+        h1_gf_keys("ka", 0, (0x3920, 0x0E08, 0x3920, 0x1E61), extra=H1_GF_PAUSE),
+        h1_gf_keys("kb", 0x27, (0x011B, 0x3920, 0x1C0D), stubs={0x2FFC4: 0}),
+    ], H1_GF_CALLS, d5h_gf_muts("keys"), allow=D1D_STR_ALLOW),
+    # Modes 0x1E and 0x17. k7: mode 0x1E: two ASCII keys to 0x20860, an extended key to the switch. k8:
+    # space in mode 0x17 with the hook 0x10E80 (no pause). k9: the pause in mode 0x17 (another hook).
+    d5h_gf_spec("keys2", [
+        h1_gf_keys("k7", 0x1E, (0x1E61, 0x1C0D, 0x4800)),
+        h1_gf_keys("k8", 0x17, (0x3920,), extra=H1_GF_HOOK),
+        h1_gf_keys("k9", 0x17, (0x3920, 0x1E61, 0x3920), extra=H1_GF_PAUSE),
+    ], H1_GF_CALLS2, d5h_gf_muts("keys2"), allow=D1D_STR_ALLOW),
+]
+# ---- h1 end ----
 
 D5H_SPECS += [
     # 0x24C5C game_frame, the head and the 0x25414 tail, in mode 0 (the table's 0x2540F entry). 0x4F644
@@ -32163,39 +32253,42 @@ D6A_SPECS += [
 D6A_DEFAULTS = E.Call(0x2CADC, (), clobbers=("edi",))                       # config_set_defaults, seamed here
 
 # ---- 0x2EA78 / 0x2EA74: one frame without the game logic, then the tick wait --------------------------
-# Rows under one code poke, 0x24C5C's: the BIOS keyboard peek `int 0x16` (AH = 1) at 0x2EB15 is `cmp
-# eax,eax` (39 C0) in every case: ZF = 1, the BIOS's "no keystroke" answer, after which the code zeroes EAX
-# itself (0x2EB17..0x2EB20) and leaves the key loop (`je 0x2eb6e` 0x2EB27). Exact for the no-key path, the
-# only thing taken from the BIOS there being ZF. Unpoked, the original stops there (`unmodeled: int at
-# 0x2EB15`, measured). The stubs model what the loop waits on, as game_loop's do: the audio service stores
+# No code poke since track H h1 (record 2026-10-14-reverse-h §H.2; d6a ran these rows with the BIOS peek
+# `int 0x16` at 0x2EB15 poked to `cmp eax,eax`). Both `int 0x16` sites take the case's key queue from the
+# machine model: the peek (AH = 1, 0x2EB11..0x2EB27: ZF and AX, `and eax,0xffff`, so a queued word 0 ends
+# the drain as an empty queue does) and the read (AH = BL = 0, EBX zeroed at 0x2EAEE and written nowhere in
+# the loop, 0x2EB29..0x2EB3A: AX). The keys are all queued before the call, so the first pass drains them.
+# The stubs model what the loop waits on, as game_loop's do: the audio service stores
 # the frame word 0xEF6DE = 0x2222 (the timer ISR 0x1BDF4 steps it; the emulator has none) and the key pump
 # stores 0x1111 back, so every pass waits through one audio call. The back buffer 0xE87A4 is 0xA0000, the
 # aperture itself, so the full copy 0x655FF and the dirty blit 0x501A3 (both run from the original's
 # bytes) rewrite the bytes they read: the row is blind to the present (the port's is gfx_present, the
 # aperture rule) and to the camera and clip records handed to 0x1C3FC and 0x14328, whose port functions
-# take none (render.c).
-D6A_WAIT_NOKEY = {0x0002EB15: b"\x39\xc0"}
+# take none (render.c). 0x500BB (`mov eax,[0x101500]; ret`, the key time) runs on the original's side.
 D6A_WAIT_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x000EF6DE, le16(0x2222)),))
 D6A_WAIT_PUMP = E.Call(0x500C4, (), writes=((None, 0x000EF6DE, le16(0x1111)),))
 D6A_WAIT_CALLS = (D5H_UPDATE, D5H_SORT, D5H_LIST, D5H_FLUSH, D6A_WAIT_AUDIO, D6A_WAIT_PUMP)
-D6A_WAIT_REAL = (0x655FF, 0x501A3, 0x50188)
-D6A_WAIT_UNHIT = {a: "the key loop: reached only on a keystroke from the BIOS (int 16h at 0x2EB15 and 0x2EB2D); "
-                     "a static poke cannot drain a queue, a named gap (record section 4)"
-                  for a in (0x2EB29, 0x2EB31, 0x2EB38, 0x2EB3A, 0x2EB4D, 0x2EB52, 0x2EB61, 0x2EB64)}
+D6A_WAIT_REAL = (0x655FF, 0x501A3, 0x50188, 0x500BB)
+D6A_WAIT_UNHIT = {
+    0x2EB31: "the read's ZF = 1 arm: the flags before `int 0x16` (AH = 0) at 0x2EB2D are those of `and "
+             "eax,0xffff` 0x2EB22 on a non-zero word (ZF = 0), which the BIOS read returns unchanged; either "
+             "way it joins 0x2EB3A with AX kept (record 2026-10-14-reverse-h section H.2)",
+    0x2EB38: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x2EB36 always jumps)",
+    0x2EB4D: "the key word 0x2400 (Alt-J): 0x5004A, the joystick calibration (the PIT and the game port "
+             "0x201), which the port leaves out (config.c, PORT); a named gap (record section H.2)"}
 
 
-def d6a_wait(cid, n, flag=0, word=0x1111, latch=0x5A5A5A5A, regs=None):
-    """0x2EA78: the poke; the key word, the key time and the latch 0x105F28..0x105F33 seeded; the copy
+def d6a_wait(cid, n, flag=0, word=0x1111, latch=0x5A5A5A5A, regs=None, keys=()):
+    """0x2EA78: the BIOS key queue `keys` (track H); the key word, the key time and the latch 0x105F28..0x105F33 seeded; the copy
     flag 0x1014FC before three seeded bytes; the front buffer 0xE87A0 = 0xB0000 and the back buffer
     0xE87A4 = 0xA0000; the frame word 0xEF6DE between seeded words; the ISR gate byte 0x104B22 = 1 (the
     port's own tick model in the wait, PORT, is off) and the two tick dwords 0x101500/0x101508 seeded."""
-    p = {**D6A_WAIT_NOKEY,
-         0x00105F28: le32(0x28282828) + le32(0x2C2C2C2C) + le32(latch),
+    p = {0x00105F28: le32(0x28282828) + le32(0x2C2C2C2C) + le32(latch),
          0x001014FC: bytes([flag, 0xFD, 0xFE, 0xFF]),
          0x000E87A0: le32(0x000B0000) + le32(0x000A0000),
          0x000EF6DC: le16(0xDCDC) + le16(word) + le16(0xE0E0),
          0x00104B22: b"\x01", 0x00101500: le32(0x15001500), 0x00101508: le32(0x15081508)}
-    return Case(cid, {**(regs or {}), "eax": n}, p)
+    return Case(cid, {**(regs or {}), "eax": n}, p, machine=E.Machine(keys=tuple(keys)))
 
 
 D6A_SPECS += [
@@ -32204,7 +32297,13 @@ D6A_SPECS += [
     # blit; the swap 0x50188 (run); 0x1C470. n = -1 returns there (`cmp ecx,-1; je` 0x2EAE0: w0, w1). Else,
     # for ECX = n down while the value before the decrement is above -1, signed (`mov eax,ecx; dec ecx; cmp
     # eax,-1; jg` 0x2EB6E..0x2EB74: n + 2 passes for n >= 0, w2 and w3; one for n = -2, w4): the wait on the
-    # frame word (0x1CF20 while it is unchanged, a word compare), 0x500C4, the peek. Mask 0, and EAX is not
+    # frame word (0x1CF20 while it is unchanged, a word compare), 0x500C4, and the key drain: while the
+    # peek gives a non-zero word, read it into the dword 0x105F28 (zero-extended, `xor edx,edx; mov dx,ax`),
+    # the dword 0x105F2C = 0x500BB() (the dword 0x101500, seeded apart from 0x101508), and the dword
+    # 0x105F30 = its ASCII byte, or its scan code when the ASCII byte is 0 (`and edx,esi`, ESI = 0xFF). k0: a
+    # key whose scan byte is not 0 (0xE048); k1: a key, a scan-only key, then a queued word 0 that ends the
+    # drain in both passes (two words left); k2: n = -1 returns before the drain (its key left); k3: three
+    # keys in one pass with n = -2 (one pass). Mask 0, and EAX is not
     # compared: the port's function is void. The raw's EAX is -1 after the loop, which two callers hand on
     # (0x313FA..0x31403, 0x32F32..0x32F52, menu callbacks; the port restates it there, svcmenu.c); the
     # other sites load EAX first (0x24A41, 0x2CB64, 0x31FC4, `call 0x2ebbc` 0x1A391) or have the BIOS's AX
@@ -32215,28 +32314,32 @@ D6A_SPECS += [
         d6a_wait("w2", 0, word=0x3333),
         d6a_wait("w3", 2, flag=0x80, regs=D2E_DIRTY),
         d6a_wait("w4", 0xFFFFFFFE, latch=0x00010000),
+        d6a_wait("k0", 0, keys=(0xE048,)),
+        d6a_wait("k1", 0, keys=(0x1559, 0x4800, 0x0000, 0x1E61), regs=D2E_DIRTY),
+        d6a_wait("k2", 0xFFFFFFFF, keys=(0x1E61,)),
+        d6a_wait("k3", 0xFFFFFFFE, keys=(0x3062, 0x00E0, 0x2D78)),
     ], unhit_named=D6A_WAIT_UNHIT, allow_calls=D6A_WAIT_REAL, calls=D6A_WAIT_CALLS, eax_mask=0,
        mutants=tuple("@" + m for m in "nolatch latchw noupdate nosort nolist order flagkeep flagw noswap swapearly "
-                                      "noflush flushfirst m1 passes ge pumpfirst".split())),
+                                      "noflush flushfirst m1 passes ge pumpfirst nokeys klatchw kscan kwordw ktime "
+                                      "kone kany".split())),
     # 0x2EA74 config_screen_wait_zero: `xor eax,eax; mov eax,eax` and no `ret`: it falls into 0x2EA78 with
-    # n = 0 whatever EAX held (z1 enters with 0xFFFFFFFF). The same poke, stubs and blindness; mask 0 for
-    # the same reason (its 18 call sites: record section 1).
+    # n = 0 whatever EAX held (z1 enters with 0xFFFFFFFF, and its key is drained: n = -1 would leave it).
+    # The same key model, stubs and blindness; mask 0 for the same reason (its 18 call sites: record section 1).
     Spec("config_screen_wait_zero", 0x2EA74, [
         d6a_wait("z0", 0x00000005),
-        d6a_wait("z1", 0xFFFFFFFF, flag=1),
+        d6a_wait("z1", 0xFFFFFFFF, flag=1, keys=(0x4800,)),
     ], unhit_named=D6A_WAIT_UNHIT, allow_calls=D6A_WAIT_REAL, calls=D6A_WAIT_CALLS, eax_mask=0,
        mutants=("@n1", "@m1", "@eax")),
 ]
 
 # ---- 0x249F0: the quit prompt ---------------------------------------------------------------------------
-# A row under one code poke: the blocking BIOS keyboard read `int 0x16` (AH = 0) at 0x24A64 is `mov al,K`
-# (B0 K) with the case's key K. Exact for a BIOS answer whose ASCII byte is K: the code keeps AL alone
-# (`and eax,0xffff; and eax,0xff` 0x24A71/0x24A76) and both flag outcomes of the wrapper join at 0x24A71
-# with AX kept (ZF = 1 falls to `and dh,0xf; dec dh`, which is 0xFF for AH = 0, and `jne 0x24a71`).
-# Unpoked, the original stops there (`unmodeled: int at 0x24A64`, measured). The port reads through its
-# BIOS-style queue (input.c), which the binding loads with the same K, read from the poked byte. One
-# key a case: a key that is neither answer reads another (0x24AEC `jne 0x24a60`), which a static poke
-# answers the same way for ever, so every case's key is one of its two answers.
+# No code poke since track H h1 (record 2026-10-14-reverse-h §H.2; d6a poked the blocking BIOS read `int
+# 0x16` (AH = 0) at 0x24A64 to `mov al,K`, one key a case). The read takes the case's key queue from the
+# machine model; the code keeps AL alone (`and eax,0xffff; and eax,0xff` 0x24A71/0x24A76), and both flag
+# outcomes of the wrapper join at 0x24A71 with AX kept (`xor ah,ah` 0x24A60 leaves ZF = 1, so 0x24A68 runs:
+# `and dh,0xf; dec dh` is 0xFF for AH = 0, and `jne 0x24a71`). A key that is neither answer reads another
+# (0x24AEC `jne 0x24a60`), so a case gives keys up to an answer; the keys after it are left. The port reads
+# through its BIOS-style queue (input.c), loaded with the same words (h0_start).
 D6A_PAUSE, D6A_RESUME = E.Call(0x1D250, ()), E.Call(0x1D270, ())            # seamed here
 D6A_WAIT = E.Call(0x2EA78, ("eax",), clobbers=("edi", "ebp"))               # config_screen_wait, seamed here
 D6A_PROMPT_CALLS = (D6A_PAUSE, D1D_CURSOR, D6A_WAIT, D1D_RELEASE, D6A_RESUME, D5H_LONGJMP)
@@ -32247,13 +32350,12 @@ D6A_PROMPT_UNHIT = {
              "0x65431, which never returns here; a named gap (record section 4)"}
 
 
-def d6a_prompt(cid, eax, key, yes=b"YES", no=b"NO"):
-    """0x249F0: the poke with the key; the string table (d1d_str_pokes) with the two questions and the
+def d6a_prompt(cid, eax, keys, yes=b"YES", no=b"NO"):
+    """0x249F0: the key queue `keys` (an int: one word); the string table (d1d_str_pokes) with the two questions and the
     two answers; the prompt flag 0x104B22 and the quit flag 0xA81A8, each clear before a seeded byte."""
     p = d1d_str_pokes({0x1EE: b"QUIT GAME? Y/N", 0x1EF: b"ABANDON? Y/N", 0x1F0: yes, 0x1F1: no})
-    p.update({0x00024A64: bytes([0xB0, key]), 0x00104B21: bytes([0x21, 0x00, 0x23]),
-              0x000A81A8: bytes([0x00, 0x5A])})
-    return Case(cid, {"eax": eax}, p)
+    p.update({0x00104B21: bytes([0x21, 0x00, 0x23]), 0x000A81A8: bytes([0x00, 0x5A])})
+    return Case(cid, {"eax": eax}, p, machine=E.Machine(keys=(keys,) if isinstance(keys, int) else tuple(keys)))
 
 
 D6A_SPECS += [
@@ -32266,7 +32368,10 @@ D6A_SPECS += [
     # the quit flag byte 0xA81A8. No clears the flag and releases the question's cells, 0x2F280(-1, 0xA,
     # the string again, 0x1000) (q2, q3, q4). Then 0x1D270(). Mask 0: every call site (0x24DDF, 0x24EAD,
     # 0x24EC5) returns to the dispatcher's `mov ah,1; mov dh,ah; int 0x16` (0x24D08..0x24D0E), after which
-    # AX is the BIOS's and the rest is masked. All stubs but 0x1C500's tree and 0x653ED.
+    # AX is the BIOS's and the rest is masked. All stubs but 0x1C500's tree and 0x653ED. q0..qa: one key
+    # word, scan byte 0. qb: two keys that are neither answer (upper-cased 'A', and ' '), then 'y' (scan
+    # bytes not 0, so a compare of AX fails); qc: 'n' with hard_quit 1, then a key left in the queue; qd: an
+    # extended key (AL = 0) against an empty yes string (its first byte 0, `movsx` 0x24A4B).
     Spec("game_quit_prompt", 0x249F0, [
         d6a_prompt("q0", 0x12345600, 0x59),
         d6a_prompt("q1", 0x00000000, 0x79),
@@ -32279,9 +32384,12 @@ D6A_SPECS += [
         d6a_prompt("q8", 0x00000000, 0x61, yes=b"A"),
         d6a_prompt("q9", 0x00000000, 0x58, yes=b"X", no=b"X"),
         d6a_prompt("qa", 0xFFFFFF80, 0x6E),
+        d6a_prompt("qb", 0x00000000, (0x1E61, 0x3920, 0x1559)),
+        d6a_prompt("qc", 0x00000001, (0x316E, 0x1559)),
+        d6a_prompt("qd", 0x00000000, (0x4800,), yes=b""),
     ], unhit_named=D6A_PROMPT_UNHIT, allow_calls=D1D_STR_ALLOW + (0x653ED,), calls=D6A_PROMPT_CALLS, eax_mask=0,
        mutants=tuple("@" + m for m in "hard32 id noflag nopause col row mode wait0 answers noupper lo hi order "
-                                      "flagkeep noquit quitw norelease relid relmode noresume".split())),
+                                      "flagkeep noquit quitw norelease relid relmode noresume once ax more".split())),
 ]
 
 # ---- 0x1C470: the palette dirty list's flush ------------------------------------------------------------

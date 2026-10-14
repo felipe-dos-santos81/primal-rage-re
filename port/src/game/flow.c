@@ -6487,6 +6487,7 @@ void sound_music_pause_toggle(void)
  * (0x1D231 -> 0x1CD9C, a tail jump). */
 void sound_sample_pause_toggle(void)
 {
+    PR_SEAM0(0x1D220u);
     DSB(DS_001028DB) ^= 1u;                                /* 0x1D220 */
     if (DSB(DS_001028DB) == 1u) snd_samples_stop_all();    /* 0x1D22E 0x1D231 */
 }
@@ -6765,6 +6766,7 @@ void sound_voice_match_end(void)
  * (0x24AF9 0x1D270). The blocking key read is input_get_key. */
 void game_quit_prompt(u32 hard_quit)
 {
+    PR_SEAM(0x249F0u, hard_quit);
     u32 id = (hard_quit & 0xFFu) == 0u ? 0x1EEu : 0x1EFu;  /* 0x24A0C..0x24A17 */
     DSB(DS_00104B22) = 1u;                                 /* 0x24A01 */
     sound_pause();                                         /* 0x24A07 0x1D250 */

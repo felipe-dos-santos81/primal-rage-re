@@ -668,6 +668,7 @@ u32 nameentry_step(u8 side)
  * to the pops at 0x208E0). */
 void nameentry_key(u32 c)
 {
+    PR_SEAM(0x20860u, c);
     u32 edx = c;                                            /* 0x20863 */
     if (((DSD(DS_001044BC) + 1u) & 0xFu) != DSD(DS_001044C8)) {   /* 0x20865..0x20876 */
         if (edx == 8u) {                                    /* 0x20878 */
