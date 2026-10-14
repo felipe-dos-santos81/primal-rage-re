@@ -677,6 +677,49 @@ static void check_res_fail_seam(void)
     CHECK_EQ_INT((int)res_fail_alloc_left(), 0);          /* an unarmed request leaves it */
 }
 
+/* 0x1B120's two raw rules (record 2026-10-14-reverse-n §N.3, §N.4), on a
+ * two-entry INDEX in a scratch directory that holds both payloads: a preloaded
+ * 0x300 and a lazy 0x20. The count is stored (0x1B194) before the table's
+ * allocation (0x1B1A0), whose result is stored (0x1B1A5) before it is tested,
+ * so a failed allocation leaves the count and a 0 table. The stored maximum
+ * DS_001014F8 is raised only by an entry that is not preloaded, compared signed
+ * (0x1B26F..0x1B289): seeded negative, it ends at the lazy 0x20. The loader's
+ * seven dwords are restored after (test_res's checks use the shipped table). */
+static void check_res_index_rules(void)
+{
+    u32 saved[7];
+    for (u32 k = 0; k < 7u; k++) saved[k] = DSD(DS_001014E0 + 4u * k);
+
+    char dir[] = "/tmp/pr_res_index_XXXXXX", index[64], pre[64], lazy[64];
+    CHECK(mkdtemp(dir) != NULL, "scratch dir");
+    snprintf(index, sizeof index, "%s/INDEX", dir);
+    snprintf(pre, sizeof pre, "%s/pre.gra", dir);
+    snprintf(lazy, sizeof lazy, "%s/lazy.gra", dir);
+    static const u8 zeros[0x300];
+    u8 rec[40] = { 0 };
+    memcpy(rec, "pre.gra", 7);
+    rec[13] = 0x03u; rec[15] = 0x01u;                     /* 0x300, the preload bit */
+    memcpy(rec + 20, "lazy.gra", 8);
+    rec[32] = 0x20u;                                      /* 0x20, lazy */
+    CHECK(host_write_file(index, rec, sizeof rec), "scratch INDEX");
+    CHECK(host_write_file(pre, zeros, 0x300u), "scratch payload");
+    CHECK(host_write_file(lazy, zeros, 0x20u), "scratch payload");
+
+    DSD(DS_001014F0) = 0xA5A5A5A5u;
+    DSD(DS_001014E0) = 0xA5A5A5A5u;
+    res_fail_alloc_nth(1u);                               /* the table's allocation fails */
+    CHECK_EQ_INT(res_load_index(dir, index), 0);
+    CHECK_EQ_INT((int)DSD(DS_001014F0), 2);
+    CHECK_EQ_INT((int)DSD(DS_001014E0), 0);
+
+    DSD(DS_001014F8) = 0x80000000u;
+    CHECK_EQ_INT(res_load_index(dir, index), 2);
+    CHECK_EQ_INT((int)DSD(DS_001014F8), 0x20);
+
+    unlink(index); unlink(pre); unlink(lazy); rmdir(dir);
+    for (u32 k = 0; k < 7u; k++) DSD(DS_001014E0 + 4u * k) = saved[k];
+}
+
 int test_res(void)
 {
     int before = g_failures;
@@ -933,6 +976,7 @@ int test_res(void)
     }
 
     check_res_fail_seam();
+    check_res_index_rules();
 
     return g_failures - before;
 }

@@ -42683,78 +42683,10 @@ static void m_n2_1be30_free(const u32 *r, u32 *eax)
     (void)r; sound_shutdown(); DSD(DS_00101514) = 0u; (void)config_file_save(); *eax = 0u;
 }
 /* ---- track N batch n2 bindings end ---- */
-/* ---- track N batch n3 (record 2026-10-14-reverse-n §N.3): 0x1B120 and 0x1C740 under code pokes ---- */
+/* ---- track N batch n3 (record 2026-10-14-reverse-n §N.3): 0x1C740 under code pokes (0x1B120's row was
+ * withdrawn at integration, §N.4) ---- */
 #include "game/movie.h"
 #include "platform/input.h"
-/* 0x1B120 res_load_index: the raw's six file calls are `mov eax,<result>` (diff_verify.py N3_SPECS). The
- * binding writes the case's INDEX bytes (N3_TABLE, where every 0x1C308 stub points; as many as the
- * poked ftell result at 0x1B150) to a scratch INDEX and passes a game directory that does not exist, so
- * no payload is read. The mutants restate res.c's body without the payload reads (which read nothing
- * here), one choice flipped each. */
-#define N3_TABLE 0x0010AC00u
-static char n3_dir[40], n3_index[64];
-static void n3_index_begin(void)
-{
-    snprintf(n3_dir, sizeof n3_dir, "/tmp/pr_n3_XXXXXX");
-    if (mkdtemp(n3_dir) == NULL) { perror("diffrun: mkdtemp"); exit(2); }
-    snprintf(n3_index, sizeof n3_index, "%s/INDEX", n3_dir);
-    (void)host_write_file(n3_index, mem + N3_TABLE, DSD(0x0001B150u));
-}
-static void n3_index_end(void)
-{
-    (void)unlink(n3_index);
-    (void)rmdir(n3_dir);
-}
-enum { N3_RI_NONE, N3_RI_countlate, N3_RI_maxall, N3_RI_maxuns, N3_RI_nopreload, N3_RI_preloadall, N3_RI_draw,
-       N3_RI_noslot, N3_RI_nomask, N3_RI_count, N3_RI_bufsize, N3_RI_nobuf };
-static void n3_1b120_core(u32 mut)
-{
-    FILE *f = fopen(n3_index, "rb");
-    if (f == NULL) return;
-    fseek(f, 0, SEEK_END);
-    const long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0 || sz % 0x14) { fclose(f); return; }
-    const u32 count = (u32)sz / ((mut == N3_RI_count) ? 0x10u : 0x14u);         /* @count */
-    if (mut != N3_RI_countlate) DSD(DS_001014F0) = count;                       /* @countlate: the old order */
-    const u32 table = res_block_alloc((u32)sz);
-    if (mut != N3_RI_countlate) DSD(DS_001014E0) = table;
-    if (fread(mem + table, 1, (size_t)sz, f) != (size_t)sz) { fclose(f); return; }
-    fclose(f);
-    if (mut == N3_RI_countlate) { DSD(DS_001014E0) = table; DSD(DS_001014F0) = count; }
-    u32 biggest = 0u;
-    for (u32 i = 0u; i < DSD(DS_001014F0); i++) {
-        const u32 e = table + i * 0x14u;
-        const u32 size = DSD(e + 12u) & ((mut == N3_RI_nomask) ? 0xFFFFFFFFu : 0xFFFFFFu);   /* @nomask */
-        const u32 data = res_block_alloc(size);
-        if (mut != N3_RI_noslot) DSD(e + 16u) = data;                           /* @noslot */
-        const int pre = (DSD(e + 12u) & 0x01000000u) != 0u;
-        if (mut == N3_RI_maxall) { if (size > biggest) biggest = size; }        /* @maxall: the old maximum */
-        else if (!pre && ((mut == N3_RI_maxuns) ? size > DSD(DS_001014F8)       /* @maxuns */
-                                                : (s32)size > (s32)DSD(DS_001014F8)))
-            DSD(DS_001014F8) = size;
-        if ((pre || mut == N3_RI_preloadall) && mut != N3_RI_nopreload)        /* @preloadall @nopreload */
-            res_load_present(e, (mut == N3_RI_draw) ? 1u : 0u);                 /* @draw */
-    }
-    if (mut == N3_RI_maxall) DSD(DS_001014F8) = biggest;
-    DSD(DS_001014E8) = res_block_alloc(0xFA00u);
-    DSD(DS_001014E4) = res_block_alloc(0xFA00u);
-    if (mut != N3_RI_nobuf) DSD(DS_001014EC) = res_block_alloc((mut == N3_RI_bufsize) ? 0xEBA0u : 0x4880u);   /* @nobuf */
-    DSD(DS_001014F4) = res_block_alloc((mut == N3_RI_bufsize) ? 0x4880u : 0xEBA0u);   /* @bufsize */
-}
-static void n3_1b120_run(u32 *eax, u32 mut)
-{
-    n3_index_begin();
-    if (mut == 0u) *eax = (u32)res_load_index("/tmp/pr_n3_no_such_dir", n3_index);
-    else { n3_1b120_core(mut); *eax = 0u; }
-    n3_index_end();
-}
-static void b_n3_1b120(const u32 *r, u32 *eax) { (void)r; n3_1b120_run(eax, 0u); }
-#define N3_RI_MUT(name) \
-    static void m_n3_ri_##name(const u32 *r, u32 *eax) { (void)r; n3_1b120_run(eax, N3_RI_##name); }
-N3_RI_MUT(countlate) N3_RI_MUT(maxall) N3_RI_MUT(maxuns) N3_RI_MUT(nopreload) N3_RI_MUT(preloadall)
-N3_RI_MUT(draw) N3_RI_MUT(noslot) N3_RI_MUT(nomask) N3_RI_MUT(count) N3_RI_MUT(bufsize) N3_RI_MUT(nobuf)
-
 /* 0x1C740 movie_play: EAX = the name. The raw's kbhit is `mov eax,<result>` (the dword at 0x1C753): the
  * port's key queue holds one key when it is not 0, none otherwise. The raw's open stores 1 at N3_MARK and
  * fails; the port's game directory holds both names as two-byte files that are not movies, so a reached
@@ -58284,18 +58216,6 @@ static const binding_t k_bindings[] = {
     { "game_shutdown@order", m_n2_1be30_order, 0x00000000u },
     { "game_shutdown@free", m_n2_1be30_free, 0x00000000u },
     /* track N batch n3 */
-    { "res_load_index", b_n3_1b120, 0x00000000u },
-    { "res_load_index@countlate", m_n3_ri_countlate, 0x00000000u },
-    { "res_load_index@maxall", m_n3_ri_maxall, 0x00000000u },
-    { "res_load_index@maxuns", m_n3_ri_maxuns, 0x00000000u },
-    { "res_load_index@nopreload", m_n3_ri_nopreload, 0x00000000u },
-    { "res_load_index@preloadall", m_n3_ri_preloadall, 0x00000000u },
-    { "res_load_index@draw", m_n3_ri_draw, 0x00000000u },
-    { "res_load_index@noslot", m_n3_ri_noslot, 0x00000000u },
-    { "res_load_index@nomask", m_n3_ri_nomask, 0x00000000u },
-    { "res_load_index@count", m_n3_ri_count, 0x00000000u },
-    { "res_load_index@bufsize", m_n3_ri_bufsize, 0x00000000u },
-    { "res_load_index@nobuf", m_n3_ri_nobuf, 0x00000000u },
     { "movie_play", b_n3_1c740, 0x00000000u },
     { "movie_play@noreset", m_n3_mv_noreset, 0x00000000u },
     { "movie_play@reset1", m_n3_mv_reset1, 0x00000000u },

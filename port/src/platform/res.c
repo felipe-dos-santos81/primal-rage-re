@@ -83,9 +83,8 @@ static void (*s_screen_hook)(void);
 
 void res_set_screen_hook(void (*hook)(void)) { s_screen_hook = hook; }
 
-void res_load_present(u32 entry, u32 draw)
+static void res_load_present(u32 entry, u32 draw)
 {
-    PR_SEAM(0x1B3ACu, entry, draw);
     if (draw != 0u) {
         text_blit_string(game_string_get(0x1E9u), 0, 0xE6);   /* 0x1B3EA/0x1B3EF */
         if (s_screen_hook != NULL) s_screen_hook();
@@ -183,6 +182,10 @@ int res_load_index(const char *game_dir, const char *index_path)
     DSD(DS_001014F0) = (u32)(sz / (long)RES_REC);         /* 0x1B194, before the table's allocation */
     u32 table = res_block_alloc((u32)sz);                 /* 0x1B1A0 0x1C308 */
     DSD(DS_001014E0) = table;                             /* 0x1B1A5 */
+    /* PORT: on a failed allocation the original retries with type 1
+     * (0x1B1AE, and after each 0x1C308 below) and calls the fatal 0x1D290 if
+     * that fails too; the bump allocator has no second pool, so the port
+     * returns 0 and game_init's game_fatal exits. */
     if (table == 0) { fclose(f); return 0; }
     if (fread(mem + table, 1, (size_t)sz, f) != (size_t)sz) { fclose(f); return 0; }
     fclose(f);

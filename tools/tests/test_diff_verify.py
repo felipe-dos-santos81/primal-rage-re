@@ -30405,23 +30405,12 @@ N2_CASES = [
 D1_MASKS.update(N2_MASKS)
 D1_KINDS.update(N2_KINDS)
 D1_CASES.extend(N2_CASES)
-# N n3 (record 2026-10-14-reverse-n §N.3): the rows of 0x1B120 and 0x1C740, under code pokes; measured pins
+# N n3 (record 2026-10-14-reverse-n §N.3): the row of 0x1C740, under code pokes; measured pins (0x1B120's
+# row was withdrawn at integration, §N.4)
 N3_MASKS = {
-    "res_load_index": 0x0,
     "movie_play": 0x0,
 }   # N3_MASKS end
 N3_KINDS = {
-    "res_load_index@countlate": {'call #0 memory'},
-    "res_load_index@maxall": {'byte', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
-    "res_load_index@maxuns": {'byte', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
-    "res_load_index@nopreload": {'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
-    "res_load_index@preloadall": {'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #15', 'call #16', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
-    "res_load_index@draw": {'call #2', 'call #4', 'call #8'},
-    "res_load_index@noslot": {'byte', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
-    "res_load_index@nomask": {'byte', 'call #1', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
-    "res_load_index@count": {'byte', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9', 'call #9 memory'},
-    "res_load_index@bufsize": {'call #11', 'call #12', 'call #5', 'call #6', 'call #7', 'call #8'},
-    "res_load_index@nobuf": {'byte', 'call #11', 'call #12', 'call #5', 'call #6', 'call #7', 'call #8'},
     "movie_play@noreset": {'call #0'},
     "movie_play@reset1": {'call #0'},
     "movie_play@nokey": {'byte'},
@@ -30431,17 +30420,6 @@ N3_KINDS = {
     "movie_play@noopen": {'byte'},
 }   # N3_KINDS end
 N3_CASES = [
-    ("res_load_index@countlate", ['x0', 'x1', 'x2', 'x3', 'x4']),
-    ("res_load_index@maxall", ['x0', 'x1', 'x2', 'x3', 'x4']),
-    ("res_load_index@maxuns", ['x2']),
-    ("res_load_index@nopreload", ['x0', 'x1', 'x2', 'x3', 'x4']),
-    ("res_load_index@preloadall", ['x0', 'x1', 'x2', 'x4']),
-    ("res_load_index@draw", ['x0', 'x1', 'x2', 'x3', 'x4']),
-    ("res_load_index@noslot", ['x0', 'x1', 'x2', 'x3', 'x4']),
-    ("res_load_index@nomask", ['x0', 'x1', 'x2', 'x3', 'x4']),
-    ("res_load_index@count", ['x4']),
-    ("res_load_index@bufsize", ['x0', 'x1', 'x2', 'x3', 'x4']),
-    ("res_load_index@nobuf", ['x0', 'x1', 'x2', 'x3', 'x4']),
     ("movie_play@noreset", ['k0', 'k1', 'o0', 'o1', 'q0', 'q1']),
     ("movie_play@reset1", ['k0', 'k1', 'o0', 'o1', 'q0', 'q1']),
     ("movie_play@nokey", ['k0']),
@@ -31525,9 +31503,6 @@ class RealFunctionTests(unittest.TestCase):
         # N n2 (record 2026-10-14-reverse-n section N.2): the stubs the 0x1BE30 row adds
         0x1D018: (), 0x1B084: ("edi", "ebp"),
         # N n2 end
-        # N n3 (record 2026-10-14-reverse-n §N.3): the stub the 0x1B120 row adds
-        0x1B3AC: ("ebx", "edx", "ebp"),
-        # N n3 end
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
@@ -31791,11 +31766,11 @@ class RealFunctionTests(unittest.TestCase):
         # counted apart (0x12CD4's row is one). Track N batch n1: 0x51ED8's partial row (four mutants), open
         # on 0x1B544 (a named non-row) and 0x51E58
         # Track N batch n2: 0x1BE30's row adds one function, four mutants and one open row (open on
-        # 0x4FB98 and 0x10D34, run from their bytes with no row of their own). Track N batch n3: the rows
-        # of 0x1B120 (open: its stubs 0x1B3AC and 0x1C308 have no row) and 0x1C740 (closed: 0x52106 is
-        # VERIFIED), whose row also closes attract_step's (0x11000 stubs 0x1C740). Measured on the merge.
-        self.assertIn("diff-verify: 999/999 functions VERIFIED; 14851/14851 mutants detected; 1 named gaps; "
-                      "638/830 rows with callees closed (169 have none).", out.getvalue())
+        # 0x4FB98 and 0x10D34, run from their bytes with no row of their own). Track N batch n3: the row
+        # of 0x1C740 (closed: 0x52106 is VERIFIED), which also closes attract_step's (0x11000 stubs 0x1C740);
+        # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge.
+        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14840/14840 mutants detected; 1 named gaps; "
+                      "638/829 rows with callees closed (169 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
