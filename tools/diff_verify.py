@@ -32337,39 +32337,45 @@ D6A_SPECS += [
 ]
 
 # ---- 0x52106: the screen reset --------------------------------------------------------------------------
-# A partial row under six code pokes. The retrace read `mov edx,0x3da; in al,dx` (0x52129..0x5212E) is
-# `mov al,8` and four nops (bit 3 set at the first read: `test al,8; je` 0x5212F is all the code takes
-# from the port); the four DAC writes `out dx,al` (0x5213F the index 0; 0x52145..0x52147 the 256 black
-# entries) are nops; and the third fill, `call 0x51f72` 0x52151 with EAX = 0xA0000, the VGA aperture, is
-# five nops (the aperture rule: the port fills its host aperture, gfx.c PORT). Unpoked, the original
-# stops `unmodeled: in at 0x5212E` (measured). The row compares the two tick stores and the two offscreen
-# fills and is blind to the DAC and to the aperture fill.
-D6A_RESET_PINS = {0x00052129: b"\xb0\x08\x90\x90\x90\x90", 0x0005213F: b"\x90", 0x00052145: b"\x90\x90\x90",
-                  0x00052151: D6A_NOP5}
+# No code poke since track H h2 (record 2026-10-14-reverse-h §H.3; d6a ran it under six). The retrace read
+# `mov edx,0x3da; in al,dx` (0x52129..0x5212E) takes the case's bytes from the machine model: the code keeps
+# bit 3 alone (`test al,8; je 0x5212e` 0x5212F), so a byte with bit 3 clear spins once more (s1 reads three,
+# s0 and s2 one). The DAC writes, `out dx,al` with AL = 0 (`xor eax,eax` 0x5213D): the index 0 (0x5213F)
+# and 0x100 entries of three channels (0x52145..0x52147, `dec ecx; jg` 0x52148 from ECX = 0x100 0x52133),
+# are compared through the DAC's view with the PR_OUTs of gfx.c. The third fill, `call 0x51f72` 0x52151
+# with EAX = 0xA0000 (0x5214C) and EDX = the ticks (pushed 0x52128, popped 0x5214B), writes the screen:
+# the machine's aperture, compared byte by byte with gfx_aperture() (seeded from the same image bytes; the
+# first and last 0x40 screen bytes are poked to 0x5A, which no case's tick dword holds, so the fill's two
+# ends show in every case).
+D6A_RESET_SEED = {0x000A0000: b"\x5a" * 0x40, 0x000AF9C0: b"\x5a" * 0x40}
 
 
-def d6a_reset(cid, eax, buf_a, buf_b, regs=None):
-    """0x52106: the pokes; the two tick dwords 0x101508/0x10150C seeded between seeded dwords; the
-    offscreen buffer pointers 0x1014E4 (`buf_b`) and 0x1014E8 (`buf_a`) between seeded dwords, each
-    0xFA00 bytes of the image's own data."""
-    p = {**D6A_RESET_PINS,
+def d6a_reset(cid, eax, buf_a, buf_b, regs=None, retrace=(0x08,)):
+    """0x52106: the machine (`retrace`: the bytes 0x3DA returns, in order; the DAC ports; the screen, its
+    two ends seeded); the two tick dwords 0x101508/0x10150C seeded between seeded dwords; the offscreen
+    buffer pointers 0x1014E4 (`buf_b`) and 0x1014E8 (`buf_a`) between seeded dwords, each 0xFA00 bytes of
+    the image's own data."""
+    p = {**D6A_RESET_SEED,
          0x00101504: le32(0x04040404) + le32(0x08080808) + le32(0x0C0C0C0C) + le32(0x10101010),
          0x001014E0: le32(0xE0E0E0E0) + le32(buf_b) + le32(buf_a) + le32(0xECECECEC)}
-    return Case(cid, {**(regs or {}), "eax": eax}, p)
+    return Case(cid, {**(regs or {}), "eax": eax}, p,
+                machine=E.Machine(ins=((0x3DA, retrace),), outs=(0x3C8, 0x3C9), aperture=True))
 
 
 D6A_SPECS += [
     # 0x52106 gfx_screen_reset: EAX = ticks. The dwords 0x101508 and 0x10150C = EAX; 0x51F72([0x1014E8],
-    # EAX) and 0x51F72([0x1014E4], EAX) (run on both sides: 0xFA00 bytes each, the dword EAX). Mask 0, and
-    # EAX is not compared: the port's function is void and the third fill, which leaves EAX = 0xAFA00, is
-    # poked out (the raw returns 0xA0000 here); 0x1C873's return hands it to the movie player's callers
-    # (a host replacement), the other sites call on (0x62756, 0x336C0, 0x2F99C).
+    # EAX) and 0x51F72([0x1014E4], EAX) (run on both sides: 0xFA00 bytes each, the dword EAX); the DAC's 256
+    # black entries from index 0; 0x51F72(0xA0000, EAX), the screen. Mask 0, and EAX is not compared: the
+    # port's function is void (the raw returns 0xAFA00, the third fill's advanced EAX, measured); 0x1C873's
+    # return hands it to the movie player's callers (a host replacement), the other sites call on (0x62756,
+    # 0x336C0, 0x2F99C).
     Spec("gfx_screen_reset", 0x52106, [
         d6a_reset("s0", 0x00000000, 0x000C0000, 0x000D0000),
-        d6a_reset("s1", 0xA1B2C3D4, 0x000C0001, 0x000D0802, regs=D2E_DIRTY),
-        d6a_reset("s2", 0x00000100, 0x000C8000, 0x000C0000),
+        d6a_reset("s1", 0xA1B2C3D4, 0x000C0001, 0x000D0802, regs=D2E_DIRTY, retrace=(0xF7, 0x00, 0x08)),
+        d6a_reset("s2", 0x00000100, 0x000C8000, 0x000C0000, retrace=(0xFF,)),
     ], allow_calls=(0x51F72,), eax_mask=0,
-       mutants=tuple("@" + m for m in "no508 no50c one e4twice byte short w50c".split())),
+       mutants=tuple("@" + m for m in "no508 no50c one e4twice byte short w50c nodac dacidx dac255 dacval noap "
+                                      "apbyte apshort".split())),
 ]
 
 D1_SPECS += D6A_SPECS

@@ -29161,6 +29161,13 @@ D6A_KINDS = {
     "gfx_screen_reset@byte": {'byte'},
     "gfx_screen_reset@short": {'byte'},
     "gfx_screen_reset@w50c": {'byte'},
+    "gfx_screen_reset@nodac": {'out'},
+    "gfx_screen_reset@dacidx": {'out'},
+    "gfx_screen_reset@dac255": {'out'},
+    "gfx_screen_reset@dacval": {'out'},
+    "gfx_screen_reset@noap": {'aperture'},
+    "gfx_screen_reset@apbyte": {'aperture'},
+    "gfx_screen_reset@apshort": {'aperture'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29292,6 +29299,13 @@ D6A_CASES = [
     ("gfx_screen_reset@byte", ['s1', 's2']),
     ("gfx_screen_reset@short", ['s0', 's1', 's2']),
     ("gfx_screen_reset@w50c", ['s1']),
+    ("gfx_screen_reset@nodac", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dacidx", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dac255", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@dacval", ['s1']),
+    ("gfx_screen_reset@noap", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@apbyte", ['s1', 's2']),
+    ("gfx_screen_reset@apshort", ['s0', 's1', 's2']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)
@@ -31784,7 +31798,8 @@ class RealFunctionTests(unittest.TestCase):
         # of 0x1C740 (closed: 0x52106 is VERIFIED), which also closes attract_step's (0x11000 stubs 0x1C740);
         # 0x1B120's row was withdrawn at integration (§N.4). Measured on the merge. Track H batch h0: 0x1C470's
         # row runs unpoked under the machine model and gains six DAC mutants (record 2026-10-14-reverse-h §H.1).
-        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14846/14846 mutants detected; 1 named gaps; "
+        # Track H batch h2: 0x52106's row runs unpoked and gains seven DAC and screen mutants (record §H.3).
+        self.assertIn("diff-verify: 998/998 functions VERIFIED; 14853/14853 mutants detected; 1 named gaps; "
                       "638/829 rows with callees closed (169 have none).", out.getvalue())
 
 

@@ -225,6 +225,12 @@ void gfx_screen_reset(u32 ticks)
     gfx_fill_screen(DSD(DS_001014E8), ticks);          /* 0x52114/0x52119 0x51F72 */
     gfx_fill_screen(DSD(DS_001014E4), ticks);          /* 0x5211E/0x52123 0x51F72 */
     memset(gfx_dac, 0, sizeof gfx_dac);
+    /* PORT: the harness's view of the DAC writes (mem.h PR_OUT; record
+     * 2026-10-14-reverse-h §H.3): the index 0 (0x5213D/0x5213F) and 256
+     * entries of three zero channels (0x52145..0x52147, `dec ecx; jg`
+     * 0x52148 from ECX = 0x100 0x52133). */
+    PR_OUT(0x3C8u, 0u);
+    for (u32 i = 0; i < 0x100u * 3u; i++) PR_OUT(0x3C9u, 0u);
     /* PORT: 0x5214C/0x52151 0x51F72 on EAX = 0xA0000, the aperture; the port
      * keeps the screen in g_aperture (the aperture rule), filled here with the
      * same dword pattern (record §K2.4). */
