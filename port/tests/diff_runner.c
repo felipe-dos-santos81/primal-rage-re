@@ -42616,6 +42616,30 @@ static void b_g3aa_500bb(const u32 *r, u32 *eax) { (void)r; *eax = DSD(0x0010150
 static void m_g3aa_500bb_off4(const u32 *r, u32 *eax) { (void)r; *eax = DSD(0x00101504u); }
 static void m_g3aa_500bb_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
 /* ---- g3aa bindings end ---- */
+/* ---- track G batch g3b (record 2026-10-14-reverse-g §G3): the five remaining named non-rows ---- */
+/* 0x1B544 res_resolve's resident arm: EAX = handle, the entry's payload base + (handle & 0x7FFFFF)
+ * returned as the resolved pointer (`mov eax,[ecx+0x10]; add eax,edx` 0x1B572/0x1B575 after the
+ * PRELOAD test 0x1B569). The binding calls the port C's res_resolve and reports its pointer's mem[]
+ * offset, the same number (camera_res_off's convention in camera.c: NULL maps to 0, unreachable for
+ * these cases — every fixture entry carries a payload and PRELOAD). The mutant cores mirror the C's
+ * reads with one arithmetic defect each: @idx22 shifts the index from bit 22, @noand adds the whole
+ * handle instead of the masked 23 bits, @base drops the offset. */
+static u32 g3b_res_core(u32 handle, u32 mut)
+{
+    u32 index = mut == 1u ? (handle >> 22) : (handle >> 23);
+    u32 data = DSD(DSD(0x001014E0u) + index * 0x14u + 0x10u);
+    if (data == 0u) return 0u;
+    return mut == 3u ? data : data + (mut == 2u ? handle : (handle & 0x7FFFFFu));
+}
+static void b_g3b_1b544(const u32 *r, u32 *eax)
+{
+    const void *p = res_resolve(r[R_EAX]);
+    *eax = p != NULL ? (u32)((const u8 *)p - mem) : 0u;
+}
+static void m_g3b_1b544_idx22(const u32 *r, u32 *eax) { *eax = g3b_res_core(r[R_EAX], 1u); }
+static void m_g3b_1b544_noand(const u32 *r, u32 *eax) { *eax = g3b_res_core(r[R_EAX], 2u); }
+static void m_g3b_1b544_base(const u32 *r, u32 *eax)  { *eax = g3b_res_core(r[R_EAX], 3u); }
+/* ---- g3b bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
 {
@@ -58498,6 +58522,11 @@ static const binding_t k_bindings[] = {
     { "dpmi_clock_read",       b_g3aa_500bb,       0xFFFFFFFFu },
     { "dpmi_clock_read@off4",  m_g3aa_500bb_off4,  0xFFFFFFFFu },
     { "dpmi_clock_read@zero",  m_g3aa_500bb_zero,  0xFFFFFFFFu },
+    /* track G batch g3b */
+    { "res_resolve",           b_g3b_1b544,        0xFFFFFFFFu },
+    { "res_resolve@idx22",     m_g3b_1b544_idx22,  0xFFFFFFFFu },
+    { "res_resolve@noand",     m_g3b_1b544_noand,  0xFFFFFFFFu },
+    { "res_resolve@base",      m_g3b_1b544_base,   0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

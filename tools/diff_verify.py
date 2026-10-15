@@ -22742,8 +22742,9 @@ def d4b_decode_case(cid, frame, count, table, width=20, stream=None, spr=D4B_SPR
 D4B_ACCUM = E.Call(0x41030, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
 # 0x1B544's arms past its preloaded fast path (0x1B572): 0x16308 tail-jumps it (`jmp 0x1b544`
 # 0x16316), so the scan counts its blocks as 0x16308's. The fixture's entries are preloaded.
-D4B_RES_SLOW = {a: "0x1B544's non-resident arm (the tail-jumped host resolver, a named non-row; the "
-                   "fixture's entries are preloaded, `test [ecx+0xc],0x1000000` 0x1B569)"
+D4B_RES_SLOW = {a: "0x1B544's non-resident arm (the tail-jumped host resolver; the resident-arm "
+                   "row 0x1B544 keeps this arm named unhit, as here the fixture's entries are "
+                   "preloaded, `test [ecx+0xc],0x1000000` 0x1B569)"
                 for a in (0x1B57C, 0x1B585, 0x1B58E, 0x1B5A6, 0x1B5AF, 0x1B5C2, 0x1B5CB, 0x1B5D4, 0x1B5E0)}
 
 D4B_SPECS += [
@@ -33981,6 +33982,35 @@ G3AA_SPECS = [
     ], mutants=("@off4", "@zero")),
 ]
 D1_SPECS += G3AA_SPECS
+# ---- track G batch g3b (record 2026-10-14-reverse-g §G3): the five remaining named non-rows ----
+# 0x1B544 res_resolve, the RESIDENT ARM ONLY (bytes `53 51 52 56 89 c6 c1 e8 17 ..` at 0x1B544,
+# fixup-applied image): `esi=eax; eax>>=0x17; eax=5*eax (0x1B54D lea+0x1B554
+# add); ecx=[0x1014e0]+eax*4` — 20-byte entries; `edx = esi & 0x7fffff` (0x1B563); `test
+# [ecx+0xc],0x1000000` (0x1B569) and the resident arm 0x1B572 `mov eax,[ecx+0x10]; add eax,edx`,
+# four pops (ebx/ecx/edx/esi pushed at 0x1B544..0x1B547), `ret`. The row compares EAX at the
+# return — the resolved pointer, payload base + the handle's low 23 bits — with the port C's
+# res_resolve (res.c:300): index < count and payload != 0 are the port's guards (its PORT comment:
+# the payload is resident at init), and PRELOAD set (the fixture) skips the port's present branch,
+# so the arms agree on every case's value. Mask full: the callers dereference it (0x1818D
+# `mov ecx,[eax+2]` after 0x16308's tail jump — camera_resolve_sprite's analysis). The nine
+# non-resident block leaders (0x1B57C..0x1B5E0) stay named unhit with their byte evidence —
+# D4B_RES_SLOW, whose wording this row updates: the arm tail-jumps the host loader (clock stamp
+# 0x500BB at 0x1B58E/0x1B5EE, the allocate call 0x1E774 at 0x1B5BD, the fatal 0x1D290 at 0x1B5DB,
+# the present call 0x1B3AC at 0x1B5E9), which the port keeps out of this function's resident
+# claim (res.c PORT: "0x1B5A6's allocate arm (0x1E774) and 0x1B5D4's fatal have no port
+# analogue"). Cases: entry 1 and entry 2 of d4b_res()'s table (offsets 0x40, 0x100, 0x400001 —
+# bit 22 set, and 0); @idx22 shifts the index from 22 not 23, @noand skips the 0x7FFFFF mask,
+# @base drops the offset (passes c3, whose offset is 0 — c3 proves the row passes the zero
+# offset, the nonzero cases prove it adds one).
+G3B_SPECS = [
+    Spec("res_resolve", 0x1B544, [
+        Case("c0", {"eax": 0x00800040}, d4b_res()),
+        Case("c1", {"eax": 0x01000100}, d4b_res()),
+        Case("c2", {"eax": 0x00C00001}, d4b_res()),
+        Case("c3", {"eax": 0x01000000}, d4b_res()),
+    ], eax_mask=0xFFFFFFFF, unhit_named=D4B_RES_SLOW, mutants=("@idx22", "@noand", "@base")),
+]
+D1_SPECS += G3B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
