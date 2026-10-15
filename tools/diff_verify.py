@@ -26496,7 +26496,7 @@ D5B_SPECS += [
 # the caller's frame (0x1C647/0x1C64C add 0xF or 8), so every character is recorded at the first column.
 D5B_GLYPH = E.Call(0x1C5E8, ("eax", "[edx]", "[ebx]"), clobbers=("ebx", "edx", "edi", "ebp"))
 # 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument.
-D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5B_TEXT = 0x10A010
 
 
@@ -30510,9 +30510,9 @@ D5H_SPECS += [
 # the original stops `unmodeled: call 0x5D7DC from 0x256B1` (measured).
 D5H_LOOP_PINS = {0x000256B1: bytes.fromhex("b800000000"), 0x000256D6: bytes.fromhex("b800000000")}
 D5H_PUMP = E.Call(0x500C4, ())
-D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi", "ebp"))
+D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi"))
 D5H_EDGE = E.Call(0x389C4, ())
-D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
 # The stubs model what the loop waits on (record §2.5): render entry 0 sets the quit flag 0xA81A8, the
 # effects step arms render entries 0 and 4 for the next iteration, and the audio service steps the ISR
 # tick 0x101508 to 0x10001 (above the
@@ -30522,7 +30522,7 @@ D5H_RENDER4 = E.Call(0x4F5C8, ())
 D5H_FX = E.Call(0x134C0, (), writes=((None, 0x00104AEC, le32(0x00000011)),))
 D5H_SORT = E.Call(0x1C3FC, ())
 D5H_LIST = E.Call(0x14328, (), clobbers=("ebx", "edx"))
-D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5H_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x00101508, le32(0x00010001)),))
 D5H_LOOP_CALLS = (D5H_PUMP, D5H_SCENE, D5H_EDGE, D4B_FILL, D5H_FRAME, D5H_RENDER0, D5H_RENDER4, D5H_FX, D5H_SORT,
                   D5H_LIST, D5H_FLUSH, D5H_AUDIO)

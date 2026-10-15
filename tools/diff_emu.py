@@ -1082,6 +1082,17 @@ def callee_clobbers(image, addr, resolved=None):
 # call, so the caller-observed set is edx.
 _CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",), 0x3CF38: (),
                          0x2AD40: ("edx",)}
+# G4 (record 2026-10-14-reverse-g §G4): the master loop 0x255CC's two rng draws take their range from
+# EBP (`mov eax,ebp` at 0x256AF and 0x256D4, EBP = 0x7FFF from 0x255E4, popped at 0x256EA), read after
+# 0x292AC (0x255F3), 0x24C5C (0x2560B) and 0x1C470 (0x25672) in the same iteration. None of the three
+# touches EBP itself: 0x292AC pushes/pops EBX/EDX (0x292AC..0x292AD, 0x292D0..0x292D1), 0x24C5C
+# pushes/pops EBX/ECX/EDX/ESI/EDI (0x24C5C..0x24C60, 0x25503..0x25507), 0x1C470 pushes/pops
+# EBX/ECX/EDX/ESI (0x1C470..0x1C473, 0x1C4FA..0x1C4FD); the scan over-approximates EBP through their
+# unknown indirect callees (0x292C1 `call [eax+0x28744]`, 0x24C5C's dispatcher, 0x1C470's 0x1B544),
+# so their caller-observed sets exclude it (title_pin.py's `rng(0x7FFF)` reading rests on it too).
+_CALLEE_CLOBBER_FIXES[0x292AC] = ("ecx", "esi", "edi")
+_CALLEE_CLOBBER_FIXES[0x24C5C] = ("ebx", "ecx", "edx", "esi", "edi")
+_CALLEE_CLOBBER_FIXES[0x1C470] = ("edi",)
 # D3 d3a (record 2026-10-12-reverse-d3a §2): 0x2C060 is `call 0x2caa8; jmp 0x2ca2c`. 0x2CAA8 writes EAX
 # only (0x2CAAF `sete al`, 0x2CAB2 `and eax,0xff`) and the tail-jump target saves EDX around its one use
 # (0x2CA2C `push edx` ... 0x2CA44 `pop edx`; `ret`), which the scan cannot credit to 0x2C060 (the push is

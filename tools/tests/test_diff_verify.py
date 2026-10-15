@@ -31673,7 +31673,8 @@ class RealFunctionTests(unittest.TestCase):
         stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
         # 0x2B150/0x2BD44/0x3B298 carry the caller-observed sets (record §C2b.3): the byte-derived
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
-        # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
+        # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES). Track G §G4 adds 0x292AC/0x24C5C/0x1C470:
+        # 0x255CC reads EBP across all three (0x256AF/0x256D4's rng range), so their sets exclude it.
         self.assertEqual(stubs, {
         # I (record 2026-10-13-reverse-i sections I.4 and I.5): the stubs the 0x2F9CC and 0x1D018 rows add
         0x1AFE8: ("edi", "ebp"), 0x2D6F8: (), 0x2C9B8: (), 0x5D86A: ("ebx", "ecx", "edx"),
@@ -31702,7 +31703,7 @@ class RealFunctionTests(unittest.TestCase):
         # D5 d5b (record 2026-10-12-reverse-d5b): the stubs its rows add
         0x1631C: ("ebx", "ecx", "edx"), 0x15C30: ("ebx", "edx"), 0x16DA4: ("ebx", "ecx", "edx"), 0x17BC8: ("edi", "ebp"),
         0x176CC: (), 0x1790C: ("ebx", "ecx", "edx"), 0x170A0: (),
-        0x51E5C: (), 0x1C5E8: ("ebx", "edx", "edi", "ebp"), 0x1C470: ("edi", "ebp"),
+        0x51E5C: (), 0x1C5E8: ("ebx", "edx", "edi", "ebp"), 0x1C470: ("edi",),
         # D5 d5c (record 2026-10-12-reverse-d5c): the stubs its rows add
         0x12DA8: (), 0x1A978: ("edi", "ebp"), 0x2BAF4: (), 0x349C8: ("ebp",), 0x34B6C: ("ebp",), 0x3531C: (),
         0x354F0: (), 0x35658: ("edi", "ebp"), 0x359E0: ("ebx", "edx"), 0x35D20: ("edx",),
@@ -31727,14 +31728,14 @@ class RealFunctionTests(unittest.TestCase):
         # D5 d5h (record 2026-10-12-reverse-d5h): the stubs its rows add
         0x10DB0: (), 0x10E18: (), 0x10EE4: (), 0x11000: ("ebp",), 0x11578: (), 0x11A8C: ("edi", "ebp"),
         0x11D04: ("esi", "edi", "ebp"), 0x11F6C: ("esi", "edi", "ebp"), 0x121A0: ("ebp",), 0x12484: (), 0x12D48: (),
-        0x12FD8: (), 0x1324C: (), 0x134C0: (), 0x14328: ("ebx", "edx"), 0x1C3FC: (), 0x1C470: ("edi", "ebp"),
+        0x12FD8: (), 0x1324C: (), 0x134C0: (), 0x14328: ("ebx", "edx"), 0x1C3FC: (), 0x1C470: ("edi",),
         0x1CF20: (), 0x1EA08: (), 0x1EEB0: ("ebp",), 0x208F8: ("ebp",),
-        0x24C5C: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x257A4: (), 0x25AE8: (), 0x25C88: ("ebp",), 0x25FAC: (),
+        0x24C5C: ("ebx", "ecx", "edx", "esi", "edi"), 0x257A4: (), 0x25AE8: (), 0x25C88: ("ebp",), 0x25FAC: (),
         0x26194: ("esi", "edi", "ebp"), 0x26254: ("esi", "edi", "ebp"), 0x263F4: ("edi", "ebp"),
         0x26540: ("esi", "edi", "ebp"), 0x266AC: ("ebp",), 0x26A50: ("ebp",), 0x26C8C: ("edi", "ebp"),
         0x26F58: ("ebp",), 0x27380: ("edi", "ebp"), 0x274FC: ("esi", "edi", "ebp"), 0x277C0: ("edi", "ebp"),
         0x27A2C: ("ebp",), 0x282C4: ("ebp",), 0x28468: ("ebp",), 0x28788: (), 0x28BD4: ("edi", "ebp"), 0x28C38: (),
-        0x28CC8: ("esi", "edi", "ebp"), 0x28DA4: (), 0x292AC: ("ecx", "esi", "edi", "ebp"), 0x29328: ("ebp",),
+        0x28CC8: ("esi", "edi", "ebp"), 0x28DA4: (), 0x292AC: ("ecx", "esi", "edi"), 0x29328: ("ebp",),
         0x29638: ("edi", "ebp"), 0x296B8: ("esi", "edi", "ebp"), 0x299E8: ("edi", "ebp"), 0x29B70: (),
         0x2A31C: ("edi", "ebp"), 0x2BF08: (), 0x2C06C: (), 0x2FFC4: ("ebx", "ecx", "edx"), 0x33F08: (), 0x38990: (),
         0x389C4: (), 0x3BB90: (), 0x41C28: (), 0x424E8: (), 0x438B4: ("esi", "edi", "ebp"), 0x461DC: (), 0x47208: (),
