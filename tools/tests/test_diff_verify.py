@@ -31997,8 +31997,27 @@ class RealFunctionTests(unittest.TestCase):
         # (0x292AC/0x24C5C/0x1C470 keep EBP: EBP = 0x7FFF at 0x255E4, read at the two draws).
         # Mutants 14899 -> 14900; functions, gaps and the closed/no-callee counts unchanged (game_loop
         # stays open on its three allow-mode callees and the unrowed stub 0x4F5C8). Measured on the lane.
+        # Track J j1: the closure rule (record §J1). An open callee is excused when it is an *allow-mode*
+        # callee outside the portable set: its bytes already run on both sides inside the row (record
+        # §E3.6) and no row of its own can exist, because the address is runtime (>= 0x5D000),
+        # host-owned/deferred in tools/port_classification.txt, or one the decomp index
+        # (port/decomp/prage.functions.csv) never lists as a function (E2's triage field). The classes
+        # come from the repo's tables (V.non_portable()); a recorded stub outside the set, and any ported
+        # function without a row (the 8 named gaps), still keep the row open. Closed 716 -> 779 (+63):
+        # 49 rows whose only open callees are runtime allow-mode callees, 6 E2-field ones, 4 E2-field +
+        # runtime, 4 host-owned (1 alone, 3 with runtime). The 53 still-open rows block on a recorded
+        # stub outside the set or on the recorded `real` mode (0x5D812, 8 rows): 0x65431 11 rows, 0x5DD03
+        # 10, 0x40CB0 8, 0x24568/0x5DEED 7 each, 0x24804/0x5DCC5 6 each, 0x5DECA 5, 0x5DC0F/0x5DC8B 4 each,
+        # 0x5DEAF 3, 0x29D04/0x2CB74/0x6C4CF 2 each, and one each for 0x1C308, 0x25FAC, 0x26194, 0x3D0BC,
+        # 0x4F5C8, 0x5D86A, 0x5DC2A, 0x5DC4D, 0x5DC70, 0x5DCA6, 0x5DCE4, 0x61A70 and 0x65546. No row blocks
+        # on a ported function in the portable set: the rule's boundary. Measured on the lane.
         self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps; "
-                      "716/832 rows with callees closed (175 have none).", out.getvalue())
+                      "779/832 rows with callees closed (175 have none; an allow-mode callee outside the "
+                      "portable set - runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, "
+                      "or an address the decomp index never lists as a function - does not keep a row open, "
+                      "while a recorded stub and a ported function without a row do: record J §J1). "
+                      "Claim: equivalence on the exercised blocks and inputs only, each function with its "
+                      "callees stubbed or run as stated.", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
@@ -32277,6 +32296,38 @@ class CallParseTests(unittest.TestCase):
         verdicts = {r.entry: r.verdict for r in (a, b, c, d)}
         closed, with_callees = V.closed_rows([a, b, c, d], verdicts)
         self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]), ([0xB], [0xB, 0xC, 0xD]))
+
+    def test_an_allow_mode_non_goal_does_not_keep_a_row_open_a_stub_or_a_named_gap_does(self):
+        # record §J1: the closure rule's declared non-goals, in both directions. The classes come from
+        # the repo's own tables, not a hardcoded list: tools/port_classification.txt (0x501A3, the
+        # host-owned dirty blit) and the decomp index (0x24568, the 0xA8628 entry that is E2's field;
+        # 0x1B120 is one of the 8 ported functions with no row, so it stays blocking). Measured on the lane.
+        outside = V.non_portable()
+        self.assertEqual(outside.class_of(0x501A3), "host-owned")
+        self.assertEqual(outside.class_of(0x24568), "e2-field")
+        self.assertEqual((outside.class_of(V.RUNTIME_BASE - 1), outside.class_of(V.RUNTIME_BASE)),
+                         ("e2-field", "runtime"))                    # the boundary is the rule's own
+        self.assertEqual(outside.class_of(0x1B120), None)            # a named gap: in the portable set
+        self.assertEqual(outside.class_of(0x255CC), None)            # game_loop: a porting target
+
+        def row(entry, verdict, callees):
+            return V.SpecResult("r%X" % entry, entry, verdict, callees=callees)
+        allow_non_goal = row(0x10000, "VERIFIED", [(0x501A3, "allow")])    # excused: the row is closed
+        stub_non_goal = row(0x10001, "VERIFIED", [(0x501A3, "stub")])      # its declaration is unverified
+        allow_named_gap = row(0x10002, "VERIFIED", [(0x1B120, "allow")])   # a ported function: blocks
+        rows = [allow_non_goal, stub_non_goal, allow_named_gap]
+        verdicts = {r.entry: r.verdict for r in rows}
+        closed, with_callees = V.closed_rows(rows, verdicts, outside)
+        self.assertEqual(([r.entry for r in closed], len(with_callees)), ([0x10000], 3))
+        # flipping the class entry out of the table re-opens the row it excused
+        flipped = V.NonPortable({a: c for a, c in outside.classified.items() if a != 0x501A3},
+                                outside.functions)
+        closed, _ = V.closed_rows(rows, verdicts, flipped)
+        self.assertEqual([r.entry for r in closed], [])
+        # a row that also names a ported function with no row stays open (the portable-set boundary)
+        closed, _ = V.closed_rows([row(0x10003, "VERIFIED", [(0x65431, "allow"), (0x1B120, "allow")])],
+                                  {0x10003: "VERIFIED"}, outside)
+        self.assertEqual([r.entry for r in closed], [])
 
     def test_a_call_line_after_the_result_is_rejected(self):
         with self.assertRaises(ValueError):

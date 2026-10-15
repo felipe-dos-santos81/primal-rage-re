@@ -362,13 +362,20 @@ consolidation gate).
    `0x2EA68` — which closed `config_image_store` on its callee; batch g3 (record §G3) then rowed ALL SIX named
    non-rows (the §C3g.7 reversal: `dpmi_clock_read` `0x500BB`, `res_resolve` `0x1B544`, `0x29D60`, the interrupt
    lock `0x2EA30`, `0x32BAC`, `0x2EA64` — the six together closed 77 callee rows, 639→716; each new row's claim
-   states exactly what it compares, the reversal's wording rule). `make diff-verify`'s counter after it is
-   `1007/1007 functions VERIFIED; 14899/14899 mutants detected; 1 named gaps;
-   716/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
-   no row (the named gaps, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3). The counter does not tell a full
-   row from a weaker one: 12 of the 739 rowed functions have a row that runs the original under code pokes, leaves
-   reachable blocks out, or declares a terminal difference on some or all of its cases (which then compare nothing
-   on the port's side, §G1's skip) (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls;
+   states exactly what it compares, the reversal's wording rule). Track G g4 and track J j1 re-pinned it:
+   `make diff-verify`'s counter is `1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps;
+   779/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
+   no row (the named gaps, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
+   g4 (`game_loop`'s recorded RNG stub, `@rng`). The closure rule (`closed_rows`, record §J1): a row counts closed
+   when every callee is VERIFIED by its own row, or is an **allow-mode** callee outside the portable set — runtime
+   ≥ 0x5D000, host-owned/deferred in `tools/port_classification.txt`, or an address the decomp index
+   (`port/decomp/prage.functions.csv`) never lists as a function (E2's triage field) — while a recorded *stub*
+   outside the set, and any ported function with no row, still keep the row open (716→779, +63). The
+   counter does not tell a full row from a weaker one: 12 of the 739 rowed functions have a row that runs
+   the original under code pokes, leaves reachable blocks out, or declares a terminal difference on some or
+   all of its cases (which then compare nothing
+   on the port's side, §G1's skip) (`0x2CADC`, whose pokes are runtime or omitted calls, and `game_loop`, whose
+   two pokes became recorded stubs in track G g4 and whose two named unhits `0x25680`/`0x256D4` leave 18/20 blocks;
    `0x1AFE8`, its l6 the declared short-read exit difference (the original exits with code 1 where the port takes
    the failed-open path and returns, config.c PORT — the port's side of that case is compared nowhere on the row,
    §G1's skip; it is pinned only by the `test_game.c` load case); `0x1B084`,
@@ -381,11 +388,19 @@ consolidation gate).
    (7 of 8 blocks)): count 727 full rows, of which `0x51ED8`'s carries one declared difference (the
    renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
    callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
-   The open rows are open on the 8 unrowed functions and on runtime callees the classification does not target —
-   the ≥0x5D000 AIL wrappers and libc (`0x5D812`, `0x5DEED`, the WATCOM span) and `0x2CB74`/`0x501A3`,
-   per §G3's re-measured census: 96 of the open rows carry a ≥0x5D000 blocker (79 only-those), 17 carry E2-
-   non-function blockers (`0x29D04`/`0x51E58`/`0x24568` family); none of the open rows blocks on any of the six
-   (§G3 g3b finalize commits). The closure-rule amendment for those remains a separate decision (recon item 4).
+   The still-open rows are measured, not asserted: after the closure rule 53 of the 832 rows stay open, every one
+   of them on a recorded *stub* outside the portable set or on the recorded `real` mode (`0x5D812`, 8 rows) — a
+   stub's declaration is exactly what a row of its own would verify, so it keeps the row open. By blocker: the
+   stubs `0x65431` (11 rows), `0x5DD03` (10), `0x40CB0` (8), `0x24568`/`0x5DEED` (7 each),
+   `0x24804`/`0x5DCC5` (6 each), `0x5DECA` (5), `0x5DC0F`/`0x5DC8B` (4 each), `0x5DEAF` (3),
+   `0x29D04`/`0x2CB74`/`0x6C4CF` (2 each) and one each for `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`,
+   `0x4F5C8`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
+   `0x5DCA6`, `0x5DCE4`, `0x61A70` and `0x65546`; the 63 rows the rule closed had only allow-mode blockers
+   (49 runtime, 6 E2-field, 4 E2-field + runtime, 4 host-owned — §J1 has the per-row table). No row of the 832
+   blocks on a ported function in the portable set: the 8 named-gap functions are callees of none, and the rows
+   that stay open on a ported address (0x5DC0F/0x61A70/0x62003/0x65431 above) block on runtime-region functions
+   whose use is stubbed. §G3's 116-row census was the pre-rule reading (96 ≥0x5D000, 17 E2-class, none on the six);
+   the rule reaches 63 of those and the other 53 are the stubs and the `real` above.
    A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool
