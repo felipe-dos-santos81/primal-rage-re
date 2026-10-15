@@ -34025,6 +34025,41 @@ G3B_SPECS = [
         Case("c1", {"eax": 0x00C0FFEE}),
         Case("c2", {"eax": 0xFFFFFFFF}),
     ], mutants=("@zero", "@scrub")),
+    # 0x2EA30 interrupt_lock (bytes `52 8a 35 60 cd 0b 00 ..`, fixup-applied image): `push edx;
+    # mov dh,[0xbcD60]; mov dl,dh; cmp eax,0x2700`. Restore arm (0x2EA40): EAX becomes the OLD byte
+    # (`xor eax,eax; mov al,dh`), and 0x2EA49 `xor dh,dh` clears the lock only if it was 1, then
+    # `mov al,dl` re-reports the old byte. Request arm (0x2EA51): `cmp eax,1` and 0x2EA56 `mov dh,1`
+    # sets the lock, then `mov al,dh` returns the NEW byte; any other request leaves DH alone. Both
+    # join at 0x2EA5C `mov [0xbcD60],dh; pop edx; nop` and fall through the shared `ret` at 0x2EA64.
+    # ONE global, 0xbcD60 (DS_000BCD60 — symbols.h names it; port/src uses it NOWHERE: the port has
+    # no lock — every call site elides it inert: actors.c:1124/1164, fighter.c:2495/2502, flow.c:197,
+    # flow.h:336, render.c:362), and EDX is preserved by the push/pop pair; the returned dword is
+    # always zero-extended (`xor eax,eax; mov al,..`). THE CLAIM: the row compares NO memory changed
+    # and the EAX low byte — the original against the INERT port binding (report the entry EAX,
+    # write nothing) in the only agreement region the port has: the request classes that leave the
+    # byte at its seed — r0 acquire-while-held (req 1, lock 1: stores 1 back, returns 1), r1
+    # restore-of-clear (req 0x2700, lock 0: returns 0, the low byte of its own request), r2
+    # other-request (req 0x1234, lock 0x34: returns the seed byte, its low byte agreeing with the
+    # request's). Mask 0xFF states the narrowness: the returned lock BYTE is what 0x4F1E4's second
+    # request feeds back (frontend_input_reset's row), the upper half the restore arm zeroes has no
+    # inert-port counterpart to compare (the port never calls — that is the port's divergence, as
+    # the callers' rows say: "the port, which does not model the lock, cannot", actors_reset_al).
+    # @store1/@store0 are inert bindings that store the lock anyway — caught where the store would
+    # change the byte (r1/r2 for @store1, r0/r2 for @store0); @zero returns 0, caught by r0/r2's
+    # bytes. 0x2EA49 (clear of a SET lock) is the one block whose store changes memory; the inert
+    # port cannot agree with any case that reaches it, so it is named unhit, not claimed.
+    Spec("interrupt_lock", 0x2EA30, [
+        Case("r0", {"eax": 0x00000001}, {0x000BCD60: b"\x01"}),
+        Case("r1", {"eax": 0x00002700}, {0x000BCD60: b"\x00"}),
+        Case("r2", {"eax": 0x00001234}, {0x000BCD60: b"\x34"}),
+    ], eax_mask=0xFF,
+       unhit_named={0x2EA49: "the restore arm's clear of a SET lock: `xor dh,dh` reached only when "
+                             "the byte is 1 and req == 0x2700 — its `mov [0xbcD60],dh` at 0x2EA5C "
+                             "then CHANGES memory (1 -> 0) and the inert port (no lock anywhere in "
+                             "port/src) has nothing to compare, so no case reaches it; the callers' "
+                             "rows keep the byte at its seed for the same reason (frontend_input_"
+                             "reset pairs the calls, actors_reset_al and d4b_setup seed 0/0x80)"},
+       mutants=("@store1", "@store0", "@zero")),
 ]
 D1_SPECS += G3B_SPECS
 SPECS = [

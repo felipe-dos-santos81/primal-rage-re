@@ -42645,6 +42645,15 @@ static void m_g3b_1b544_base(const u32 *r, u32 *eax)  { *eax = g3b_res_core(r[R_
 static void b_g3b_29d60(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
 static void m_g3b_29d60_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
 static void m_g3b_29d60_scrub(const u32 *r, u32 *eax) { *eax = r[R_EAX] & 0xFFFFu; }
+/* 0x2EA30: the interrupt lock on the byte 0xbcD60. The port models NO lock (DS_000BCD60 has no
+ * reader or writer in port/src; every call site elides it inert), so the binding is the inert port:
+ * report the entry EAX (the mask drops the request's upper half — the byte the original returns
+ * agrees with it in these seed/request classes) and write nothing. @store1/@store0 store the lock
+ * anyway (a byte change the original does not make when the store keeps the seed); @zero returns 0. */
+static void b_g3b_2ea30(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+static void m_g3b_2ea30_store1(const u32 *r, u32 *eax) { DSB(0x000BCD60u) = 1u; *eax = r[R_EAX]; }
+static void m_g3b_2ea30_store0(const u32 *r, u32 *eax) { DSB(0x000BCD60u) = 0u; *eax = r[R_EAX]; }
+static void m_g3b_2ea30_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
 /* ---- g3b bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
@@ -58536,6 +58545,10 @@ static const binding_t k_bindings[] = {
     { "hook_noop_29d60",       b_g3b_29d60,        0xFFFFFFFFu },
     { "hook_noop_29d60@zero",  m_g3b_29d60_zero,   0xFFFFFFFFu },
     { "hook_noop_29d60@scrub", m_g3b_29d60_scrub,  0xFFFFFFFFu },
+    { "interrupt_lock",        b_g3b_2ea30,        0x000000FFu },
+    { "interrupt_lock@store1", m_g3b_2ea30_store1, 0x000000FFu },
+    { "interrupt_lock@store0", m_g3b_2ea30_store0, 0x000000FFu },
+    { "interrupt_lock@zero",   m_g3b_2ea30_zero,   0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)
