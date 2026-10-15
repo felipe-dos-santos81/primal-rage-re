@@ -34081,8 +34081,11 @@ G3B_SPECS = [
     # (0x2EA62 `pop edx`, 0x2EA63 `nop`) belong to 0x2EA30's body, which FALLS THROUGH this ret —
     # entered directly, as its callers do, only `ret` runs: it reads no register, writes nothing,
     # and pops only the return address (c3, pop 4); 0x2EA65's `8d 40 00 lea eax,[eax]` is alignment
-    # the ret never reaches. The port has no C at 0x2EA64 — its call sites inline the elision
-    # ("(void)flag; /* 0x2EA64 is a `ret` */" actors.c:2369; menu.c:196/246/322) — so the binding
+    # the ret never reaches. Its references: 8 direct `call`s and nothing else (Ghidra: 8
+    # UNCONDITIONAL_CALL xrefs, zero data xrefs) — four in the 0x2B2A0 dispatcher
+    # (0x2B308/0x2B52F/0x2B771/0x2B8E8), two in 0x2FA40 (0x2FAEC/0x2FD75) and two in 0x2FFC4
+    # (0x300B0/0x30486). The port has no C at 0x2EA64 — all eight call sites inline the elision
+    # (actors.c:2369/2466/2559/2619, menu.c:196/246/322/392) — so the binding
     # mirrors the port model: report the entry EAX, write nothing. The row compares: EAX at the
     # return equals the entry EAX (mask full, the b_d1d_4f1d0 precedent — the elided call cannot
     # change the caller's value) and no memory byte changed. @zero returns 0 (caught by c1/c2 —

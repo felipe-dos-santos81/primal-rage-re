@@ -336,12 +336,19 @@ seam_hook passes through — the green run shows the empty call list agrees both
 0xFFFFFFFF; @zero caught by c1/c2, @plus1 caught by all three (c2's wraps to 0). Blocks 1/1.
 
 **`0x2EA64` — `ret_noop_2ea64`, a bare `ret`.** One byte `c3`; the `pop edx` at 0x2EA62 and `nop`
-at 0x2EA63 belong to 0x2EA30's body, which falls through — entered DIRECTLY, as its callers do
-(spawn_anim_opcode allows it; menu_step/menu_run `call 0x2ea64` as a switch no-op), only `ret`
-runs; 0x2EA65's `8d 40 00` is alignment the ret never reaches. The port has no C at 0x2EA64 — the
-call sites inline the elision ("(void)flag; /* 0x2EA64 is a `ret` */" actors.c:2369,
-menu.c:196/246/322) — so the binding mirrors that: entry EAX passthrough, nothing written; mask
-full. Cases 0 / 0x00C0FFEE / 0xFFFFFFFF; @zero and @scrub caught by c1/c2. Blocks 1/1.
+at 0x2EA63 belong to 0x2EA30's body, which falls through — entered DIRECTLY, as its callers do,
+only `ret` runs. Its references are exactly 8 direct `call`s and nothing else (Ghidra: 8
+UNCONDITIONAL_CALL xrefs, zero data xrefs) — four in the 0x2B2A0 dispatcher
+(0x2B308/0x2B52F/0x2B771/0x2B8E8), two in 0x2FA40 (0x2FAEC/0x2FD75) and two in 0x2FFC4
+(0x300B0/0x30486); 0x2EA65's `8d 40 00` is alignment the ret never reaches. The rows of the
+three ported callers (`spawn_anim_opcode`'s `allow_calls`, `menu_step`/`menu_run`'s
+`D5G_MENU_ALLOW`) already run it from its bytes, so this row only adds the callee's VERDICT to
+the closure ledger — and the ledger rule counts an allowed callee by its row (record §E3.4),
+which is why `spawn_anim_opcode`, open on {0x29D60, 0x2EA64}, closed last, with this landing.
+The port has no C at 0x2EA64 — all eight call sites inline the elision (actors.c:2369/2466/
+2559/2619, menu.c:196/246/322/392) — so the binding mirrors that: entry EAX passthrough, nothing
+written; mask full. Cases 0 / 0x00C0FFEE / 0xFFFFFFFF; @zero and @scrub caught by c1/c2.
+Blocks 1/1.
 
 **Batch g3b closure arithmetic (measured on the lane, full `--self-check`, each row's delta
 enumerated from the printed table by callee verdict).** Counter 1002/14887/666/170 ->
@@ -366,17 +373,38 @@ No closure was lost anywhere (each row's run closed a superset of the previous).
 measured truth; the dispatch one-liners' expectations were not all right — the "exactly ONE
 dependent closes on 0x29D60 (game_mode_23_step)" claim measured **+15**, and the brief's
 "tick-read twin of 0x500BB" for 0x32BAC is wrong on the bytes (a bare ret). What the static
-analysis at head got right: the six rows' dependents do NOT all close. The still-open rows'
-blocker classes include unrowed >=0x5D000 runtime callees (0x5D812/0x5DEED/the AIL wrappers,
-0x61A70/0x65490/0x654C7/0x65431/0x65533/0x65546/0x655FF/0x65624/..., the exit chain
-0x62002/0x62003/0x6201B/0x6C4CF) and the named gaps 0x2CB74/0x501A3, so the six rows were never
-going to close the full 77; the closure-rule amendment (counting a row closed when its only open
-callees are runtime/gap callees that are run from bytes in allow mode) is a separate decision
-(recon-01 item 4) and stays open after this batch. The +77 measured across all six rows (27 in
-g3aa + 50 in g3b, 639 -> 716) came from dependent rows whose blocker set was EXACTLY some subset
-of the six; e.g. of the 20 dependents still open after g3aa, only game_mode_23_step closed here
-(it blocked on {0x500BB, 0x29D60}) — the other 19 block on >=0x5D000 callees (snd_sample_queue
-on the AIL wrappers, sound_sample_start, the game_frame_* rows on 0x65431, ...).
+analysis at head got right: the six rows' dependents do NOT all close. The +77 measured across
+all six rows (27 in g3aa + 50 in g3b, 639 -> 716) is EXACTLY the set of dependent rows whose
+blocker set was some subset of the six. The still-open census, measured from the final table:
+**116 open with-callees rows, ZERO of them list one of the six as an open blocker** — each still
+has an unrowed callee. **96 of the 116 have at least one unrowed >=0x5D000 runtime callee**
+(79 block on those alone): the complete measured set is 0x5D218, 0x5D28F, 0x5D812, 0x5D86A, the
+AIL wrappers 0x5DC0F/0x5DC2A/0x5DC4D/0x5DC70/0x5DC8B/0x5DCA6/0x5DCC5/0x5DCE4/0x5DD03/0x5DEAF/
+0x5DECA/0x5DEED, 0x61A4C/0x61A70, the exit chain 0x62002/0x62003/0x6201B/0x6C4CF, and the
+WATCOM/DOS-4GW helpers 0x653A1/0x653ED/0x65431/0x65490/0x654C7/0x65533/0x65546/0x655FF/0x65624/
+0x6C8EB/0x6CB6C/0x6CC9F/0x6CCFA/0x6CE84/0x72CD6/0x72D20 — host libc per AGENTS.md, not porting
+targets. **The other 20 block only on unrowed sub-0x5D000 targets**: the named item stub 0x2CB74
+(menu_step, menu_run — the only two of the 47 0x500BB dependents not blocked on a >=0x5D000
+callee), the host-owned classified pair 0x10D34/0x4FB98 (game_shutdown; 0x10D0C/0x1C308 likewise
+co-block rows that also have runtime callees), and call targets never listed as functions in the
+decomp index — E2 triage's field: 0x24568/0x24804/0x40CB0 (the game_mode_05/0d/32 rows),
+0x29D04/0x3D0BC/0x3E484/0x3E4C4 (the fighter_19020/35050/pass_a(_al)/state_350d0/state_3531c/
+think_side/winner_body rows) and 0x51E58 (sprite_blit; the same class — 0x521F0/0x5222C/0x529A0/
+0x529C4/0x52A18/0x57F80/0x58564/0x5859C/0x58CBD/0x58D2C/0x58D4C/0x58D90 plus 0x5D218 — keeps
+sprite_blit_aperture open, and 0x4F5C8 co-opens game_loop). The aperture store 0x501A3
+(classified host-owned, record §K9.1) never stands alone: it co-blocks game_loop (with the
+0x4F5C8 stub and the 0x5D812 allow) and the
+config_screen_wait pair (with the 0x655FF allow). Of the 20 dependents still open after g3aa,
+exactly ONE closed in this batch — game_mode_23_step (it blocked on {0x500BB, 0x29D60}); the
+other 19 all still have >=0x5D000 blockers (snd_sample_queue on the AIL wrappers, the
+game_frame_keys pair and game_quit_prompt on 0x65431, the fight_char_text_clear/blink/
+team_text_blink family and game_mode_25_reveal on 0x65624, frontend_mode12_advance on
+0x65490/0x654C7, flow_26d4c/config_key_name/svc_buttons_draw on the 0x65533/0x65546/
+0x6Cxxx/0x72xxx family, the config_screen_wait pair on 0x655FF), except menu_step and menu_run,
+blocked on 0x2CB74 alone. No further closure can come from the six rows: the closure-rule
+amendment (counting a row closed when its only open callees are runtime/gap callees that are run
+from bytes in allow mode) is a separate decision (recon-01 item 4) and stays open after this
+batch.
 
 ## §G4 — game_loop's RNG pokes (pending, lane A task 4)
 
