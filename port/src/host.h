@@ -131,10 +131,11 @@ const char *host_audio_error(void);
  * SDL keys pressed, through host_kb_bit. */
 u16 host_key_bits(void);
 
-/* PORT: one set-1 scan's kb bit under the game's default binding (record
- * gameplay-ground-truth §G.1.2): P1 S X Z C / U I N M / F1, P2 the arrows /
- * Home PgUp End PgDn / F2; 0 for any other scan. Stands in for the host-owned
- * ISR sampler 0x1BBAC's device-0 path. */
+/* PORT: one set-1 scan's kb bit under the binding the game's sampler 0x1BBAC
+ * reads (the key-config block at [DS_00101514], +0x2DE..+0x2ED by position,
+ * record gameplay-ground-truth §G.1.2); the game's default binding (P1
+ * S X Z C / U I N M / F1, P2 the arrows / Home PgUp End PgDn / F2) when no
+ * run has filled the block; 0 for any other scan. */
 u16 host_kb_bit(u8 scan);
 
 /* PORT: test seam, no raw counterpart. With `on` set, host_key_bits() returns

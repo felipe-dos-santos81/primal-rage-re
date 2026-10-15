@@ -13,6 +13,8 @@
  * infrastructure (window, clock, transient input), not game state; the game's
  * own counters live in mem[]. g_tick is the host's model of DAT_00105D88. */
 #include "host.h"
+#include "mem.h"
+#include "symbols.h"
 #include "platform/input.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -55,10 +57,16 @@ static const u8 k_bios_letter[26] = {
 };
 
 /* PORT: the host stands in for the IRQ1 key-state table and the ISR sampler
- * 0x1BBAC (host-owned, record §50-C) with the game's default binding: the
- * scans +0x2DE..+0x2ED hold, the high bytes of the config words at 0xA2C62
- * (record gameplay-ground-truth §G.1.2; every bit captured in gp-pads,
- * §G.7.2). The letters map through k_bios_letter; the other pad keys here. */
+ * 0x1BBAC (host-owned, record §50-C). The sampler's device-0 arms read their
+ * binding out of the key-config block at [DS_00101514]: 0x1B610/0x1B730 test
+ * P1's eight scans at +0x2DE..+0x2E5 by position, 0x1B6A0/0x1B7C0 P2's at
+ * +0x2E6..+0x2ED, and 0x1B850/0x1B870 the fixed +0x28F/+0x290 bytes (record
+ * gameplay-ground-truth §G.1.2; every bit captured in gp-pads, §G.7.2). The
+ * block is the default record's scan list at 0xA2C62 after config_keys_apply
+ * (0x1AE28) or the service menu's edited one, and the config image's mirror
+ * (0x1014AC..) reaches it through the 0x20CF2/0x20CF9 pack/load pair at boot,
+ * so a windowed run follows the configured binding. The letters map through
+ * k_bios_letter; the other pad keys here. */
 typedef struct { SDL_Scancode sdl; u8 scan; } host_scan_pair;
 static const host_scan_pair k_bios_pad[] = {
     { SDL_SCANCODE_UP, 0x48 },    { SDL_SCANCODE_DOWN, 0x50 },
@@ -68,13 +76,42 @@ static const host_scan_pair k_bios_pad[] = {
     { SDL_SCANCODE_F1, 0x3B },    { SDL_SCANCODE_F2, 0x3C },
 };
 
-/* PORT: 0x1BBAC's device-0 combine for one key, under the default binding:
- * +0x2D8 = 0x1B610 | 0x1B730 | 0x1B850 (P1: S X Z C give 0x80 0x40 0x20 0x10,
- * U I N M give 1 2 4 8, F1 (+0x28F) gives 1) and +0x2D9 the same for P2 (the
- * arrows, Home PgUp End PgDn, F2 at +0x290), as the kb word (+0x2D8 << 8) |
- * +0x2D9. Any other scan is no pad key. */
+/* The key-config block's 16 scan slots in the sampler's own bit order: P1's
+ * +0x2DE..+0x2E1 give 0x80 0x40 0x20 0x10 of +0x2D8 (0x1B610) and
+ * +0x2E2..+0x2E5 give 1 2 4 8 (0x1B730); P2's +0x2E6..+0x2ED the same of
+ * +0x2D9 (0x1B6A0/0x1B7C0), as the kb word (0x2D8 << 8) | 0x2D9 packs them. */
+static const u16 k_cfg_bit[16] = {
+    0x8000u, 0x4000u, 0x2000u, 0x1000u, 0x0100u, 0x0200u, 0x0400u, 0x0800u,
+    0x0080u, 0x0040u, 0x0020u, 0x0010u, 0x0001u, 0x0002u, 0x0004u, 0x0008u
+};
+
+/* PORT: one set-1 scan's kb bit under the binding the sampler reads: the
+ * configured scans when a run has filled the block (config_keys_apply, record
+ * §50-C), else the game's default binding (the record at 0xA2C62: S X Z C /
+ * U I N M / F1 for P1, the arrows / Home PgUp End PgDn / F2 for P2). Any other
+ * scan is no pad key. */
 u16 host_kb_bit(u8 scan)
 {
+    const u32 base = DSD(DS_00101514);
+    if (base != 0u && base <= MEM_SIZE - 0x2EEu) {
+        const u8 *cfg = mem + base + 0x2DEu;
+        u16 bits = 0u;
+        u8 any = 0u;
+        for (u32 i = 0u; i < 16u; i++) {
+            any |= cfg[i];                       /* a zero table is no table */
+            if (cfg[i] == scan) bits |= k_cfg_bit[i];
+        }
+        if (any != 0u) {
+            if (scan == 0x3B) bits |= 0x0100u;   /* F1 (0x1B850, +0x28F) */
+            if (scan == 0x3C) bits |= 0x0001u;   /* F2 (0x1B870, +0x290) */
+            return bits;
+        }
+    }
+    /* PORT: no configured block (no game_init ran, or its 16 scans are all
+     * zero) falls back to the default binding; the raw's sampler would report
+     * no pad key for a block whose slots are empty. The windowed run's block is
+     * never empty: config_set_defaults (0x2CADC) applies the default record, or
+     * the pack/load pair carries the image's own. */
     switch (scan) {
     case 0x1F: return 0x8000u;   /* S */
     case 0x2D: return 0x4000u;   /* X */
