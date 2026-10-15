@@ -297,7 +297,8 @@ consolidation gate).
   capture's X record; its 30-frame boot-movie tail is how far the port got, not claimed),
   the trace ratchets at `GP_KEYS_TRACE_MIN_FIRST` = 2164 and the capture identity is pinned
   (sha256 + `GP_KEYS_CAPTURE_FRAMES` = 1166, the same capture U11 pinned); the claim is narrow
-  the same way — no under-render detection, order and coverage not claimed; it skips without
+  the same way — no under-render detection, order and coverage not claimed, nor a 1-px port
+  change the splice model absorbs when a neighbour holds the old pixel (§G5); it skips without
   the capture.
   `make gp-twop-oracle` (in `make verify`; record gameplay-u7 §T.8-§T.11) checks that
   `data/k11-captures/gp-twop` is a two-human match from P2's join in the character select (f=2C3, `cred 4 -> 4`)

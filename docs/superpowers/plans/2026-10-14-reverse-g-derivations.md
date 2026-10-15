@@ -692,8 +692,9 @@ shape (same mode-6→8 entry, same anatomy, same cadence):
    Δtick = Δt508 = Δf = 1:1 at every endpoint.
 
 **The mechanism: the master loop's own gate + catch-up (0x25643 / 0x256C5).** The
-ported and differentially-verified loop (flow.c:7141-7193): each iteration computes
-(`game_frame` 0x24C5C, then the render passes), blits **only when t50c == t508**
+ported and differentially-verified loop (flow.c:7141-7193; a weaker row — the full-screen
+copy `0x25680` and the ISR-tick spin `0x256D4` stay named unhit, §G4): each iteration
+computes (`game_frame` 0x24C5C, then the render passes), blits **only when t50c == t508**
 (sort, render, flush, aperture→VRAM copy, swap — all inside the gate), then t50c++
 (0x256C0) and spins while `t50c - 1 == t508` (0x256C5). Steady state: one present
 per ISR tick, its phase inside the 16.65 ms tick window equal to that iteration's

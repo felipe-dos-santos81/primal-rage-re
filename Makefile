@@ -21,6 +21,9 @@ TITLE_DUMP = /tmp/pr_title_dump
 ATTRACT_DUMP = /tmp/pr_attract_dump
 FRONTEND_DUMP = /tmp/pr_frontend_dump
 K11_CAPTURES = data/k11-captures
+# K11_DUMP/GP_DUMP are fixed /tmp paths shared by every worktree: serialise oracle-replay runs
+# across worktrees (k11-oracle, gp-replay, gp-*-oracle), or pass a per-worktree override, e.g.
+# `make gp-replay GP_DUMP=/tmp/pr_gp_dump_<lane>` — two replays at once clobber the dump.
 K11_DUMP = /tmp/pr_k11_dump
 GP_DUMP = /tmp/pr_gp_dump
 DIFF_IMAGE ?= /tmp/pr_diff_image.bin

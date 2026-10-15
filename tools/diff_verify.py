@@ -430,7 +430,7 @@ def spec_original(spec, image):
                   for c in spec.cases]
 
 
-def _terminal_text(t):
+def g1_terminal_text(t):
     return "no terminal exit" if t is None else "exit with AL=0x%X" % t[1]
 
 
@@ -455,8 +455,8 @@ def verify_spec(spec, image, port_results, port_name=None, original=None):
             # the run did not reach — is a discrepancy (the MISMATCH verdict).
             if orig.terminal != c.terminal:
                 problems.append("%s: terminal: the original %s (%s%s), the case declares %s" % (
-                    c.id, _terminal_text(orig.terminal), orig.outcome,
-                    (": " + orig.detail) if orig.detail else "", _terminal_text(c.terminal)))
+                    c.id, g1_terminal_text(orig.terminal), orig.outcome,
+                    (": " + orig.detail) if orig.detail else "", g1_terminal_text(c.terminal)))
             executed |= orig.executed
             outside |= set(orig.outside)
             port = port_results[c.id]
@@ -33497,13 +33497,14 @@ G2_SPECS = [
     # 0x2EA68 menu_fatal_error: EAX = the message pointer the callers pass (e.g. `mov eax,0x80b54`
     # 0x2FDCB, "Null Menu"). The body is `mov eax,1` 0x2EA68 and `jmp 0x62003` 0x2EA6D: the argument
     # is discarded, never dereferenced, and the tail-jump carries exit code 1 into the runtime's exit
-    # chain (0x62003..0x62723 `mov ah,0x4c; int 0x21`, record §G1); nothing returns. The row compares
-    # what the terminal verdict sees — that the original ends its run in `terminate with code 1`
-    # whichever value EAX starts with (f0 the real message pointer, f1 zero) — against the port's
-    # documented return with no side effect (menu.c PORT, record §S.8 F1): a declared terminal
-    # difference (§G1). It carries no mutant: every case is terminal, and a matched-terminal case
-    # skips the port's values, bytes and calls (§G1's limit), so no case of this row could catch a
-    # mutation of menu_fatal_error's body (a named limit, the precedent 0x18428's read-only row).
+    # chain (0x62003..0x62723 `mov ah,0x4c; int 0x21`, record §G1); nothing returns. The row's exit
+    # claim is declared against the port's documented return with no side effect (menu.c PORT,
+    # record §S.8 F1): the terminal verdict sees that the original ends its run in `terminate with
+    # code 1` whichever value EAX starts with (f0 the real message pointer, f1 zero) and compares
+    # nothing on the port's side (§G1's skip) — a declared terminal difference. It carries no mutant:
+    # every case is terminal, and a matched-terminal case skips the port's values, bytes and calls
+    # (§G1's limit), so no case of this row could catch a mutation of menu_fatal_error's body (a named
+    # limit, the precedent 0x18428's read-only row).
     # The chain's vector calls reach 0x62002 (one `ret`) and its `call 0x6201B` runs from bytes
     # (allowed, SC_EXIT); the flush `call 0x6C4CF` 0x6271B is SC_FLUSH's stub — it cannot run (its
     # stream table at 0xF0A0E holds live close pointers: `call eax` 0x6C511 stops a replayed run at
