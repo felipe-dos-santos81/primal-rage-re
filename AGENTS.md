@@ -94,7 +94,7 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   Needs `JAVA_HOME` (temurin-25) and the `ghidra-lx-loader` extension.
 - `dosbox-x` for runtime ground truth (memory-file dumps, debugger breakpoints).
 - Python 3 with `capstone` for ad-hoc disassembly, `Pillow` for `tools/gra_extract.py`.
-- The differential harness (`make diff-verify`, `tools/diff_verify.py`) needs `unicorn` and `capstone` (`pip install -r tools/requirements-diff.txt`; pins `unicorn` 2.1.4 and `capstone` 5.0.7). Without either the step prints its skip line and `make verify` stays green. Its last line counts the functions VERIFIED, the mutants detected, the named gaps (`NAMED_GAP` rows: the original stops on the instruction the spec names) and, over the rows that have callees, those closed (VERIFIED with every callee VERIFIED by its own row; rows with no callee are counted apart, `41/126 rows with callees closed (23 have none)` after P6); a stubbed callee that is not is "unverified" in the table's callee column. At every recorded call it also compares the memory changed so far, and a stub poisons the registers its callee does not preserve. The original runs at the game's x87 control word `0x127F` (53-bit precision, round to nearest; `fldcw` at `0x72A83` of the word `0xF09B4`), which `run_original` seeds because unicorn resets it to `0x0000` (24-bit); `X87ControlWordTests` fails without the seed, and under it a C `double` sum stored to a `float` is the x87's (record `2026-10-03-reverse-p3-derivations.md` §P3.6, which names the limits: a control-word change outside the code object is not excluded). A stubbed predicate whose AL alone the original tests (`test al,al`) gets a case whose stub EAX is `0x100` and an `@eax`/`@al` mutant that only that case catches (`0x47688` h3, `0x48170` g4). The checklist for verifying a function (args from the callee's bytes, `pop`, `clobbers`, per-case stub EAX, pointer arguments as mem offsets, where the binding, the spec and the mutants go) is record `docs/superpowers/plans/2026-10-01-reverse-e3-derivations.md` §E3.10.
+- The differential harness (`make diff-verify`, `tools/diff_verify.py`) needs `unicorn` and `capstone` (`pip install -r tools/requirements-diff.txt`; pins `unicorn` 2.1.4 and `capstone` 5.0.7). Without either the step prints its skip line and `make verify` stays green. Its last line counts the functions VERIFIED, the mutants detected, the named gaps (`NAMED_GAP` rows: the original stops on the instruction the spec names) and, over the rows that have callees, those closed (VERIFIED with every callee VERIFIED by its own row — except the declared non-goal classes the closure rule excuses, record §J1; rows with no callee are counted apart, `41/126 rows with callees closed (23 have none)` after P6); a stubbed callee that is not is "unverified" in the table's callee column. At every recorded call it also compares the memory changed so far, and a stub poisons the registers its callee does not preserve. The original runs at the game's x87 control word `0x127F` (53-bit precision, round to nearest; `fldcw` at `0x72A83` of the word `0xF09B4`), which `run_original` seeds because unicorn resets it to `0x0000` (24-bit); `X87ControlWordTests` fails without the seed, and under it a C `double` sum stored to a `float` is the x87's (record `2026-10-03-reverse-p3-derivations.md` §P3.6, which names the limits: a control-word change outside the code object is not excluded). A stubbed predicate whose AL alone the original tests (`test al,al`) gets a case whose stub EAX is `0x100` and an `@eax`/`@al` mutant that only that case catches (`0x47688` h3, `0x48170` g4). The checklist for verifying a function (args from the callee's bytes, `pop`, `clobbers`, per-case stub EAX, pointer arguments as mem offsets, where the binding, the spec and the mutants go) is record `docs/superpowers/plans/2026-10-01-reverse-e3-derivations.md` §E3.10.
 - `tools/` is the RE/oracle toolbox: `le_info.py`, `gra_render.py`,
   `gra_extract.py`, `gen_symbols.py`, `title_pin.py`, `title_compare.py`.
   Check the active plan before editing anything here.
@@ -364,13 +364,18 @@ consolidation gate).
    lock `0x2EA30`, `0x32BAC`, `0x2EA64` — the six together closed 77 callee rows, 639→716; each new row's claim
    states exactly what it compares, the reversal's wording rule). Track G g4 and track J j1 re-pinned it:
    `make diff-verify`'s counter is `1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps;
-   779/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
+   774/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
    no row (the named gaps, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
    g4 (`game_loop`'s recorded RNG stub, `@rng`). The closure rule (`closed_rows`, record §J1): a row counts closed
    when every callee is VERIFIED by its own row, or is an **allow-mode** callee outside the portable set — runtime
    ≥ 0x5D000, host-owned/deferred in `tools/port_classification.txt`, or an address the decomp index
-   (`port/decomp/prage.functions.csv`) never lists as a function (E2's triage field) — while a recorded *stub*
-   outside the set, and any ported function with no row, still keep the row open (716→779, +63). The
+   (`port/decomp/prage.functions.csv`) never lists as a function (E2's triage field) *and* `port/src` does not
+   implement (no `fn_register`, no column-0 `/* 0xADDR` header) — while a recorded *stub* or `real` callee outside
+   the set, and any ported function with no row, still keep the row open. The port-code check is load-bearing:
+   `0x29D04` and `0x3E484` (the E2-class handler entries, implemented and `fn_register`ed by
+   `port/src/game/actors.c`, unrowed) keep `fighter_19020`, `fighter_35050`, `fighter_think_side`,
+   `fighter_pass_a` and `fighter_pass_a_al` open — without it the rule would close them on a row that can exist
+   (716→774, +58). The
    counter does not tell a full row from a weaker one: 12 of the 739 rowed functions have a row that runs
    the original under code pokes, leaves reachable blocks out, or declares a terminal difference on some or
    all of its cases (which then compare nothing
@@ -388,19 +393,21 @@ consolidation gate).
    (7 of 8 blocks)): count 727 full rows, of which `0x51ED8`'s carries one declared difference (the
    renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
    callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
-   The still-open rows are measured, not asserted: after the closure rule 53 of the 832 rows stay open, every one
-   of them on a recorded *stub* outside the portable set or on the recorded `real` mode (`0x5D812`, 8 rows) — a
-   stub's declaration is exactly what a row of its own would verify, so it keeps the row open. By blocker: the
-   stubs `0x65431` (11 rows), `0x5DD03` (10), `0x40CB0` (8), `0x24568`/`0x5DEED` (7 each),
-   `0x24804`/`0x5DCC5` (6 each), `0x5DECA` (5), `0x5DC0F`/`0x5DC8B` (4 each), `0x5DEAF` (3),
-   `0x29D04`/`0x2CB74`/`0x6C4CF` (2 each) and one each for `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`,
-   `0x4F5C8`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
-   `0x5DCA6`, `0x5DCE4`, `0x61A70` and `0x65546`; the 63 rows the rule closed had only allow-mode blockers
-   (49 runtime, 6 E2-field, 4 E2-field + runtime, 4 host-owned — §J1 has the per-row table). No row of the 832
-   blocks on a ported function in the portable set: the 8 named-gap functions are callees of none, and the rows
-   that stay open on a ported address (0x5DC0F/0x61A70/0x62003/0x65431 above) block on runtime-region functions
-   whose use is stubbed. §G3's 116-row census was the pre-rule reading (96 ≥0x5D000, 17 E2-class, none on the six);
-   the rule reaches 63 of those and the other 53 are the stubs and the `real` above.
+   The still-open rows are measured, not asserted: after the closure rule 58 of the 832 rows stay open. Every
+   one of them blocks on a recorded *stub* outside the portable set, on the recorded `real` mode (`0x5D812`,
+   8 rows), or on a **port-code** implementation the decomp index never listed (`0x28D68` 6 rows, `0x3E484` 3,
+   `0x29D04` 2 and `0x3E4C4` 1 — allow-mode, `fn_register`ed, unrowed: rows of their own can exist, and the
+   port-code check keeps them blocking). By blocker: the stubs `0x65431` (11 rows), `0x5DD03` (10),
+   `0x40CB0` (8), `0x24568`/`0x5DEED` (7 each), `0x24804`/`0x5DCC5` (6 each), `0x5DECA` (5),
+   `0x5DC0F`/`0x5DC8B` (4 each), `0x5DEAF` (3), `0x29D04`/`0x2CB74`/`0x6C4CF` (2 each) and one each for
+   `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
+   `0x5DCA6`, `0x5DCE4`, `0x61A70` and `0x65546`; the 58 rows the rule closed had only allow-mode blockers
+   (49 runtime alone, 4 E2-field + runtime, 3 host-owned + runtime, 1 E2-field alone, 1 host-owned alone —
+   §J1 has the per-row table). No row blocks on a ported function in the portable set by accident: the 8
+   named-gap functions are callees of none, and a ported address blocks only when its own row can exist
+   (`0x29D04`/`0x28D68`/`0x3E484`/`0x3E4C4` above; the runtime-region `0x65431`/`0x5DC0F`/`0x61A70`/
+   `0x62003` family is stubbed). §G3's 116-row census was the pre-rule reading (96 ≥0x5D000, 17 E2-class, none
+   on the six); the rule now closes 58 of the 116 and the other 58 are the blockers above.
    A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool

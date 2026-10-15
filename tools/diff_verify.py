@@ -12,8 +12,10 @@ import argparse
 import concurrent.futures
 import csv
 import dataclasses
+import glob
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -34243,15 +34245,23 @@ class NonPortable:
     """The addresses outside the portable set, from the repo's own tables (record §J1: never a
     hardcoded address list). `classified` is tools/port_classification.txt (addr -> `host-owned` /
     `deferred`, `port_progress.py`'s and the README's portable denominator); `functions` is
-    port/decomp/prage.functions.csv's entries that are real functions (rows without `::`). An address
-    at or above RUNTIME_BASE is `runtime` by the rule itself; below it, a classified address reads
-    its own class and one the decomp index never lists as a function reads `e2-field` (E2's triage
-    field; the census's "call targets never listed as functions in the decomp index", record G §G3).
-    A listed function reads None: a porting target, which never leaves a row open (the 8 ported
-    functions without a row — the named gaps — are in this set)."""
+    port/decomp/prage.functions.csv's entries that are real functions (rows without `::`); `ported` is
+    the port tree's own registry, the addresses port/src registers with `fn_register` or heads with a
+    column-0 `/* 0xADDR` comment (the strict rule tools/entry_triage.py's `load_ported` uses; the
+    loose "anywhere in a comment" form is not used, because it reads prose mentions as
+    implementations — measured: it would also take memset `0x61A70` and the exit chain `0x62003` and
+    re-open 25 further rows). An address at or above RUNTIME_BASE is `runtime` by the rule itself;
+    below it, a classified address reads its own class and one the decomp index never lists as a
+    function reads `e2-field` (E2's triage field; the census's "call targets never listed as functions
+    in the decomp index", record G §G3). A listed function reads None: a porting target, which never
+    leaves a row open (the 8 ported functions without a row — the named gaps — are in this set).
+
+    Frozen so a test's flipped table is a new value; the `dict` field makes it unhashable, and
+    nothing hashes it."""
 
     classified: dict
     functions: frozenset
+    ported: frozenset
 
     def class_of(self, addr):
         if addr >= RUNTIME_BASE:
@@ -34260,11 +34270,23 @@ class NonPortable:
             return self.classified[addr]
         return None if addr in self.functions else "e2-field"
 
+    def excused(self, addr, mode):
+        """True when an open callee `(addr, mode)` does not keep its row open (record §J1): an
+        allow-mode callee outside the portable set that the port tree does not implement. The
+        port-code check (`ported`) is what keeps a registered implementation the decomp index never
+        listed blocking — `0x29D04` and `0x3E484` (with `0x28D68`/`0x3E4C4` the E2-class handler
+        entries `fn_register`ed by port/src/game/actors.c) read `e2-field` from `class_of` yet have a
+        C body, so a row of their own can exist and the five rows `fighter_19020`, `fighter_35050`,
+        `fighter_think_side`, `fighter_pass_a`, `fighter_pass_a_al` stay open on them."""
+        return (mode == "allow" and self.class_of(addr) is not None and addr not in self.ported)
+
 
 def non_portable(root=ROOT):
-    """The repo's NonPortable table (record §J1): tools/port_classification.txt and the decomp index
-    port/decomp/prage.functions.csv. 4 of the index's 1207 entries are not in `port/src/symbols.h`
-    (they are at or above RUNTIME_BASE, so the two agree on every address the rule can excuse)."""
+    """The repo's NonPortable table (record §J1): tools/port_classification.txt, the decomp index
+    port/decomp/prage.functions.csv, and the port tree's own registry (`port/src`'s `fn_register`
+    calls and column-0 `/* 0xADDR` headers, symbols.h excluded). 4 of the index's 1207 entries are
+    not in `port/src/symbols.h` (they are at or above RUNTIME_BASE, so the two agree on every address
+    the rule can excuse)."""
     classified = {}
     with open(os.path.join(root, "tools", "port_classification.txt")) as f:
         for line in f:
@@ -34272,7 +34294,16 @@ def non_portable(root=ROOT):
                 classified[int(line.split()[0], 16)] = line.split()[1]
     with open(os.path.join(root, "port", "decomp", "prage.functions.csv"), newline="") as f:
         functions = frozenset(int(r["entry"], 16) for r in csv.DictReader(f) if "::" not in r["entry"])
-    return NonPortable(classified, functions)
+    ported = set()
+    for ext in ("c", "h"):
+        for path in glob.glob(os.path.join(root, "port", "src", "**", "*." + ext), recursive=True):
+            if path.endswith("symbols.h"):
+                continue
+            with open(path, errors="ignore") as f:
+                text = f.read()
+            ported |= {int(m, 16) for m in re.findall(r"fn_register\(\s*0x([0-9A-Fa-f]+)", text)}
+            ported |= {int(m, 16) for m in re.findall(r"^/\* 0x([0-9A-Fa-f]{4,6})\b", text, re.M)}
+    return NonPortable(classified, functions, frozenset(ported))
 
 
 def closed_rows(funcs, verdicts, outside=None):
@@ -34281,17 +34312,17 @@ def closed_rows(funcs, verdicts, outside=None):
     deep, record §E3.6). The excused callee (track J j1, record §J1) is an *allow-mode* callee
     outside the portable set: its bytes already run on both sides inside the row, and its own row can
     never exist, because the address is `runtime` (>= RUNTIME_BASE), host-owned/deferred
-    (tools/port_classification.txt) or one the decomp index never lists as a function (E2's field).
-    A recorded *stub* outside the portable set still keeps the row open: the declaration it applies
-    is exactly what a row of its own would verify. A ported function with no row of its own (the 8
-    named gaps) is in the portable set and always keeps the row open. `outside` is `non_portable()`;
-    a flipped `NonPortable` compares under a mutated class entry. Rows with no callee are counted
-    apart, so they cannot make the figure look closer than it is (record §E3.4)."""
+    (tools/port_classification.txt) or one the decomp index never lists as a function (E2's field) —
+    *and* the port tree does not implement it (`NonPortable.excused`). A recorded *stub* outside the
+    portable set still keeps the row open: the declaration it applies is exactly what a row of its
+    own would verify. A ported function with no row of its own (the 8 named gaps) is in the portable
+    set and always keeps the row open. `outside` is `non_portable()`; a flipped `NonPortable`
+    compares under a mutated class entry. Rows with no callee are counted apart, so they cannot make
+    the figure look closer than it is (record §E3.4)."""
     outside = non_portable() if outside is None else outside
     with_callees = [r for r in funcs if r.callees]
     closed = [r for r in with_callees if r.verdict == "VERIFIED"
-              and all(verdicts.get(a) == "VERIFIED"
-                      or (mode == "allow" and outside.class_of(a) is not None)
+              and all(verdicts.get(a) == "VERIFIED" or outside.excused(a, mode)
                       for a, mode in r.callees)]
     return closed, with_callees
 
@@ -34370,14 +34401,15 @@ def main(argv=None):
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
-          "none; an allow-mode callee outside the portable set - runtime >= 0x%X, host-owned/deferred in "
-          "tools/port_classification.txt, or an address the decomp index never lists as a function - does not "
-          "keep a row open, while a recorded stub and a ported function without a row do: record J §J1). "
-          "Claim: equivalence on the exercised blocks and inputs only, each function with its callees "
-          "stubbed or run as stated." % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
-                                         "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
-                                         if args.self_check else "", len(gaps), len(closed), len(with_callees),
-                                         len(funcs) - len(with_callees), RUNTIME_BASE))
+          "none). The closure rule (record J §J1): an allow-mode callee outside the portable set - runtime "
+          ">= 0x%X, host-owned/deferred in tools/port_classification.txt, or an address the decomp index "
+          "never lists as a function and the port tree does not implement (no fn_register, no `/* 0xADDR` "
+          "header) - does not keep a row open, while a recorded stub or real callee and a ported function "
+          "without a row do. Claim: equivalence on the exercised blocks and inputs only, each function with "
+          "its callees stubbed or run as stated." % (
+              len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
+              "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants)) if args.self_check else "",
+              len(gaps), len(closed), len(with_callees), len(funcs) - len(with_callees), RUNTIME_BASE))
     return 1 if bad or missed else 0
 
 
