@@ -113,7 +113,7 @@ replayed chain meets — plus the new row's own entry:
   `call 0x62003` (0x1B059 + 0x46FAA = 0x62003) — as §G1 stated. The count EDX is fread's EAX
   (`89 C2` 0x1B01C), and the model answers the short count for a short file (§F.1), so the arm is
   reachable under the file model: l6 states a 0x7F7-byte file (one byte short of the 0x7F8 the body
-  requests at `mov ebx,0x7f8` 0x1B00B / `mov edx,1` 0x1B00C) and the run terminates —
+  requests at `mov ebx,0x7f8` 0x1B006 / `mov edx,1` 0x1B00B) and the run terminates —
   `("exit", 1)`, `terminate with code 1 at 0x62723`, opens `[(b"cmos", b"rb")]` (probe, and the row
   with the case in it: 11/11 blocks).
 - The save arm `0x1B0F7` is **not** reachable with the file model as built — named, not poked. Its
@@ -235,10 +235,16 @@ the conversion (the SC mutant catch-set pins pass unchanged); `PR_ORACLE_REQUIRE
 — `all checks passed` (no `port/src` byte changed: the batch's C edit is the test-only diff_runner.c
 binding and its table entry).
 
-## §G3 — the six non-rows (lane A task 3; batch g3aa lands the first)
+## §G3 — the six non-rows (lane A task 3; batches g3aa + g3b land all six)
 
-**Rows landed: 0x500BB** (`dpmi_clock_read`). The other five (`0x1B544` resident arm, `0x29D60`,
-`0x2EA30`, `0x32BAC`, `0x2EA64`) stay pending with task 3.
+**Rows landed: all six.** `0x500BB` (`dpmi_clock_read`, batch g3aa), and with batch g3b:
+`0x1B544` (`res_resolve`, resident arm only), `0x29D60` (`hook_noop_29d60`), `0x2EA30`
+(`interrupt_lock`), `0x32BAC` (`hit_sound`), `0x2EA64` (`ret_noop_2ea64`). §C3g.7's named
+non-rows are now rows; the runtime non-rows (0x5D812, 0x5DEED, the AIL wrappers — all
+`>= 0x5D000`, host libc per AGENTS.md, not porting targets) and the named gaps stay as they were.
+The ported-function unrowed count drops 14 -> 8 (the 8 named gaps).
+
+### Batch g3aa — 0x500BB (`dpmi_clock_read`)
 
 - **The bytes** (the fixup-applied image, capstone at 0x500BB): `a1 00 15 10 00 c3` =
   `mov eax,[0x101500]; ret` — exactly the §H.2 claim, re-derived here. A leaf: it reads no register
@@ -265,6 +271,140 @@ binding and its table entry).
 - **Allow callers are untouched**: rows that `allow_calls=(0x500BB,)` keep running it from its bytes
   (allow mode needs no seam, record §E3.10); the row only records the callee verdict — the precedent
   is 0x33950, allowed and rowed (`fighter_ctx_same`).
+
+### Batch g3b — the remaining five, in order (bytes re-derived with capstone on the
+fixup-applied image `/tmp/pr_g3a_img.bin`, never from the dispatch one-liners)
+
+**`0x1B544` — `res_resolve`, the RESIDENT ARM ONLY.** Bytes `53 51 52 56 89 c6 c1 e8 17 8d 0c 85
+00 00 00 00 01 c8 8b 0d e0 14 10 00 c1 e0 02 89 f2 01 c1 81 e2 ff ff 7f 00 f7 41 0c 00 00 00 01
+74 0a 8b 41 10 01 d0 5e 5a 59 5b c3`: index = handle >> 23, entry = [0x1014E0] + index*0x14,
+`test [entry+0xc],0x1000000` at 0x1B569 (the PRELOAD/resident bit), resident arm 0x1B572
+`mov eax,[entry+0x10]; add eax,(handle & 0x7fffff)`, four pops, `ret`. Claim: EAX at the return —
+the resolved pointer, payload base + the handle's low 23 bits — against the port C's `res_resolve`
+(res.c:300) reported as its mem[] offset (camera_res_off's convention); mask full (the callers
+dereference it, 0x1818D `mov ecx,[eax+2]` — camera_resolve_sprite's analysis). All cases seed the
+resident bit with `d4b_res()`, so the port's guards (index<count, data!=0, PRELOAD skips present)
+never fire and the arms agree. The non-resident arm — the nine leaders 0x1B57C..0x1B5E0, the clock
+stamp `call 0x500bb` (0x1B58E/0x1B5EE), the allocate arm `call 0x1e774` (0x1B5BD), the fatal
+`call 0x1d290` (0x1B5DB), the present tail `call 0x1b3ac` (0x1B5E9), which res.c's PORT comment
+says have no port analogue — stays named unhit via `D4B_RES_SLOW` (whose wording this batch
+updated for the rowed state). Cases c0..c3: entries 1/2 × offsets 0x40/0x100/0x400001 (bit 22
+set)/0; mutants @idx22 (index from bit 22 — caught c0..c3), @noand (offset unmasked — caught
+c0..c3), @base (offset dropped — caught c0/c1/c2, passes c3 by design). Blocks 2/11, 9 named.
+
+**`0x29D60` — `hook_noop_29d60`, a bare `ret`.** One byte `c3`: reads nothing, writes nothing,
+pops only the return address; no `call` — no seam, no callee machinery. The hook table 0x104AE4
+stores it (0x43738/0x444C8, flow.c) and the port registers NO function at 0x29D60 — the fn_resolve
+miss is a no-op (flow.c:1059 "a miss is a no-op only for 0x29D60 and 0x5D812"), which IS the bare
+ret's semantics: the caller's registers survive. The binding mirrors that: entry EAX passthrough,
+nothing written; mask full (the `b_d1d_4f1d0` precedent — "the void C function cannot change its
+caller's value; record §1"). Cases 0 / 0x00C0FFEE / 0xFFFFFFFF; @zero caught by c1/c2 (c0 agrees
+at 0 by design), @scrub (high half dropped) caught by c1/c2. Blocks 1/1.
+
+**`0x2EA30` — `interrupt_lock`, the inert lock.** Bytes: `push edx; mov dh,[0xbcD60]; mov dl,dh;
+cmp eax,0x2700` — the restore arm returns the OLD byte (`xor eax,eax; mov al,dh` ... `mov al,dl`)
+and 0x2EA49 `xor dh,dh` clears the lock iff it was 1; the request arm `cmp eax,1`/0x2EA56
+`mov dh,1` sets it and returns the NEW byte; any other request leaves DH alone. Both join at
+0x2EA5C `mov [0xbcD60],dh; pop edx; nop` and fall through the SHARED `ret` at 0x2EA64 (which is
+why 0x2EA64 is separately callable). ONE global, 0xbcD60 (DS_000BCD60 — symbols.h names it,
+port/src uses it NOWHERE); EDX preserved by the push/pop pair; the returned dword always
+zero-extended. The port models the callee inert at every site (actors.c:1124/1164,
+fighter.c:2495/2502, flow.c:197) — the row compares the INERT binding (entry EAX passthrough,
+nothing written) against the original in the agreement region only: r0 acquire-while-held (req 1,
+lock 1), r1 restore-of-clear (req 0x2700, lock 0), r2 other-request (req 0x1234, lock 0x34). The
+region is exact: a case compares only if the original leaves every byte at its start value AND
+returns the lock byte, whose only value equal to the entry request's low byte is the one each
+case seeds (restore of a 0x80 lock, e.g., stores back without changing memory but returns 0x80
+where the inert passthrough reports 0 — an EAX-only disagreement; the clear of a SET lock changes
+the byte — a memory disagreement). Mask 0xFF is therefore the widest mask the inert port supports:
+it compares the returned lock BYTE (r0 1, r1 0 = the low byte of 0x2700, r2 0x34 = the low byte
+of 0x1234) and nothing above it. @store1/@store0 (inert bindings that store the lock anyway) are
+caught by r1/r2 and r0/r2 as `byte` kinds; @zero caught by r0/r2 as `eax`. Block 0x2EA49 (the
+clear of a SET lock) is the one block whose store CHANGES memory — the inert port cannot agree
+with any case reaching it, so it is named unhit with that byte evidence, not claimed. 7/8 blocks,
+mask 0xFF.
+
+**`0x32BAC` — `hit_sound`, a bare `ret`.** One byte `c3` at 0x32BAC — NOT the tick-read the
+dispatch one-liner claimed: the §H.2:169 passage is about 0x500BB inside the 0x2EA78 key-loop
+analysis and track H never mentions 0x32BAC; raw wins. (The 44-byte extent record §0.3.4 gives
+0x32BAC is the orphaned 0x32BB0 body, whose callers are elsewhere — fighter.c:4334 already carries
+this finding.) Unlike 0x29D60/0x2EA64 this non-row HAS a ported C — `hit_sound` (fighter.c:4338,
+PR_SEAM-armed, inert body, "the raw entry the chain calls is a one-byte RET") — so the binding
+CALLS it and reports the entry EAX; the seam records nothing (this row has no stub of 0x32BAC,
+seam_hook passes through — the green run shows the empty call list agrees both sides). Mask full
+(the d1d passthrough precedent). Cases 0 / 7 (a channel byte, the callers pass `DSB(slot+0x7A)`) /
+0xFFFFFFFF; @zero caught by c1/c2, @plus1 caught by all three (c2's wraps to 0). Blocks 1/1.
+
+**`0x2EA64` — `ret_noop_2ea64`, a bare `ret`.** One byte `c3`; the `pop edx` at 0x2EA62 and `nop`
+at 0x2EA63 belong to 0x2EA30's body, which falls through — entered DIRECTLY, as its callers do,
+only `ret` runs. Its references are exactly 8 direct `call`s and nothing else (Ghidra: 8
+UNCONDITIONAL_CALL xrefs, zero data xrefs) — four in the 0x2B2A0 dispatcher
+(0x2B308/0x2B52F/0x2B771/0x2B8E8), two in 0x2FA40 (0x2FAEC/0x2FD75) and two in 0x2FFC4
+(0x300B0/0x30486); 0x2EA65's `8d 40 00` is alignment the ret never reaches. The rows of the
+three ported callers (`spawn_anim_opcode`'s `allow_calls`, `menu_step`/`menu_run`'s
+`D5G_MENU_ALLOW`) already run it from its bytes, so this row only adds the callee's VERDICT to
+the closure ledger — and the ledger rule counts an allowed callee by its row (record §E3.4),
+which is why `spawn_anim_opcode`, open on {0x29D60, 0x2EA64}, closed last, with this landing.
+The port has no C at 0x2EA64 — all eight call sites inline the elision (actors.c:2369/2466/
+2559/2619, menu.c:196/246/322/392) — so the binding mirrors that: entry EAX passthrough, nothing
+written; mask full. Cases 0 / 0x00C0FFEE / 0xFFFFFFFF; @zero and @scrub caught by c1/c2.
+Blocks 1/1.
+
+**Batch g3b closure arithmetic (measured on the lane, full `--self-check`, each row's delta
+enumerated from the printed table by callee verdict).** Counter 1002/14887/666/170 ->
+1007/14899/716/175: functions +5 (the five rows), mutants +12 (3+2+3+2+2), counted-apart +5
+(none of the five rows has a callee; the with-callees count stays 832), named gaps 1. Closed
+rows per row, in landing order: **0x1B544 +22** (camera_box_clip/overlap/project/projectile_hit/
+projectile_hit_real/resolve_sprite/sprite_height, effects_spawn/darken/pulse/scroll,
+fighter_spawn_slot, gfx_flush_palette, palette_acquire/reflow, render_list, render_scroll_scene_a/b,
+sprite_node_build/_1c528, text_blit_glyph/_rr); **0x29D60 +15** (fight_char_screen_setup,
+flow_challenge_open, flow_round_hud_init, frontend_continue_tail/pause_tail, game_mode_0e_step/_rr,
+game_mode_23_step, game_state_6/_rr, game_state_select/_rr, game_state_step_high,
+game_state_timer_exit, hit_reaction_apply); **0x2EA30 +6** (actor_alloc, fighter_state_33b00,
+flow_challenge_poll, frontend_input_reset, release_record, render_scroll_setup); **0x32BAC +6**
+(frontend_mode12_darken_or_tally/_rr, game_mode_09_step/_rr, hit_3d004, hit_chain_resolve);
+**0x2EA64 +1** (spawn_anim_opcode — it blocked on {0x29D60, 0x2EA64} and closed only with the
+second). The static `closed_rows` replay over the g3aa-base table (flip-one-at-a-time) predicted
++22/+15/+6/+6/0 and +50 in all-five; the sequential measurement matched every row (0x2EA64's
+measured +1 = the replay's all-five-minus-flip-0x2EA64 difference, the spawn_anim_opcode pair-up).
+No closure was lost anywhere (each row's run closed a superset of the previous).
+
+**The corrected expectation, stated exhaustively.** The per-row closure deltas above are the
+measured truth; the dispatch one-liners' expectations were not all right — the "exactly ONE
+dependent closes on 0x29D60 (game_mode_23_step)" claim measured **+15**, and the brief's
+"tick-read twin of 0x500BB" for 0x32BAC is wrong on the bytes (a bare ret). What the static
+analysis at head got right: the six rows' dependents do NOT all close. The +77 measured across
+all six rows (27 in g3aa + 50 in g3b, 639 -> 716) is EXACTLY the set of dependent rows whose
+blocker set was some subset of the six. The still-open census, measured from the final table:
+**116 open with-callees rows, ZERO of them list one of the six as an open blocker** — each still
+has an unrowed callee. **96 of the 116 have at least one unrowed >=0x5D000 runtime callee**
+(79 block on those alone): the complete measured set is 0x5D218, 0x5D28F, 0x5D812, 0x5D86A, the
+AIL wrappers 0x5DC0F/0x5DC2A/0x5DC4D/0x5DC70/0x5DC8B/0x5DCA6/0x5DCC5/0x5DCE4/0x5DD03/0x5DEAF/
+0x5DECA/0x5DEED, 0x61A4C/0x61A70, the exit chain 0x62002/0x62003/0x6201B/0x6C4CF, and the
+WATCOM/DOS-4GW helpers 0x653A1/0x653ED/0x65431/0x65490/0x654C7/0x65533/0x65546/0x655FF/0x65624/
+0x6C8EB/0x6CB6C/0x6CC9F/0x6CCFA/0x6CE84/0x72CD6/0x72D20 — host libc per AGENTS.md, not porting
+targets. **The other 20 block only on unrowed sub-0x5D000 targets**: the named item stub 0x2CB74
+(menu_step, menu_run — the only two of the 47 0x500BB dependents not blocked on a >=0x5D000
+callee), the host-owned classified pair 0x10D34/0x4FB98 (game_shutdown; 0x10D0C/0x1C308 likewise
+co-block rows that also have runtime callees), and call targets never listed as functions in the
+decomp index — E2 triage's field: 0x24568/0x24804/0x40CB0 (the game_mode_05/0d/32 rows),
+0x29D04/0x3D0BC/0x3E484/0x3E4C4 (the fighter_19020/35050/pass_a(_al)/state_350d0/state_3531c/
+think_side/winner_body rows) and 0x51E58 (sprite_blit; the same class — 0x521F0/0x5222C/0x529A0/
+0x529C4/0x52A18/0x57F80/0x58564/0x5859C/0x58CBD/0x58D2C/0x58D4C/0x58D90 plus 0x5D218 — keeps
+sprite_blit_aperture open, and 0x4F5C8 co-opens game_loop). The aperture store 0x501A3
+(classified host-owned, record §K9.1) never stands alone: it co-blocks game_loop (with the
+0x4F5C8 stub and the 0x5D812 allow) and the
+config_screen_wait pair (with the 0x655FF allow). Of the 20 dependents still open after g3aa,
+exactly ONE closed in this batch — game_mode_23_step (it blocked on {0x500BB, 0x29D60}); the
+other 19 all still have >=0x5D000 blockers (snd_sample_queue on the AIL wrappers, the
+game_frame_keys pair and game_quit_prompt on 0x65431, the fight_char_text_clear/blink/
+team_text_blink family and game_mode_25_reveal on 0x65624, frontend_mode12_advance on
+0x65490/0x654C7, flow_26d4c/config_key_name/svc_buttons_draw on the 0x65533/0x65546/
+0x6Cxxx/0x72xxx family, the config_screen_wait pair on 0x655FF), except menu_step and menu_run,
+blocked on 0x2CB74 alone. No further closure can come from the six rows: the closure-rule
+amendment (counting a row closed when its only open callees are runtime/gap callees that are run
+from bytes in allow mode) is a separate decision (recon-01 item 4) and stays open after this
+batch.
 
 ## §G4 — game_loop's RNG pokes (pending, lane A task 4)
 
@@ -408,7 +548,7 @@ presented frames; every `fn-miss` set on its pinned known-set, `all checks passe
 The per-frame tick log the brief asks for is the driver's own `frames.txt` tick
 column (one line per presented frame: `index f=… tick=… mode=…`) — no extra
 instrumentation was needed, and its ticks advance **exactly +1 per frame** across
-every stretch (idle-loss 1665..1670: 0xCCF..0xCD3; U9 215..221: 0x4E1..0x4E7; U10
+every stretch (idle-loss 1665..1670: 0xCCE..0xCD3; U9 215..221: 0x4E1..0x4E7; U10
 213..221: 0x4DA..0x4E2).
 
 **The composite anatomy, re-measured per row against these dumps** (a row-run pass:

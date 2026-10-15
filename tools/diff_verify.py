@@ -19845,7 +19845,7 @@ D3A_SPECS += [
 D3A_SPECS += [
     # 0x4F1E4 frontend_input_reset: no argument. 0x2EA30(0x2700), the byte 0x104B15 = 0 (DL
     # across the call), 0x2EA30(the first call's EAX). 0x2EA30 is the interrupt lock on the byte
-    # 0xBCD60 (a named non-row, allowed; the port does not model it): the first call clears a 1
+    # 0xBCD60 (rowed by track G g3, §G3, allowed; the port does not model it): the first call clears a 1
     # and returns the old byte, the second puts a 1 back, so the byte ends as it started in each
     # of the three cases (0, 1, another value). Mask 0: record §1.
     Spec("frontend_input_reset", 0x4F1E4, [
@@ -22742,8 +22742,9 @@ def d4b_decode_case(cid, frame, count, table, width=20, stream=None, spr=D4B_SPR
 D4B_ACCUM = E.Call(0x41030, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
 # 0x1B544's arms past its preloaded fast path (0x1B572): 0x16308 tail-jumps it (`jmp 0x1b544`
 # 0x16316), so the scan counts its blocks as 0x16308's. The fixture's entries are preloaded.
-D4B_RES_SLOW = {a: "0x1B544's non-resident arm (the tail-jumped host resolver, a named non-row; the "
-                   "fixture's entries are preloaded, `test [ecx+0xc],0x1000000` 0x1B569)"
+D4B_RES_SLOW = {a: "0x1B544's non-resident arm (the tail-jumped host resolver; the resident-arm "
+                   "row 0x1B544 keeps this arm named unhit, as here the fixture's entries are "
+                   "preloaded, `test [ecx+0xc],0x1000000` 0x1B569)"
                 for a in (0x1B57C, 0x1B585, 0x1B58E, 0x1B5A6, 0x1B5AF, 0x1B5C2, 0x1B5CB, 0x1B5D4, 0x1B5E0)}
 
 D4B_SPECS += [
@@ -24595,7 +24596,7 @@ D4D_SPECS += [
     # flag 0x52106(0) (a stub: `in`/`out`) and 0x336C0, or the 0xFA00-byte copy [0xE87A0] ->
     # [0xE87A4]; the byte 0x105BED = 1. The lock byte 0xBCD60 is 0 or 0x80: with a 1 (the image's
     # value) 0x2EA30 holds it at 0 across the body, which every stub call's memory shows and the
-    # port, which does not model the lock, cannot (the named non-row 0x2EA30; as release_record's
+    # port, which does not model the lock, cannot (rowed by track G g3, §G3; as release_record's
     # row). Full mask with the binding's lock byte: see the binding.
     Spec("actors_reset_al", 0x2BAF4, [
         Case("t0", {"eax": 1}, d4d_reset_case(0)),
@@ -33981,6 +33982,121 @@ G3AA_SPECS = [
     ], mutants=("@off4", "@zero")),
 ]
 D1_SPECS += G3AA_SPECS
+# ---- track G batch g3b (record 2026-10-14-reverse-g §G3): the five remaining named non-rows ----
+# 0x1B544 res_resolve, the RESIDENT ARM ONLY (bytes `53 51 52 56 89 c6 c1 e8 17 ..` at 0x1B544,
+# fixup-applied image): `esi=eax; eax>>=0x17; eax=5*eax (0x1B54D lea+0x1B554
+# add); ecx=[0x1014e0]+eax*4` — 20-byte entries; `edx = esi & 0x7fffff` (0x1B563); `test
+# [ecx+0xc],0x1000000` (0x1B569) and the resident arm 0x1B572 `mov eax,[ecx+0x10]; add eax,edx`,
+# four pops (ebx/ecx/edx/esi pushed at 0x1B544..0x1B547), `ret`. The row compares EAX at the
+# return — the resolved pointer, payload base + the handle's low 23 bits — with the port C's
+# res_resolve (res.c:300): index < count and payload != 0 are the port's guards (its PORT comment:
+# the payload is resident at init), and PRELOAD set (the fixture) skips the port's present branch,
+# so the arms agree on every case's value. Mask full: the callers dereference it (0x1818D
+# `mov ecx,[eax+2]` after 0x16308's tail jump — camera_resolve_sprite's analysis). The nine
+# non-resident block leaders (0x1B57C..0x1B5E0) stay named unhit with their byte evidence —
+# D4B_RES_SLOW, whose wording this row updates: the arm calls the host loader and returns (clock stamp
+# 0x500BB at 0x1B58E/0x1B5EE, the allocate call 0x1E774 at 0x1B5BD, the fatal 0x1D290 at 0x1B5DB,
+# the present call 0x1B3AC at 0x1B5E9), which the port keeps out of this function's resident
+# claim (res.c PORT: "0x1B5A6's allocate arm (0x1E774) and 0x1B5D4's fatal have no port
+# analogue"). Cases: entry 1 and entry 2 of d4b_res()'s table (offsets 0x40, 0x100, 0x400001 —
+# bit 22 set, and 0); @idx22 shifts the index from 22 not 23, @noand skips the 0x7FFFFF mask,
+# @base drops the offset (passes c3, whose offset is 0 — c3 proves the row passes the zero
+# offset, the nonzero cases prove it adds one).
+G3B_SPECS = [
+    Spec("res_resolve", 0x1B544, [
+        Case("c0", {"eax": 0x00800040}, d4b_res()),
+        Case("c1", {"eax": 0x01000100}, d4b_res()),
+        Case("c2", {"eax": 0x00C00001}, d4b_res()),
+        Case("c3", {"eax": 0x01000000}, d4b_res()),
+    ], eax_mask=0xFFFFFFFF, unhit_named=D4B_RES_SLOW, mutants=("@idx22", "@noand", "@base")),
+    # 0x29D60: one byte `c3` at 0x29D60 (fixup-applied image) = the bare `ret` — it reads no
+    # register, writes nothing, and its `ret` pops only the return address (c3, pop 4). Leaf: no
+    # seam, no call set (§E3.10 items 1-2 vacuous). The hook table 0x104AE4 stores it
+    # (0x43738/0x444C8, flow.c); the port registers no function there, so fn_resolve misses and
+    # the indirect call is SKIPPED (flow.c:1059 "a miss is a no-op only for 0x29D60") — the port
+    # model is "nothing happens, the caller's registers survive", exactly the bare ret. The
+    # binding mirrors it: report the entry EAX and write nothing; mask full is the d1d precedent
+    # (diff_runner.c b_d1d_4f1d0: "the void C function cannot change its caller's value; record
+    # §1") — the row compares EAX at the return with the entry EAX and no byte of memory changed.
+    # @zero returns 0 (caught by c1/c2 — c0 agrees at 0 by design), @scrub drops the high half
+    # (caught by c1/c2). Blocks 1/1.
+    Spec("hook_noop_29d60", 0x29D60, [
+        Case("c0", {"eax": 0x00000000}),
+        Case("c1", {"eax": 0x00C0FFEE}),
+        Case("c2", {"eax": 0xFFFFFFFF}),
+    ], mutants=("@zero", "@scrub")),
+    # 0x2EA30 interrupt_lock (bytes `52 8a 35 60 cd 0b 00 ..`, fixup-applied image): `push edx;
+    # mov dh,[0xbcD60]; mov dl,dh; cmp eax,0x2700`. Restore arm (0x2EA40): EAX becomes the OLD byte
+    # (`xor eax,eax; mov al,dh`), and 0x2EA49 `xor dh,dh` clears the lock only if it was 1, then
+    # `mov al,dl` re-reports the old byte. Request arm (0x2EA51): `cmp eax,1` and 0x2EA56 `mov dh,1`
+    # sets the lock, then `mov al,dh` returns the NEW byte; any other request leaves DH alone. Both
+    # join at 0x2EA5C `mov [0xbcD60],dh; pop edx; nop` and fall through the shared `ret` at 0x2EA64.
+    # ONE global, 0xbcD60 (DS_000BCD60 — symbols.h names it; port/src uses it NOWHERE: the port has
+    # no lock — every call site elides it inert: actors.c:1124/1164, fighter.c:2495/2502, flow.c:197,
+    # flow.h:336, render.c:362), and EDX is preserved by the push/pop pair; the returned dword is
+    # always zero-extended (`xor eax,eax; mov al,..`). THE CLAIM: the row compares NO memory changed
+    # and the EAX low byte — the original against the INERT port binding (report the entry EAX,
+    # write nothing) in the only agreement region the port has: the request classes that leave the
+    # byte at its seed — r0 acquire-while-held (req 1, lock 1: stores 1 back, returns 1), r1
+    # restore-of-clear (req 0x2700, lock 0: returns 0, the low byte of its own request), r2
+    # other-request (req 0x1234, lock 0x34: returns the seed byte, its low byte agreeing with the
+    # request's). Mask 0xFF states the narrowness: the returned lock BYTE is what 0x4F1E4's second
+    # request feeds back (frontend_input_reset's row), the upper half the restore arm zeroes has no
+    # inert-port counterpart to compare (the port never calls — that is the port's divergence, as
+    # the callers' rows say: "the port, which does not model the lock, cannot", actors_reset_al).
+    # @store1/@store0 are inert bindings that store the lock anyway — caught where the store would
+    # change the byte (r1/r2 for @store1, r0/r2 for @store0); @zero returns 0, caught by r0/r2's
+    # EAX byte. 0x2EA49 (clear of a SET lock) is the one block whose store changes memory; the inert
+    # port cannot agree with any case that reaches it, so it is named unhit, not claimed.
+    Spec("interrupt_lock", 0x2EA30, [
+        Case("r0", {"eax": 0x00000001}, {0x000BCD60: b"\x01"}),
+        Case("r1", {"eax": 0x00002700}, {0x000BCD60: b"\x00"}),
+        Case("r2", {"eax": 0x00001234}, {0x000BCD60: b"\x34"}),
+    ], eax_mask=0xFF,
+       unhit_named={0x2EA49: "the restore arm's clear of a SET lock: `xor dh,dh` reached only when "
+                             "the byte is 1 and req == 0x2700 — its `mov [0xbcD60],dh` at 0x2EA5C "
+                             "then CHANGES memory (1 -> 0) and the inert port (no lock anywhere in "
+                             "port/src) has nothing to compare, so no case reaches it; the callers' "
+                             "rows keep the byte at its seed for the same reason (frontend_input_"
+                             "reset pairs the calls, actors_reset_al and d4b_setup seed 0/0x80)"},
+       mutants=("@store1", "@store0", "@zero")),
+    # 0x32BAC hit_sound: one byte `c3` at 0x32BAC (fixup-applied image) = the bare `ret` — reads no
+    # register, writes nothing, pops only the return address; the 44-byte extent record §0.3.4 gives
+    # it is the ORPHANED 0x32BB0 body (its own function, callers elsewhere — fighter.c:4334). The
+    # dispatch one-liner called this "the tick-read twin of 0x500BB" — the BYTES say bare ret (raw
+    # wins; 0x500BB is the only `mov eax,[0x101500]; ret`, §H.2:169-171 is about 0x500BB inside the
+    # 0x2EA78 key loop, not about 0x32BAC, which track H never mentions). The ported C is hit_sound
+    # (fighter.c:4338, PR_SEAM-armed, inert body) — the binding CALLS it and reports the entry EAX;
+    # the seam records nothing (the row has no stub of 0x32BAC, seam_hook passes through). The row
+    # compares: EAX at the return equals the entry EAX (mask full — the void C cannot change its
+    # caller's value, the b_d1d_4f1d0 precedent, record §1) and no memory byte changed. @zero
+    # returns 0 (caught by c1/c2 — c0 agrees at 0 by design), @plus1 returns entry+1 (caught by all
+    # three: c2's wraps to 0, which is not 0xFFFFFFFF). Blocks 1/1.
+    Spec("hit_sound", 0x32BAC, [
+        Case("c0", {"eax": 0x00000000}),
+        Case("c1", {"eax": 0x00000007}),
+        Case("c2", {"eax": 0xFFFFFFFF}),
+    ], mutants=("@zero", "@plus1")),
+    # 0x2EA64: one byte `c3` at 0x2EA64 (fixup-applied image) = the bare `ret`. The bytes before it
+    # (0x2EA62 `pop edx`, 0x2EA63 `nop`) belong to 0x2EA30's body, which FALLS THROUGH this ret —
+    # entered directly, as its callers do, only `ret` runs: it reads no register, writes nothing,
+    # and pops only the return address (c3, pop 4); 0x2EA65's `8d 40 00 lea eax,[eax]` is alignment
+    # the ret never reaches. Its references: 8 direct `call`s and nothing else (Ghidra: 8
+    # UNCONDITIONAL_CALL xrefs, zero data xrefs) — four in the 0x2B2A0 dispatcher
+    # (0x2B308/0x2B52F/0x2B771/0x2B8E8), two in 0x2FA40 (0x2FAEC/0x2FD75) and two in 0x2FFC4
+    # (0x300B0/0x30486). The port has no C at 0x2EA64 — all eight call sites inline the elision
+    # (actors.c:2369/2466/2559/2619, menu.c:196/246/322/392) — so the binding
+    # mirrors the port model: report the entry EAX, write nothing. The row compares: EAX at the
+    # return equals the entry EAX (mask full, the b_d1d_4f1d0 precedent — the elided call cannot
+    # change the caller's value) and no memory byte changed. @zero returns 0 (caught by c1/c2 —
+    # c0 agrees at 0 by design), @scrub drops the high half (caught by c1/c2). Blocks 1/1.
+    Spec("ret_noop_2ea64", 0x2EA64, [
+        Case("c0", {"eax": 0x00000000}),
+        Case("c1", {"eax": 0x00C0FFEE}),
+        Case("c2", {"eax": 0xFFFFFFFF}),
+    ], mutants=("@zero", "@scrub")),
+]
+D1_SPECS += G3B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
