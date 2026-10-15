@@ -34060,6 +34060,23 @@ G3B_SPECS = [
                              "rows keep the byte at its seed for the same reason (frontend_input_"
                              "reset pairs the calls, actors_reset_al and d4b_setup seed 0/0x80)"},
        mutants=("@store1", "@store0", "@zero")),
+    # 0x32BAC hit_sound: one byte `c3` at 0x32BAC (fixup-applied image) = the bare `ret` — reads no
+    # register, writes nothing, pops only the return address; the 44-byte extent record §0.3.4 gives
+    # it is the ORPHANED 0x32BB0 body (its own function, callers elsewhere — fighter.c:4334). The
+    # dispatch one-liner called this "the tick-read twin of 0x500BB" — the BYTES say bare ret (raw
+    # wins; 0x500BB is the only `mov eax,[0x101500]; ret`, §H.2:169-171 is about 0x500BB inside the
+    # 0x2EA78 key loop, not about 0x32BAC, which track H never mentions). The ported C is hit_sound
+    # (fighter.c:4338, PR_SEAM-armed, inert body) — the binding CALLS it and reports the entry EAX;
+    # the seam records nothing (the row has no stub of 0x32BAC, seam_hook passes through). The row
+    # compares: EAX at the return equals the entry EAX (mask full — the void C cannot change its
+    # caller's value, the b_d1d_4f1d0 precedent, record §1) and no memory byte changed. @zero
+    # returns 0 (caught by c1/c2 — c0 agrees at 0 by design), @plus1 returns entry+1 (caught by all
+    # three: c2's wraps to 0, which is not 0xFFFFFFFF). Blocks 1/1.
+    Spec("hit_sound", 0x32BAC, [
+        Case("c0", {"eax": 0x00000000}),
+        Case("c1", {"eax": 0x00000007}),
+        Case("c2", {"eax": 0xFFFFFFFF}),
+    ], mutants=("@zero", "@plus1")),
 ]
 D1_SPECS += G3B_SPECS
 SPECS = [

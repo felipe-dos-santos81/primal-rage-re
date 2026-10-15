@@ -42654,6 +42654,12 @@ static void b_g3b_2ea30(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
 static void m_g3b_2ea30_store1(const u32 *r, u32 *eax) { DSB(0x000BCD60u) = 1u; *eax = r[R_EAX]; }
 static void m_g3b_2ea30_store0(const u32 *r, u32 *eax) { DSB(0x000BCD60u) = 0u; *eax = r[R_EAX]; }
 static void m_g3b_2ea30_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+/* 0x32BAC: the bare `ret` the port models as hit_sound (fighter.c:4338, inert). The binding CALLS
+ * the ported C — its PR_SEAM sees no stub for this row and passes through — and reports the entry
+ * EAX. @zero returns 0; @plus1 returns entry+1 (c2's wraps to 0, caught by every case). */
+static void b_g3b_32bac(const u32 *r, u32 *eax) { hit_sound(r[R_EAX]); *eax = r[R_EAX]; }
+static void m_g3b_32bac_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+static void m_g3b_32bac_plus1(const u32 *r, u32 *eax) { *eax = r[R_EAX] + 1u; }
 /* ---- g3b bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
@@ -58549,6 +58555,9 @@ static const binding_t k_bindings[] = {
     { "interrupt_lock@store1", m_g3b_2ea30_store1, 0x000000FFu },
     { "interrupt_lock@store0", m_g3b_2ea30_store0, 0x000000FFu },
     { "interrupt_lock@zero",   m_g3b_2ea30_zero,   0x000000FFu },
+    { "hit_sound",             b_g3b_32bac,        0xFFFFFFFFu },
+    { "hit_sound@zero",        m_g3b_32bac_zero,   0xFFFFFFFFu },
+    { "hit_sound@plus1",       m_g3b_32bac_plus1,  0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
