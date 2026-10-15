@@ -452,11 +452,27 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # appear in no capture frame; the capture has no S snapshot for f=0xC71..0xC73 (as at several
 # other mode changes, not all: record §U6.21). Why the original's scan-out shows three frames
 # is not isolated: a named gap with that evidence.
+# Track G g6 RE-MEASURED and RAISED this pin (record 2026-10-14-reverse-g §G6): the three-frame
+# scan-out is now isolated (the master loop's own gate 0x25643 / catch-up 0x256C5: mode-8 entry
+# iterations whose compute overruns an ISR tick skip their presents, and the re-opened presents
+# land sub-tick apart inside one 70.09 Hz scan; the loader re-sync hypothesis 0x1B45F/0x1B464
+# was tested and rejected on the tick 1:1 cadence and the byte-identical held raws) and capture
+# 2064 is allowed by name in SCAN3_ALLOWED (top rows 0..2 of port 1666/1665 held across raws
+# 5187..5189, pair (1669, 1670) rows 3..97/98..199, the 6301-frame dump's unique adjacent bind,
+# top sha 7bdf2c56.., §G6's table; per-frame per-bytes, fails on any mutation of a bound frame).
+# With it active every capture frame 90..7558 is explained and the first unexplained is 7559
+# (raw 12207): the first frame of content past the replayed script — the port's replay ends with
+# "0 restart(s) landed" and its last presented frame is f=0x207D, while the capture from 7557
+# (all-black, skipped) / 7558 (six non-black rows, still matched) goes on to the soft restart's
+# boot screens; the X record is ms=174412 f=0x207F step=4 end. How far the port got, not a
+# divergence (the gp-keys 1136 class, record §G5). Raise only when the script is lengthened
+# (gp_compare prints "improved: raise N").
 # Provenance: U4 pinned 203; U5 raised it to 787 (record 2026-10-01-gameplay-u5 §C5.12/§C5.13:
 # the 0x37A58 top wrap compares the frame byte rec+0x52, raw 0x37B03/0x37B08); 787 was the miss of
-# the then-unregistered move callback 0x23208 (divergence 2, record §G.24), ported by U6a.
+# the then-unregistered move callback 0x23208 (divergence 2, record §G.24), ported by U6a; U6a
+# pinned 2064 (record gameplay-u6 §U6.21); track G g6 raised it to 7559 with §G6's allowance.
 # Raise it when the frame claim improves (gp_compare prints "improved: raise N").
-GP_IDLE_LOSS_MIN_FIRST = 2064
+GP_IDLE_LOSS_MIN_FIRST = 7559
 # TRACE_MIN_FIRST: no traced difference over the whole replay, port against the capture:
 # gp_compare prints "0 differing through 8319 ... N = 8320 is the exact pin" (7973 frames compared,
 # f = 0x141..0x207F, i.e. decimal 321..8319; 26 f without a capture snapshot are not compared).
@@ -829,7 +845,24 @@ gp-modes-one: build
 # 2377/3162 -> 3503 (0 differing through 3502; N 3504 is unreachable, the replay's end).
 # MIN_FIRST stays 346 (the mode-8 long frame; 347 fails), MAX_START 100 (99 fails) and
 # MILESTONES 8 (9 unreachable).
-GP_WIN_MIN_FIRST = 346
+# Re-measured by track G g6 (record 2026-10-14-reverse-g §G6): the mode-8 three-frame scan-out at
+# capture 346 is ISOLATED (the 0x25643 gate's catch-up on the mode-8 entry's over-tick iterations;
+# the loader re-sync hypothesis tested and rejected on the tick 1:1 cadence and the byte-identical
+# held raws 2828/2829) and ALLOWED BY NAME in SCAN3_ALLOWED (top rows 0..4 = port 218's f=0x48A,
+# the screen held across raws 2827..2829; rows 5..199 = port 221's f=0x48D; the 1977-frame dump's
+# unique adjacent pair (220, 221); top sha 703828af..; ports 219/220 never blitted). With it active
+# every capture frame 100..2208 is explained (356 and 1374, §W.12's next two, are explained on the
+# current dump's replay — the P batches ported animation targets on that path since §W.12 measured;
+# per-frame re-attribution is not done here) and the first unexplained is 2209
+# (raw 4953): nearest port 1777 (f=0xBA1), rows 192..197, x 0..85 (166 px) — a 6-row strip whose
+# bytes (sha256 a886c0f3..) are IDENTICAL to gp-u10-ending's 2062 strip, and NO frame of the
+# 1977-frame dump holds them — including the loader/pump-hook samples of the mode-0x17→0x12 entry
+# (dumps 1775..1777 all at f=0xBA1 with its tick advancing 0xBFA→0xC00 inside the iteration — the
+# res.c stall shape — then one static image through f=0xBBF). The strip lands in the (0,192)
+# text-row region, but the port did dump that entry's sampled states and none matches: the cause
+# is NOT attributed here — a named gap, not §G6's scan-out class and not allowed. Pin 2210 fails, MAX_START 100 unchanged and
+# exact (99 fails), TRACE/WIN/MILESTONES unchanged (3503/3503/8).
+GP_WIN_MIN_FIRST = 2209
 GP_WIN_TRACE_MIN_FIRST = 3503
 GP_WIN_MAX_START = 100
 GP_WIN_MILESTONES = 8
@@ -882,7 +915,23 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # and 0x5D812 from frontend_mode_1b_step) and every pin above is exact and unchanged: frames 331
 # (332 fails), trace/win 9954 (9955 is unreachable, the replay's end), path 30 (31 unreachable),
 # MAX_START 83. TRACE/WIN are at the replay's end, so they cannot rise.
-GP_ENDING_MIN_FIRST = 331
+# Re-measured by track G g6 (record 2026-10-14-reverse-g §G6): the mode-8 three-frame scan-out at
+# capture 331 is ISOLATED (the 0x25643 gate's catch-up, like idle-loss's 2064) and ALLOWED BY NAME
+# in SCAN3_ALLOWED (top rows 0..1 = port 216's f=0x483, the screen held across raws 2828..2830, the
+# dump's earlier holders of those rows being {216, 243, 1127}; rows 2..63 = port 218's f=0x485 and
+# rows 64..199 = port 219's f=0x486, the 4664-frame dump's unique adjacent pair (218, 219);
+# top sha 2d6fb6ad..; port 217 never blitted). With it active every capture frame 83..2061 is
+# explained and the first unexplained is 2062 (raw 4954) — §W.16's already-named next-one (port 1686,
+# f=0xB9A, mode 0x12, 166 px, rows 192..197 x 0..85): the SAME strip bytes as gp-u9-win's 2209
+# (sha256 a886c0f3..), at the same mode-0x17→0x12 entry, and no frame of the 4664-frame dump holds
+# them — including the loader/pump-hook samples of that entry (dumps 1684..1686 all at f=0xB9A, its
+# tick 0xBF3→0xBF9 inside the iteration, then one static image through f=0xBB8). Cause not
+# attributed here — not §G6's class and not allowed. Pin 2063
+# fails; 3686 (§W.16's other next-one) is explained on the current dump since the P4-P7 batches
+# (the report's next unexplained after 2062 are 4113..4116).
+# MAX_START 83 unchanged and exact (82 prints the improved line), TRACE/WIN/MILESTONES unchanged
+# (9954/9954/30; TRACE/WIN are at the replay's end, so they cannot rise).
+GP_ENDING_MIN_FIRST = 2062
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83
 GP_ENDING_MILESTONES = 30
