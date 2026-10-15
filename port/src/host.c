@@ -13,6 +13,8 @@
  * infrastructure (window, clock, transient input), not game state; the game's
  * own counters live in mem[]. g_tick is the host's model of DAT_00105D88. */
 #include "host.h"
+#include "mem.h"
+#include "symbols.h"
 #include "platform/input.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -55,10 +57,13 @@ static const u8 k_bios_letter[26] = {
 };
 
 /* PORT: the host stands in for the IRQ1 key-state table and the ISR sampler
- * 0x1BBAC (host-owned, record §50-C) with the game's default binding: the
- * scans +0x2DE..+0x2ED hold, the high bytes of the config words at 0xA2C62
- * (record gameplay-ground-truth §G.1.2; every bit captured in gp-pads,
- * §G.7.2). The letters map through k_bios_letter; the other pad keys here. */
+ * 0x1BBAC (host-owned, record §50-C). The player's binding is the key-config
+ * record the sampler reads, [DS_00101514]+0x2DE..+0x2ED: the high bytes of
+ * the config words at 0xA2C62 (0x1AE20 applies them at boot,
+ * config_keys_apply_defaults; record gameplay-ground-truth §G.1.2, every bit
+ * captured in gp-pads §G.7.2) unless CONFIGURE KEYBOARD stored others
+ * (config_keys_apply 0x1AE85/0x1AEC0). The letters map through
+ * k_bios_letter; the other pad keys here. */
 typedef struct { SDL_Scancode sdl; u8 scan; } host_scan_pair;
 static const host_scan_pair k_bios_pad[] = {
     { SDL_SCANCODE_UP, 0x48 },    { SDL_SCANCODE_DOWN, 0x50 },
@@ -68,34 +73,39 @@ static const host_scan_pair k_bios_pad[] = {
     { SDL_SCANCODE_F1, 0x3B },    { SDL_SCANCODE_F2, 0x3C },
 };
 
-/* PORT: 0x1BBAC's device-0 combine for one key, under the default binding:
- * +0x2D8 = 0x1B610 | 0x1B730 | 0x1B850 (P1: S X Z C give 0x80 0x40 0x20 0x10,
- * U I N M give 1 2 4 8, F1 (+0x28F) gives 1) and +0x2D9 the same for P2 (the
- * arrows, Home PgUp End PgDn, F2 at +0x290), as the kb word (+0x2D8 << 8) |
- * +0x2D9. Any other scan is no pad key. */
+/* The 16 record positions in +0x2DE..+0x2ED order and what each contributes
+ * to the kb word (+0x2D8 << 8 | +0x2D9): P1 directions, P1 buttons, P2
+ * directions, P2 buttons. k_bios_default_scan is the boot record's scans (the
+ * high bytes of the default words at 0xA2C62), used per position when the
+ * record holds no scan. */
+static const u8 k_bios_default_scan[16] = {
+    0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32,
+    0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51
+};
+static const u16 k_bios_pos_bit[16] = {
+    0x8000u, 0x4000u, 0x2000u, 0x1000u, 0x0100u, 0x0200u, 0x0400u, 0x0800u,
+    0x0080u, 0x0040u, 0x0020u, 0x0010u, 0x0001u, 0x0002u, 0x0004u, 0x0008u
+};
+
+/* PORT: 0x1BBAC's device-0 combine for one key: +0x2D8 = 0x1B610 | 0x1B730 |
+ * 0x1B850 and +0x2D9 the same for P2, each position testing the state byte
+ * of its own configured scan (0x1AE85/0x1AEC0 wrote +0x2DE..+0x2ED), so a key
+ * contributes every bit of the positions bound to it. F1/F2 are fixed: the
+ * raw tests their state bytes at +0x28F/+0x290 (0x1B850/0x1B870) and OR bit 0
+ * of each side. PORT: a zero scan (no config applied; e.g. host_key_bits()
+ * before game_init) has no state byte to read — the position keeps its
+ * default scan instead. */
 u16 host_kb_bit(u8 scan)
 {
-    switch (scan) {
-    case 0x1F: return 0x8000u;   /* S */
-    case 0x2D: return 0x4000u;   /* X */
-    case 0x2C: return 0x2000u;   /* Z */
-    case 0x2E: return 0x1000u;   /* C */
-    case 0x16: return 0x0100u;   /* U */
-    case 0x3B: return 0x0100u;   /* F1 */
-    case 0x17: return 0x0200u;   /* I */
-    case 0x31: return 0x0400u;   /* N */
-    case 0x32: return 0x0800u;   /* M */
-    case 0x48: return 0x0080u;   /* Up */
-    case 0x50: return 0x0040u;   /* Down */
-    case 0x4B: return 0x0020u;   /* Left */
-    case 0x4D: return 0x0010u;   /* Right */
-    case 0x47: return 0x0001u;   /* Home */
-    case 0x3C: return 0x0001u;   /* F2 */
-    case 0x49: return 0x0002u;   /* PgUp */
-    case 0x4F: return 0x0004u;   /* End */
-    case 0x51: return 0x0008u;   /* PgDn */
-    default: return 0u;
+    const u8 *rec = mem + DSD(DS_00101514) + 0x2DEu;
+    u16 bits = 0u;
+    for (u32 i = 0u; i < 16u; i++) {
+        u8 bound = rec[i] != 0u ? rec[i] : k_bios_default_scan[i];
+        if (bound == scan) bits |= k_bios_pos_bit[i];
     }
+    if (scan == 0x3B) bits |= 0x0100u;   /* F1 */
+    if (scan == 0x3C) bits |= 0x0001u;   /* F2 */
+    return bits;
 }
 
 static int g_key_bits_override_on;
@@ -113,6 +123,8 @@ u16 host_key_bits(void)
     if (g_key_bits_override_on) return g_key_bits_override;
     const bool *st = SDL_GetKeyboardState(NULL);
     if (st == NULL) return 0u;
+    /* Each pressed key's scan resolves through host_kb_bit() against the
+     * configured binding. */
     u16 bits = 0u;
     for (int i = 0; i < 26; i++)
         if (st[SDL_SCANCODE_A + i]) bits |= host_kb_bit(k_bios_letter[i]);

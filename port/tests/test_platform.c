@@ -2949,17 +2949,53 @@ int test_host(void)
 {
     int before = g_failures;
 
-    /* The default binding (record gameplay-ground-truth §G.1.2; every bit
-     * captured in gp-pads, §G.7.2): a set-1 scan's kb bit. */
+    /* The binding (record §J2; every default bit captured in gp-pads, §G.7.2):
+     * a set-1 scan's kb bit, read from the key-config record the ISR sampler
+     * reads — [DS_00101514]+0x2DE..+0x2ED (config_keys_apply 0x1AE85/0x1AEC0
+     * writes it; 0x1B610..0x1B870 read it) — with the default record at
+     * 0xA2C62 (config_keys_apply_defaults) as the per-position fallback. A
+     * scratch record stands in for the game's BIOS block: seeded with a
+     * rotation of the default scans, then zeroed (the absent-image case). */
     {
         static const u8 scans[18] = { 0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32, 0x3B,
                                       0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51, 0x3C };
         static const u16 bits[18] = { 0x8000, 0x4000, 0x2000, 0x1000, 0x0100, 0x0200, 0x0400, 0x0800, 0x0100,
                                       0x0080, 0x0040, 0x0020, 0x0010, 0x0001, 0x0002, 0x0004, 0x0008, 0x0001 };
+        const u32 scratch = 0x03F00000u;    /* in mem[], clear of the image and game state */
+        const u32 saved_base = DSD(DS_00101514);
+        u8 saved_record[16], saved_scratch[16];
+        for (u32 i = 0u; i < 16u; i++) {
+            saved_record[i] = DSB(saved_base + 0x2DEu + i);
+            saved_scratch[i] = DSB(scratch + 0x2DEu + i);
+        }
+
+        /* Configured (seeded): position i holds the default scan of position
+         * (i+1) mod 16, so every default scan's bit moves one position. */
+        static const u8 rotated[16] = { 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32, 0x48,
+                                        0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51, 0x1F };
+        memcpy(mem + scratch + 0x2DEu, rotated, sizeof rotated);
+        DSD(DS_00101514) = scratch;
+        CHECK_EQ_INT(host_kb_bit(0x2D), 0x8000);    /* X: now P1 up (default down 0x4000) */
+        CHECK_EQ_INT(host_kb_bit(0x1F), 0x0008);    /* S: now P2 b3 (default P1 up 0x8000) */
+        CHECK_EQ_INT(host_kb_bit(0x50), 0x0080);    /* Down: now P2 up (default P2 down 0x0040) */
+        CHECK_EQ_INT(host_kb_bit(0x3B), 0x0100);    /* F1: fixed, not in the record */
+        CHECK_EQ_INT(host_kb_bit(0x3C), 0x0001);    /* F2 */
+        CHECK_EQ_INT(host_kb_bit(0x10), 0);         /* Q: bound by nothing */
+        DSB(scratch + 0x2DEu + 10u) = 0x50;         /* one scan, two positions */
+        CHECK_EQ_INT(host_kb_bit(0x50), 0x0080 | 0x0020);
+
+        /* Zeroed record (the absent-image case): the defaults. */
+        mem_fill(scratch + 0x2DEu, 0u, 16u);
         for (int i = 0; i < 18; i++) CHECK_EQ_INT(host_kb_bit(scans[i]), bits[i]);
         CHECK_EQ_INT(host_kb_bit(0x10), 0);     /* Q: Alt-Q's letter is no pad key */
         CHECK_EQ_INT(host_kb_bit(0x38), 0);     /* Alt: read by nothing (record u11 §K.2) */
         CHECK_EQ_INT(host_kb_bit(0x06), 0);     /* '5': the stale "coin" binding */
+
+        for (u32 i = 0u; i < 16u; i++) {
+            DSB(saved_base + 0x2DEu + i) = saved_record[i];
+            DSB(scratch + 0x2DEu + i) = saved_scratch[i];
+        }
+        DSD(DS_00101514) = saved_base;
     }
 
     /* host_pump()/host_present_rgb()/host_shutdown() before host_init(): the

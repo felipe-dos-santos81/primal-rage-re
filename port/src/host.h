@@ -128,13 +128,15 @@ const char *host_audio_error(void);
 
 /* PORT: the 16 input bits the game's bitfield carries, packed as the two key
  * bytes at DAT_00101514 + 0x2d8/0x2d9 (kb word (+0x2D8 << 8) | +0x2D9): the
- * SDL keys pressed, through host_kb_bit. */
+ * SDL keys pressed, through host_kb_bit under the configured binding. */
 u16 host_key_bits(void);
 
-/* PORT: one set-1 scan's kb bit under the game's default binding (record
- * gameplay-ground-truth §G.1.2): P1 S X Z C / U I N M / F1, P2 the arrows /
- * Home PgUp End PgDn / F2; 0 for any other scan. Stands in for the host-owned
- * ISR sampler 0x1BBAC's device-0 path. */
+/* PORT: one set-1 scan's kb bits under the configured binding — the scans in
+ * the key-config record the ISR sampler reads, [DS_00101514]+0x2DE..+0x2ED —
+ * with the default binding (record gameplay-ground-truth §G.1.2: P1 S X Z C /
+ * U I N M / F1, P2 the arrows / Home PgUp End PgDn / F2) as the per-position
+ * fallback for a zero scan; 0 for any other scan. Stands in for the
+ * host-owned ISR sampler 0x1BBAC's device-0 path. */
 u16 host_kb_bit(u8 scan);
 
 /* PORT: test seam, no raw counterpart. With `on` set, host_key_bits() returns
