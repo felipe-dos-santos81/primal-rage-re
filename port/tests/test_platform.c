@@ -750,10 +750,32 @@ int test_res(void)
         if (strncmp(name, "s16title.gra", 12) == 0 ||
             strncmp(name, "S16TITLE.GRA", 12) == 0) {
             found = 1;
-            /* The size field must equal the on-disk file size. */
-            char path[256];
-            snprintf(path, sizeof path, "data/game/C/%.*s", 12, name);
+            /* The size field must equal the on-disk file size. INDEX names
+             * are lowercase while the shipped files are uppercase
+             * (S16TITLE.GRA) and a POSIX filesystem is case-sensitive:
+             * resolve the on-disk case as res_open_name does, exact name
+             * first, then a case-insensitive directory scan. */
+            size_t nlen = 0;
+            while (nlen < 12 && name[nlen]) nlen++;
+            char path[512];
+            snprintf(path, sizeof path, "data/game/C/%.*s", (int)nlen, name);
             FILE *f = fopen(path, "rb");
+            if (!f) {
+                DIR *d = opendir("data/game/C");
+                if (d) {
+                    struct dirent *ent;
+                    while ((ent = readdir(d)) != NULL) {
+                        if (strlen(ent->d_name) == nlen &&
+                            strncasecmp(ent->d_name, name, nlen) == 0) {
+                            snprintf(path, sizeof path, "data/game/C/%s",
+                                     ent->d_name);
+                            f = fopen(path, "rb");
+                            break;
+                        }
+                    }
+                    closedir(d);
+                }
+            }
             CHECK(f != NULL, "resource file opens");
             if (f) {
                 fseek(f, 0, SEEK_END);
