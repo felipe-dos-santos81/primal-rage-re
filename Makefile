@@ -547,6 +547,13 @@ gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratch
 #   MAX_START: "frames: window from capture 88 (raw 1741)".
 #   CAPTURE_SHA256/FRAMES: data/k11-captures/gp-u6-moves-b/poll.log and its frame_*.raw.gz count
 #     (U6b Task 6 re-run, re-checked on disk at Task 15).
+# Re-measured by track G g7 (record 2026-10-14-reverse-g §G7): 2139 is the replay's end, not a
+# divergence — the script's X record is f=0xCAF (the port's last presented frame, dump 1737);
+# capture 2136/2137 are clean port 1735/1736 (f=0xCAD/0xCAE), 2138 is the 1736->1737 splice
+# (f=0xCAE->0xCAF) and 2139 is the f=0xCAF->0xCB0 scan-out (rows 0..63 = port 1737's f=0xCAF,
+# rows 64..197 the original's f=0xCB0 screen, which the port never replays: the script ends at
+# 3247). N stays 2139 — the exact pin (the first unexplained IS the post-script frame; nothing
+# below it is unexplained).
 GP_MOVES_MIN_FIRST = 2139
 GP_MOVES_TRACE_MIN_FIRST = 3248
 GP_MOVES_MOVES_MIN_FIRST = 3248
@@ -862,7 +869,23 @@ gp-modes-one: build
 # text-row region, but the port did dump that entry's sampled states and none matches: the cause
 # is NOT attributed here — a named gap, not §G6's scan-out class and not allowed. Pin 2210 fails, MAX_START 100 unchanged and
 # exact (99 fails), TRACE/WIN/MILESTONES unchanged (3503/3503/8).
-GP_WIN_MIN_FIRST = 2209
+# Re-measured by track G g7 (record 2026-10-14-reverse-g §G7): the 2209 strip is the loader's
+# `- LOADING -` frame — the lazy INDEX read (0x1B3AC's draw=1 path, record §45-A's seam) blits
+# string 0x1E9 straight to the VGA aperture (0x51ED8) before its read blocks, so a 70.09 Hz
+# scan-out holds it over the mode-0x12 entry screen the port's dump never composes (the port's
+# per-read model collapses the original's disk-block interleaving, §45-A's named gap; the dump
+# holds the base and the overlay at their own draw times: the entry's loader dumps 1775/1776 on
+# black, the later f=0xC0E frame 1805 over another screen). ALLOWED BY NAME in LOADER_ALLOWED:
+# base port 1777 (f=0xBA1, the dump's unique holder of the capture's bytes outside rows
+# 192..197) + the 166-px overlay at rows 192..197 x 0..85 (region sha f2089c52..; the six full
+# rows' sha a886c0f3.. over x 0..319 — identical at gp-u10-ending's 2062), every overlay pixel
+# held by port frames of the dump (1776 and 1805 among them). With it active every capture frame
+# 100..2451 is explained and the first unexplained is 2452 (raw 5603): the replay's end (the X
+# record is f=0xDAE at ms=80102; the port's last presented frame is f=0xDAE, dump 1976) — how
+# far the port got, not a divergence (the gp-keys 1136 class). MIN_FIRST 2209 -> 2452 (measured;
+# 2453 fails as the first unexplained). MAX_START 100 unchanged and exact (99 fails),
+# TRACE/WIN/MILESTONES unchanged (3503/3503/8).
+GP_WIN_MIN_FIRST = 2452
 GP_WIN_TRACE_MIN_FIRST = 3503
 GP_WIN_MAX_START = 100
 GP_WIN_MILESTONES = 8
@@ -931,7 +954,19 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # (the report's next unexplained after 2062 are 4113..4116).
 # MAX_START 83 unchanged and exact (82 prints the improved line), TRACE/WIN/MILESTONES unchanged
 # (9954/9954/30; TRACE/WIN are at the replay's end, so they cannot rise).
-GP_ENDING_MIN_FIRST = 2062
+# Re-measured by track G g7 (record 2026-10-14-reverse-g §G7): the 2062 strip is the same
+# loader `- LOADING -` frame over the mode-0x12 entry screen (base port 1686, f=0xB9A, the
+# dump's unique holder of the capture's bytes outside rows 192..197; the same 166-px overlay,
+# region sha f2089c52.., full-rows sha a886c0f3..), ALLOWED BY NAME in LOADER_ALLOWED. The
+# overlay's pixels are held by port 1688/1689 (f=0xBC9, two dumps of one iteration) and by the
+# dump's other loader frames; neither 1688 nor 1689 carries the whole strip (both have 7 extra
+# index-0xcb px at row 192 the original never showed), which is why the recipe binds the
+# differing pixels, not the whole region. With it active every capture frame 83..4112 is
+# explained and the first unexplained is 4113 (raw 7858): nearest port 3444, rows 166..199,
+# x 0..319 (9732 px) — §G6/§W.16's already-known next-one, a three-segment partial-draw
+# composite (rows 0..165 = port 3444, 166..167 = port 3445, 168..199 held by no dump frame),
+# not attributed here. MIN_FIRST 2062 -> 4113 (measured; 4114 fails as the first unexplained).
+GP_ENDING_MIN_FIRST = 4113
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83
 GP_ENDING_MILESTONES = 30
