@@ -30570,6 +30570,46 @@ D1_MASKS.update(G3AA_MASKS)
 D1_KINDS.update(G3AA_KINDS)
 D1_CASES.extend(G3AA_CASES)
 # g3aa end
+# ---- track G batch g3b (record 2026-10-14-reverse-g §G3): the five remaining named non-rows ----
+G3B_MASKS = {
+    "res_resolve": 0xFFFFFFFF,
+    "hook_noop_29d60": 0xFFFFFFFF,
+    "interrupt_lock": 0xFF,
+    "hit_sound": 0xFFFFFFFF,
+    "ret_noop_2ea64": 0xFFFFFFFF,
+}   # G3B_MASKS end
+G3B_KINDS = {
+    "res_resolve@idx22": {'eax'},
+    "res_resolve@noand": {'eax'},
+    "res_resolve@base": {'eax'},
+    "hook_noop_29d60@zero": {'eax'},
+    "hook_noop_29d60@scrub": {'eax'},
+    "interrupt_lock@store1": {'byte'},
+    "interrupt_lock@store0": {'byte'},
+    "interrupt_lock@zero": {'eax'},
+    "hit_sound@zero": {'eax'},
+    "hit_sound@plus1": {'eax'},
+    "ret_noop_2ea64@zero": {'eax'},
+    "ret_noop_2ea64@scrub": {'eax'},
+}   # G3B_KINDS end
+G3B_CASES = [
+    ("res_resolve@idx22", ['c0', 'c1', 'c2', 'c3']),
+    ("res_resolve@noand", ['c0', 'c1', 'c2', 'c3']),
+    ("res_resolve@base", ['c0', 'c1', 'c2']),
+    ("hook_noop_29d60@zero", ['c1', 'c2']),
+    ("hook_noop_29d60@scrub", ['c1', 'c2']),
+    ("interrupt_lock@store1", ['r1', 'r2']),
+    ("interrupt_lock@store0", ['r0', 'r2']),
+    ("interrupt_lock@zero", ['r0', 'r2']),
+    ("hit_sound@zero", ['c1', 'c2']),
+    ("hit_sound@plus1", ['c0', 'c1', 'c2']),
+    ("ret_noop_2ea64@zero", ['c1', 'c2']),
+    ("ret_noop_2ea64@scrub", ['c1', 'c2']),
+]   # G3B_CASES end
+D1_MASKS.update(G3B_MASKS)
+D1_KINDS.update(G3B_KINDS)
+D1_CASES.extend(G3B_CASES)
+# g3b end
 
 
 @needs_unicorn
@@ -31931,8 +31971,22 @@ class RealFunctionTests(unittest.TestCase):
         # callee 0x500BB is now VERIFIED by its own row with every other callee VERIFIED (of the 47
         # §C3g.7 dependents; the other 20 stay open on callees like 0x1B544 and the AIL wrappers).
         # Measured on the lane.
-        self.assertIn("diff-verify: 1002/1002 functions VERIFIED; 14887/14887 mutants detected; 1 named gaps; "
-                      "666/832 rows with callees closed (170 have none).", out.getvalue())
+        # Track G batch g3b: the five remaining named non-rows, each a leaf or inert-model row:
+        # res_resolve 0x1B544 (resident arm only, 4 cases / 3 mutants, D4B_RES_SLOW's nine slow-arm
+        # leaders named), hook_noop_29d60 / interrupt_lock 0x2EA30 (mask 0xFF, 0x2EA49 named) /
+        # hit_sound 0x32BAC / ret_noop_2ea64 (3 cases each, 2-3 mutants). Functions 1002 -> 1007,
+        # mutants 14887 -> 14899 (+3 +2 +3 +2 +2), counted-apart 170 -> 175 (none of the five rows
+        # has callees; with-callees stays 832), named gaps 1. Closed 666 -> 716, per row:
+        # 0x1B544 +22 (the camera/effects/palette/sprite-node/render-scroll/text-blit/fighter_spawn
+        # rows), 0x29D60 +15 (the game_state/game_mode/frontend-tail rows incl. game_mode_23_step
+        # and hit_reaction_apply), 0x2EA30 +6 (release_record, actor_alloc, frontend_input_reset,
+        # render_scroll_setup, fighter_state_33b00, flow_challenge_poll), 0x32BAC +6
+        # (hit_chain_resolve, hit_3d004, game_mode_09_step(_rr), frontend_mode12_darken_or_tally(_rr)),
+        # 0x2EA64 +1 (spawn_anim_opcode, which needed 0x29D60 too). Total across the six non-rows
+        # with g3aa's +27: 639 -> 716 (+77); the still-open dependents block on unrowed >=0x5D000
+        # runtime callees and 0x2CB74/0x501A3 (record §G3). Measured on the lane.
+        self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14899/14899 mutants detected; 1 named gaps; "
+                      "716/832 rows with callees closed (175 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

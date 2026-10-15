@@ -42616,6 +42616,57 @@ static void b_g3aa_500bb(const u32 *r, u32 *eax) { (void)r; *eax = DSD(0x0010150
 static void m_g3aa_500bb_off4(const u32 *r, u32 *eax) { (void)r; *eax = DSD(0x00101504u); }
 static void m_g3aa_500bb_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
 /* ---- g3aa bindings end ---- */
+/* ---- track G batch g3b (record 2026-10-14-reverse-g §G3): the five remaining named non-rows ---- */
+/* 0x1B544 res_resolve's resident arm: EAX = handle, the entry's payload base + (handle & 0x7FFFFF)
+ * returned as the resolved pointer (`mov eax,[ecx+0x10]; add eax,edx` 0x1B572/0x1B575 after the
+ * PRELOAD test 0x1B569). The binding calls the port C's res_resolve and reports its pointer's mem[]
+ * offset, the same number (camera_res_off's convention in camera.c: NULL maps to 0, unreachable for
+ * these cases — every fixture entry carries a payload and PRELOAD). The mutant cores mirror the C's
+ * reads with one arithmetic defect each: @idx22 shifts the index from bit 22, @noand adds the whole
+ * handle instead of the masked 23 bits, @base drops the offset. */
+static u32 g3b_res_core(u32 handle, u32 mut)
+{
+    u32 index = mut == 1u ? (handle >> 22) : (handle >> 23);
+    u32 data = DSD(DSD(0x001014E0u) + index * 0x14u + 0x10u);
+    if (data == 0u) return 0u;
+    return mut == 3u ? data : data + (mut == 2u ? handle : (handle & 0x7FFFFFu));
+}
+static void b_g3b_1b544(const u32 *r, u32 *eax)
+{
+    const void *p = res_resolve(r[R_EAX]);
+    *eax = p != NULL ? (u32)((const u8 *)p - mem) : 0u;
+}
+static void m_g3b_1b544_idx22(const u32 *r, u32 *eax) { *eax = g3b_res_core(r[R_EAX], 1u); }
+static void m_g3b_1b544_noand(const u32 *r, u32 *eax) { *eax = g3b_res_core(r[R_EAX], 2u); }
+static void m_g3b_1b544_base(const u32 *r, u32 *eax)  { *eax = g3b_res_core(r[R_EAX], 3u); }
+/* 0x29D60: one byte `c3`, the bare ret. The port registers no function at it, so the hook callers
+ * skip the fn_resolve miss (flow.c:1059) — the port model is "nothing happens", exactly the bytes.
+ * @zero returns 0 without passing the entry EAX; @scrub drops the high half. */
+static void b_g3b_29d60(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+static void m_g3b_29d60_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+static void m_g3b_29d60_scrub(const u32 *r, u32 *eax) { *eax = r[R_EAX] & 0xFFFFu; }
+/* 0x2EA30: the interrupt lock on the byte 0xbcD60. The port models NO lock (DS_000BCD60 has no
+ * reader or writer in port/src; every call site elides it inert), so the binding is the inert port:
+ * report the entry EAX (the mask drops the request's upper half — the byte the original returns
+ * agrees with it in these seed/request classes) and write nothing. @store1/@store0 store the lock
+ * anyway (a byte change the original does not make when the store keeps the seed); @zero returns 0. */
+static void b_g3b_2ea30(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+static void m_g3b_2ea30_store1(const u32 *r, u32 *eax) { DSB(0x000BCD60u) = 1u; *eax = r[R_EAX]; }
+static void m_g3b_2ea30_store0(const u32 *r, u32 *eax) { DSB(0x000BCD60u) = 0u; *eax = r[R_EAX]; }
+static void m_g3b_2ea30_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+/* 0x32BAC: the bare `ret` the port models as hit_sound (fighter.c:4338, inert). The binding CALLS
+ * the ported C — its PR_SEAM sees no stub for this row and passes through — and reports the entry
+ * EAX. @zero returns 0; @plus1 returns entry+1 (c2's wraps to 0, caught by every case). */
+static void b_g3b_32bac(const u32 *r, u32 *eax) { hit_sound(r[R_EAX]); *eax = r[R_EAX]; }
+static void m_g3b_32bac_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+static void m_g3b_32bac_plus1(const u32 *r, u32 *eax) { *eax = r[R_EAX] + 1u; }
+/* 0x2EA64: the bare `ret` (the shared tail 0x2EA30 falls through; entered directly only `ret`
+ * runs). The port has no C at it — call sites inline the elision — so the binding mirrors that:
+ * report the entry EAX, write nothing. @zero returns 0; @scrub drops the high half. */
+static void b_g3b_2ea64(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+static void m_g3b_2ea64_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+static void m_g3b_2ea64_scrub(const u32 *r, u32 *eax) { *eax = r[R_EAX] & 0xFFFFu; }
+/* ---- g3b bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
 {
@@ -58498,6 +58549,24 @@ static const binding_t k_bindings[] = {
     { "dpmi_clock_read",       b_g3aa_500bb,       0xFFFFFFFFu },
     { "dpmi_clock_read@off4",  m_g3aa_500bb_off4,  0xFFFFFFFFu },
     { "dpmi_clock_read@zero",  m_g3aa_500bb_zero,  0xFFFFFFFFu },
+    /* track G batch g3b */
+    { "res_resolve",           b_g3b_1b544,        0xFFFFFFFFu },
+    { "res_resolve@idx22",     m_g3b_1b544_idx22,  0xFFFFFFFFu },
+    { "res_resolve@noand",     m_g3b_1b544_noand,  0xFFFFFFFFu },
+    { "res_resolve@base",      m_g3b_1b544_base,   0xFFFFFFFFu },
+    { "hook_noop_29d60",       b_g3b_29d60,        0xFFFFFFFFu },
+    { "hook_noop_29d60@zero",  m_g3b_29d60_zero,   0xFFFFFFFFu },
+    { "hook_noop_29d60@scrub", m_g3b_29d60_scrub,  0xFFFFFFFFu },
+    { "interrupt_lock",        b_g3b_2ea30,        0x000000FFu },
+    { "interrupt_lock@store1", m_g3b_2ea30_store1, 0x000000FFu },
+    { "interrupt_lock@store0", m_g3b_2ea30_store0, 0x000000FFu },
+    { "interrupt_lock@zero",   m_g3b_2ea30_zero,   0x000000FFu },
+    { "hit_sound",             b_g3b_32bac,        0xFFFFFFFFu },
+    { "hit_sound@zero",        m_g3b_32bac_zero,   0xFFFFFFFFu },
+    { "hit_sound@plus1",       m_g3b_32bac_plus1,  0xFFFFFFFFu },
+    { "ret_noop_2ea64",        b_g3b_2ea64,        0xFFFFFFFFu },
+    { "ret_noop_2ea64@zero",   m_g3b_2ea64_zero,   0xFFFFFFFFu },
+    { "ret_noop_2ea64@scrub",  m_g3b_2ea64_scrub,  0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
