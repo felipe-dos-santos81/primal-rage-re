@@ -326,7 +326,10 @@ quit (it works even while a movie would swallow ESC; on this host SDL turns a
 SIGTERM into that same quit, and the clean exit writes the save). After this
 change a rebind set in the service menu's CONFIGURE KEYBOARD takes effect for
 the next frames, and it is saved/loaded with the session (the image tail mirror
-round trip); the idle timer soft-restarts into the boot logos after ~20 s with
+round trip); the limit, named: the host samples the game's pad keys and the
+letters only, so a CONFIGURE KEYBOARD binding to any other scan (a digit,
+F3–F10, Tab, or Backspace's 0x0E) is inert in the windowed port; the idle timer
+soft-restarts into the boot logos after ~20 s with
 no latched key (0x2EBB3; record named-gaps A §A.6 — record-based, not re-measured
 here); "credits" remains today's behaviour — no coin key, credits come from the
 config image (INSERT 1 COIN with no way in except the hidden service

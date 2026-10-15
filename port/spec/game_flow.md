@@ -930,7 +930,8 @@ selector.
   mask `DS_001088E4` (the `0xFF00FF00` family) and the held mask `DS_001088D8`
   (the `0x00FF00FF` family) plus the two packed cursors `DS_001088E0/2`.
   **Host binding:** `game_loop` fills the key bitmap from `host_key_bits()`
-  (through `host_kb_bit`, the game's default binding, host.c; there is no coin bit) immediately before `input_pump`;
+  (through `host_kb_bit`, the configured binding, default when the record byte
+  is zero, host.c; there is no coin bit) immediately before `input_pump`;
   `game_frame` calls `input_state_update()` at the `0x24C6E` site as its first
   action — the raw's `0x4F644` precedes the frame counter and the process
   tables — so the masks are fresh for `game_state_step`.

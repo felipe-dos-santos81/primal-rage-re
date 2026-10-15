@@ -47,7 +47,7 @@ and the game-over/high-score flows. Two claims back that:
   callee scan never reached (739 of 747 have a row after its sixth wave and tracks S, I, N, H and G — 727 a full one (`0x51ED8` with one declared difference), and 12 a row that runs the original under code pokes, leaves reachable blocks out or declares a terminal difference on some or all of its cases: `0x2CADC`, `game_loop`, `0x1AFE8`, `0x1B084`, `0x1BE30`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`, `0x1B544`, `0x2EA30`; the other 8 are named gaps, none open — track J's §J1 closure rule counts a row closed when every callee is verified by its own row or a declared non-goal outside the portable set;
   record `2026-10-11-reverse-d-derivations.md`), and its rows have found 172
   raw-over-port corrections (174 with track N's two on `res_load_index`;
-  records §D.12, §N.3.3). The
+  records `2026-10-11-reverse-d-derivations.md` §D.3–§D.12 plus §N.3.3). The
   E2 triage's remaining rows are the 231 table-driven span-writers — not ported
   one by one (decision D2: the port blits a span as one routine) — and 2
   classified host-owned/deferred callbacks (`0x1BDF4`, `0x10604`).

@@ -17,11 +17,13 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
           dump frame must hold, plus one unique adjacent port pair (B, B+1)
           byte-binding the rows below the top (record §G6).
           Frames named in LOADER_ALLOWED are explained ONLY by their per-frame
-          loader recipe: a pinned hash of the named region's bytes, one unique
-          base port frame the capture equals outside it, and a port frame
-          holding every pixel inside it where the capture differs from the base
-          (record §G7). None of the tables is ever an extension of the
-          two-frame model.
+          loader recipe: two pinned hashes of the named rows [r1, r2) — the
+          strip (sha256 of columns [x0, x1), serialized row by row) and the
+          full rows (sha256 at full width x 0..319, the same serialization, so
+          the whole rows are bound) — one unique base port frame the capture
+          equals outside [r1, r2), and the capture held by some port frame at
+          every strip pixel where it differs from the base (record §G7). None
+          of the tables is ever an extension of the two-frame model.
           The first unexplained capture frame must be >= --min-first N, and the
           window start (the first capture frame that shows the port's first frame)
           must be <= --max-start and < N, so a regressed port cannot slide the window
@@ -279,8 +281,10 @@ def scan3_explain(c, port, entry):
 
 def loader_region_sha(c, r1, r2, x0, x1):
     """The named region's serialization: the RGB bytes of rows [r1, r2), each
-    restricted to x in [x0, x1), concatenated in row order (record §G7 pins it,
-    so the strip's a886c0f3.. / f2089c52.. hashes are re-derivable)."""
+    restricted to x in [x0, x1), concatenated in row order. Called with the
+    entry's strip columns it yields the strip hash (f2089c52..), with
+    x 0..FRAME_W the full-rows hash (a886c0f3..); record §G7 pins both, so
+    each is re-derivable."""
     R = tc.ROW
     return hashlib.sha256(b''.join(c[r * R + 3 * x0:r * R + 3 * x1]
                                    for r in range(r1, r2))).hexdigest()

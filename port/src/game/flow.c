@@ -7124,8 +7124,9 @@ void game_loop(void)
     do {
         {
             /* PORT: the host fills the key bitmap 0x500C4 samples; the binding
-             * is the original's default one (host.c host_kb_bit(), which
-             * host_key_bits() applies; record 2026-10-01-gameplay-u11 §K.13). */
+             * is the configured binding, default when the record byte is zero
+             * (host.c host_kb_bit(), which host_key_bits() applies; record
+             * 2026-10-01-gameplay-u11 §K.13). */
             u16 bits = host_key_bits();
             u8 *k = mem + DSD(DS_00101514);
             k[0x2d8] = (u8)(bits >> 8);
