@@ -8,6 +8,15 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
           model: clean, a byte splice of adjacent port frames (the 70.09 Hz
           capture against the 60.05 Hz game), or one transition row. All-black
           capture frames are the documented capture artefact and are skipped.
+          Frames named in BANDS_ALLOWED for the scenario are explained ONLY by
+          their per-frame byte recipe (a top/bottom byte-bind to one unique
+          adjacent port pair plus a pinned band hash; record §G5) — never a
+          class, and a named frame whose bytes are not the recipe fails.
+          Frames named in SCAN3_ALLOWED are explained ONLY by their per-frame
+          three-segment recipe: a pinned top-row hash that at least one EARLIER
+          dump frame must hold, plus one unique adjacent port pair (B, B+1)
+          byte-binding the rows below the top (record §G6). Neither table is
+          ever an extension of the two-frame model.
           The first unexplained capture frame must be >= --min-first N, and the
           window start (the first capture frame that shows the port's first frame)
           must be <= --max-start and < N, so a regressed port cannot slide the window
@@ -39,6 +48,170 @@ import title_compare as tc
 BACK, AHEAD = 2, 64          # harness: the search order (spec §4.3), not a game value
 REPORT_MAX = 5
 IPX_BYTES = 64000 + 768
+
+# Per-scenario named per-frame allowances for the frames claim, patterned on
+# title_compare.ATTRACT2_SPLICE3_ALLOWED (record §G5): only the named capture
+# frames, each only with its own byte recipe, never a class and never an
+# extension of the two-frame model. An entry is (capture frame j, top_row, band_hi,
+# band_sha256): the frame is explained ONLY if
+#   1. sha256 of its bytes [top_row*ROW, band_hi*ROW) equals band_sha256, and
+#   2. EXACTLY ONE adjacent pair (P, P+1) in the CURRENT port dump holds: the
+#      capture's rows [0, top_row) equal port[P]'s rows and the capture's rows
+#      [band_hi, FRAME_H) equal port[P+1]'s.
+# The bound rows are byte-verified against the port's dump, so a port that renders
+# either bound frame differently un-explains the capture frame (Review Focus #1;
+# BandAllowanceTests). The band itself has no port binding and is capture-pinned
+# bytes: that is the allowance's named limit — the band is a present state the
+# driver never dumped (one frame per f; record §K.10 item 2), and its cause stays
+# the named gap §K.12 records. A named frame the two-frame model explains now is
+# reported as a stale name; a named frame that is not the named bytes FAILS.
+BANDS_ALLOWED = {
+    'gp-keys-fight': (
+        # Capture 835 (raw 3934): the altq-n (QUIT TO DOS?, c = 0x833) scan-out
+        # catch-up frame. Rows 0..80 are byte-equal to the port's f = 0x832 frame,
+        # rows 92..199 to f = 0x833, and rows 81..91 hold an 11-row band no port
+        # frame holds (2442 of its bytes equal neither bound frame; §G5 re-measured
+        # at 5f874678, which is also where N/MAX_START/TRACE were pinned). The pair
+        # (592, 593) is the dump's unique match (measured: 1 hit over all 789
+        # frames).
+        (835, 81, 92, 'd9c0ac62f7e0c0d4082fba8d195eae4f767c56a7887bdf7346450511f998cad8'),
+    ),
+}
+
+# Per-scenario named THREE-frame scan-out allowances for the frames claim
+# (record §G6): the mode-8 entry's catch-up burst (the gate at 0x25643 fails for
+# iterations whose compute overruns an ISR tick, their presents are skipped, and
+# the re-opened presents land inside ONE 70.09 Hz capture scan — see §G6 for the
+# isolation and the rejection of the loader re-sync hypothesis there). Like
+# BANDS_ALLOWED this is never a class and never an extension of the two-frame
+# model: only the named capture frames, each only with its own byte recipe. An
+# entry is (capture frame j, r1, r2, top_sha256): the frame is explained ONLY if
+#   1. sha256 of its bytes [0, r1*ROW) equals top_sha256 (the still-held top rows
+#      of the old screen, the segment no *unique* port frame answers for),
+#   2. EXACTLY ONE adjacent pair (B, B+1) in the CURRENT port dump holds: the
+#      capture's rows [r1, r2) equal port[B]'s rows and its rows [r2, FRAME_H)
+#      equal port[B+1]'s (the middle range is vacuous when r1 == r2 — the U9
+#      shape, where only the bottom rows are pair-bound), and
+#   3. at least one port frame A with A < B holds the capture's rows [0, r1):
+#      the still-scanned old screen IS one of the port's own earlier frames.
+# The pair and the top are byte-verified against the port's dump, so a port that
+# renders any bound segment differently un-explains the capture frame (Review
+# Focus #1; Scan3AllowanceTests). The top segment is not uniquely bound: several
+# frames can share those rows (§G6's table names the candidates) — the named
+# hash plus the existence of an earlier holder is the allowance's named limit,
+# and the old screen's whole frames are claimed by the capture frames below the
+# ratchet anyway. A named frame the two-frame model explains now is reported as
+# a stale name; a named frame that is not the named bytes FAILS.
+SCAN3_ALLOWED = {
+    'gp-idle-loss': (
+        # Capture 2064 (raw 5190): the round-1 mode-8 entry catch-up (§G6).
+        # Rows 0..2 are port 1665/1666's (f=0xC70/0xC71, identical there, the
+        # screen held across raws 5187..5189), rows 3..97 are port 1669's
+        # (f=0xC74) exclusively and rows 98..199 are port 1670's (f=0xC75)
+        # exclusively; the pair (1669, 1670) is the 6301-frame dump's unique
+        # match; f=0xC72/0xC73 were never blitted (their presents the gate
+        # skipped — §G6).
+        (2064, 3, 98, '7bdf2c561c38a264337bc74abd093172ac99ceebb8c818635e189530cf1c58dc'),
+    ),
+    'gp-u9-win': (
+        # Capture 346 (raw 2830): the same mode-8 entry under U9's pokes, but
+        # the shape is the unpoked one (§G6/§W.12). Rows 0..4 are port 218's
+        # (f=0x48A, the first mode-8 frame, held across raws 2827..2829) and
+        # rows 5..199 are port 221's (f=0x48D) exclusively — no middle band;
+        # the vacuous-middle pair (220, 221) is the 1977-frame dump's unique
+        # match; ports 219/220 (f=0x48B/0x48C) were never blitted.
+        (346, 5, 5, '703828af123edf1a8c3bade8d42bdd56a68576cd87e13de7339bdd203dc8f0b6'),
+    ),
+    'gp-u10-ending': (
+        # Capture 331 (raw 2831): the same mode-8 entry (§G6/§W.14). Rows 0..1
+        # are port 216's (f=0x483, the first mode-8 frame, held across raws
+        # 2828..2830; the dump's holders of those two rows before port 218 are
+        # {216, 243, 1127}), rows 2..63 are port 218's (f=0x485) exclusively
+        # and rows 64..199 are port 219's (f=0x486) exclusively; the pair
+        # (218, 219) is the 4664-frame dump's unique match; port 217 (f=0x484)
+        # was never blitted.
+        (331, 2, 64, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
+    ),
+}
+
+
+def band_pair(c, port, top_row, band_hi):
+    """The unique adjacent port pair P with c's rows [0, top_row) == port[P]'s and
+    c's rows [band_hi, FRAME_H) == port[P+1]'s; None if there is not exactly one."""
+    R = tc.ROW
+    if len(port) < 2:
+        return None
+    lo, hi = c[:top_row * R], c[band_hi * R:]
+    hits = []
+    prev = port[0]
+    for m in range(1, len(port)):
+        cur = port[m]
+        if prev[:top_row * R] == lo and cur[band_hi * R:] == hi:
+            hits.append(m - 1)
+        prev = cur
+    return hits[0] if len(hits) == 1 else None
+
+
+def band_explain(c, port, entry):
+    """(P, None) when capture frame c is byte-identical to the named entry's recipe
+    against this port dump; (None, why) otherwise."""
+    _j, top_row, band_hi, band_sha = entry
+    got = hashlib.sha256(c[top_row * tc.ROW:band_hi * tc.ROW]).hexdigest()
+    if got != band_sha:
+        return None, 'its band rows %d..%d are %s.., not the named %s..' % (
+            top_row, band_hi - 1, got[:12], band_sha[:12])
+    P = band_pair(c, port, top_row, band_hi)
+    if P is None:
+        return None, 'no unique adjacent port pair binds its rows [0,%d)/[%d,200)' % (
+            top_row, band_hi)
+    return P, None
+
+
+def scan3_bind(c, port, r1, r2):
+    """The unique adjacent port pair (B, B+1) with c's rows [r1, r2) == port[B]'s
+    and c's rows [r2, FRAME_H) == port[B+1]'s; None if there is not exactly one.
+    The [r1, r2) test is vacuous when r1 == r2 (the U9 two-segment shape), so the
+    bind then asks for exactly one pair whose B+1 holds the whole [r2, FRAME_H)."""
+    R = tc.ROW
+    if len(port) < 2:
+        return None
+    mid, bot = c[r1 * R:r2 * R], c[r2 * R:]
+    hits = []
+    for m in range(1, len(port)):
+        if port[m - 1][r1 * R:r2 * R] == mid and port[m][r2 * R:] == bot:
+            hits.append(m - 1)
+    return hits[0] if len(hits) == 1 else None
+
+
+def scan3_top(c, port, B, r1):
+    """The port frames A < B that hold c's rows [0, r1) (the still-scanned old
+    screen): the earlier holders, empty when none — the top segment is not
+    uniquely bound (§G6's named limit), only required to exist below B."""
+    R = tc.ROW
+    lo = c[:r1 * R]
+    return [a for a in range(B) if port[a][:r1 * R] == lo]
+
+
+def scan3_explain(c, port, entry):
+    """(exhibits, None) when capture frame c is byte-identical to the named
+    three-frame recipe against this port dump; (None, why) otherwise. exhibits is
+    the earlier top holders plus the bound pair (B, B+1); B is dropped when the
+    middle range is vacuous (r1 == r2) so a frame with no bound pixel is never
+    exhibited."""
+    _j, r1, r2, top_sha = entry
+    got = hashlib.sha256(c[:r1 * tc.ROW]).hexdigest()
+    if got != top_sha:
+        return None, 'its top rows 0..%d are %s.., not the named %s..' % (
+            r1 - 1, got[:12], top_sha[:12])
+    B = scan3_bind(c, port, r1, r2)
+    if B is None:
+        return None, 'no unique adjacent port pair binds its rows [%d,%d) and [%d,200)' % (
+            r1, r2, r2)
+    tops = scan3_top(c, port, B, r1)
+    if not tops:
+        return None, 'no port frame before %d holds its named top rows' % B
+    ex = sorted(set(tops) | ({B, B + 1} if r1 < r2 else {B + 1}))
+    return ex, None
 
 
 def expand_ipx(data):
@@ -131,6 +304,10 @@ def exhibited(kind, data):
     elif kind == 'transition':
         for N, _r, _a, _b in data:
             s.update((N, N + 1))
+    elif kind == 'band':
+        s.update((data, data + 1))     # the named band splice binds port P above and P+1 below
+    elif kind == 'scan3':
+        s.update(data)                 # the named scan-out binds the earlier top holder(s) and the pair (B, B+1)
     return s
 
 
@@ -173,10 +350,16 @@ def start_check(name, start, raws, max_start, min_first, out=print):
     return rc
 
 
-def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None):
+def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None,
+                bands=None, scan3=None):
     """Returns (rc, first_unexplained or None, next_after_last_classified). In report
     mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
-    "window empty"; main() turns every report-mode rc into 0)."""
+    "window empty"; main() turns every report-mode rc into 0). `bands` and `scan3`
+    are the scenario's named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED); a
+    named frame that is not its named bytes prints its FAIL in both modes and fails
+    the enforced run."""
+    bands = {} if bands is None else {b[0]: b for b in bands}
+    scan3 = {} if scan3 is None else {s[0]: s for s in scan3}
     start = None
     head = min(2, len(port))
     for j in range(len(cap)):
@@ -191,6 +374,7 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         out("gp_compare: %s: frames: window empty: no capture frame exhibits the port's first frame" % name)
         return 1, None, 0
     p, counts, black, unexpl, seen = 0, collections.Counter(), 0, [], set()
+    allow_bad = 0
     j = start
     while j < len(cap):
         c = cap[j]
@@ -199,6 +383,42 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
             j += 1
             continue
         kind, data = classify(c, port, rows, p)
+        if j in bands:
+            if kind != 'unexplained':
+                out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
+                    'allowance but %s now; retire the name' % (name, j, raws[j], kind))
+            else:
+                P, why = band_explain(c, port, bands[j])
+                if P is None:
+                    out('gp_compare: %s: frames: FAIL: allowed capture %d (raw %d) is not '
+                        'its named band splice: %s' % (name, j, raws[j], why))
+                    allow_bad = 1
+                else:
+                    out('gp_compare: %s: frames: captured frame %d (raw %d) allowed by name '
+                        'as a band splice: port %d/%d rows 0..%d/%d..199, band rows %d..%d '
+                        'the named bytes'
+                        % (name, j, raws[j], P, P + 1, bands[j][1] - 1, bands[j][2],
+                           bands[j][1], bands[j][2] - 1))
+                    kind, data = 'band', P
+        if kind == 'unexplained' and j in scan3:
+            ex, why = scan3_explain(c, port, scan3[j])
+            if ex is None:
+                out('gp_compare: %s: frames: FAIL: allowed capture %d (raw %d) is not '
+                    'its named three-frame scan-out: %s' % (name, j, raws[j], why))
+                allow_bad = 1
+            else:
+                _j, r1, r2, _sha = scan3[j]
+                B = scan3_bind(c, port, r1, r2)
+                tops = ' '.join(str(a) for a in ex if a < B)
+                mid = '' if r1 == r2 else 'port %d rows %d..%d, ' % (B, r1, r2 - 1)
+                out('gp_compare: %s: frames: captured frame %d (raw %d) allowed by name '
+                    'as a three-frame scan-out: top rows 0..%d held by port %s, %s'
+                    'port %d rows %d..199 the named bytes'
+                    % (name, j, raws[j], r1 - 1, tops, mid, B + 1, r2))
+                kind, data = 'scan3', ex
+        elif j in scan3 and kind != 'unexplained':
+            out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
+                'scan-out allowance but %s now; retire the name' % (name, j, raws[j], kind))
         counts[kind] += 1
         if kind == 'unexplained':
             unexpl.append(j)
@@ -211,9 +431,9 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                 p = max(p, max(ex))              # the port only moves forward in time
         j += 1
     out('gp_compare: %s: frames: window from capture %d (raw %d); %d classified: %d clean, %d splice, '
-        '%d transition, %d unexplained, %d all-black'
+        '%d transition, %d band-allowed, %d scan3-allowed, %d unexplained, %d all-black'
         % (name, start, raws[start], sum(counts.values()), counts['clean'], counts['splice'],
-           counts['transition'], counts['unexplained'], black))
+           counts['transition'], counts['band'], counts['scan3'], counts['unexplained'], black))
     for k, u in enumerate(unexpl):
         cu = cap[u]
         m = nearest(cu, rows)
@@ -231,8 +451,11 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
     if report:
         if first is None:
             out('gp_compare: %s: frames: 0 unexplained through %d' % (name, len(cap) - 1))
+        if allow_bad:
+            out('gp_compare: %s: frames: FAIL: an allowance named its frame but not its bytes' % name)
         return 0, first, j
-    rc = max(ratchet(name, 'frames', first, len(cap), min_first, out), start_check(name, start, raws, max_start, min_first, out))
+    rc = max(ratchet(name, 'frames', first, len(cap), min_first, out),
+             start_check(name, start, raws, max_start, min_first, out), allow_bad)
     return rc, first, j
 
 
@@ -446,7 +669,8 @@ def main():
     n_frames = None if a.report else _int_or_none(a.min_first)
     n_trace = None if a.report else _int_or_none(a.trace_min_first)
     rc1, _, _ = frame_claim(name, cap, raws, port, rows, n_frames, a.report, print,
-                            None if a.report else _int_or_none(a.max_start))
+                            None if a.report else _int_or_none(a.max_start),
+                            BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()))
     with open(os.path.join(a.capture, 'poll.log')) as f:
         cl = f.read().splitlines()
     with open(os.path.join(a.port, 'trace.txt')) as f:

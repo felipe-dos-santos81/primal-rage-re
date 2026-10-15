@@ -278,12 +278,24 @@ consolidation gate).
   `make gp-moves-oracle` does the same for `data/k11-captures/gp-u6-moves-b` and adds a
   third ratchet, `moves`, over the snapshot's move bytes (`c0 c1 r0 r1 s0_43`, record
   gameplay-u6 §U6.11); its claim is as narrow.
-  `make gp-keys-oracle` (in `make verify`; record gameplay-u11 §K.10/§K.14) judges the 11 in-match
-  key events of `data/k11-captures/gp-keys-fight` on state only: at each event's capture frame the
+  `make gp-keys-oracle` (in `make verify`; record gameplay-u11 §K.10/§K.14 and
+  track-G §G5) judges the 11 in-match
+  key events of `data/k11-captures/gp-keys-fight` on state: at each event's capture frame the
   capture shows the raw-derived change (`evidence`) and the port's replay shows the same one
   (`effects`, ratchet `GP_KEYS_MIN_EFFECTS` = 11, `poll.log` sha256 pinned), judged on the latch,
-  pause bytes, pad words, `mode`, `b1f`, `cred` and `rng` only; no frame is compared (the pause and
-  prompt screens are a named gap); it skips without the capture.
+  pause bytes, pad words, `mode`, `b1f`, `cred` and `rng`; and (track G task 5) ratchets the
+  frames: every content-bearing capture frame of the pinned window (start ≤ `GP_KEYS_MAX_START`
+  = 100) below `GP_KEYS_MIN_FIRST` = 1136 is explained (clean/splice/transition) against the
+  port's replay — the pause, ABANDON and QUIT screens' first pixel claim — with capture 835
+  (the QUIT event's scan-out catch-up) allowed by name ONLY at its pinned bytes (rows 0..80
+  and 92..199 byte-bound to the port's current `f = 0x832`/`0x833` frames, the 11-row band
+  pinned by sha256; that band holds a present state no port frame carries — the §K.10 item 2
+  named gap stays its cause, not isolated); N = 1136 is the end of the port's script (the
+  capture's X record; its 30-frame boot-movie tail is how far the port got, not claimed),
+  the trace ratchets at `GP_KEYS_TRACE_MIN_FIRST` = 2164 and the capture identity is pinned
+  (sha256 + `GP_KEYS_CAPTURE_FRAMES` = 1166, the same capture U11 pinned); the claim is narrow
+  the same way — no under-render detection, order and coverage not claimed; it skips without
+  the capture.
   `make gp-twop-oracle` (in `make verify`; record gameplay-u7 §T.8-§T.11) checks that
   `data/k11-captures/gp-twop` is a two-human match from P2's join in the character select (f=2C3, `cred 4 -> 4`)
   to the scenario's end (`tools/gp_twop.py check`, from the raw's command-word writers), then ratchets as
@@ -296,11 +308,9 @@ consolidation gate).
   win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
   the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
   a poke replaced is not claimed: the KO by hits, the six earlier won matches, the final's death
-  animations. Only character 0's ending is captured. Both frame ratchets stop at round 1's mode-8 entry (f=0x48A), so nothing is compared pixel by pixel from there on (the conquered-lands screen, WORLD DOMINATION, the final, the ending in mode 0x1F, the high-score entry), and past U9's trace pin (f=0x866) the only claims are the WIN fields (to f=0xC5A) and the milestone frames, most of which are mode changes driven by replayed pokes and do not check which opponent is fought; U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 331. `gp-u10-ending` runs DOSBox-X with
+  animations. Only character 0's ending is captured. Both frame ratchets now pass round 1's mode-8 entry by name (track G §G6 below): U9 N 2209 and U10 N 2062, the first unexplained behind the allowed frames — both the SAME 166 px six-row strip (rows 192..197, x 0..85, sha a886c0f3..) at the mode-0x17→0x12 entry, held by no dump frame (not even that entry's loader/pump-hook samples) and whose cause is not attributed — a named gap and not §G6's class — so the results screens and the following rounds' fights are under the pixel claim down to those pins; past U9's trace pin (f=0x866) the only claims are the WIN fields (to f=0xC5A) and the milestone frames, most of which are mode changes driven by replayed pokes and do not check which opponent is fought; U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 2062. `gp-u10-ending` runs DOSBox-X with
   `memsize=64`, a harness value (the original ran out of memory in the poked final at 16 MB,
-  record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The frame ratchets of both stop at the mode-8 entry (U9 N 346, U10 N 331), where
-  the screen holds one frame about 43 ms and the two-frame splice model cannot express the
-  catch-up: a comparison-model limit, not a port divergence (§W.12, §W.14). A P batch that ports
+  record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The mode-8 entry frames the ratchets used to stop at (U9 346, U10 331, gp-idle-loss 2064) hold one screen three consecutive scans and then put two presents inside one 70.09 Hz scan-out: track G §G6 isolated that as the loop's own catch-up (an iteration whose compute overruns an ISR tick fails the 0x25643 gate and skips its present; the re-opened presents land sub-tick apart) — a comparison-model limit, not a port divergence, the loader re-sync hypothesis tested and rejected. Those frames are allowed by name in `SCAN3_ALLOWED` with per-frame byte recipes (a pinned hash row strip that an earlier dump frame must hold + one unique adjacent pair binding the rows below; mutation-tested per §G5's discipline), and the ratchets moved up to U9 2209 / U10 2062 / idle-loss 7559 (the idle-loss one is past the replay script's end — how far the port got). A P batch that ports
   a target in a miss set re-measures and re-pins (U10: `0x29C78` P7; record §W.16;
   track P batch 3 ported `0x475EC`, record 2026-10-03-reverse-p3 §P3.9; batches 4+5 ported
   `0x400E0`/`0x21084` P4, `0x21044` P5 and `0x3DA50` P5: U9's set gains `0x213F0`/`0x213F4` P7 and
@@ -343,20 +353,27 @@ consolidation gate).
   against `gfx_aperture()`) and ran the keyboard and VGA rows unpoked; track F (record
   `2026-10-14-reverse-f-derivations.md`) extended it with a per-case file model (`Machine.files`: the runtime's
   fopen/fread/fwrite/fclose answer from the case's in-memory files and the closed file's final bytes mirror into
-  `mem[]` for the comparison) and ran both save-file rows unpoked. `make diff-verify`'s counter after it is
-  `1000/1000 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps;
-  638/831 rows with callees closed (169 have none)` (`0x24C5C` has ten rows); 15 of the 747 ported functions have no
-  row (9 named gaps and 6 named non-rows, none open; record §D.12, §S.8, §I.5, §N.4). The counter does not tell a full row from a
-  weaker one: 9 of the 732 rowed functions have a row that runs the original under code pokes or leaves reachable
-  blocks out (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls; `0x1AFE8` and
-  `0x1B084`, unpoked since track F but missing the exit block (a short read the model answers ends the
-  original's run, and a modelled write never comes short; the port takes the failed-open path instead,
-  config.c PORT); track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
+  `mem[]` for the comparison) and ran both save-file rows unpoked. Track G batch g2 (record
+  `2026-10-14-reverse-g-derivations.md` §G2) modelled the runtime's exit chain for rows, gave the load row the
+  short-read case l6 that declares the terminal difference (its exit block is now exercised), and rowed
+  `0x2EA68` — which closed `config_image_store` on its callee. `make diff-verify`'s counter after it is
+  `1001/1001 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps;
+  639/832 rows with callees closed (169 have none)` (`0x24C5C` has ten rows); 14 of the 747 ported functions have no
+  row (8 named gaps and 6 named non-rows, none open; record §D.12, §S.8, §I.5, §N.4, §G2). The counter does not tell a full row from a
+  weaker one: 10 of the 733 rowed functions have a row that runs the original under code pokes, leaves reachable
+  blocks out, or declares a terminal difference on some or all of its cases (which then compare nothing on the
+  port's side, §G1's skip) (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls;
+  `0x1AFE8`, its l6 the declared short-read exit difference (the original exits with code 1 where the port takes
+  the failed-open path and returns, config.c PORT — the port's side of that case is compared nowhere on the row,
+  §G1's skip; it is pinned only by the `test_game.c` load case); `0x1B084`,
+  still missing the exit block (its `0x1B0F7` arm needs a short fwrite count and the modelled fwrite never comes
+  back short, so no case reaches it even with the exit chain modelled, §G2); track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
   `0x24C5C`, `0x2EA78` and `0x2EA74`, unpoked since track H but missing the key paths into `0x5004A`, the
-  port's documented omission): count 723 full rows, of which `0x51ED8`'s carries one declared difference (the
+  port's documented omission; `0x2EA68`, every case declaring the terminal difference, so the row compares
+  nothing on the port's side and carries no mutant, §G2): count 723 full rows, of which `0x51ED8`'s carries one declared difference (the
   renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
-  callee row (`attract_step` on `0x1C740`'s).
-  The open rows are open on the 15 unrowed functions and on the named non-rows
+  callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
+  The open rows are open on the 14 unrowed functions and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and

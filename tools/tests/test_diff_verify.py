@@ -30058,9 +30058,10 @@ D1_MASKS.update(SA_MASKS)
 D1_KINDS.update(SA_KINDS)
 D1_CASES.extend(SA_CASES)
 # S sa end
-# S sc (record 2026-10-13-reverse-s §S.7, the rows converted by 2026-10-14-reverse-f §F.1): the
-# save file's two rows; measured pins. The load row's sets are unchanged by the conversion; the save
-# row gains s4 (the stale file a write-mode open replaces at offset 0 — the model's rule, the raw's
+# S sc (record 2026-10-13-reverse-s §S.7, the rows converted by 2026-10-14-reverse-f §F.1 and
+# 2026-10-14-reverse-g §G2): the save file's two rows; measured pins. The load row's sets are
+# unchanged by either conversion: g2's l6 is a terminal case and §G1's skip means no mutant is caught
+# by it (measured — the per-mutant case sets below are exactly the f1 ones). The save row gains s4 (the stale file a write-mode open replaces at offset 0 — the model's rule, the raw's
 # open-time truncate unpinned: f-conventions.md OPEN Q1), which every write-path mutant also
 # catches, and @wmode (append at the file's end instead of at offset 0) is caught by s4 alone
 # (track F f1, jobs=1).
@@ -30134,7 +30135,16 @@ SC_CASES = [
     ("config_file_save@wsrc", ['s1', 's2', 's3', 's4']),
     ("config_file_save@wmode", ['s4']),
 ]   # SC_CASES end
+# G2 (record 2026-10-14-reverse-g §G2): the menu_fatal_error row. Every case of it declares the
+# terminal difference (§G1), so a matched-terminal case compares no port value, bytes or calls and no
+# mutant could ever be caught on the row: it carries none (the precedent 0x18428's read-only row) and
+# joins the mask/name pins only. Measured: 2 cases, blocks 2/2 (the tail jump's scan covers the chain
+# head 0x62003 too), callees SC_EXIT + the SC_FLUSH stub, all unverified: the row is open on them.
+G2_MASKS = {
+    "menu_fatal_error": 0xffffffff,
+}   # G2_MASKS end
 D1_MASKS.update(SC_MASKS)
+D1_MASKS.update(G2_MASKS)
 D1_KINDS.update(SC_KINDS)
 D1_CASES.extend(SC_CASES)
 # track S integration (record 2026-10-13-reverse-s section S.9): the run clock and the ISR tick
@@ -30544,6 +30554,22 @@ D1_MASKS.update(H1_MASKS)
 D1_KINDS.update(H1_KINDS)
 D1_CASES.extend(H1_CASES)
 # h1 end
+# ---- track G batch g3aa (record 2026-10-14-reverse-g §G3): the DPMI clock read 0x500BB ----
+G3AA_MASKS = {
+    "dpmi_clock_read": 0xFFFFFFFF,
+}   # G3AA_MASKS end
+G3AA_KINDS = {
+    "dpmi_clock_read@off4": {'eax'},
+    "dpmi_clock_read@zero": {'eax'},
+}   # G3AA_KINDS end
+G3AA_CASES = [
+    ("dpmi_clock_read@off4", ['c0', 'c1', 'c2']),
+    ("dpmi_clock_read@zero", ['c1', 'c2']),
+]   # G3AA_CASES end
+D1_MASKS.update(G3AA_MASKS)
+D1_KINDS.update(G3AA_KINDS)
+D1_CASES.extend(G3AA_CASES)
+# g3aa end
 
 
 @needs_unicorn
@@ -31622,6 +31648,9 @@ class RealFunctionTests(unittest.TestCase):
         0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         0x2D638: (), 0x2DE98: (), 0x2DF8C: (),
         # S sa end
+        # G2 (record 2026-10-14-reverse-g §G2): the flush stub the two exit-reaching rows share
+        0x6C4CF: ("ecx", "edx", "ebp"),
+        # G2 end
         # S sb (record 2026-10-13-reverse-s §S.6): the stubs its rows add
         0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"), 0x2DAE4: ("edx",), 0x2E934: ("edx",), 0x32B94: ("edx",), 0x32BB0: ("edx",),
         # S sb end
@@ -31890,9 +31919,20 @@ class RealFunctionTests(unittest.TestCase):
         # 27 mutants (7 + 3 + 14 + 3; record §H.2). Track H batch h2: 0x52106's row runs unpoked and gains seven
         # DAC and screen mutants, and 0x51ED8's drawing cases four (record §H.3). Track F batch f1: the
         # two save rows (0x1AFE8, 0x1B084) run unpoked under the file model, the save row gains the @wmode
-        # append mutant and the case s4 (record 2026-10-14-reverse-f §F.1). Measured on the merge.
-        self.assertIn("diff-verify: 1000/1000 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps; "
-                      "638/831 rows with callees closed (169 have none).", out.getvalue())
+        # append mutant and the case s4 (record 2026-10-14-reverse-f §F.1). Track G batch g2: the load
+        # row gains the terminal case l6 (the short read reaches the modelled exit, all 11 blocks now
+        # hit) and the exit-chain callees, and 0x2EA68 gains its row with no mutant (every case declares
+        # the terminal difference, §G2): functions 1000 -> 1001, with-callees rows 831 -> 832, and
+        # config_image_store closes on its callee 0x2EA68 (638 -> 639). Measured on the merge.
+        # Track G batch g3aa: 0x500BB's own row (dpmi_clock_read — `mov eax,[0x101500]; ret`, the
+        # §C3g.7 named non-row; three cases vary the tick dword, @off4 and @zero, no callees):
+        # functions 1001 -> 1002, mutants 14885 -> 14887, the counted-apart rows 169 -> 170 (its row
+        # has no callees, the with-callees count stays 832), and closed 639 -> 666: the 27 rows whose
+        # callee 0x500BB is now VERIFIED by its own row with every other callee VERIFIED (of the 47
+        # §C3g.7 dependents; the other 20 stay open on callees like 0x1B544 and the AIL wrappers).
+        # Measured on the lane.
+        self.assertIn("diff-verify: 1002/1002 functions VERIFIED; 14887/14887 mutants detected; 1 named gaps; "
+                      "666/832 rows with callees closed (170 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
