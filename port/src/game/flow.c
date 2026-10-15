@@ -7166,12 +7166,13 @@ void game_loop(void)
             DSB(DS_001014FC) = 0;            /* 0x2569D `mov byte` */
             swap_buffers();                  /* 0x256AA 0x50188 */
         }
-        /* PORT: 0x256B1 (the master loop's body draw, `rng(0x7FFF)`) is pinned to
-         * a non-advancing `mov eax,0` in the pinned original (tools/title_pin.py),
-         * and the port draws nothing here, so both streams carry only the
-         * consumption-site draws and stay in step. The original's spin draw
-         * (0x256D6) is pinned the same way; the port's spin advances the ISR tick
-         * below and draws nothing. */
+        /* 0x256AF/0x256B1: the master loop's body draw (`mov eax,ebp`, EBP = 0x7FFF at
+         * 0x255E4, then `call 0x5D7DC`); the return is dead (0x256BB `mov
+         * eax,[0x10150C]`). PORT: the pinned original (tools/title_pin.py) replaces the call
+         * by a non-advancing `mov eax,0`, so the port's real stream draws nothing here (a
+         * real draw would shift every later consumption-site draw against the captures);
+         * rng_pinned_draw is the raw call's recorded seam, inert outside build/diffrun. */
+        rng_pinned_draw(0x7FFFu);            /* 0x256B1 */
 
         /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
          * the music, render one frame of audio. */
@@ -7183,8 +7184,12 @@ void game_loop(void)
          * counter. PORT: the spin is where the host retrace is waited, and the
          * ISR's increment is modelled as one tick per retrace; when the loop is
          * behind (a resource-read stall), the spin does not run and the loop
-         * catches up without waiting — matching the raw. */
+         * catches up without waiting — matching the raw. 0x256D4/0x256D6: each
+         * pass's own draw (`mov eax,ebp` + `call 0x5D7DC`), the body draw's
+         * pinned twin (the recorded seam; the port's real stream draws
+         * nothing). */
         while (DSD(DS_0010150C) - 1u == DSD(DS_00101508)) {  /* 0x256C5 */
+            rng_pinned_draw(0x7FFFu);        /* 0x256D6 */
             game_isr_ticks(1u);
             host_wait_vblank();
         }
