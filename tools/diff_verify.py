@@ -10,6 +10,7 @@ only. It does not mean the function is correct for states the cases never produc
 """
 import argparse
 import concurrent.futures
+import csv
 import dataclasses
 import multiprocessing
 import os
@@ -34226,13 +34227,62 @@ def mutant_detection(r):
     return True, ""
 
 
+# ---- the closure rule's declared non-goals (track J §J1, design goal 3) ---------------------------
+# A row's open callee does not keep the row open when it is outside the portable set: such an address
+# can never gain a row of its own, so counting it as a blocker conflates "can never have a row" with
+# "missing row" (record 2026-10-14-next-phase/01 §3). Each excluded class comes from a repo table:
+#   runtime      >= RUNTIME_BASE (AGENTS.md: the WATCOM libc / DOS-4GW glue the host libc serves);
+#   host-owned   a `host-owned`/`deferred` line of tools/port_classification.txt;
+#   non-function an address port/decomp/prage.functions.csv never lists as a real function (E2's
+#                field: call targets the decomp index never listed, e.g. the 0x24568 handler entries
+#                and the 0x51E58 renderer table).
+# A real function in that index with no row of its own (the named gaps) is portable and keeps its
+# callers open: only a row can close that hole. Record `2026-10-15-reverse-j-derivations.md` §J1.
+RUNTIME_BASE = 0x5D000
+
+
+def _non_goal_tables():
+    """(host, funcs): the classified host-owned/deferred addresses and the decomp index's real
+    functions (`::` rows are the .image overlay noise), each from its committed repo table."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    host = set()
+    with open(os.path.join(root, "tools", "port_classification.txt")) as f:
+        for ln in f:
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                host.add(int(ln.split()[0], 16))
+    funcs = set()
+    with open(os.path.join(root, "port", "decomp", "prage.functions.csv")) as f:
+        for row in csv.DictReader(f):
+            if "::" not in row["entry"]:
+                funcs.add(int(row["entry"], 16))
+    return host, funcs
+
+
+NON_GOAL_HOST, NON_GOAL_FUNCS = _non_goal_tables()
+
+
+def non_goal(addr):
+    """The declared-non-goal class of `addr` (the closure rule above), or None when the address is in
+    the portable set. Precedence is reporting only: every class excludes."""
+    if addr >= RUNTIME_BASE:
+        return "runtime"
+    if addr in NON_GOAL_HOST:
+        return "host-owned/deferred"
+    if addr not in NON_GOAL_FUNCS:
+        return "non-function"
+    return None
+
+
 def closed_rows(funcs, verdicts):
     """(closed, with_callees): the rows that have callees, and those of them that are VERIFIED with
-    every callee VERIFIED by its own row (one level deep, record §E3.6). Rows with no callee are
+    every callee VERIFIED by its own row (one level deep, record §E3.6) or a declared non-goal
+    outside the portable set (`non_goal`: runtime >= 0x5D000, host-owned/deferred, non-function). A
+    real function with no row (the named gaps) still keeps the row open. Rows with no callee are
     counted apart, so they cannot make the figure look closer than it is (record §E3.4)."""
     with_callees = [r for r in funcs if r.callees]
     closed = [r for r in with_callees if r.verdict == "VERIFIED"
-              and all(verdicts.get(a) == "VERIFIED" for a, _ in r.callees)]
+              and all(verdicts.get(a) == "VERIFIED" or non_goal(a) for a, _ in r.callees)]
     return closed, with_callees
 
 
@@ -34310,11 +34360,15 @@ def main(argv=None):
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
-          "none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees "
-          "stubbed or run as stated." % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
-                                         "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
-                                         if args.self_check else "", len(gaps), len(closed), len(with_callees),
-                                         len(funcs) - len(with_callees)))
+          "none), counting a row closed when every callee is VERIFIED by its own row or a declared non-goal "
+          "outside the portable set (runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, "
+          "or an address port/decomp/prage.functions.csv never lists as a function); a real function in that "
+          "index with no row of its own keeps its callers open. Claim: equivalence on the exercised blocks and "
+          "inputs only, each function with its callees stubbed or run as stated."
+          % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
+             "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
+             if args.self_check else "", len(gaps), len(closed), len(with_callees),
+             len(funcs) - len(with_callees)))
     return 1 if bad or missed else 0
 
 

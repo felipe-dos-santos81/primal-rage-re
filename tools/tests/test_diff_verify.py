@@ -31998,8 +31998,22 @@ class RealFunctionTests(unittest.TestCase):
         # (@nodraw/@drawarg added). Functions and rows unchanged; mutants 14899 -> 14901 (+2), the
         # two new game_loop mutants; every other row byte-identical (measured; the clobber
         # correction alone left text_blit_string, config_screen_wait(_zero) identical too).
+        # Track J j1 (record 2026-10-15-reverse-j-derivations.md §J1): the closure amendment. A row's
+        # unverified callee no longer keeps the row open when it is a declared non-goal outside the
+        # portable set: runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an
+        # address port/decomp/prage.functions.csv never lists as a function (E2's field). Closed
+        # 716 -> 832: all 116 open rows qualified — 96 carried a >=0x5D000 runtime callee (79 on those
+        # alone), 19 only E2-class non-functions (the 0x24568/0x24804/0x40CB0 call-tables, the
+        # 0x29D04/0x3D0BC/0x3E484/0x3E4C4 fighter hooks, 0x51E58 and the 0x2CB74 data-pointer), and 1
+        # only the host-owned 0x10D34/0x4FB98 pair (game_shutdown) — and none was blocked on a real
+        # function without a row, so no row stays open on the portable set. Functions, mutants and the
+        # 832/175 split are unchanged. Measured on the lane.
         self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14901/14901 mutants detected; 1 named gaps; "
-                      "716/832 rows with callees closed (175 have none).", out.getvalue())
+                      "832/832 rows with callees closed (175 have none), counting a row closed when every "
+                      "callee is VERIFIED by its own row or a declared non-goal outside the portable set "
+                      "(runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an "
+                      "address port/decomp/prage.functions.csv never lists as a function); a real function "
+                      "in that index with no row of its own keeps its callers open.", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
@@ -32269,15 +32283,39 @@ class CallParseTests(unittest.TestCase):
                 V.Spec("f", 0x10000, [V.Case("a", {}, {}, {0x10020: 1})], calls=calls)
 
     def test_only_rows_with_callees_count_toward_the_closed_figure(self):
+        # The callees are real addresses the rule reads from the repo's tables (the class test below
+        # pins each): 0x2F920 is a portable function (VERIFIED by row a), 0x4FBA2 a named gap — a
+        # real function without a row, portable, keeps the row open — while 0x5D812 (runtime),
+        # 0x501A3 (host-owned) and 0x2CB74 (E2's non-function field) are declared non-goals a row
+        # may count closed on (record §J1).
         def row(entry, verdict, callees):
             return V.SpecResult("r%X" % entry, entry, verdict, callees=callees)
-        a = row(0xA, "VERIFIED", [])                      # no callee: counted apart
-        b = row(0xB, "VERIFIED", [(0xA, "stub")])         # its callee is VERIFIED: closed
-        c = row(0xC, "VERIFIED", [(0xA, "stub"), (0xF, "stub")])   # 0xF has no row
-        d = row(0xD, "MISMATCH", [(0xA, "allow")])
-        verdicts = {r.entry: r.verdict for r in (a, b, c, d)}
-        closed, with_callees = V.closed_rows([a, b, c, d], verdicts)
-        self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]), ([0xB], [0xB, 0xC, 0xD]))
+        a = row(0x2F920, "VERIFIED", [])                              # no callee: counted apart
+        b = row(0xB, "VERIFIED", [(0x2F920, "stub")])                 # its callee is VERIFIED: closed
+        c = row(0xC, "VERIFIED", [(0x2F920, "stub"), (0x4FBA2, "stub")])  # 0x4FBA2 has no row: open
+        d = row(0xD, "MISMATCH", [(0x2F920, "allow")])                # a MISMATCH row is never closed
+        e = row(0xE, "VERIFIED", [(0x5D812, "allow")])                # runtime non-goal: closed
+        f = row(0xF, "VERIFIED", [(0x501A3, "allow")])                # host-owned non-goal: closed
+        g = row(0x10, "VERIFIED", [(0x2CB74, "stub")])                # non-function non-goal: closed
+        verdicts = {r.entry: r.verdict for r in (a, b, c, d, e, f, g)}
+        closed, with_callees = V.closed_rows([a, b, c, d, e, f, g], verdicts)
+        self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]),
+                         ([0xB, 0xE, 0xF, 0x10], [0xB, 0xC, 0xD, 0xE, 0xF, 0x10]))
+
+    def test_the_closure_rules_non_goal_classes_come_from_the_repo_tables(self):
+        # Each class of the §J1 closure rule is read from its own table, never a hardcoded list:
+        # runtime is the >= 0x5D000 cut (AGENTS.md), host-owned/deferred are the tools/
+        # port_classification.txt lines, and an address port/decomp/prage.functions.csv never lists
+        # as a real function is E2's field. A real function in that index is portable even without a
+        # row of its own (the named gaps): it keeps its callers open.
+        self.assertEqual(V.RUNTIME_BASE, 0x5D000)
+        self.assertEqual(V.non_goal(0x5D812), "runtime")                 # an AIL wrapper
+        self.assertEqual(V.non_goal(0x501A3), "host-owned/deferred")     # the aperture store (§K9.1)
+        self.assertEqual(V.non_goal(0x10D0C), "host-owned/deferred")     # a §50-E call
+        self.assertEqual(V.non_goal(0x2CB74), "non-function")            # E2's data-pointer item stub
+        self.assertEqual(V.non_goal(0x24568), "non-function")            # E2's call-table handler
+        self.assertIsNone(V.non_goal(0x4FBA2))                           # a named gap: portable
+        self.assertIsNone(V.non_goal(0x47370))
 
     def test_a_call_line_after_the_result_is_rejected(self):
         with self.assertRaises(ValueError):
