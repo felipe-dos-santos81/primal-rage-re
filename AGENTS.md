@@ -31,7 +31,7 @@ make gp-ending-oracle      # U10: the ending under pokes, data/k11-captures/gp-u
 make gp-twop-oracle        # two-human gameplay oracle: gp-twop must be a two-human match (tools/gp_twop.py), then frame + trace + moves ratchets (N 612, F 1506 and moves N 1506 = the port script's end, the poll.log sha256 pinned in the Makefile); in make verify; skips without the capture
 make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
-make audio-render          # FM music to a WAV (the windowed run is silent here)
+make audio-render          # FM music to a WAV (rendered audibility has no oracle)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
 make entry-triage          # E2: triage of the non-Ghidra entry candidates; the committed table must equal a fresh run (in make verify; skips without capstone or PRAGE.EXE; fails under PR_ORACLE_REQUIRED=1)
 ```
@@ -54,8 +54,12 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   `PR_RESTART`).
 - If a build invoked through `make` looks stale, `cmake --build build` is the
   reliable fallback.
-- macOS host: no `timeout`; SDL audio cannot open here (`-66681`), so the
-  windowed run is silent — use `make audio-render` to hear the FM path.
+- macOS host: no `timeout`. SDL audio open has failed before here and can fail on
+  other hosts/runs (`-66681`, first observed in the 2026-09-16 audio report), but
+  on this host it opens: `host_audio_open(49716,2) -> 1` (coreaudio; the windowed
+  run prints `audio device open at 49716 Hz`) — rendered audibility still has no
+  device-recording oracle, and `make audio-render` renders the FM path to a WAV
+  (record `2026-10-15-reverse-j-derivations.md` §J2.5).
 - `make gp-capture` fails (`check=FAIL unscripted input`) on any key word or pad bit the harness did
   not inject, so nobody may type into the DOSBox-X window while it runs; audit an existing capture
   with `python3 tools/gp_capture.py check-input data/k11-captures/<scenario>`. The check detects
@@ -311,9 +315,9 @@ consolidation gate).
   win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
   the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
   a poke replaced is not claimed: the KO by hits, the six earlier won matches, the final's death
-  animations. Only character 0's ending is captured. Both frame ratchets now pass round 1's mode-8 entry by name (track G §G6 below): U9 N 2209 and U10 N 2062, the first unexplained behind the allowed frames — both the SAME 166 px six-row strip (rows 192..197, x 0..85, sha a886c0f3..) at the mode-0x17→0x12 entry, held by no dump frame (not even that entry's loader/pump-hook samples) and whose cause is not attributed — a named gap and not §G6's class — so the results screens and the following rounds' fights are under the pixel claim down to those pins; past U9's trace pin (f=0x866) the only claims are the WIN fields (to f=0xC5A) and the milestone frames, most of which are mode changes driven by replayed pokes and do not check which opponent is fought; U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 2062. `gp-u10-ending` runs DOSBox-X with
+  animations. Only character 0's ending is captured. Both frame ratchets now pass round 1's mode-8 entry and the mode-0x17→0x12 loader strip by name (track G §G6/§G7): the strips at U9 2209 and U10 2062 are the loader's `- LOADING -` presentation — the same 166 px six-row strip (rows 192..197, x 0..85, sha a886c0f3.., glyph fingerprint de1c1bb2..) — composed over the entry screen, a host-owned-audio model artifact allowed by name in `OVERLAY_ALLOWED`, not a named gap; the first unexplained is U9 2452 (the replay's post-script tail) and U10 4113 (the poked final's death animation, not allowed), and the pixel claims now reach the replays' ends (U9 f=0xDAE, the X record; U10 f=0x1502, the final's 4th death), so the results screens, the following rounds' fights and U10's final are under them; U9's trace and WIN fields now agree to its replay's end too (3503, `0 differing through 3502`; the milestone frames, mostly mode changes driven by replayed pokes, do not check which opponent is fought); U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 4113. `gp-u10-ending` runs DOSBox-X with
   `memsize=64`, a harness value (the original ran out of memory in the poked final at 16 MB,
-  record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The mode-8 entry frames the ratchets used to stop at (U9 346, U10 331, gp-idle-loss 2064) hold one screen three consecutive scans and then put two presents inside one 70.09 Hz scan-out: track G §G6 isolated that as the loop's own catch-up (an iteration whose compute overruns an ISR tick fails the 0x25643 gate and skips its present; the re-opened presents land sub-tick apart) — a comparison-model limit, not a port divergence, the loader re-sync hypothesis tested and rejected. Those frames are allowed by name in `SCAN3_ALLOWED` with per-frame byte recipes (a pinned hash row strip that an earlier dump frame must hold + one unique adjacent pair binding the rows below; mutation-tested per §G5's discipline), and the ratchets moved up to U9 2209 / U10 2062 / idle-loss 7559 (the idle-loss one is past the replay script's end — how far the port got). A P batch that ports
+  record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The mode-8 entry frames the ratchets used to stop at (U9 346, U10 331, gp-idle-loss 2064) hold one screen three consecutive scans and then put two presents inside one 70.09 Hz scan-out: track G §G6 isolated that as the loop's own catch-up (an iteration whose compute overruns an ISR tick fails the 0x25643 gate and skips its present; the re-opened presents land sub-tick apart) — a comparison-model limit, not a port divergence, the loader re-sync hypothesis tested and rejected. Those frames are allowed by name in `SCAN3_ALLOWED` with per-frame byte recipes (a pinned hash row strip that an earlier dump frame must hold + one unique adjacent pair binding the rows below; mutation-tested per §G5's discipline), the U9/U10 entry strips in `OVERLAY_ALLOWED` (the same discipline, §G7), and the ratchets moved up to U9 2452 / U10 4113 / idle-loss 7559 (the idle-loss and U9 ones are past the replay script's end — how far the port got — and U10's 4113 is the poked final's death animation, not allowed). A P batch that ports
   a target in a miss set re-measures and re-pins (U10: `0x29C78` P7; record §W.16;
   track P batch 3 ported `0x475EC`, record 2026-10-03-reverse-p3 §P3.9; batches 4+5 ported
   `0x400E0`/`0x21084` P4, `0x21044` P5 and `0x3DA50` P5: U9's set gains `0x213F0`/`0x213F4` P7 and
@@ -369,8 +373,9 @@ consolidation gate).
    g4 (`game_loop`'s recorded RNG stub, `@rng`). The closure rule (`closed_rows`, record §J1): a row counts closed
    when every callee is VERIFIED by its own row, or is an **allow-mode** callee outside the portable set — runtime
    ≥ 0x5D000, host-owned/deferred in `tools/port_classification.txt`, or an address the decomp index
-   (`port/decomp/prage.functions.csv`) never lists as a function (E2's triage field) *and* `port/src` does not
-   implement (no `fn_register`, no column-0 `/* 0xADDR` header) — while a recorded *stub* or `real` callee outside
+   (`port/decomp/prage.functions.csv`) never lists as a function (E2's triage field) — *and* `port/src` does not
+   implement it (no `fn_register`, no column-0 `/* 0xADDR` header; the port-code guard applies to all three
+   classes) — while a recorded *stub* or `real` callee outside
    the set, and any ported function with no row, still keep the row open. The port-code check is load-bearing:
    `0x29D04` and `0x3E484` (the E2-class handler entries, implemented and `fn_register`ed by
    `port/src/game/actors.c`, unrowed) keep `fighter_19020`, `fighter_35050`, `fighter_think_side`,

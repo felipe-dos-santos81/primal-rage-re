@@ -96,8 +96,10 @@ recorded reason.
 
 ## Non-goals
 
-- Audio bring-up on this host — SDL audio cannot open here (-66681); queued for
-  a device-capable host (G's ruling stands).
+- Audio bring-up — the `-66681` open failure is stale on this host (2026-10-15:
+  `host_audio_open(49716,2) -> 1`, coreaudio; record `2026-10-15-reverse-j-derivations.md`
+  §J2.5), so a device-capable host is available and the item stays queued
+  (G's ruling stands).
 - The SDL-gamepad→pad-word map (returns when the joystick capture exists).
 - Porting anything in the runtime region or the deferred Smacker-movie-audio
   addresses (verified paper categories, 02 §1–3).
