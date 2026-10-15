@@ -19845,7 +19845,7 @@ D3A_SPECS += [
 D3A_SPECS += [
     # 0x4F1E4 frontend_input_reset: no argument. 0x2EA30(0x2700), the byte 0x104B15 = 0 (DL
     # across the call), 0x2EA30(the first call's EAX). 0x2EA30 is the interrupt lock on the byte
-    # 0xBCD60 (a named non-row, allowed; the port does not model it): the first call clears a 1
+    # 0xBCD60 (rowed by track G g3, §G3, allowed; the port does not model it): the first call clears a 1
     # and returns the old byte, the second puts a 1 back, so the byte ends as it started in each
     # of the three cases (0, 1, another value). Mask 0: record §1.
     Spec("frontend_input_reset", 0x4F1E4, [
@@ -24596,7 +24596,7 @@ D4D_SPECS += [
     # flag 0x52106(0) (a stub: `in`/`out`) and 0x336C0, or the 0xFA00-byte copy [0xE87A0] ->
     # [0xE87A4]; the byte 0x105BED = 1. The lock byte 0xBCD60 is 0 or 0x80: with a 1 (the image's
     # value) 0x2EA30 holds it at 0 across the body, which every stub call's memory shows and the
-    # port, which does not model the lock, cannot (the named non-row 0x2EA30; as release_record's
+    # port, which does not model the lock, cannot (rowed by track G g3, §G3; as release_record's
     # row). Full mask with the binding's lock byte: see the binding.
     Spec("actors_reset_al", 0x2BAF4, [
         Case("t0", {"eax": 1}, d4d_reset_case(0)),
@@ -33994,7 +33994,7 @@ D1_SPECS += G3AA_SPECS
 # so the arms agree on every case's value. Mask full: the callers dereference it (0x1818D
 # `mov ecx,[eax+2]` after 0x16308's tail jump — camera_resolve_sprite's analysis). The nine
 # non-resident block leaders (0x1B57C..0x1B5E0) stay named unhit with their byte evidence —
-# D4B_RES_SLOW, whose wording this row updates: the arm tail-jumps the host loader (clock stamp
+# D4B_RES_SLOW, whose wording this row updates: the arm calls the host loader and returns (clock stamp
 # 0x500BB at 0x1B58E/0x1B5EE, the allocate call 0x1E774 at 0x1B5BD, the fatal 0x1D290 at 0x1B5DB,
 # the present call 0x1B3AC at 0x1B5E9), which the port keeps out of this function's resident
 # claim (res.c PORT: "0x1B5A6's allocate arm (0x1E774) and 0x1B5D4's fatal have no port

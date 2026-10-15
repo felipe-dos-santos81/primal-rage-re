@@ -113,7 +113,7 @@ replayed chain meets — plus the new row's own entry:
   `call 0x62003` (0x1B059 + 0x46FAA = 0x62003) — as §G1 stated. The count EDX is fread's EAX
   (`89 C2` 0x1B01C), and the model answers the short count for a short file (§F.1), so the arm is
   reachable under the file model: l6 states a 0x7F7-byte file (one byte short of the 0x7F8 the body
-  requests at `mov ebx,0x7f8` 0x1B00B / `mov edx,1` 0x1B00C) and the run terminates —
+  requests at `mov ebx,0x7f8` 0x1B006 / `mov edx,1` 0x1B00B) and the run terminates —
   `("exit", 1)`, `terminate with code 1 at 0x62723`, opens `[(b"cmos", b"rb")]` (probe, and the row
   with the case in it: 11/11 blocks).
 - The save arm `0x1B0F7` is **not** reachable with the file model as built — named, not poked. Its
@@ -520,7 +520,7 @@ presented frames; every `fn-miss` set on its pinned known-set, `all checks passe
 The per-frame tick log the brief asks for is the driver's own `frames.txt` tick
 column (one line per presented frame: `index f=… tick=… mode=…`) — no extra
 instrumentation was needed, and its ticks advance **exactly +1 per frame** across
-every stretch (idle-loss 1665..1670: 0xCCF..0xCD3; U9 215..221: 0x4E1..0x4E7; U10
+every stretch (idle-loss 1665..1670: 0xCCE..0xCD3; U9 215..221: 0x4E1..0x4E7; U10
 213..221: 0x4DA..0x4E2).
 
 **The composite anatomy, re-measured per row against these dumps** (a row-run pass:

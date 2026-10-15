@@ -35,6 +35,9 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
 make entry-triage          # E2: triage of the non-Ghidra entry candidates; the committed table must equal a fresh run (in make verify; skips without capstone or PRAGE.EXE; fails under PR_ORACLE_REQUIRED=1)
 ```
+- **A fresh git worktree needs the git-ignored test fixtures copied in** (`port/tests/ghidra_data.bin`,
+  `port/tests/title_screen_ref.ppm`) before any `PR_ORACLE_REQUIRED=1` run or `make verify` — they live
+  in the main checkout and `git worktree add` does not bring them (track G lost three runs to this).
 
 - **Run the binaries from the repo root.** Several tests default to the relative
   `data/game/C` (`PR_GAME_DIR` overrides it), and CMake's `add_test` sets the
@@ -84,7 +87,7 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
 
 ## Tooling for RE
 
-- **A live Ghidra MCP instance is usually available** (project `rage`,
+- **A live Ghidra MCP instance is usually available** (project `primal-rage`,
   `/PRAGE.EXE`); its addresses match the scheme above. Prefer it for data
   addresses, jump tables and cross-references.
 - Ghidra headless + the exact import/re-export commands: `port/RE_GUIDE.md`.
@@ -334,7 +337,7 @@ consolidation gate).
   `CMOS` and drop the writes, the captures' condition, and `make verify` fails first if that file is not
   2040 zero bytes or absent. The run clock `0x32970` reads the tick `0x105D88`, which the port's modelled
   ISR ticks advance (`game_isr_ticks`, `config.c`'s key wait), not wall time (record §S.9). Named gaps
-  (record §S.8): `0x2EA68` returns where the original exits; a short `cmos` gives the defaults where the
+  (record §S.8, its first item now a declared terminal difference on `0x2EA68`'s row, §G2): `0x2EA68` returns where the original exits; a short `cmos` gives the defaults where the
   original exits; no recording of the original writing or loading a real save exists yet.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
@@ -356,25 +359,31 @@ consolidation gate).
   `mem[]` for the comparison) and ran both save-file rows unpoked. Track G batch g2 (record
   `2026-10-14-reverse-g-derivations.md` §G2) modelled the runtime's exit chain for rows, gave the load row the
   short-read case l6 that declares the terminal difference (its exit block is now exercised), and rowed
-  `0x2EA68` — which closed `config_image_store` on its callee. `make diff-verify`'s counter after it is
-  `1001/1001 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps;
-  639/832 rows with callees closed (169 have none)` (`0x24C5C` has ten rows); 14 of the 747 ported functions have no
-  row (8 named gaps and 6 named non-rows, none open; record §D.12, §S.8, §I.5, §N.4, §G2). The counter does not tell a full row from a
-  weaker one: 10 of the 733 rowed functions have a row that runs the original under code pokes, leaves reachable
-  blocks out, or declares a terminal difference on some or all of its cases (which then compare nothing on the
-  port's side, §G1's skip) (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls;
-  `0x1AFE8`, its l6 the declared short-read exit difference (the original exits with code 1 where the port takes
-  the failed-open path and returns, config.c PORT — the port's side of that case is compared nowhere on the row,
-  §G1's skip; it is pinned only by the `test_game.c` load case); `0x1B084`,
-  still missing the exit block (its `0x1B0F7` arm needs a short fwrite count and the modelled fwrite never comes
-  back short, so no case reaches it even with the exit chain modelled, §G2); track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
-  `0x24C5C`, `0x2EA78` and `0x2EA74`, unpoked since track H but missing the key paths into `0x5004A`, the
-  port's documented omission; `0x2EA68`, every case declaring the terminal difference, so the row compares
-  nothing on the port's side and carries no mutant, §G2): count 723 full rows, of which `0x51ED8`'s carries one declared difference (the
-  renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
-  callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
-  The open rows are open on the 14 unrowed functions and on the named non-rows
-  (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
+   `0x2EA68` — which closed `config_image_store` on its callee; batch g3 (record §G3) then rowed ALL SIX named
+   non-rows (the §C3g.7 reversal: `dpmi_clock_read` `0x500BB`, `res_resolve` `0x1B544`, `0x29D60`, the interrupt
+   lock `0x2EA30`, `0x32BAC`, `0x2EA64` — the six together closed 77 callee rows, 639→716; each new row's claim
+   states exactly what it compares, the reversal's wording rule). `make diff-verify`'s counter after it is
+   `1007/1007 functions VERIFIED; 14899/14899 mutants detected; 1 named gaps;
+   716/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
+   no row (the named gaps, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3). The counter does not tell a full
+   row from a weaker one: 12 of the 739 rowed functions have a row that runs the original under code pokes, leaves
+   reachable blocks out, or declares a terminal difference on some or all of its cases (which then compare nothing
+   on the port's side, §G1's skip) (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls;
+   `0x1AFE8`, its l6 the declared short-read exit difference (the original exits with code 1 where the port takes
+   the failed-open path and returns, config.c PORT — the port's side of that case is compared nowhere on the row,
+   §G1's skip; it is pinned only by the `test_game.c` load case); `0x1B084`,
+   still missing the exit block (its `0x1B0F7` arm needs a short fwrite count and the modelled fwrite never comes
+   back short, so no case reaches it even with the exit chain modelled, §G2); track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
+   `0x24C5C`, `0x2EA78` and `0x2EA74`, unpoked since track H but missing the key paths into `0x5004A`, the
+   port's documented omission; `0x2EA68`, every case declaring the terminal difference, so the row compares
+   nothing on the port's side and carries no mutant, §G2; `0x1B544`, the resident arm only — its
+   tail-jump-to-host slow arm named unhit (2 of 11 blocks); `0x2EA30`, the SET-lock clear `0x2EA49` named unhit
+   (7 of 8 blocks)): count 727 full rows, of which `0x51ED8`'s carries one declared difference (the
+   renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
+   callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
+   The open rows are open on the 8 unrowed functions and on runtime callees the classification does not target —
+   the ≥0x5D000 AIL wrappers and libc (`0x5D812`, `0x5DEED`, the WATCOM span) and `0x2CB74`/`0x501A3`
+   (§G3's closure ledger; the closure-rule amendment for those is a separate decision, recon item 4). 
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool
