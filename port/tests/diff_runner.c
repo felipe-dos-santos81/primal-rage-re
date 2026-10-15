@@ -42660,6 +42660,12 @@ static void m_g3b_2ea30_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
 static void b_g3b_32bac(const u32 *r, u32 *eax) { hit_sound(r[R_EAX]); *eax = r[R_EAX]; }
 static void m_g3b_32bac_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
 static void m_g3b_32bac_plus1(const u32 *r, u32 *eax) { *eax = r[R_EAX] + 1u; }
+/* 0x2EA64: the bare `ret` (the shared tail 0x2EA30 falls through; entered directly only `ret`
+ * runs). The port has no C at it — call sites inline the elision — so the binding mirrors that:
+ * report the entry EAX, write nothing. @zero returns 0; @scrub drops the high half. */
+static void b_g3b_2ea64(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+static void m_g3b_2ea64_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+static void m_g3b_2ea64_scrub(const u32 *r, u32 *eax) { *eax = r[R_EAX] & 0xFFFFu; }
 /* ---- g3b bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
@@ -58558,6 +58564,9 @@ static const binding_t k_bindings[] = {
     { "hit_sound",             b_g3b_32bac,        0xFFFFFFFFu },
     { "hit_sound@zero",        m_g3b_32bac_zero,   0xFFFFFFFFu },
     { "hit_sound@plus1",       m_g3b_32bac_plus1,  0xFFFFFFFFu },
+    { "ret_noop_2ea64",        b_g3b_2ea64,        0xFFFFFFFFu },
+    { "ret_noop_2ea64@zero",   m_g3b_2ea64_zero,   0xFFFFFFFFu },
+    { "ret_noop_2ea64@scrub",  m_g3b_2ea64_scrub,  0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

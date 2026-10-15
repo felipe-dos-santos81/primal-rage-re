@@ -34046,7 +34046,7 @@ G3B_SPECS = [
     # the callers' rows say: "the port, which does not model the lock, cannot", actors_reset_al).
     # @store1/@store0 are inert bindings that store the lock anyway — caught where the store would
     # change the byte (r1/r2 for @store1, r0/r2 for @store0); @zero returns 0, caught by r0/r2's
-    # bytes. 0x2EA49 (clear of a SET lock) is the one block whose store changes memory; the inert
+    # EAX byte. 0x2EA49 (clear of a SET lock) is the one block whose store changes memory; the inert
     # port cannot agree with any case that reaches it, so it is named unhit, not claimed.
     Spec("interrupt_lock", 0x2EA30, [
         Case("r0", {"eax": 0x00000001}, {0x000BCD60: b"\x01"}),
@@ -34077,6 +34077,21 @@ G3B_SPECS = [
         Case("c1", {"eax": 0x00000007}),
         Case("c2", {"eax": 0xFFFFFFFF}),
     ], mutants=("@zero", "@plus1")),
+    # 0x2EA64: one byte `c3` at 0x2EA64 (fixup-applied image) = the bare `ret`. The bytes before it
+    # (0x2EA62 `pop edx`, 0x2EA63 `nop`) belong to 0x2EA30's body, which FALLS THROUGH this ret —
+    # entered directly, as its callers do, only `ret` runs: it reads no register, writes nothing,
+    # and pops only the return address (c3, pop 4); 0x2EA65's `8d 40 00 lea eax,[eax]` is alignment
+    # the ret never reaches. The port has no C at 0x2EA64 — its call sites inline the elision
+    # ("(void)flag; /* 0x2EA64 is a `ret` */" actors.c:2369; menu.c:196/246/322) — so the binding
+    # mirrors the port model: report the entry EAX, write nothing. The row compares: EAX at the
+    # return equals the entry EAX (mask full, the b_d1d_4f1d0 precedent — the elided call cannot
+    # change the caller's value) and no memory byte changed. @zero returns 0 (caught by c1/c2 —
+    # c0 agrees at 0 by design), @scrub drops the high half (caught by c1/c2). Blocks 1/1.
+    Spec("ret_noop_2ea64", 0x2EA64, [
+        Case("c0", {"eax": 0x00000000}),
+        Case("c1", {"eax": 0x00C0FFEE}),
+        Case("c2", {"eax": 0xFFFFFFFF}),
+    ], mutants=("@zero", "@scrub")),
 ]
 D1_SPECS += G3B_SPECS
 SPECS = [
