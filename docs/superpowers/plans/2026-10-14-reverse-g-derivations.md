@@ -235,7 +235,36 @@ the conversion (the SC mutant catch-set pins pass unchanged); `PR_ORACLE_REQUIRE
 — `all checks passed` (no `port/src` byte changed: the batch's C edit is the test-only diff_runner.c
 binding and its table entry).
 
-## §G3 — the six non-rows (pending, lane A task 3)
+## §G3 — the six non-rows (lane A task 3; batch g3aa lands the first)
+
+**Rows landed: 0x500BB** (`dpmi_clock_read`). The other five (`0x1B544` resident arm, `0x29D60`,
+`0x2EA30`, `0x32BAC`, `0x2EA64`) stay pending with task 3.
+
+- **The bytes** (the fixup-applied image, capstone at 0x500BB): `a1 00 15 10 00 c3` =
+  `mov eax,[0x101500]; ret` — exactly the §H.2 claim, re-derived here. A leaf: it reads no register
+  argument, writes nothing, and the bare `ret` (c3) pops only the return address. 0x101500 is the
+  tick shadow the ISR tick advances (config.c `CFG_TICK_ISR 0x00101500u`).
+- **The claim (one sentence)**: the row compares EAX at the return — the dword the original loads
+  from 0x101500 — with the port's C read of the same dword, `DSD(DS_00101500)`, the inline form its
+  callers use (flow.c 0x1E814/0x1E819 `call 0x500BB; mov [edx+0x10],eax` stores the full dword; the
+  port has no C function at 0x500BB, so the binding mirrors that read — Review Focus #3's honest
+  wording: a dword read, nothing more). Mask 0xFFFFFFFF for that caller analysis.
+- **Cases** (`c0`/`c1`/`c2`) vary the dword — 0, 0x00C0FFEE (a typical tick, the D4D poll sentinel),
+  0xFFFFFFFF (high) — and seed 0x101504 apart in every case, so a wrong-address read always differs.
+  Blocks 1/1.
+- **Mutants** (2): `@off4` returns `DSD(0x101504)` — caught by all three cases; `@zero` returns 0
+  without reading — caught by c1/c2 (c0 agrees at 0 by design). The exact caught-by sets are pinned
+  in `G3AA_CASES` (`tools/tests/test_diff_verify.py`).
+- **Closure arithmetic** (measured on the lane at `make diff-verify`'s full `--self-check`): closed
+  rows 639 -> 666. All 27 are rows whose callee 0x500BB flipped to VERIFIED-by-its-own-row with
+  every other callee VERIFIED — §C3g.7's dependents split 27 closed + 20 still open on other callees
+  (0x1B544, 0x65431, the AIL wrapper stubs; `snd_sample_queue` is among those 20, so §C3g.7's
+  "open solely on 0x500BB" list closed 3 of its 4 named rows here). Counter: functions
+  1001 -> 1002, mutants 14885 -> 14887, counted-apart rows 169 -> 170, named gaps 1, the
+  with-callees count unchanged at 832 (the new row has no callees).
+- **Allow callers are untouched**: rows that `allow_calls=(0x500BB,)` keep running it from its bytes
+  (allow mode needs no seam, record §E3.10); the row only records the callee verdict — the precedent
+  is 0x33950, allowed and rowed (`fighter_ctx_same`).
 
 ## §G4 — game_loop's RNG pokes (pending, lane A task 4)
 

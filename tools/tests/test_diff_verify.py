@@ -30554,6 +30554,22 @@ D1_MASKS.update(H1_MASKS)
 D1_KINDS.update(H1_KINDS)
 D1_CASES.extend(H1_CASES)
 # h1 end
+# ---- track G batch g3aa (record 2026-10-14-reverse-g §G3): the DPMI clock read 0x500BB ----
+G3AA_MASKS = {
+    "dpmi_clock_read": 0xFFFFFFFF,
+}   # G3AA_MASKS end
+G3AA_KINDS = {
+    "dpmi_clock_read@off4": {'eax'},
+    "dpmi_clock_read@zero": {'eax'},
+}   # G3AA_KINDS end
+G3AA_CASES = [
+    ("dpmi_clock_read@off4", ['c0', 'c1', 'c2']),
+    ("dpmi_clock_read@zero", ['c1', 'c2']),
+]   # G3AA_CASES end
+D1_MASKS.update(G3AA_MASKS)
+D1_KINDS.update(G3AA_KINDS)
+D1_CASES.extend(G3AA_CASES)
+# g3aa end
 
 
 @needs_unicorn
@@ -31908,8 +31924,15 @@ class RealFunctionTests(unittest.TestCase):
         # hit) and the exit-chain callees, and 0x2EA68 gains its row with no mutant (every case declares
         # the terminal difference, §G2): functions 1000 -> 1001, with-callees rows 831 -> 832, and
         # config_image_store closes on its callee 0x2EA68 (638 -> 639). Measured on the merge.
-        self.assertIn("diff-verify: 1001/1001 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps; "
-                      "639/832 rows with callees closed (169 have none).", out.getvalue())
+        # Track G batch g3aa: 0x500BB's own row (dpmi_clock_read — `mov eax,[0x101500]; ret`, the
+        # §C3g.7 named non-row; three cases vary the tick dword, @off4 and @zero, no callees):
+        # functions 1001 -> 1002, mutants 14885 -> 14887, the counted-apart rows 169 -> 170 (its row
+        # has no callees, the with-callees count stays 832), and closed 639 -> 666: the 27 rows whose
+        # callee 0x500BB is now VERIFIED by its own row with every other callee VERIFIED (of the 47
+        # §C3g.7 dependents; the other 20 stay open on callees like 0x1B544 and the AIL wrappers).
+        # Measured on the lane.
+        self.assertIn("diff-verify: 1002/1002 functions VERIFIED; 14887/14887 mutants detected; 1 named gaps; "
+                      "666/832 rows with callees closed (170 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
