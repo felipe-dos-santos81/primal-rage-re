@@ -362,13 +362,20 @@ consolidation gate).
    `0x2EA68` — which closed `config_image_store` on its callee; batch g3 (record §G3) then rowed ALL SIX named
    non-rows (the §C3g.7 reversal: `dpmi_clock_read` `0x500BB`, `res_resolve` `0x1B544`, `0x29D60`, the interrupt
    lock `0x2EA30`, `0x32BAC`, `0x2EA64` — the six together closed 77 callee rows, 639→716; each new row's claim
-   states exactly what it compares, the reversal's wording rule). `make diff-verify`'s counter after it is
-   `1007/1007 functions VERIFIED; 14899/14899 mutants detected; 1 named gaps;
-   716/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
+   states exactly what it compares, the reversal's wording rule). Track J lane j1 (record
+   `2026-10-15-reverse-j-derivations.md` §J1) then amended the closure rule: a row counts closed when
+   every callee is VERIFIED by its own row or is a declared non-goal outside the portable set —
+   runtime ≥0x5D000, host-owned/deferred in `tools/port_classification.txt`, or an address
+   `port/decomp/prage.functions.csv` never lists as a function (E2's field) — because such a callee
+   can never gain a row; a real function in that index with no row of its own (the named gaps) keeps
+   its callers open. `make diff-verify`'s counter after it is
+   `1007/1007 functions VERIFIED; 14901/14901 mutants detected; 1 named gaps;
+   832/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
    no row (the named gaps, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3). The counter does not tell a full
    row from a weaker one: 12 of the 739 rowed functions have a row that runs the original under code pokes, leaves
    reachable blocks out, or declares a terminal difference on some or all of its cases (which then compare nothing
-   on the port's side, §G1's skip) (`game_loop` and `0x2CADC`, whose pokes are runtime or omitted calls;
+   on the port's side, §G1's skip) (`0x2CADC`, whose pokes are omitted calls; `game_loop`, unpoked since
+   §G4 but leaving the full-screen copy `0x25680` and the ISR-tick spin `0x256D4` named unhit (§H.3.4);
    `0x1AFE8`, its l6 the declared short-read exit difference (the original exits with code 1 where the port takes
    the failed-open path and returns, config.c PORT — the port's side of that case is compared nowhere on the row,
    §G1's skip; it is pinned only by the `test_game.c` load case); `0x1B084`,
@@ -381,11 +388,15 @@ consolidation gate).
    (7 of 8 blocks)): count 727 full rows, of which `0x51ED8`'s carries one declared difference (the
    renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
    callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
-   The open rows are open on the 8 unrowed functions and on runtime callees the classification does not target —
-   the ≥0x5D000 AIL wrappers and libc (`0x5D812`, `0x5DEED`, the WATCOM span) and `0x2CB74`/`0x501A3`,
-   per §G3's re-measured census: 96 of the open rows carry a ≥0x5D000 blocker (79 only-those), 17 carry E2-
-   non-function blockers (`0x29D04`/`0x51E58`/`0x24568` family); none of the open rows blocks on any of the six
-   (§G3 g3b finalize commits). The closure-rule amendment for those remains a separate decision (recon item 4).
+   That amendment closes the ledger: §G3's 116 open rows were each open only on declared non-goals —
+   96 carried a ≥0x5D000 runtime callee (79 blocked on those alone: the AIL wrappers and the WATCOM
+   span), 19 only E2-class non-functions (the `0x24568`/`0x24804`/`0x40CB0` call-tables, the
+   `0x29D04`/`0x3D0BC`/`0x3E484`/`0x3E4C4` fighter hooks, `0x51E58`, and the `0x2CB74` pair — §G3's
+   "17 E2-family" plus that pair) and 1 only the host-owned `0x10D34`/`0x4FB98` pair (`game_shutdown`)
+   — and **none** was blocked on a real function without a row (the earlier "open on the 8 unrowed
+   functions" reading was not measured: no row lists one of them as a callee), so no row stays open
+   on the portable set; §G3's numbers (96/79, the E2-family 17, `0x2CB74` ×2, host-owned ×1) are the
+   pre-amendment census. The closure-rule amendment (recon item 4) is landed as §J1.
    A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool

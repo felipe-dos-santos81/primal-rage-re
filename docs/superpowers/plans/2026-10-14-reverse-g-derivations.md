@@ -406,7 +406,81 @@ amendment (counting a row closed when its only open callees are runtime/gap call
 from bytes in allow mode) is a separate decision (recon-01 item 4) and stays open after this
 batch.
 
-## §G4 — game_loop's RNG pokes (pending, lane A task 4)
+## §G4 — game_loop's RNG pokes become recorded stubs (lane A task 4; landed in track J lane j1)
+
+**The bytes at the two sites.** Both are `mov eax,ebp` + `call 0x5d7dc`: the body draw at `0x256AF`
+`89E8` / `0x256B1` `E826810300`, the spin draw at `0x256D4` `89E8` / `0x256D6` `E801810300`. EBP is
+the loop constant `0x7FFF` (`mov ebp,0x7fff` `BD FF7F0000` at `0x255E4`, pushed at `0x255D1`, popped
+at `0x256EA`; never written between), so both calls are `rng(0x7FFF)` and the **return is dead at
+both**: after `0x256B1` the next instruction `0x256B6` calls `0x1CF20`, which sets EAX itself
+(`xor edx,edx` `0x1CF21`, `mov eax,edx` `0x1CF23`), and after `0x256D6` `EBE9` jumps to `0x256C6`'s
+`mov eax,[0x8150c]` `A1 0C150800`. The real callee's only other effect is the LCG state at `0xEF6D8`
+(the verified `0x5D7DC` row: `imul`-form `state*0xB90D12B9 + 0x38CE051F`, return
+`(state' >> 16) * (range & 0xFFFF) >> 16`).
+
+**The conversion (T1).** The row's two code pokes (`D5H_LOOP_PINS`, the `mov eax,0` of
+tools/title_pin.py's patches at `0x256B1`/`0x256D6`) are gone; the call sites now run the original's
+real `call 0x5D7DC` instructions, recorded by a stub of the call set — `D5H_RNG =
+E.Call(0x5D7DC, ("eax",), mode="stub")` in `D5H_LOOP_CALLS` — with no writes, i.e. the pinned
+original's non-advancing behaviour, and the port side records the same calls through
+`flow.c`'s `game_loop_rng_draw()` (`PR_SEAM(0x5D7DCu, 0x7FFFu)`, whose body draws nothing, the
+`PORT` deviation the port is written against since the pin). Each case seeds the RNG state `0xEF6D8`
+with a distinct sentinel (k0 `0x12345678`, k1 `0x0000ABCD` — the game's own init seed, k2
+`0xDEADBEEF`, k3 `1`, neighbours `0x11112222`/`0xA1A2A3A4`) and records the stub EAX the real
+0x5D7DC would return for that state and 0x7FFF (k0 `0x1565`, k1 `0x11E3`, k2 `0x6275`, k3 `0x78EC`;
+the LCG formula above applied to the seed). The return is dead, so the per-case values are the
+callee's real output rather than a caller-visible input; **measured unobservable**: replacing all
+four `stub_eax` values with arbitrary others (`0xDEAD0000+i`) leaves every verdict, problem and
+mutant detection byte-identical (34 rows, same run).
+
+**The MISMATCH and its correction (T1, one correction, own commit `2352685f`).** With the recorded
+call in place but the existing clobber declarations, the original's EAX at the call is not 0x7FFF
+but the poison of EBP: `0x292AC`/`0x24C5C`/`0x1C470` (all stubs of the row) declare EBP clobbered —
+the byte-derived scan over-approximates it through their unknown indirect callees — so the measured
+first divergence was `k0: call #9: original 0x5D7DC(0xC10BBE2D), port 0x5D7DC(0x7FFF)` (k1 #8, k2
+#9 and #19, k3 #7 and #15). The caller keeps EBP live across all three (`0x256AF`/`0x256D4` read it
+as the range; title_pin.py's `rng(0x7FFF)` reading rests on it), and none of the three touches EBP in
+its own bytes (0x292AC pushes/pops EBX/EDX, 0x24C5C EBX/ECX/EDX/ESI/EDI, 0x1C470 EBX/ECX/EDX/ESI),
+so their `_CALLEE_CLOBBER_FIXES` sets are the caller-observed ones (the §C2b.3/d3d form): EBP out
+(D5H_SCENE `("ecx","esi","edi")`, D5H_FRAME `("ebx","ecx","edx","esi","edi")`, D5H_FLUSH and
+D5B_FLUSH `("edi",)`; the expected-clobber dictionary matches). The correction commit alone is
+byte-identical to base on the full `--self-check` (0 deltas, `14899/14899`) and leaves the three
+other specs that stub those callees (`text_blit_string`, `config_screen_wait`,
+`config_screen_wait_zero`) byte-identical — a narrower poison cannot change a run that never reads
+the register (d3d's measurement rule). The old code is the mutant: with the over-approximated EBP
+the row is MISMATCH (`k0: call #9 ...`); with the fix it verifies.
+
+**Step 2's wrong-value mutant.** `rng_next`'s own `@mutant` binding (`m_rng_next`, "increment off by
+one") is the mutant that returns the wrong rng value; it is kept and is caught by rng_next's
+existing cases r1..r4 (the row's counter is `1/1` VERIFIED with it). Game_loop's own two new mutants
+target the new recorded call: `@nodraw` (the body draw dropped) and `@drawarg` (range 0 passed), both
+caught by all four cases (`call #` and `call #N memory` differences).
+
+**What the row claims, and not.** The raw's two draw sites, with the range 0x7FFF (the recorded
+argument), the count and position of the calls in the iteration (the call list and the memory at
+each call agree), and the port's draw-nothing behaviour (the stub models the pinned original: no LCG
+advance on either side — the state stays at its seeded value). Not claimed: the spin site never runs
+in these cases (the 0x1CF20 stub steps the tick; `0x256D4` stays named unhit with the row's own
+record §4 reason), the
+removed pokes themselves, and the return value (dead at both sites, above; the per-case values are
+recorded for the honest model, not read by anything). `0x25680` stays named unhit with its §H.3.4
+reason (the aperture copy; the port presents through gfx_present).
+
+**Measurements.** Base per-function: `game_loop` `4 cases, 18/20 blocks, VERIFIED, 32/32 mutants`.
+After: `1/1 VERIFIED; 34/34 mutants detected` (per-function, both split trees), the full
+`--self-check` `1007/1007 functions VERIFIED; 14901/14901 mutants detected; 1 named gaps; 716/832
+rows with callees closed (175 have none)` — mutants 14899 -> 14901 (+2, @nodraw/@drawarg), functions
+and the closed counts unchanged (game_loop's open callees are the allow calls `0x501A3`/`0x50188`/
+`0x5D812`, not the rng row). The full-dump delta against base is exactly the game_loop row + its 34
+mutant rows (the `5D7DC stub VERIFIED` column and the two new rows) and the counter line: 70 diff
+lines, every other row byte-identical. The port's own suite: `python3 -m unittest
+tools.tests.test_diff_emu tools.tests.test_diff_verify` 211 tests OK; `PR_ORACLE_REQUIRED=1
+./build/run_tests` output byte-identical to base under `setarch -R` (with ASLR on, both base and the
+change die in the pre-existing, ASLR-sensitive `test_p45_p5_spawns`; the single FAIL is the
+pre-existing case-sensitive `data/game/C/<INDEX name>` open at `test_platform.c:757` — the INDEX
+names are lowercase, the shipped files uppercase, which macOS' case-insensitivity hides; neither is
+this task's and neither changed). No oracle line moved (no C behaviour change outside the inert
+seam).
 
 ## §G5 — gp-keys-fight frame ratchet (lane B task 5)
 

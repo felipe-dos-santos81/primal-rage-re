@@ -10,6 +10,7 @@ only. It does not mean the function is correct for states the cases never produc
 """
 import argparse
 import concurrent.futures
+import csv
 import dataclasses
 import multiprocessing
 import os
@@ -26496,7 +26497,7 @@ D5B_SPECS += [
 # the caller's frame (0x1C647/0x1C64C add 0xF or 8), so every character is recorded at the first column.
 D5B_GLYPH = E.Call(0x1C5E8, ("eax", "[edx]", "[ebx]"), clobbers=("ebx", "edx", "edi", "ebp"))
 # 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument.
-D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5B_TEXT = 0x10A010
 
 
@@ -30504,15 +30505,22 @@ D5H_SPECS += [
 ]
 
 # ---- 0x255CC game_loop (record §2.5): the master loop ------------------------------------------
-# The project's two master-loop pins (tools/title_pin.py, PATCHES 0x78505 and 0x7852A): `call 0x5d7dc`
-# at 0x256B1 (the body draw) and 0x256D6 (the spin draw) replaced by `mov eax,0`. The port is written
-# against that pinned original (flow.c game_loop, PORT). Unpinned, with 0x5D7DC outside the call set,
-# the original stops `unmodeled: call 0x5D7DC from 0x256B1` (measured).
-D5H_LOOP_PINS = {0x000256B1: bytes.fromhex("b800000000"), 0x000256D6: bytes.fromhex("b800000000")}
+# The raw's two master-loop draws are `mov eax,ebp` (EBP = 0x7FFF from 0x255E4) plus `call 0x5d7dc`
+# at 0x256B1 (the body draw) and 0x256D6 (the spin draw), both discarded (`0x256B6`'s 0x1CF20 sets
+# EAX itself, `0x256DB` jumps to 0x256C6's `mov eax,[0x8150c]`). Since track G §G4 they are recorded
+# stubs on the verified 0x5D7DC row instead of the project's code pokes (tools/title_pin.py's
+# `mov eax,0` at 0x256B1/0x256D6): the original runs its real call instructions (stubbed, so no LCG
+# advance — the pin's behaviour) and the port's game_loop_rng_draw() records the same calls, drawing
+# nothing (the port is written against the pinned original, flow.c game_loop, PORT). The harness's
+# EAX at the call is the caller's EBP, which 0x256AF/0x256D4 read as the range: the stubs of
+# 0x292AC/0x24C5C/0x1C470 carry their caller-observed clobber sets (no EBP;
+# diff_emu._CALLEE_CLOBBER_FIXES, the §C2b.3 form). The stub's EAX is the value the real 0x5D7DC
+# returns for the case's state (the LCG over 0xEF6D8) and the 0x7FFF range.
+D5H_RNG = E.Call(0x5D7DC, ("eax",), mode="stub")
 D5H_PUMP = E.Call(0x500C4, ())
-D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi", "ebp"))
+D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi"))
 D5H_EDGE = E.Call(0x389C4, ())
-D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
 # The stubs model what the loop waits on (record §2.5): render entry 0 sets the quit flag 0xA81A8, the
 # effects step arms render entries 0 and 4 for the next iteration, and the audio service steps the ISR
 # tick 0x101508 to 0x10001 (above the
@@ -30522,21 +30530,23 @@ D5H_RENDER4 = E.Call(0x4F5C8, ())
 D5H_FX = E.Call(0x134C0, (), writes=((None, 0x00104AEC, le32(0x00000011)),))
 D5H_SORT = E.Call(0x1C3FC, ())
 D5H_LIST = E.Call(0x14328, (), clobbers=("ebx", "edx"))
-D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5H_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x00101508, le32(0x00010001)),))
 D5H_LOOP_CALLS = (D5H_PUMP, D5H_SCENE, D5H_EDGE, D4B_FILL, D5H_FRAME, D5H_RENDER0, D5H_RENDER4, D5H_FX, D5H_SORT,
-                  D5H_LIST, D5H_FLUSH, D5H_AUDIO)
+                  D5H_LIST, D5H_FLUSH, D5H_RNG, D5H_AUDIO)
 
 
-def d5h_loop_case(aec=0, a54=1, f4=0, af4=0xFFFF, a55=0x55, f5=0xF5):
-    """0x255CC: the pins; the tick pair 0x101508/0x10150C seeded (the prologue zeroes both); the scroll
-    gate 0x107A54 and the list gate 0x1088F4, each before a seeded byte; the render mask 0x104AEC; the
-    frame word 0x104AF4 before the seeded word 0x104AF6; the copy flag 0x1014FC clear before three
-    seeded bytes; the quit flag 0xA81A8 clear before a seeded byte; the front buffer 0xE87A0 = 0xB0000
-    and the back buffer 0xE87A4 = 0xA0000, the aperture itself, so the dirty blit 0x501A3 (real in the
-    original, host-owned) rewrites the bytes it reads."""
-    p = dict(D5H_LOOP_PINS)
+def d5h_loop_case(aec=0, a54=1, f4=0, af4=0xFFFF, a55=0x55, f5=0xF5, rng=0x12345678):
+    """0x255CC: the RNG state 0xEF6D8 seeded (`rng`, between the seeded dwords around it); the tick pair
+    0x101508/0x10150C seeded (the prologue zeroes both); the scroll gate 0x107A54 and the list gate
+    0x1088F4, each before a seeded byte; the render mask 0x104AEC; the frame word 0x104AF4 before the
+    seeded word 0x104AF6; the copy flag 0x1014FC clear before three seeded bytes; the quit flag 0xA81A8
+    clear before a seeded byte; the front buffer 0xE87A0 = 0xB0000 and the back buffer 0xE87A4 =
+    0xA0000, the aperture itself, so the dirty blit 0x501A3 (real in the original, host-owned) rewrites
+    the bytes it reads."""
+    p = {}
     p.update({
+        0x000EF6D4: le32(0x11112222) + le32(rng) + le32(0xA1A2A3A4),
         0x00101508: le32(0x11111111) + le32(0x22222222),
         0x00107A54: bytes([a54, a55]), 0x001088F4: bytes([f4, f5]),
         0x00104AEC: le32(aec), 0x00104AF4: le16(af4) + le16(0x5A5A),
@@ -30556,26 +30566,32 @@ D5H_LOOP_UNHIT = {
 }
 
 D5H_SPECS += [
-    # 0x255CC game_loop under the two pins: the tick pair zeroed; per iteration 0x500C4, 0x292AC, with
-    # the byte 0x107A54 set 0x389C4 and 0x38A38, 0x24C5C, the render table 0xA86C4 over the mask dword
-    # 0x104AEC (entries 0 and 4 here), the word 0x104AF4 + 1 (k0: 0xFFFF wraps and 0x104AF6 keeps its
-    # word), 0x134C0; when the frame count 0x10150C equals the tick 0x101508: 0x1C3FC, 0x14328 unless
-    # the byte 0x1088F4 is set, 0x1C470, the dirty blit 0x501A3 (the copy flag 0x1014FC clear) and the
-    # swap 0x50188; then 0x1CF20, 0x10150C + 1, and again until the quit flag 0xA81A8 is set. k0/k2/k3
-    # run two iterations (the second with the gate false and the render entries armed), k1 one. 0x501A3
-    # and 0x50188 run real; the others are stubs. The port's own additions in game_loop are not claimed:
-    # the host key fill (it writes zeros over the zero bitmap bytes [0x101514]+0x2D8/9), gfx_present and
-    # the dump hooks.
+    # 0x255CC game_loop with the two rng draws recorded stubs (track G §G4): the tick pair zeroed; per
+    # iteration 0x500C4, 0x292AC, with the byte 0x107A54 set 0x389C4 and 0x38A38, 0x24C5C, the render
+    # table 0xA86C4 over the mask dword 0x104AEC (entries 0 and 4 here), the word 0x104AF4 + 1 (k0:
+    # 0xFFFF wraps and 0x104AF6 keeps its word), 0x134C0; when the frame count 0x10150C equals the
+    # tick 0x101508: 0x1C3FC, 0x14328 unless the byte 0x1088F4 is set, 0x1C470, the dirty blit 0x501A3
+    # (the copy flag 0x1014FC clear) and the swap 0x50188; then the rng draw 0x5D7DC (range 0x7FFF,
+    # the caller's EBP read at 0x256AF/0x256D4), 0x1CF20, 0x10150C + 1, and again until the quit flag
+    # 0xA81A8 is set. k0/k2/k3 run two iterations (the second with the gate false and the render
+    # entries armed), k1 one. 0x501A3 and 0x50188 run real; the others are stubs. Each case seeds the
+    # RNG state 0xEF6D8 and records the stub EAX the real 0x5D7DC would return for that state and
+    # 0x7FFF (the LCG over 0xEF6D8; no site reads it — 0x1CF20 writes EAX at 0x1CF21 and the spin
+    # reloads it — so the values are the callee's real output, not a caller-visible input). The port's
+    # own additions in game_loop are not claimed: the host key fill (it writes zeros over the zero
+    # bitmap bytes [0x101514]+0x2D8/9), gfx_present and the dump hooks.
     Spec("game_loop", 0x255CC, [
-        Case("k0", {}, d5h_loop_case()),
-        Case("k1", D2E_DIRTY, d5h_loop_case(aec=0x00000011, a54=0, f4=1)),
-        Case("k2", {}, d5h_loop_case(aec=0x00000010, a54=0x80, f4=0x80, af4=0x1233)),
-        Case("k3", {}, d5h_loop_case(aec=0x80000004, a54=0, f4=0, a55=0, f5=0)),
+        Case("k0", {}, d5h_loop_case(rng=0x12345678), {0x5D7DC: 0x1565}),
+        Case("k1", D2E_DIRTY, d5h_loop_case(aec=0x00000011, a54=0, f4=1, rng=0x0000ABCD), {0x5D7DC: 0x11E3}),
+        Case("k2", {}, d5h_loop_case(aec=0x00000010, a54=0x80, f4=0x80, af4=0x1233, rng=0xDEADBEEF),
+             {0x5D7DC: 0x6275}),
+        Case("k3", {}, d5h_loop_case(aec=0x80000004, a54=0, f4=0, a55=0, f5=0, rng=0x00000001),
+             {0x5D7DC: 0x78EC}),
     ], unhit_named=D5H_LOOP_UNHIT, allow_calls=(0x501A3, 0x50188, 0x5D812), calls=D5H_LOOP_CALLS, eax_mask=0,
        mutants=("@no508", "@no50c", "@nopump", "@notick", "@tickorder", "@scroll", "@scrollw", "@scrollorder",
                 "@noframe", "@frameearly", "@nortbl", "@rorder", "@rearly", "@af4d", "@noaf4", "@af4late", "@nofx",
                 "@gate", "@gatew", "@nosort", "@f4", "@f4w", "@listorder", "@noflush", "@fcd", "@noswap",
-                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw")),
+                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw", "@nodraw", "@drawarg")),
 ]
 D1_SPECS += D5H_SPECS
 # ---- d5h end ----
@@ -34211,13 +34227,62 @@ def mutant_detection(r):
     return True, ""
 
 
+# ---- the closure rule's declared non-goals (track J §J1, design goal 3) ---------------------------
+# A row's open callee does not keep the row open when it is outside the portable set: such an address
+# can never gain a row of its own, so counting it as a blocker conflates "can never have a row" with
+# "missing row" (record 2026-10-14-next-phase/01 §3). Each excluded class comes from a repo table:
+#   runtime      >= RUNTIME_BASE (AGENTS.md: the WATCOM libc / DOS-4GW glue the host libc serves);
+#   host-owned   a `host-owned`/`deferred` line of tools/port_classification.txt;
+#   non-function an address port/decomp/prage.functions.csv never lists as a real function (E2's
+#                field: call targets the decomp index never listed, e.g. the 0x24568 handler entries
+#                and the 0x51E58 renderer table).
+# A real function in that index with no row of its own (the named gaps) is portable and keeps its
+# callers open: only a row can close that hole. Record `2026-10-15-reverse-j-derivations.md` §J1.
+RUNTIME_BASE = 0x5D000
+
+
+def _non_goal_tables():
+    """(host, funcs): the classified host-owned/deferred addresses and the decomp index's real
+    functions (`::` rows are the .image overlay noise), each from its committed repo table."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    host = set()
+    with open(os.path.join(root, "tools", "port_classification.txt")) as f:
+        for ln in f:
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                host.add(int(ln.split()[0], 16))
+    funcs = set()
+    with open(os.path.join(root, "port", "decomp", "prage.functions.csv")) as f:
+        for row in csv.DictReader(f):
+            if "::" not in row["entry"]:
+                funcs.add(int(row["entry"], 16))
+    return host, funcs
+
+
+NON_GOAL_HOST, NON_GOAL_FUNCS = _non_goal_tables()
+
+
+def non_goal(addr):
+    """The declared-non-goal class of `addr` (the closure rule above), or None when the address is in
+    the portable set. Precedence is reporting only: every class excludes."""
+    if addr >= RUNTIME_BASE:
+        return "runtime"
+    if addr in NON_GOAL_HOST:
+        return "host-owned/deferred"
+    if addr not in NON_GOAL_FUNCS:
+        return "non-function"
+    return None
+
+
 def closed_rows(funcs, verdicts):
     """(closed, with_callees): the rows that have callees, and those of them that are VERIFIED with
-    every callee VERIFIED by its own row (one level deep, record §E3.6). Rows with no callee are
+    every callee VERIFIED by its own row (one level deep, record §E3.6) or a declared non-goal
+    outside the portable set (`non_goal`: runtime >= 0x5D000, host-owned/deferred, non-function). A
+    real function with no row (the named gaps) still keeps the row open. Rows with no callee are
     counted apart, so they cannot make the figure look closer than it is (record §E3.4)."""
     with_callees = [r for r in funcs if r.callees]
     closed = [r for r in with_callees if r.verdict == "VERIFIED"
-              and all(verdicts.get(a) == "VERIFIED" for a, _ in r.callees)]
+              and all(verdicts.get(a) == "VERIFIED" or non_goal(a) for a, _ in r.callees)]
     return closed, with_callees
 
 
@@ -34295,11 +34360,15 @@ def main(argv=None):
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
-          "none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees "
-          "stubbed or run as stated." % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
-                                         "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
-                                         if args.self_check else "", len(gaps), len(closed), len(with_callees),
-                                         len(funcs) - len(with_callees)))
+          "none), counting a row closed when every callee is VERIFIED by its own row or a declared non-goal "
+          "outside the portable set (runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, "
+          "or an address port/decomp/prage.functions.csv never lists as a function); a real function in that "
+          "index with no row of its own keeps its callers open. Claim: equivalence on the exercised blocks and "
+          "inputs only, each function with its callees stubbed or run as stated."
+          % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
+             "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
+             if args.self_check else "", len(gaps), len(closed), len(with_callees),
+             len(funcs) - len(with_callees)))
     return 1 if bad or missed else 0
 
 

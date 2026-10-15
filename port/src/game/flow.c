@@ -7090,6 +7090,17 @@ void game_loop_step(void)
     s_loop_step = 0;
 }
 
+/* PORT: 0x256B1/0x256D6, the master loop's two draws (`mov eax,ebp` with EBP =
+ * 0x7FFF from 0x255E4, then `call 0x5D7DC`). The pinned original
+ * (tools/title_pin.py) draws nothing — `mov eax,0`, no LCG advance — and the
+ * port draws nothing, so both streams carry only the consumption-site draws
+ * and stay in step (record 2026-10-14-reverse-g §G4). The seam records the
+ * call, with the raw's 0x7FFF range, for the differential row. */
+static void game_loop_rng_draw(void)
+{
+    PR_SEAM(0x5D7DCu, 0x7FFFu);
+}
+
 void game_loop(void)
 {
     jmp_buf restart;
@@ -7166,12 +7177,9 @@ void game_loop(void)
             DSB(DS_001014FC) = 0;            /* 0x2569D `mov byte` */
             swap_buffers();                  /* 0x256AA 0x50188 */
         }
-        /* PORT: 0x256B1 (the master loop's body draw, `rng(0x7FFF)`) is pinned to
-         * a non-advancing `mov eax,0` in the pinned original (tools/title_pin.py),
-         * and the port draws nothing here, so both streams carry only the
-         * consumption-site draws and stay in step. The original's spin draw
-         * (0x256D6) is pinned the same way; the port's spin advances the ISR tick
-         * below and draws nothing. */
+        /* 0x256AF 0x256B1: the body draw (record §G4; the raw's `rng(0x7FFF)`,
+         * drawn as nothing: see game_loop_rng_draw). */
+        game_loop_rng_draw();
 
         /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
          * the music, render one frame of audio. */
@@ -7185,6 +7193,8 @@ void game_loop(void)
          * behind (a resource-read stall), the spin does not run and the loop
          * catches up without waiting — matching the raw. */
         while (DSD(DS_0010150C) - 1u == DSD(DS_00101508)) {  /* 0x256C5 */
+            /* 0x256D4 0x256D6: the spin draw, per spin iteration (record §G4). */
+            game_loop_rng_draw();
             game_isr_ticks(1u);
             host_wait_vblank();
         }

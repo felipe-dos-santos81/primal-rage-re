@@ -25919,38 +25919,40 @@ D5H_KINDS = {
     "game_frame_rr@b1acache": {'call #7'},
     "game_frame_rr@bdearly": {'byte', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10'},
     "game_frame_rr@inccache": {'byte', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory'},
-    "game_loop@no508": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory'},
-    "game_loop@no50c": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
-    "game_loop@nopump": {'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
-    "game_loop@notick": {'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
-    "game_loop@tickorder": {'call #0', 'call #1', 'call #8', 'call #9', 'call #10', 'call #11'},
-    "game_loop@scroll": {'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #11', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #16', 'call #17', 'call #18'},
-    "game_loop@scrollw": {'call #2', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #10'},
-    "game_loop@scrollorder": {'call #2', 'call #3', 'call #12', 'call #13'},
-    "game_loop@noframe": {'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
-    "game_loop@frameearly": {'call #2', 'call #3', 'call #4', 'call #12', 'call #13', 'call #14'},
-    "game_loop@nortbl": {'byte', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #26', 'call #27', 'call #28', 'call #29', 'call #30'},
-    "game_loop@rorder": {'call #3', 'call #4', 'call #4 memory', 'call #11', 'call #12', 'call #12 memory', 'call #15', 'call #16', 'call #16 memory'},
-    "game_loop@rearly": {'byte', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18'},
-    "game_loop@af4d": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory'},
-    "game_loop@noaf4": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory'},
-    "game_loop@af4late": {'call #3 memory', 'call #5 memory', 'call #6 memory', 'call #13 memory', 'call #17 memory'},
-    "game_loop@nofx": {'byte', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #26', 'call #27', 'call #28', 'call #29'},
-    "game_loop@gate": {'byte', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20', 'call #21'},
-    "game_loop@gatew": {'byte', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20', 'call #21'},
-    "game_loop@nosort": {'call #4', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
-    "game_loop@f4": {'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19'},
-    "game_loop@f4w": {'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
+    "game_loop@af4d": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #20 memory'},
+    "game_loop@af4late": {'call #3 memory', 'call #5 memory', 'call #6 memory', 'call #14 memory', 'call #18 memory'},
+    "game_loop@drawarg": {'call #7', 'call #8', 'call #9', 'call #15', 'call #19'},
+    "game_loop@f4": {'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #11', 'call #11 memory', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #20', 'call #21'},
+    "game_loop@f4w": {'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #20'},
+    "game_loop@fcd": {'byte', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #20 memory'},
+    "game_loop@frameearly": {'call #2', 'call #3', 'call #4', 'call #13', 'call #14', 'call #15'},
+    "game_loop@gate": {'byte', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20', 'call #21', 'call #22', 'call #23'},
+    "game_loop@gatew": {'byte', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20', 'call #21', 'call #22', 'call #23'},
+    "game_loop@incearly": {'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #16 memory', 'call #20 memory'},
     "game_loop@listorder": {'call #4', 'call #5', 'call #6', 'call #7'},
-    "game_loop@noflush": {'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
-    "game_loop@fcd": {'byte', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory'},
-    "game_loop@noswap": {'byte', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory'},
+    "game_loop@no508": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #20 memory'},
+    "game_loop@no50c": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #20'},
+    "game_loop@noaf4": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #20 memory'},
+    "game_loop@noaudio": {'byte', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #20'},
+    "game_loop@nodraw": {'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #15', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #20'},
+    "game_loop@noflush": {'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #15', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #20'},
+    "game_loop@noframe": {'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #20'},
+    "game_loop@nofx": {'byte', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #20', 'call #20 memory', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #26', 'call #27', 'call #28', 'call #29', 'call #30', 'call #31', 'call #32', 'call #33'},
+    "game_loop@noinc": {'byte', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #20 memory'},
+    "game_loop@nopump": {'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #20'},
+    "game_loop@nortbl": {'byte', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #20', 'call #20 memory', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #26', 'call #27', 'call #28', 'call #29', 'call #30', 'call #31', 'call #32', 'call #33', 'call #34'},
+    "game_loop@nosort": {'call #4', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #15', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #20'},
+    "game_loop@noswap": {'byte', 'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #20 memory'},
+    "game_loop@notick": {'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #20'},
+    "game_loop@once": {'byte', 'call #9', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20'},
+    "game_loop@quitw": {'byte', 'call #9', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20'},
+    "game_loop@rearly": {'byte', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20'},
+    "game_loop@rorder": {'call #3', 'call #4', 'call #4 memory', 'call #12', 'call #13', 'call #13 memory', 'call #16', 'call #17', 'call #17 memory'},
+    "game_loop@scroll": {'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18', 'call #19', 'call #20'},
+    "game_loop@scrollorder": {'call #2', 'call #3', 'call #13', 'call #14'},
+    "game_loop@scrollw": {'call #2', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #11'},
     "game_loop@swapearly": {'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
-    "game_loop@incearly": {'call #7 memory', 'call #8 memory', 'call #9 memory', 'call #14 memory', 'call #18 memory'},
-    "game_loop@noinc": {'byte', 'call #8 memory', 'call #9 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory'},
-    "game_loop@noaudio": {'byte', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #18'},
-    "game_loop@once": {'byte', 'call #8', 'call #9', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18'},
-    "game_loop@quitw": {'byte', 'call #8', 'call #9', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18'},
+    "game_loop@tickorder": {'call #0', 'call #1', 'call #9', 'call #10', 'call #11', 'call #12'},
 }
 D5H_CASES = [
     ("game_state_step_low@gate", ['l3', 'l5', 'l6', 'l7', 'l8', 'l9', 'la', 'lb']),
@@ -26190,38 +26192,40 @@ D5H_CASES = [
     ("game_frame_rr@b1acache", ['r0']),
     ("game_frame_rr@bdearly", ['r1']),
     ("game_frame_rr@inccache", ['r1']),
-    ("game_loop@no508", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@no50c", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@nopump", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@notick", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@tickorder", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@scroll", ['k1', 'k3']),
-    ("game_loop@scrollw", ['k1']),
-    ("game_loop@scrollorder", ['k0', 'k2']),
-    ("game_loop@noframe", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@frameearly", ['k0', 'k2']),
-    ("game_loop@nortbl", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@rorder", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@rearly", ['k0', 'k1', 'k2', 'k3']),
     ("game_loop@af4d", ['k0', 'k1', 'k3']),
-    ("game_loop@noaf4", ['k0', 'k1', 'k2', 'k3']),
     ("game_loop@af4late", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@nofx", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@gate", ['k0', 'k2', 'k3']),
-    ("game_loop@gatew", ['k0', 'k2', 'k3']),
-    ("game_loop@nosort", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@drawarg", ['k0', 'k1', 'k2', 'k3']),
     ("game_loop@f4", ['k1', 'k2']),
     ("game_loop@f4w", ['k0']),
-    ("game_loop@listorder", ['k0', 'k3']),
-    ("game_loop@noflush", ['k0', 'k1', 'k2', 'k3']),
     ("game_loop@fcd", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@noswap", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@swapearly", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@frameearly", ['k0', 'k2']),
+    ("game_loop@gate", ['k0', 'k2', 'k3']),
+    ("game_loop@gatew", ['k0', 'k2', 'k3']),
     ("game_loop@incearly", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@noinc", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@listorder", ['k0', 'k3']),
+    ("game_loop@no508", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@no50c", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@noaf4", ['k0', 'k1', 'k2', 'k3']),
     ("game_loop@noaudio", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@nodraw", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@noflush", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@noframe", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@nofx", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@noinc", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@nopump", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@nortbl", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@nosort", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@noswap", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@notick", ['k0', 'k1', 'k2', 'k3']),
     ("game_loop@once", ['k0', 'k2', 'k3']),
     ("game_loop@quitw", ['k0', 'k2', 'k3']),
+    ("game_loop@rearly", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@rorder", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@scroll", ['k1', 'k3']),
+    ("game_loop@scrollorder", ['k0', 'k2']),
+    ("game_loop@scrollw", ['k1']),
+    ("game_loop@swapearly", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@tickorder", ['k0', 'k1', 'k2', 'k3']),
 ]   # D5H_CASES end
 D1_MASKS.update(D5H_MASKS)
 D1_KINDS.update(D5H_KINDS)
@@ -31673,7 +31677,8 @@ class RealFunctionTests(unittest.TestCase):
         stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
         # 0x2B150/0x2BD44/0x3B298 carry the caller-observed sets (record §C2b.3): the byte-derived
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
-        # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
+        # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES). Track G §G4 adds 0x292AC/0x24C5C/0x1C470:
+        # 0x255CC reads EBP across all three (0x256AF/0x256D4's rng range), so their sets exclude it.
         self.assertEqual(stubs, {
         # I (record 2026-10-13-reverse-i sections I.4 and I.5): the stubs the 0x2F9CC and 0x1D018 rows add
         0x1AFE8: ("edi", "ebp"), 0x2D6F8: (), 0x2C9B8: (), 0x5D86A: ("ebx", "ecx", "edx"),
@@ -31702,7 +31707,7 @@ class RealFunctionTests(unittest.TestCase):
         # D5 d5b (record 2026-10-12-reverse-d5b): the stubs its rows add
         0x1631C: ("ebx", "ecx", "edx"), 0x15C30: ("ebx", "edx"), 0x16DA4: ("ebx", "ecx", "edx"), 0x17BC8: ("edi", "ebp"),
         0x176CC: (), 0x1790C: ("ebx", "ecx", "edx"), 0x170A0: (),
-        0x51E5C: (), 0x1C5E8: ("ebx", "edx", "edi", "ebp"), 0x1C470: ("edi", "ebp"),
+        0x51E5C: (), 0x1C5E8: ("ebx", "edx", "edi", "ebp"), 0x1C470: ("edi",),
         # D5 d5c (record 2026-10-12-reverse-d5c): the stubs its rows add
         0x12DA8: (), 0x1A978: ("edi", "ebp"), 0x2BAF4: (), 0x349C8: ("ebp",), 0x34B6C: ("ebp",), 0x3531C: (),
         0x354F0: (), 0x35658: ("edi", "ebp"), 0x359E0: ("ebx", "edx"), 0x35D20: ("edx",),
@@ -31727,14 +31732,14 @@ class RealFunctionTests(unittest.TestCase):
         # D5 d5h (record 2026-10-12-reverse-d5h): the stubs its rows add
         0x10DB0: (), 0x10E18: (), 0x10EE4: (), 0x11000: ("ebp",), 0x11578: (), 0x11A8C: ("edi", "ebp"),
         0x11D04: ("esi", "edi", "ebp"), 0x11F6C: ("esi", "edi", "ebp"), 0x121A0: ("ebp",), 0x12484: (), 0x12D48: (),
-        0x12FD8: (), 0x1324C: (), 0x134C0: (), 0x14328: ("ebx", "edx"), 0x1C3FC: (), 0x1C470: ("edi", "ebp"),
+        0x12FD8: (), 0x1324C: (), 0x134C0: (), 0x14328: ("ebx", "edx"), 0x1C3FC: (), 0x1C470: ("edi",),
         0x1CF20: (), 0x1EA08: (), 0x1EEB0: ("ebp",), 0x208F8: ("ebp",),
-        0x24C5C: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x257A4: (), 0x25AE8: (), 0x25C88: ("ebp",), 0x25FAC: (),
+        0x24C5C: ("ebx", "ecx", "edx", "esi", "edi"), 0x257A4: (), 0x25AE8: (), 0x25C88: ("ebp",), 0x25FAC: (),
         0x26194: ("esi", "edi", "ebp"), 0x26254: ("esi", "edi", "ebp"), 0x263F4: ("edi", "ebp"),
         0x26540: ("esi", "edi", "ebp"), 0x266AC: ("ebp",), 0x26A50: ("ebp",), 0x26C8C: ("edi", "ebp"),
         0x26F58: ("ebp",), 0x27380: ("edi", "ebp"), 0x274FC: ("esi", "edi", "ebp"), 0x277C0: ("edi", "ebp"),
         0x27A2C: ("ebp",), 0x282C4: ("ebp",), 0x28468: ("ebp",), 0x28788: (), 0x28BD4: ("edi", "ebp"), 0x28C38: (),
-        0x28CC8: ("esi", "edi", "ebp"), 0x28DA4: (), 0x292AC: ("ecx", "esi", "edi", "ebp"), 0x29328: ("ebp",),
+        0x28CC8: ("esi", "edi", "ebp"), 0x28DA4: (), 0x292AC: ("ecx", "esi", "edi"), 0x29328: ("ebp",),
         0x29638: ("edi", "ebp"), 0x296B8: ("esi", "edi", "ebp"), 0x299E8: ("edi", "ebp"), 0x29B70: (),
         0x2A31C: ("edi", "ebp"), 0x2BF08: (), 0x2C06C: (), 0x2FFC4: ("ebx", "ecx", "edx"), 0x33F08: (), 0x38990: (),
         0x389C4: (), 0x3BB90: (), 0x41C28: (), 0x424E8: (), 0x438B4: ("esi", "edi", "ebp"), 0x461DC: (), 0x47208: (),
@@ -31989,8 +31994,26 @@ class RealFunctionTests(unittest.TestCase):
         # stub 0x2CB74 (menu_step, menu_run), the host-owned 0x10D34/0x4FB98 (game_shutdown), or
         # sub-0x5D000 call targets never listed as functions, E2's field (17 rows) — record §G3 has
         # the full census. Measured on the lane.
-        self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14899/14899 mutants detected; 1 named gaps; "
-                      "716/832 rows with callees closed (175 have none).", out.getvalue())
+        # Track G §G4: game_loop's two rng pokes became recorded stubs on the 0x5D7DC row
+        # (@nodraw/@drawarg added). Functions and rows unchanged; mutants 14899 -> 14901 (+2), the
+        # two new game_loop mutants; every other row byte-identical (measured; the clobber
+        # correction alone left text_blit_string, config_screen_wait(_zero) identical too).
+        # Track J j1 (record 2026-10-15-reverse-j-derivations.md §J1): the closure amendment. A row's
+        # unverified callee no longer keeps the row open when it is a declared non-goal outside the
+        # portable set: runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an
+        # address port/decomp/prage.functions.csv never lists as a function (E2's field). Closed
+        # 716 -> 832: all 116 open rows qualified — 96 carried a >=0x5D000 runtime callee (79 on those
+        # alone), 19 only E2-class non-functions (the 0x24568/0x24804/0x40CB0 call-tables, the
+        # 0x29D04/0x3D0BC/0x3E484/0x3E4C4 fighter hooks, 0x51E58 and the 0x2CB74 data-pointer), and 1
+        # only the host-owned 0x10D34/0x4FB98 pair (game_shutdown) — and none was blocked on a real
+        # function without a row, so no row stays open on the portable set. Functions, mutants and the
+        # 832/175 split are unchanged. Measured on the lane.
+        self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14901/14901 mutants detected; 1 named gaps; "
+                      "832/832 rows with callees closed (175 have none), counting a row closed when every "
+                      "callee is VERIFIED by its own row or a declared non-goal outside the portable set "
+                      "(runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an "
+                      "address port/decomp/prage.functions.csv never lists as a function); a real function "
+                      "in that index with no row of its own keeps its callers open.", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
@@ -32260,15 +32283,39 @@ class CallParseTests(unittest.TestCase):
                 V.Spec("f", 0x10000, [V.Case("a", {}, {}, {0x10020: 1})], calls=calls)
 
     def test_only_rows_with_callees_count_toward_the_closed_figure(self):
+        # The callees are real addresses the rule reads from the repo's tables (the class test below
+        # pins each): 0x2F920 is a portable function (VERIFIED by row a), 0x4FBA2 a named gap — a
+        # real function without a row, portable, keeps the row open — while 0x5D812 (runtime),
+        # 0x501A3 (host-owned) and 0x2CB74 (E2's non-function field) are declared non-goals a row
+        # may count closed on (record §J1).
         def row(entry, verdict, callees):
             return V.SpecResult("r%X" % entry, entry, verdict, callees=callees)
-        a = row(0xA, "VERIFIED", [])                      # no callee: counted apart
-        b = row(0xB, "VERIFIED", [(0xA, "stub")])         # its callee is VERIFIED: closed
-        c = row(0xC, "VERIFIED", [(0xA, "stub"), (0xF, "stub")])   # 0xF has no row
-        d = row(0xD, "MISMATCH", [(0xA, "allow")])
-        verdicts = {r.entry: r.verdict for r in (a, b, c, d)}
-        closed, with_callees = V.closed_rows([a, b, c, d], verdicts)
-        self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]), ([0xB], [0xB, 0xC, 0xD]))
+        a = row(0x2F920, "VERIFIED", [])                              # no callee: counted apart
+        b = row(0xB, "VERIFIED", [(0x2F920, "stub")])                 # its callee is VERIFIED: closed
+        c = row(0xC, "VERIFIED", [(0x2F920, "stub"), (0x4FBA2, "stub")])  # 0x4FBA2 has no row: open
+        d = row(0xD, "MISMATCH", [(0x2F920, "allow")])                # a MISMATCH row is never closed
+        e = row(0xE, "VERIFIED", [(0x5D812, "allow")])                # runtime non-goal: closed
+        f = row(0xF, "VERIFIED", [(0x501A3, "allow")])                # host-owned non-goal: closed
+        g = row(0x10, "VERIFIED", [(0x2CB74, "stub")])                # non-function non-goal: closed
+        verdicts = {r.entry: r.verdict for r in (a, b, c, d, e, f, g)}
+        closed, with_callees = V.closed_rows([a, b, c, d, e, f, g], verdicts)
+        self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]),
+                         ([0xB, 0xE, 0xF, 0x10], [0xB, 0xC, 0xD, 0xE, 0xF, 0x10]))
+
+    def test_the_closure_rules_non_goal_classes_come_from_the_repo_tables(self):
+        # Each class of the §J1 closure rule is read from its own table, never a hardcoded list:
+        # runtime is the >= 0x5D000 cut (AGENTS.md), host-owned/deferred are the tools/
+        # port_classification.txt lines, and an address port/decomp/prage.functions.csv never lists
+        # as a real function is E2's field. A real function in that index is portable even without a
+        # row of its own (the named gaps): it keeps its callers open.
+        self.assertEqual(V.RUNTIME_BASE, 0x5D000)
+        self.assertEqual(V.non_goal(0x5D812), "runtime")                 # an AIL wrapper
+        self.assertEqual(V.non_goal(0x501A3), "host-owned/deferred")     # the aperture store (§K9.1)
+        self.assertEqual(V.non_goal(0x10D0C), "host-owned/deferred")     # a §50-E call
+        self.assertEqual(V.non_goal(0x2CB74), "non-function")            # E2's data-pointer item stub
+        self.assertEqual(V.non_goal(0x24568), "non-function")            # E2's call-table handler
+        self.assertIsNone(V.non_goal(0x4FBA2))                           # a named gap: portable
+        self.assertIsNone(V.non_goal(0x47370))
 
     def test_a_call_line_after_the_result_is_rejected(self):
         with self.assertRaises(ValueError):
