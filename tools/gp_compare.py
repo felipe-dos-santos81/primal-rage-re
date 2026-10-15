@@ -225,8 +225,8 @@ def band_explain(c, port, entry):
             top_row, band_hi - 1, got[:12], band_sha[:12])
     P = band_pair(c, port, top_row, band_hi)
     if P is None:
-        return None, 'no unique adjacent port pair binds its rows [0,%d)/[%d,200)' % (
-            top_row, band_hi)
+        return None, 'no unique adjacent port pair binds its rows [0,%d)/[%d,%d)' % (
+            top_row, band_hi, tc.FRAME_H)
     return P, None
 
 
@@ -268,8 +268,8 @@ def scan3_explain(c, port, entry):
             r1 - 1, got[:12], top_sha[:12])
     B = scan3_bind(c, port, r1, r2)
     if B is None:
-        return None, 'no unique adjacent port pair binds its rows [%d,%d) and [%d,200)' % (
-            r1, r2, r2)
+        return None, 'no unique adjacent port pair binds its rows [%d,%d) and [%d,%d)' % (
+            r1, r2, r2, tc.FRAME_H)
     tops = scan3_top(c, port, B, r1)
     if not tops:
         return None, 'no port frame before %d holds its named top rows' % B

@@ -750,6 +750,7 @@ class G1ExitTests(unittest.TestCase):
     def test_g1_an_exit_run_under_exits_records_the_terminal_and_stops_cleanly(self):
         r = E.run_original(image(bytes.fromhex(G1_EXIT)), 0x10000, pokes=G1_SEED, machine=E.Machine(exits=True))
         self.assertEqual((r.outcome, r.terminal), ("exit", ("exit", 1)))
+        self.assertEqual(r.detail, "terminate with code 1 at 0x10013")  # the fixture's AL and int address
         # the run stops AT the int: the store after it never executes, so the seeded bytes stay unwritten
         self.assertEqual(r.writes, {})
         self.assertNotIn(0x10015, r.executed)
