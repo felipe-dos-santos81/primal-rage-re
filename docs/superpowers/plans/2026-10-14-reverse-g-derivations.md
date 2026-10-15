@@ -888,13 +888,17 @@ same shape (2204=1772, 2205=1773, 2206=1774, 2207 all-black, 2208 = 1776's image
 
 **Decision (Step 3): a named per-frame allowance — `LOADER_ALLOWED` in `tools/gp_compare.py`.**
 The §G5/§G6 pattern, a third shape. An entry is `(capture frame j, r1, r2, x0, x1,
-region_sha256)` and the frame is explained ONLY iff (1) the region's sha256 — the
-serialization `loader_region_sha`, row by row, each row's x0..x1-1, RGB24 — equals the pin;
-(2) EXACTLY ONE port frame P equals the capture outside rows [r1, r2) (the base bind,
-byte-verified against the CURRENT dump); and (3) inside the region, at EVERY pixel where the
-capture differs from P, at least one port frame T holds the capture (the overlay's
-existence, deliberately not uniqueness: the port dumps several images per iteration, and
-U10's overlay has 25 holders). Like the other tables: consulted only when the two-frame
+strip_sha256, rows_sha256)` and the frame is explained ONLY iff (1) the strip serialization
+`loader_region_sha` — row by row, each row's x0..x1-1, RGB24 — hashes to strip_sha256; (2) the
+SAME serialization over the whole named rows at full width (x 0..319) hashes to rows_sha256
+(the two pins are the record's f2089c52.. and a886c0f3.., identical at both captures, so a
+mutation anywhere inside rows [r1, r2) — inside the strip columns or outside them — is not
+silenced; added by the task review, see the fix note below); (3) EXACTLY ONE port frame P
+equals the capture outside rows [r1, r2) (the base bind, byte-verified against the CURRENT
+dump); and (4) inside the strip columns, at EVERY pixel where the capture differs from P, at
+least one port frame T holds the capture (the overlay's existence, deliberately not
+uniqueness: the port dumps several images per iteration, and U10's overlay has 25 holders).
+Like the other tables: consulted only when the two-frame
 model leaves the named frame unexplained; a model-explained named frame prints the
 `retire the name` note; a named frame that is not its named bytes prints `FAIL: allowed
 capture … is not its named loader frame: …` and fails the enforced run in both modes
@@ -950,18 +954,21 @@ opponents, the ending and the high-score entry, to f=0x26E1). The strips no long
 either claim. The claims stay narrow (§G.16): no under-render detection, no order/coverage
 claim; N and the window start are pins, not coverage.
 
-**Proofs (Step 4).** Unit (`tools/tests/test_gp_compare.py` `LoaderAllowance`, 8 cases;
-`test_gp_compare` 54/54): the named bytes explain (with the base/holders message and the
+**Proofs (Step 4).** Unit (`tools/tests/test_gp_compare.py` `LoaderAllowance`, 9 cases;
+`test_gp_compare` 55/55): the named bytes explain (with the base/holders message and the
 `1 loader-allowed` count); a mutated BASE un-explains (`0 port frames hold its rows outside
 2..4, not exactly one`) with the ratchet catching (rc=1, `first unexplained 1 < ratchet
 N 4`); a mutated OVERLAY HOLDER un-explains (`no port frame holds its 12 overlay pixel(s)
-over the base`); a different overlay's bytes are refused by the region hash (`not the
-named`); an ambiguous base (two frames) is refused; the overlay may be held by more than
-one frame (the U10 shape — the existence semantics); a model-explained named frame prints
-the `retire the name` note; and the table's two entries are pinned, so a silent name change
-is a test failure. Disabling the mechanism (`loader_explain` stubbed) fails the three runs
+over the base`); a different overlay's bytes are refused by the strip hash (`not the
+named`); a mutation inside the named rows but outside the strip columns (x >= x1) is refused
+by the full-rows hash (`its rows 2..4 (full width) are … not the named`; the review fix
+below, proven to fail when the columns are left unpinned); an ambiguous base (two frames)
+is refused; the overlay may be held by more than one frame (the U10 shape — the existence
+semantics); a model-explained named frame prints the `retire the name` note; and the table's
+two entries are pinned, so a silent name change is a test failure. Disabling the mechanism
+(`loader_explain` stubbed) fails the three runs
 that need it — the tests can fail. Real data on COPIES (`/tmp/g7/u9-mut`, `/tmp/g7/u10-mut`,
-`/tmp/g7/u9-cap`; the dumps and the DATA captures untouched):
+`/tmp/g7/u9-cap`, `/tmp/g7/u9-cap100`; the dumps and the DATA captures untouched):
 
 - **Base bind:** poking the base frame's pixel outside the region (port 1777/1686 byte 0:
   index 0x1f -> 0x2A, DAC-differing 000000 -> 3871b2) gives `FAIL: allowed capture 2209
@@ -980,12 +987,30 @@ that need it — the tests can fail. Real data on COPIES (`/tmp/g7/u9-mut`, `/tm
   capture 2209 (raw 4953) is not its named loader frame: its rows 192..197 x 0..85 are
   9b1f7bf340ef.., not the named f2089c52c182..` + `FAIL: first unexplained 2209 < ratchet
   N 2452`, EXIT 1 — the same capture frame with a different byte layout is not silenced.
+  **And the columns beside the strip (the review fix):** with ONE pixel of a capture COPY
+  (`/tmp/g7/u9-cap100`) inside the named rows but outside the strip columns changed (frame
+  2209's row 192 x 100, black -> 41b2d3 — a value the strip itself uses, so no "no frame
+  holds it" argument applies), the full-rows pin refuses it: `FAIL: allowed capture 2209
+  (raw 4953) is not its named loader frame: its rows 192..197 (full width) are
+  b72c0396eee6.., not the named a886c0f3db8b..` + `FAIL: first unexplained 2209 < ratchet
+  N 2452`, EXIT 1.
+
+**Review fix (task review, Important — rows [r1,r2) × columns [x1,320) left unbound).** The
+first version pinned only the strip window's sha, so a capture mutated inside the named rows
+but outside the strip columns (row 192, x=100) was still explained. The entry gained the
+full-rows sha (`a886c0f3..`, already measured and identical at both captures) as its second
+pin — the reviewer's option 1 — and the new unit case
+`test_a_mutation_outside_the_strip_columns_is_not_the_named_frame` plus the `/tmp/g7/u9-cap100`
+run above prove the hole closed. The two measured entries stay green (their only differing
+pixels inside the rows are the strip's 166; enforced runs: U9 `first unexplained 2452,
+ratchet N 2452 ok`, U10 `4113 ok`; `make gp-win-oracle`/`gp-ending-oracle` green).
 
 **Named limits of the claim.** (a) the base is bound by uniqueness, the overlay only by
 existence: several frames hold the same 166 px (U9 16, U10 25 — the boot's own loader frames
 among them), so mutating ONE holder is not felt by this frame; the unit fixture pins both
 the single-holder failure and the multi-holder semantics. (b) the recipe binds the
-capture's region bytes and the base's bytes; the region's content is the loader's text and
+capture's strip bytes, the whole named rows' bytes (the full-rows pin) and the base's
+bytes; the strip's content is the loader's text and
 its presence in the dump (any holder) is required, but nothing binds a *specific* draw as
 its producer — the cause is §45-A's named per-read model gap, not a wrongly rendered pixel,
 and the allowance does not claim which read drew it. (c) §H.4 named per the plan's rule:

@@ -646,7 +646,8 @@ class LoaderAllowance(Dirs):
             c[r * R:r * R + 3 * 4] = t[r * R:r * R + 3 * 4]
         self.c = bytes(c)
         self.sha = gc.loader_region_sha(self.c, 2, 5, 0, 4)
-        self.entry = (1, 2, 5, 0, 4, self.sha)
+        self.rows_sha = gc.loader_region_sha(self.c, 2, 5, 0, tc.FRAME_W)
+        self.entry = (1, 2, 5, 0, 4, self.sha, self.rows_sha)
         self.loader = (self.entry,)
 
     def write_fixture(self):
@@ -712,6 +713,23 @@ class LoaderAllowance(Dirs):
         self.assertEqual((rc, first), (1, 1), out)
         self.assertTrue(any('FAIL: allowed capture 1' in l and 'not the named' in l for l in out), out)
 
+    def test_a_mutation_outside_the_strip_columns_is_not_the_named_frame(self):
+        # Review Focus #3, the columns beside the named strip: a pixel inside
+        # the named ROWS but at x >= x1 is a DIFFERENT byte layout too. The
+        # full-rows pin refuses it even though the strip columns are untouched
+        # and no port frame holds the mutated pixel.
+        self.write_fixture()
+        R = tc.ROW
+        d = bytearray(self.c)
+        d[3 * R + 3 * 10:3 * R + 3 * 10 + 3] = b'\x09\x09\x09'   # row 3, x 10
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(bytes(d))
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l
+                            and 'its rows 2..4 (full width) are' in l and 'not the named' in l
+                            for l in out), out)
+
     def test_an_ambiguous_base_is_not_the_named_frame(self):
         # never a class: two port frames hold the bytes outside the region
         # (port [4, 1, 1, 2, 3]) -> no unique base -> the named frame is not explained.
@@ -742,16 +760,18 @@ class LoaderAllowance(Dirs):
     def test_the_table_names_the_measured_loader_frames(self):
         # the pinned recipes of record §G7: gp-u9-win 2209 (base port 1777,
         # overlay port 1805) and gp-u10-ending 2062 (base port 1686, overlay
-        # ports 1688/1689), both at rows 192..197 x 0..85, region sha
-        # f2089c52.. (the same 166-px loader text; the six full rows' sha
-        # a886c0f3..). A changed name is a changed claim: it must move with a
-        # re-measurement in the record, never silently.
+        # ports 1688/1689), both at rows 192..197 x 0..85, strip sha f2089c52..
+        # and full-rows sha a886c0f3.. (the same 166-px loader text). A changed
+        # name is a changed claim: it must move with a re-measurement in the
+        # record, never silently.
         self.assertEqual(gc.LOADER_ALLOWED['gp-u9-win'],
                          ((2209, 192, 198, 0, 86,
-                           'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03'),))
+                           'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+                           'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),))
         self.assertEqual(gc.LOADER_ALLOWED['gp-u10-ending'],
                          ((2062, 192, 198, 0, 86,
-                           'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03'),))
+                           'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+                           'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),))
         self.assertEqual(set(gc.LOADER_ALLOWED), {'gp-u9-win', 'gp-u10-ending'})
 
 

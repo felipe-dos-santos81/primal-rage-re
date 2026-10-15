@@ -148,17 +148,24 @@ SCAN3_ALLOWED = {
 # and the overlay at their own draw times, never their composition). Like
 # BANDS_ALLOWED and SCAN3_ALLOWED this is never a class: only the named capture
 # frames, each only with its own byte recipe. An entry is
-# (capture frame j, r1, r2, x0, x1, region_sha256): the frame is explained ONLY if
+# (capture frame j, r1, r2, x0, x1, strip_sha256, rows_sha256): the frame is
+# explained ONLY if
 #   1. sha256 of its RGB bytes in rows [r1, r2), x in [x0, x1) — the region
 #      serialized row by row, each row's x0..x1-1, as title_compare's ROW/3
-#      pixels — equals region_sha256 (the capture-pinned strip bytes),
-#   2. EXACTLY ONE port frame P in the CURRENT dump equals the capture outside
+#      pixels — equals strip_sha256 (the capture-pinned strip bytes), and
+#   2. sha256 of its RGB bytes in rows [r1, r2) at FULL width (x 0..319, the same
+#      row-by-row serialization) equals rows_sha256: the whole named rows are
+#      pinned, so a mutation anywhere in them — inside the strip columns or
+#      outside them — is not silenced (Review Focus #3; the two serializations
+#      are record §G7's f2089c52.. and a886c0f3.., identical at both captures),
+#   3. EXACTLY ONE port frame P in the CURRENT dump equals the capture outside
 #      rows [r1, r2): the byte-checked base bind, so a base rendered differently
 #      un-explains the frame, and
-#   3. inside rows [r1, r2), at EVERY pixel where the capture differs from P, at
-#      least one port frame T equals the capture (the overlay's existence in the
-#      dump — not unique: the port dumps every image of an iteration, so the same
-#      overlay can be held by several frames; record §G7's named limit).
+#   4. inside rows [r1, r2), at EVERY pixel of the strip columns where the
+#      capture differs from P, at least one port frame T equals the capture (the
+#      overlay's existence in the dump — not unique: the port dumps every image
+#      of an iteration, so the same overlay can be held by several frames;
+#      record §G7's named limit).
 # A named frame the two-frame model explains now is reported as a stale name; a
 # named frame that is not the named bytes FAILS.
 LOADER_ALLOWED = {
@@ -170,9 +177,11 @@ LOADER_ALLOWED = {
         # 192..197). Overlay: the 166-px strip rows 192..197 x 0..85 held by
         # port 1805 (f=0xC0E, the dump's unique holder of the whole region: the
         # same entry at 2209 equals 1777 everywhere but its 166 cyan px).
-        # Region sha f2089c52.. (x 0..85); the full six rows' sha a886c0f3..
-        # (x 0..319), identical at gp-u10-ending's 2062 (§G7).
-        (2209, 192, 198, 0, 86, 'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03'),
+        # Strip sha f2089c52.. (x 0..85); full-rows sha a886c0f3.. (x 0..319),
+        # identical at gp-u10-ending's 2062 (§G7).
+        (2209, 192, 198, 0, 86,
+         'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+         'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),
     ),
     'gp-u10-ending': (
         # Capture 2062 (raw 4954): the same loader text over the entry screen
@@ -182,7 +191,9 @@ LOADER_ALLOWED = {
         # six rows (port 1688 has 7 extra index-0xcb px at row 192 the original
         # never showed), which is why the recipe binds the differing pixels, not
         # the whole region (record §G7).
-        (2062, 192, 198, 0, 86, 'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03'),
+        (2062, 192, 198, 0, 86,
+         'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+         'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),
     ),
 }
 
@@ -277,16 +288,23 @@ def loader_region_sha(c, r1, r2, x0, x1):
 
 def loader_explain(c, port, entry):
     """((P, holders), None) when capture frame c is byte-identical to the named
-    loader recipe against this port dump; (None, why) otherwise. P is the unique
-    port frame equal to c outside rows [r1, r2) (the base bind); holders are the
-    port frames matching c at every pixel inside the region where c differs from
-    P (by existence, not uniqueness — the same overlay can be dumped twice)."""
-    _j, r1, r2, x0, x1, region_sha = entry
+    loader recipe against this port dump; (None, why) otherwise. The strip sha
+    pins the overlay region, the full-rows sha pins the whole named rows (so a
+    mutation outside the strip columns fails too); P is the unique port frame
+    equal to c outside rows [r1, r2) (the base bind); holders are the port
+    frames matching c at every stripe pixel inside the region where c differs
+    from P (by existence, not uniqueness — the same overlay can be dumped
+    twice)."""
+    _j, r1, r2, x0, x1, strip_sha, rows_sha = entry
     R = tc.ROW
     got = loader_region_sha(c, r1, r2, x0, x1)
-    if got != region_sha:
+    if got != strip_sha:
         return None, 'its rows %d..%d x %d..%d are %s.., not the named %s..' % (
-            r1, r2 - 1, x0, x1 - 1, got[:12], region_sha[:12])
+            r1, r2 - 1, x0, x1 - 1, got[:12], strip_sha[:12])
+    got = loader_region_sha(c, r1, r2, 0, tc.FRAME_W)
+    if got != rows_sha:
+        return None, 'its rows %d..%d (full width) are %s.., not the named %s..' % (
+            r1, r2 - 1, got[:12], rows_sha[:12])
     lo, hi = r1 * R, r2 * R
     bases = [m for m in range(len(port))
              if port[m][:lo] == c[:lo] and port[m][hi:] == c[hi:]]
@@ -526,7 +544,7 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                     'its named loader frame: %s' % (name, j, raws[j], why))
                 allow_bad = 1
             else:
-                _j, r1, r2, x0, x1, _sha = loader[j]
+                _j, r1, r2, x0, x1, _sha, _rsha = loader[j]
                 P, holders = res
                 out('gp_compare: %s: frames: captured frame %d (raw %d) allowed by name '
                     'as the loader frame: port %d base rows outside %d..%d, the overlay '
