@@ -34009,6 +34009,22 @@ G3B_SPECS = [
         Case("c2", {"eax": 0x00C00001}, d4b_res()),
         Case("c3", {"eax": 0x01000000}, d4b_res()),
     ], eax_mask=0xFFFFFFFF, unhit_named=D4B_RES_SLOW, mutants=("@idx22", "@noand", "@base")),
+    # 0x29D60: one byte `c3` at 0x29D60 (fixup-applied image) = the bare `ret` — it reads no
+    # register, writes nothing, and its `ret` pops only the return address (c3, pop 4). Leaf: no
+    # seam, no call set (§E3.10 items 1-2 vacuous). The hook table 0x104AE4 stores it
+    # (0x43738/0x444C8, flow.c); the port registers no function there, so fn_resolve misses and
+    # the indirect call is SKIPPED (flow.c:1059 "a miss is a no-op only for 0x29D60") — the port
+    # model is "nothing happens, the caller's registers survive", exactly the bare ret. The
+    # binding mirrors it: report the entry EAX and write nothing; mask full is the d1d precedent
+    # (diff_runner.c b_d1d_4f1d0: "the void C function cannot change its caller's value; record
+    # §1") — the row compares EAX at the return with the entry EAX and no byte of memory changed.
+    # @zero returns 0 (caught by c1/c2 — c0 agrees at 0 by design), @scrub drops the high half
+    # (caught by c1/c2). Blocks 1/1.
+    Spec("hook_noop_29d60", 0x29D60, [
+        Case("c0", {"eax": 0x00000000}),
+        Case("c1", {"eax": 0x00C0FFEE}),
+        Case("c2", {"eax": 0xFFFFFFFF}),
+    ], mutants=("@zero", "@scrub")),
 ]
 D1_SPECS += G3B_SPECS
 SPECS = [

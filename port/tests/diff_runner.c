@@ -42639,6 +42639,12 @@ static void b_g3b_1b544(const u32 *r, u32 *eax)
 static void m_g3b_1b544_idx22(const u32 *r, u32 *eax) { *eax = g3b_res_core(r[R_EAX], 1u); }
 static void m_g3b_1b544_noand(const u32 *r, u32 *eax) { *eax = g3b_res_core(r[R_EAX], 2u); }
 static void m_g3b_1b544_base(const u32 *r, u32 *eax)  { *eax = g3b_res_core(r[R_EAX], 3u); }
+/* 0x29D60: one byte `c3`, the bare ret. The port registers no function at it, so the hook callers
+ * skip the fn_resolve miss (flow.c:1059) — the port model is "nothing happens", exactly the bytes.
+ * @zero returns 0 without passing the entry EAX; @scrub drops the high half. */
+static void b_g3b_29d60(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+static void m_g3b_29d60_zero(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+static void m_g3b_29d60_scrub(const u32 *r, u32 *eax) { *eax = r[R_EAX] & 0xFFFFu; }
 /* ---- g3b bindings end ---- */
 /* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
 static u32 si_32970_core(u32 mask, u32 mut)
@@ -58527,6 +58533,9 @@ static const binding_t k_bindings[] = {
     { "res_resolve@idx22",     m_g3b_1b544_idx22,  0xFFFFFFFFu },
     { "res_resolve@noand",     m_g3b_1b544_noand,  0xFFFFFFFFu },
     { "res_resolve@base",      m_g3b_1b544_base,   0xFFFFFFFFu },
+    { "hook_noop_29d60",       b_g3b_29d60,        0xFFFFFFFFu },
+    { "hook_noop_29d60@zero",  m_g3b_29d60_zero,   0xFFFFFFFFu },
+    { "hook_noop_29d60@scrub", m_g3b_29d60_scrub,  0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
