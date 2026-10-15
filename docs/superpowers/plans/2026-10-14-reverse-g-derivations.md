@@ -406,7 +406,91 @@ amendment (counting a row closed when its only open callees are runtime/gap call
 from bytes in allow mode) is a separate decision (recon-01 item 4) and stays open after this
 batch.
 
-## §G4 — game_loop's RNG pokes (pending, lane A task 4)
+## §G4 — game_loop's RNG pokes → recorded stubs (lane A task 4: done)
+
+**The conversion.** The `game_loop` (0x255CC) row's two `mov eax,0` code pokes (0x256B1 and 0x256D6 —
+the project's master-loop pins, `tools/title_pin.py` PATCHES 0x78505/0x7852A) are gone. Both call sites
+now run the raw's own bytes with `0x5D7DC` in the call set as a recorded stub on `rng_next`'s own
+VERIFIED row (`D5H_RNG = E.Call(0x5D7DC, ("eax",), mode="stub")`; `D5H_LOOP_PINS` is deleted), and the
+port issues the same calls through a seam-only `rng_pinned_draw(u32 range)`
+(`port/src/game/rng.c`, `PR_SEAM(0x5D7DCu, range)`; declared in `rng.h`): recorded and stubbed in
+`build/diffrun`, inert in every other binary — the port's real stream still draws nothing, the pinned
+original's behaviour (a real draw would advance the LCG per iteration and per spin pass and shift every
+later consumption-site draw against the captures). The row's blocks are unchanged (18/20, the same two
+named unhits) and its call set grows by one stub (13, under the 16-stub case limit).
+
+**What the bytes say the calls are.** 0x255E4 `mov ebp,0x7fff`; 0x256AF and 0x256D4 `mov eax,ebp`;
+0x256B1 and 0x256D6 `call 0x5d7dc` (`e8 26 81 03 00` / `e8 01 81 03 00` in the fixup-applied image).
+The returns are dead at both sites: 0x256B6 `call 0x1cf20` (whose body starts `push edx; xor edx,edx`
+— it reads no caller EAX) and 0x256BB `mov eax,[0x10150c]`; the spin's `jmp 0x256c6` (0x256DB) reaches
+the same load. The plan's "each stub's per-case EAX comes from the original's consumed values" premise
+does not hold — raw over plan, correction recorded here: **there is no consumed rng value**, so no case
+carries a `stub_eax` (a 0 or any other constant would claim a consumption that does not exist). The
+calls' load-bearing observable is the **argument**: EAX = EBP = 0x7FFF (`mov eax,ebp` after EBP's one
+store), recorded and compared on both sides, plus each call's order, its memory-at-call and the LCG
+state 0xEF6D8.
+
+**The range register and the three caller-observed clobber fixes.** The loop's stubs poison the
+registers their byte-derived sets say a callee does not preserve; 0x292AC, 0x24C5C and 0x1C470 all list
+EBP, so the first `mov eax,ebp` read `CLOBBER_POISON` (measured on the converted row: `k0: call #9:
+original 0x5D7DC(0xC10BBE2D), port 0x5D7DC(0x7FFF)`). The raw's own code keeps EBP live across all
+three: 0x255D1 `push ebp` / 0x256EA `pop ebp` around the function, set at 0x255E4, read at 0x256AF and
+0x256D4 — so the compiler's code presupposes the ABI and the three preserve EBP. Each of the three
+bodies itself writes no EBP: 0x292AC's 17 instructions write only EAX/EBX/EDX (saving EBX/EDX) and its
+one indirect call's every table entry (0xA8744: 0x4F7F4 and 0x5D812) clobbers nothing, so its true set
+is `()`; 0x24C5C's 326-instruction body writes EAX/EBX/ECX/EDX/ESI/EDI only (saving EBX/ECX/EDX/ESI/
+EDI); 0x1C470's 49 instructions write EAX/EBX/ECX/EDX/ESI (saving EBX/ECX/EDX/ESI). The scan's EBP (and
+0x24C5C's ESI/EDI, 0x1C470's EDI) comes from the callee trees (an indirect call, or a path reaching
+>= 0x5D000, which the scan takes to clobber everything). The sets are narrowed to the caller-observed
+values in `_CALLEE_CLOBBER_FIXES` (`(tools/diff_emu.py)`: 0x292AC `()`, 0x24C5C
+`("ebx","ecx","edx","esi","edi")`, 0x1C470 `("edi",)`), the same mechanism and comment form as the
+C3g/D3 entries; the registers no caller reads stay poisoned. The four declarations that carry the sets
+(`D5H_SCENE`, `D5H_FRAME`, `D5B_FLUSH`, `D5H_FLUSH`) and the stub-clobbers pin follow. The two other
+rows that stub 0x1C470 — `text_blit_string` (0x1C65C) and `config_screen_wait(_zero)` (0x2EA78/0x2EA74)
+— were re-measured: their `D5B_KINDS`/`D5B_CASES`/`D6A_KINDS`/`D6A_CASES` pins are byte-identical, so
+the narrowing moved no detection of theirs.
+
+**The mutant (step 2).** `game_loop@rng` (`m_d5h_255cc_rng`: `d5h_255cc_core`'s `rng` case advances the
+LCG for real at the body draw — the pre-pin port's `rng_step` — where the recorded stub does not). It is
+caught by all four cases (kinds `call #7`, `call #7 memory`, …, `byte`), i.e. the recorded call is
+load-bearing. The plan's "a mutant that returns the wrong rng value" cannot be built as stated (the
+callee is stubbed on both sides and its return is dead), so the mutant breaks the two things a wrong
+value could show as: the argument/LCG state (the inlined draw skips the recorded call and advances the
+state) — the same defect the pre-§G4 row could not see.
+
+**Re-measured counter and pins (step 3).** Base `1007/1007 functions VERIFIED; 14899/14899 mutants
+detected; 1 named gaps; 716/832 rows with callees closed (175 have none)` → **`1007/1007 functions
+VERIFIED; 14900/14900 mutants detected; 1 named gaps; 716/832 rows with callees closed (175 have
+none)`**. Line by line: only the mutant figure moves (+1, `@rng`); functions, named gaps and the
+closed/no-callee counts are unchanged — `game_loop` stays open (its allow-mode callees 0x501A3,
+0x50188 and 0x5D812 have no rows, and the 0x4F5C8 stub is unrowed; 0x5D7DC joins its list as
+`VERIFIED`). The row's catch-set pins are re-measured for all 33 mutants: the recorded rng calls shift
+every later call index (e.g. `@quitw`'s kinds move from `call #8..#18` to `call #9..#20`), the
+`D5H_KINDS`/`D5H_CASES` game_loop block is regenerated (the file's 'byte'-first, call-N order) and
+`("game_loop@rng", ['k0','k1','k2','k3'])` joins `D5H_CASES`; every other d5h row's pins compare
+identical. The counter sentence in `tools/tests/test_diff_verify.py` is re-pinned with a track G g4
+comment naming the delta, and the expected mutant-name list follows `D1_KINDS` (no separate edit).
+
+**Commands (measured on branch `reverse-j1`, base `2ccd403e`).** Per-function
+`python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE --image <tmp>
+--function game_loop --self-check`: at base `1/1 functions VERIFIED; 32/32 mutants detected`; after the
+body-site conversion `1/1; 32/32` (the row's row VERIFIED with the fix in place); after the spin site
+and `@rng` `1/1; 33/33`. Full `--self-check` prints the counter line above with no row, problem or
+pin line moving besides game_loop's. `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed.
+`python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify`: 211 tests OK.
+`python3 tools/port_progress.py` stays `787 1203 65` / `747 747 100` (no `FN_`, no `fn_register`: the
+seam-only helper is not a raw function). No capture/oracle target was run in this lane; the controller's
+`make verify` is the gate for the byte-exact oracles (this change touches `port/src` only by adding a
+seam-only helper and two calls to it, so no oracle can move — the port's real stream is unchanged).
+
+**Limits this section creates.** The spin's draw (0x256D6) is a recorded stub like the body's, but no
+case reaches the spin (the 0x1CF20 stub steps the tick past the frame count), so the port's spin call
+stays inside the `0x256D4` named unhit — the row does not exercise it. The `0x25680` full-copy unhit is
+unchanged. The row compares the raw's calls under the stub model only: the LCG stays unadvanced on both
+sides (the pins' semantics), so the row says nothing about the real draw's *values* (the raw discards
+them anyway) and nothing about EBP beyond the ABI the raw's own code presupposes. AGENTS.md's
+weaker-row sentence still names `game_loop` for its pokes — Task 2's re-pin (the row now has none; it
+keeps its two named unhits).
 
 ## §G5 — gp-keys-fight frame ratchet (lane B task 5)
 
@@ -806,4 +890,208 @@ the model itself needed no behaviour change after those test fixes — the real-
 enforce lines above were measured before them (the allowance consulted path was
 already exercised there via `main()`) and re-measured after, identical.
 
-## §G7 — the gp-moves 2139 diagnosis (pending, lane B task 7)
+## §G7 — the gp-moves 2139 gap and the two strips (lane B task 7)
+
+**Base and measurements.** Base `2ccd403e` (`reverse-j2`), `make build`; the three
+dumps re-played on this tree — `make gp-replay scenario=…` for `gp-u6-moves-b`,
+`gp-u9-win`, `gp-u10-ending` — at `/tmp/pr_gp_dump/…` (1738 / 1977 / 4664
+presented frames; every `fn-miss` set on its pinned known-set, `all checks
+passed`).
+
+**Step 1 — the gp-moves 2139 gap.** `make gp-report scenario=gp-u6-moves-b`
+with §G6's allowances active: 2139 is still the first unexplained (no allowance
+table names that scenario). The report's line, verbatim: `FIRST UNEXPLAINED
+capture 2139 (raw 5260): nearest port 1737, rows 64..197, x 1..319 (4279 px)`.
+Anatomy, measured against this run's dump (a row-run pass): capture 2139 holds
+port 1737's rows 0..63 and 198..199 **byte-exactly** and differs in rows
+64..197 (the 4279 px); port 1737 is the dump's **last** frame, f=0xCAF, which is
+the capture's own X record (`X ms=75222 f=0CAF step=38 end`). The changed rows
+are the original's next screen (f≥0xCB0), which no replay of this script can
+present: the script's `end` is that X record, so the port's last presented
+frame is f=0xCAF. **Class: the end of the replayed script** — the gp-keys 1136
+/ gp-charsel 516 / §G6 idle-loss 7559 class ("how far the port got"), not a
+divergence. N=2139 is the exact pin for this capture (the dump has nothing past
+1737); it cannot rise without lengthening the script, which would be a
+re-capture. The Makefile's comment now names the class (the pin itself does not
+move).
+
+**Step 2 — the two 166-px strips, attributed.** U9 capture 2209 (raw 4953) and
+U10 capture 2062 (raw 4954): the six-row strip (rows 192..197, x 0..85,
+sha256 `a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa` over
+the full 320-px rows) is the **loader's `- LOADING -` presentation over the
+mode-0x12 screen**:
+
+- the 166 changed px are the loader's text — string 489, drawn by
+  0x1B3EA/0x1B3EF at `text_blit_string(…, 0, 0xE6)` = rows 192..197 x 0..85
+  (the port's own `actors.c` blit path) — and are **byte-equal** to the port's
+  own presentation frames: U9 dump 1776 (the text visible over the black
+  screen) and U10 dump 1685;
+- the background is the mode-0x12 screen **byte-equal to the port's entry
+  frame** (U9 dump 1777, f=0xBA1; U10 dump 1686, f=0xB9A);
+- the composition is exact per pixel: capture = T1's bytes on the mask
+  {i: T1[i] != T2[i]} (T2 = the same indices under the stale black palette,
+  U9 1775 / U10 1684 — the port's pump-hook sample before its palette flush)
+  and S's (the screen's) everywhere else. Measured on the whole 64000-px frame:
+  **0 mismatches** for (1776, 1775, 1777) and (1685, 1684, 1686); the pair
+  order matters (the reversed U10 triple gives 166). The two scenarios' glyph
+  fingerprints are identical
+  (`de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced`), as
+  §G6's identical strip bytes implied.
+
+§G6's `held by no frame of the dump` is re-verified and stands for the
+**strip**: no frame of either dump carries those six rows (a scan of 1977 +
+4664 frames). What is new is the attribution: both ingredients are the port's
+own frames, and the port's *own* later presentation of the same text is dump
+frame 1805 (U9, f=0xC0E, over the later screen) — the class is **a loader
+presentation**, the same class the port dumps at its own resolves (and the
+capture's other `- LOADING -` frames, e.g. 109 = port 10 f=0x26A and 179 = port
+70 f=0x2CA, match the port exactly). It is **not** §G6's three-frame scan-out
+(no mid-scan-out boundary: the text is over the whole new screen), and it is
+not a sprite/screen mismatch.
+
+**Step 2b — which presentation, and why the frames differ.** The port's
+presentations are logged by a temporary local instrumentation of
+`res_load_present` (reverted; never committed). At the U9 entry:
+`res-load idx=17 … f=0BA1 size=561500` from `game_mode_12_step` →
+`fight_413c8` → `actor_spawn` → `palette_acquire` (s16win, the mode-0x12
+screen's own assets) and its text lands over the **black** screen (capture
+2208 = port 1776). The port's next presentation is `res-load idx=6 … f=0C0E
+size=177851` from `game_mode_12_step` → `sound_voice` → `snd_sample_queue`:
+voice id 0x3A case 2 at f=0xC0E queues `h=03022554` (index 6 = **s16snd2**, the
+second sound bank) and the loader text lands over the screen of *that* frame
+(dump 1805). **What the original resolved in the entry's window is the same
+resource, one call earlier**: the entry's voice (id 0x32, case 1 at f=0xBA1)
+is a *music request*, and its song handle is `03021BFA` — index 6 again
+(`DS_000BBDC8 + 0x32*0xC + 4` in the data object, song byte 1). The original's
+music/sequencer path reads that song through the resource layer (0x1B544 with
+the draw arm, the loader text), so its first s16snd2 read is in the entry's
+window — the strip's background is the entry's screen, not the later one — and
+the tick records agree: the original's U9 stalls are f=0xBA0→0xBA4 +10 (the
+port: +9 over the same four frames, the s16win read only; the original's extra
+tick is the s16snd2 music read) and **no** stall at f=0xC0E (its S records
+f=0xC08..0xC18 all +1, the resolve returning early), while the port has +3 at
+f=0xC0D→0xC0E; U10's entry window is +3 over f=0xB99→0xB9C. The port's music
+path is host-owned and **never resolves** (`res_resolve` appears in
+`platform/{res,gfx,gra,render}.c` only, not in `platform/audio/`), so the
+replay's first s16snd2 resolve is the *sample* queue at f=0xC0E and the text
+lands one screen later. The game-side path is the ported
+`sound_voice`/`snd_sample_queue` (0x2C3FC/0x1CC28); the differing piece is the
+audio model's resource handling — a host-owned subsystem — so the frame of that
+presentation is the model's: a **model artifact**. Not isolated: the original
+sequencer's exact read frame inside the entry's window (the read follows the
+f=0xBA1 music request with the sequencer's own deferral).
+
+**Step 3 — the model: `OVERLAY_ALLOWED` in `tools/gp_compare.py`.** An entry is
+`(capture j, T1, T2, S, glyph_sha)` and the named frame is explained ONLY if
+(1) sha256 of T1's bytes on the mask `{i: T1[i] != T2[i]}` equals `glyph_sha`
+(T1 = the presentation frame with the glyphs visible, T2 = the same indices
+under the stale black palette, so the mask is exactly the glyphs' pixels and
+its shape is part of the fingerprint) and (2) **every** pixel of the capture
+equals T1's on the mask and S's off it — the whole frame, not a box. It is
+consulted only when the two-frame model leaves the named frame unexplained; a
+named frame the model explains is a stale name; a named frame that is not its
+recipe prints `FAIL: allowed capture … is not its named glyph overlay` and
+fails the enforced run in both modes. The entries (measured on the dumps above):
+
+| scenario | capture (raw) | T1 (presentation) | T2 (mask source) | S (screen) | glyph sha256 |
+|---|---|---|---|---|---|
+| gp-u9-win | 2209 (4953) | **1776** (f=0xBA1, over black) | **1775** | **1777** (f=0xBA1, the entry) | `de1c1bb2..` |
+| gp-u10-ending | 2062 (4954) | **1685** (f=0xB9A, over black) | **1684** | **1686** (f=0xB9A) | `de1c1bb2..` |
+
+**The pins (step 3).** `make gp-replay` on this tree + the report, then the
+enforced runs:
+
+- `GP_MOVES_MIN_FIRST 2139` **unchanged** (the script-end class above; the
+  report re-measured it on this tree).
+- `GP_WIN_MIN_FIRST 2209 -> 2452`. Measured: `captured frame 2209 (raw 4953)
+  allowed by name as a glyph overlay: 166 px of port 1776 over port 1777 (the
+  mask from port 1775, the named glyph bytes)`; `2343 classified: 1237 clean,
+  1096 splice, 3 transition, 0 band-allowed, 1 scan3-allowed, 1
+  overlay-allowed, 5 unexplained, 14 all-black`; first unexplained `capture
+  2452 (raw 5603): nearest port 1976, rows 62..169, x 94..218 (1905 px)` —
+  port 1976 is f=0xDAE, the X record, the dump's last frame; rows 0..61 and
+  170..199 are its still-scanned screen and rows 62..169 the original's next
+  screen. The class is the **replay's post-script tail** (how far the port
+  got), and 2452 is the exact pin for this capture. MAX_START 100 unchanged and
+  exact; TRACE 3503 and WIN/MILESTONES 3503/8 unchanged (`0 differing through
+  3502`).
+- `GP_ENDING_MIN_FIRST 2062 -> 4113`. Measured: `captured frame 2062 (raw
+  4954) allowed by name as a glyph overlay: 166 px of port 1685 over port 1686
+  (the mask from port 1684, the named glyph bytes)`; `4020 classified: 2355
+  clean, 1654 splice, 4 transition, 0 band-allowed, 1 scan3-allowed, 1
+  overlay-allowed, 5 unexplained, 15 all-black`; first unexplained `capture
+  4113 (raw 7858): nearest port 3444, rows 166..199, x 0..319 (9732 px)` —
+  port 3444 is f=0x1502, mode 0x0D: the **poked final's death animation** (the
+  `DEATH_DONE` pokes' region, §W.9's unclaimed death streams). NOT allowed: a
+  genuine unexplained frame the ratchet stops at; 4114 fails. MAX_START 83
+  unchanged and exact; TRACE/WIN/MILESTONES 9954/9954/30 unchanged (`0
+  differing through 9953`).
+- `GP_IDLE_LOSS_MIN_FIRST 7559` **unchanged**: the strips are not in that
+  capture (its mode-8 entry is §G6's scan-out), so nothing there moved.
+
+The pixel claims now run past the strips to each replay's first genuine unexplained
+frame: U9 covers to f=0xDAE (the X record, its replay's end; previously it stopped
+at f≈0xBA6) and U10 to f=0x1502 (the final's 4th death; previously f=0xB9A) — for
+U10 that genuine unexplained death-animation frame (capture 4113) is short of its
+replay's end f=0x26E1, where only the trace/WIN fields agree. The results screens,
+the following rounds' fights and the final's fights through f=0x1502 are under them.
+
+**Proofs (step 4).** Unit (`tools/tests/test_gp_compare.py OverlayAllowance`, 8
+cases): the named bytes explain (with the message asserted); a mutated screen
+S un-explains (the allowance FAILs and `first unexplained 1 < ratchet N 4`
+catches it); a mutated T1 (a different glyph colour) fails on the fingerprint;
+a flushed T2 (the same DAC as T1) empties the mask and fails; a glyph shifted
+one pixel in the capture is a different byte layout and fails; the mask
+source's indicator limit is pinned as a *passing* case (so closing it must move
+the record); a model-explained named frame prints the stale-name note; and the
+table's two entries are pinned (`test_the_table_names_the_measured_overlays`),
+so a silent name change is a test failure. `test_gp_compare` 54/54 (46 before,
+8 added); the Makefile's k11/gp tool line (`PR_ORACLE_REQUIRED=1 python3 -m
+unittest tools.tests.test_k11_fields … test_gp_keys`) **206 tests, OK** (198
+before, +8). Real data on COPIES (`/tmp/g7_mut`, the source dumps untouched,
+the capture read-only): (a) poking port 1777's (S's) index byte at row 192
+x 300 (31→38) gives `FAIL: allowed capture 2209 (raw 4953) is not its named
+glyph overlay: its pixel row 192 x 300 is 000000, not port 1777's 082030` +
+`FAIL: first unexplained 2209 < ratchet N 2452`, EXIT 1; (b) poking port
+1776's (T1's) glyph index 32→33 at row 192 x 0 gives `its glyph pixels are
+aee2dc97c427.., not the named de1c1bb2b51d..` + the same ratchet FAIL, EXIT 1;
+(c) T2 := T1's bytes (the mask empties) fails the fingerprint, EXIT 1. Two
+index pokes *inside* T2's mask — a glyph index 32→9 and a background 0→9, both
+rendered black by that frame's stale palette — do NOT move the mask and the
+frame still explains: the real-data form of T2's `!=`-indicator limit (the
+mutation that moves the mask, the flush, fails as required). The enforced runs
+`make gp-moves-oracle`, `make gp-win-oracle`, `make gp-ending-oracle` are all
+green with the new pins (the win one re-ran green after the last message edit).
+
+**Named limits of the claim.** (a) T2 is only the mask's **indicator**: its
+bytes inside the mask bind nothing beyond the `!=` relation (the mask's shape
+itself is pinned through the glyph fingerprint), and T1's bytes *off* the mask
+are not claimed. (b) the entries name dump **indices**, so a dump whose frame
+order changes fails closed (re-measure) — the same discipline §G5/§G6's
+searches give by construction. (c) the call is attributed (the music request's
+song, s16snd2, read by the original's sequencer in the entry's window; the
+port's host-owned music path never resolves, so its first s16snd2 resolve is
+the sample queue at f=0xC0E), but the **exact frame** of the original's
+sequencer read inside the entry's window is not isolated (its deferral from the
+f=0xBA1 music request is the host sequencer's timing), and the port's ±1-tick
+per-read duration model still bounds the tick comparison. (d) the standard
+gp_compare limits (§G.16): no under-render detection, order and full coverage
+not claimed, frames at/after the pinned start classified against the port's own
+dump. (e) this allowance covers **one** named frame per scenario: any further
+`- LOADING -` frame the replay houses elsewhere is a re-measurement, not an
+extension.
+
+**Superseded earlier text.** §G6's "the cause is NOT attributed here — a named
+gap … and not allowed" and its pin sentence (`GP_WIN_MIN_FIRST 2209`,
+`GP_ENDING_MIN_FIRST 2062`) are superseded by this section; the record keeps
+them as history. `AGENTS.md`'s oracle paragraph still quotes 2209/2062 and the
+"named gap" wording — it must move with these pins (track J task 5, doc truth),
+as must the `(0,192) text-row region` phrasing §G6 used for the strip.
+
+**Development notes (fail-first, honest).** The first test run failed 6/8 in
+this class for two test-side bugs, both fixed before green: the fixture's
+`glyph_sha` was computed over the raw `.ipx` bytes (indices + DAC) instead of
+the expanded RGB the checker compares, and the fixture's tail capture frame had
+no port frame to match. The model itself needed no change: the real-data
+composition checks and the report/enforce lines above were measured before the
+test fixes and re-measured after, identical.

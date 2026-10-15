@@ -619,5 +619,171 @@ class Scan3Allowance(Dirs):
                            '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),))
 
 
+class OverlayAllowance(Dirs):
+    # Track G task 7 (record §G7): the named per-frame glyph-overlay allowance,
+    # the SCAN3_ALLOWED pattern for a loader presentation the replay houses at
+    # another frame. Review Focus #3: a named frame is explained ONLY by its own
+    # byte recipe — T1's bytes on the mask {i: T1[i] != T2[i]}, S's off it —
+    # never a class, and a different byte layout of the same frame fails.
+    #
+    # The fixture: port [rgb(1), T1, T2, S]. T1 is the loader's presentation
+    # frame: a black screen with GV-index glyph pixels (index 5 in the grey DAC
+    # -> (5,5,5)); T2 is the same indices under a DAC whose index 5 is black, so
+    # the mask {T1 != T2} is exactly the glyph pixels (the real pair is the
+    # loader frame with the palette flushed and the same frame with the stale
+    # black palette). S is a grey screen; the named capture frame is S with the
+    # glyph pixels replaced by T1's — a composition no clean/splice/transition
+    # expresses. The capture's other frames are the window start and the tail.
+    GLYPH = ((3, 5), (4, 6), (4, 9))
+    GV = 5
+
+    def setUp(self):
+        super().setUp()
+        self.t1, self.t2 = self.presentation_frames(DAC)
+        self.s = rgb(9)
+        self.entry = (1, 1, 2, 3, self.glyph_sha(self.t1, self.t2))
+        self.ov = (self.entry,)
+        self.write_fixture()
+
+    def presentation_frames(self, dac):
+        """(the visible presentation frame, the same indices under the stale
+        black palette): every index 0 (black) but the glyph pixels' index 5."""
+        idx = bytearray(64000)
+        for r, x in self.GLYPH:
+            idx[r * 320 + x] = self.GV
+        stale = bytearray(dac)
+        for c in range(3):
+            stale[3 * self.GV + c] = 0
+        return bytes(idx) + bytes(dac), bytes(idx) + bytes(stale)
+
+    def glyph_sha(self, t1, t2):
+        a, b = gc.expand_ipx(t1), gc.expand_ipx(t2)
+        mask = gc.overlay_mask(a, b)
+        return hashlib.sha256(b''.join(a[3 * i:3 * i + 3] for i in mask)).hexdigest()
+
+    def captured(self, screen):
+        c = bytearray(screen)
+        for r, x in self.GLYPH:
+            i = (r * 320 + x) * 3
+            c[i:i + 3] = bytes([self.GV] * 3)
+        return bytes(c)
+
+    def write_fixture(self, cap_frame=None):
+        ks = [1, None, None, 9]
+        for i, k in enumerate(ks):
+            data = self.t1 if i == 1 else self.t2 if i == 2 else ipx(k)
+            with open(os.path.join(self.port, 'frame_%05d.ipx' % i), 'wb') as f:
+                f.write(data)
+        frames = [rgb(1), self.captured(self.s) if cap_frame is None else cap_frame, self.s, rgb(1)]
+        for j, c in enumerate(frames):
+            with gzip.open(os.path.join(self.cap, 'frame_%05d.raw.gz' % j), 'wb') as f:
+                f.write(c)
+        with open(os.path.join(self.cap, 'window.txt'), 'w') as f:
+            f.write(''.join('%05d %d\n' % (j, 100 + j) for j in range(len(frames))))
+
+    def run_overlay(self, n=4, **kw):
+        cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
+        port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
+        rows = [tc.row_hashes(port[m]) for m in range(len(port))]
+        out = []
+        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
+                                      kw.get('report', False), out.append,
+                                      kw.get('max_start', 0), None, None,
+                                      kw.get('ov', self.ov))
+        return rc, first, out
+
+    def test_the_named_overlay_is_explained(self):
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('allowed by name as a glyph overlay: 3 px of port 1 over port 3 '
+                            '(the mask from port 2, the named glyph bytes)' in l for l in out), out)
+        self.assertTrue(any('1 overlay-allowed' in l for l in out), out)
+
+    def test_a_mutated_screen_frame_unexplains_it_again(self):
+        # Review Focus #3: mutate S's bytes (frame 3: 9 -> 4) without touching
+        # the capture. The off-mask pixels no longer match, the allowance FAILs
+        # and the ratchet catches the frame.
+        self.assertEqual(self.run_overlay()[0], 0)
+        with open(os.path.join(self.port, 'frame_00003.ipx'), 'wb') as f:
+            f.write(ipx(4))
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'is not its named glyph overlay' in l
+                            for l in out), out)
+        self.assertTrue(any('FAIL: first unexplained 1 < ratchet N 4' in l for l in out), out)
+
+    def test_a_mutated_overlay_frame_unexplains_it_again(self):
+        # the overlay frame's bytes on the mask are the glyph fingerprint: a
+        # different DAC colour for the glyph index is a different presentation.
+        self.assertEqual(self.run_overlay()[0], 0)
+        dac = bytearray(DAC)
+        for c in range(3):
+            dac[3 * self.GV + c] = 7
+        t1b, _ = self.presentation_frames(bytes(dac))
+        with open(os.path.join(self.port, 'frame_00001.ipx'), 'wb') as f:
+            f.write(t1b)
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'its glyph pixels are' in l
+                            for l in out), out)
+
+    def test_a_mutated_mask_source_unexplains_it_again(self):
+        # T2 is the mask's indicator: flushing it (the same DAC as T1) empties
+        # the mask, so the rule expects S everywhere and the capture's glyph
+        # pixels are unexplained again.
+        self.assertEqual(self.run_overlay()[0], 0)
+        with open(os.path.join(self.port, 'frame_00002.ipx'), 'wb') as f:
+            f.write(self.t1)
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'its glyph pixels are' in l
+                            for l in out), out)
+
+    def test_a_shifted_glyph_in_the_capture_is_not_the_named_frame(self):
+        # Review Focus #3 (the capture side): the same screen with the glyphs one
+        # pixel over is a DIFFERENT byte layout and must not be silenced.
+        shifted = bytearray(self.s)
+        for r, x in self.GLYPH:
+            i = (r * 320 + x + 1) * 3
+            shifted[i:i + 3] = bytes([self.GV] * 3)
+        self.write_fixture(cap_frame=bytes(shifted))
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'is not its named glyph overlay' in l
+                            for l in out), out)
+
+    def test_the_mask_sources_bytes_are_only_an_indicator(self):
+        # the named limit, documented so that closing it must move the record: a
+        # T2 whose non-mask pixels change (here the stale palette keeps the same
+        # `!=` relation) leaves the recipe — and the explanation — unchanged.
+        dac = bytearray(DAC)
+        for c in range(3):
+            dac[3 * self.GV + c] = 1
+        _, t2b = self.presentation_frames(bytes(dac))
+        with open(os.path.join(self.port, 'frame_00002.ipx'), 'wb') as f:
+            f.write(t2b)
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (0, None), out)
+
+    def test_a_named_frame_the_model_explains_is_a_stale_name(self):
+        self.write_fixture(cap_frame=self.s)          # now clean: the name is stale
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('retire the name' in l for l in out), out)
+
+    def test_the_table_names_the_measured_overlays(self):
+        # the pinned recipes of record §G7: gp-u9-win 2209 (port 1776's glyphs
+        # over port 1777, the mask from port 1775) and gp-u10-ending 2062 (port
+        # 1685 over 1686, mask from 1684) — both the same glyph fingerprint
+        # (de1c1bb2..). A changed name is a changed claim: it must move with a
+        # re-measurement in the record, never silently.
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u9-win'],
+                         ((2209, 1776, 1775, 1777,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u10-ending'],
+                         ((2062, 1685, 1684, 1686,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+
+
 if __name__ == '__main__':
     unittest.main()

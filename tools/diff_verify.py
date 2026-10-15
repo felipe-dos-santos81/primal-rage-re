@@ -10,9 +10,12 @@ only. It does not mean the function is correct for states the cases never produc
 """
 import argparse
 import concurrent.futures
+import csv
 import dataclasses
+import glob
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -26495,8 +26498,9 @@ D5B_SPECS += [
 # `lea ebx,[esp+4]` 0x1C6B4), passed by value. It saves ECX and ESI. A stub cannot advance the column in
 # the caller's frame (0x1C647/0x1C64C add 0xF or 8), so every character is recorded at the first column.
 D5B_GLYPH = E.Call(0x1C5E8, ("eax", "[edx]", "[ebx]"), clobbers=("ebx", "edx", "edi", "ebp"))
-# 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument.
-D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+# 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument. Its caller-observed
+# set is EDI alone (record §G4): 0x1C65C does not read EBP after it.
+D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5B_TEXT = 0x10A010
 
 
@@ -30503,16 +30507,24 @@ D5H_SPECS += [
        d5h_gf_muts("rr")),
 ]
 
-# ---- 0x255CC game_loop (record §2.5): the master loop ------------------------------------------
+# ---- 0x255CC game_loop (record §2.5, track G §G4): the master loop ------------------------------
 # The project's two master-loop pins (tools/title_pin.py, PATCHES 0x78505 and 0x7852A): `call 0x5d7dc`
-# at 0x256B1 (the body draw) and 0x256D6 (the spin draw) replaced by `mov eax,0`. The port is written
-# against that pinned original (flow.c game_loop, PORT). Unpinned, with 0x5D7DC outside the call set,
-# the original stops `unmodeled: call 0x5D7DC from 0x256B1` (measured).
-D5H_LOOP_PINS = {0x000256B1: bytes.fromhex("b800000000"), 0x000256D6: bytes.fromhex("b800000000")}
+# at 0x256B1 (the body draw) and 0x256D6 (the spin draw), both `rng(0x7FFF)` (`mov eax,ebp`, EBP =
+# 0x7FFF at 0x255E4). Track G §G4 turns them from `mov eax,0` pokes into recorded stubs on 0x5D7DC's
+# own row: the raw calls run, are intercepted, and their memory (the LCG state 0xEF6D8) matches the
+# port's seam-only rng_pinned_draw, which never advances it (the pinned original's behaviour). The raw
+# discards both returns — 0x256B6's 0x1CF20 call overwrites EAX and 0x256BB `mov eax,[0x10150C]`
+# follows; the spin's `jmp 0x256C6` reaches the same load — so no case consumes the stub EAX; the call
+# (address, EAX = EBP = 0x7FFF, order, memory at the call) is the observable.
+# The loop's stubs read the range register: EBP is set to 0x7FFF once (0x255E4) and read at both draws,
+# so 0x292AC/0x24C5C/0x1C470 must not poison it (`_CALLEE_CLOBBER_FIXES`, record §G4); the other
+# registers those callees may clobber are not read on the row's exercised path and stay poisoned.
 D5H_PUMP = E.Call(0x500C4, ())
-D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi", "ebp"))
+# Caller-observed sets (record §G4): the loop reads EBP at the draws, so these three stubs must
+# preserve it (`_CALLEE_CLOBBER_FIXES` in tools/diff_emu.py; the scan's ebp/esi/edi are conservatism).
+D5H_SCENE = E.Call(0x292AC, (), clobbers=())
 D5H_EDGE = E.Call(0x389C4, ())
-D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
 # The stubs model what the loop waits on (record §2.5): render entry 0 sets the quit flag 0xA81A8, the
 # effects step arms render entries 0 and 4 for the next iteration, and the audio service steps the ISR
 # tick 0x101508 to 0x10001 (above the
@@ -30522,20 +30534,26 @@ D5H_RENDER4 = E.Call(0x4F5C8, ())
 D5H_FX = E.Call(0x134C0, (), writes=((None, 0x00104AEC, le32(0x00000011)),))
 D5H_SORT = E.Call(0x1C3FC, ())
 D5H_LIST = E.Call(0x14328, (), clobbers=("ebx", "edx"))
-D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5H_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x00101508, le32(0x00010001)),))
+# 0x5D7DC (track G §G4): the master loop's two draws, stubbed on rng_next's own row. The return is
+# dead on both sides (see the row comment above), so the Call carries no per-case EAX (`stub_eax`):
+# there is no consumed value to vary. The argument (EAX at the call) is EBP = 0x7FFF, which the three
+# fixes above keep unpoisoned; it is the range the raw's `mov eax,ebp` passes.
+D5H_RNG = E.Call(0x5D7DC, ("eax",), mode="stub")
 D5H_LOOP_CALLS = (D5H_PUMP, D5H_SCENE, D5H_EDGE, D4B_FILL, D5H_FRAME, D5H_RENDER0, D5H_RENDER4, D5H_FX, D5H_SORT,
-                  D5H_LIST, D5H_FLUSH, D5H_AUDIO)
+                  D5H_LIST, D5H_FLUSH, D5H_RNG, D5H_AUDIO)
 
 
 def d5h_loop_case(aec=0, a54=1, f4=0, af4=0xFFFF, a55=0x55, f5=0xF5):
-    """0x255CC: the pins; the tick pair 0x101508/0x10150C seeded (the prologue zeroes both); the scroll
+    """0x255CC: no code pokes since track G §G4 (the two master-loop draws are recorded stubs; the
+    tick pair 0x101508/0x10150C is seeded, the prologue zeroes both); the scroll
     gate 0x107A54 and the list gate 0x1088F4, each before a seeded byte; the render mask 0x104AEC; the
     frame word 0x104AF4 before the seeded word 0x104AF6; the copy flag 0x1014FC clear before three
     seeded bytes; the quit flag 0xA81A8 clear before a seeded byte; the front buffer 0xE87A0 = 0xB0000
     and the back buffer 0xE87A4 = 0xA0000, the aperture itself, so the dirty blit 0x501A3 (real in the
     original, host-owned) rewrites the bytes it reads."""
-    p = dict(D5H_LOOP_PINS)
+    p = {}
     p.update({
         0x00101508: le32(0x11111111) + le32(0x22222222),
         0x00107A54: bytes([a54, a55]), 0x001088F4: bytes([f4, f5]),
@@ -30551,19 +30569,23 @@ D5H_LOOP_UNHIT = {
              "port presents through gfx_present and never writes mem[0xA0000] (the aperture rule); a named "
              "gap (record §4)",
     0x256D4: "the spin on the ISR tick 0x101508, which the timer ISR 0x1BDF4 steps: the emulator has no "
-             "ISR (the 0x1CF20 stub steps the tick) and the port models it in the spin (game_isr_ticks); a "
-             "named gap (record §4)",
+             "ISR (the 0x1CF20 stub steps the tick past the frame count) and the port models it in the spin "
+             "(game_isr_ticks); the spin's own 0x5D7DC draw (0x256D6) is a recorded stub like the body's "
+             "but no case reaches it; a named gap (record §4)",
 }
 
 D5H_SPECS += [
-    # 0x255CC game_loop under the two pins: the tick pair zeroed; per iteration 0x500C4, 0x292AC, with
+    # 0x255CC game_loop (no code pokes since track G §G4): the tick pair zeroed by the prologue; per
+    # iteration 0x500C4, 0x292AC, with
     # the byte 0x107A54 set 0x389C4 and 0x38A38, 0x24C5C, the render table 0xA86C4 over the mask dword
     # 0x104AEC (entries 0 and 4 here), the word 0x104AF4 + 1 (k0: 0xFFFF wraps and 0x104AF6 keeps its
     # word), 0x134C0; when the frame count 0x10150C equals the tick 0x101508: 0x1C3FC, 0x14328 unless
     # the byte 0x1088F4 is set, 0x1C470, the dirty blit 0x501A3 (the copy flag 0x1014FC clear) and the
-    # swap 0x50188; then 0x1CF20, 0x10150C + 1, and again until the quit flag 0xA81A8 is set. k0/k2/k3
+    # swap 0x50188; then the recorded 0x5D7DC draw (EAX = 0x7FFF), 0x1CF20, 0x10150C + 1, and again
+    # until the quit flag 0xA81A8 is set. k0/k2/k3
     # run two iterations (the second with the gate false and the render entries armed), k1 one. 0x501A3
-    # and 0x50188 run real; the others are stubs. The port's own additions in game_loop are not claimed:
+    # and 0x50188 run real; the others are stubs. The spin's draw (0x256D6) is unreached (the 0x1CF20
+    # stub steps the tick past the frame count). The port's own additions in game_loop are not claimed:
     # the host key fill (it writes zeros over the zero bitmap bytes [0x101514]+0x2D8/9), gfx_present and
     # the dump hooks.
     Spec("game_loop", 0x255CC, [
@@ -30575,7 +30597,7 @@ D5H_SPECS += [
        mutants=("@no508", "@no50c", "@nopump", "@notick", "@tickorder", "@scroll", "@scrollw", "@scrollorder",
                 "@noframe", "@frameearly", "@nortbl", "@rorder", "@rearly", "@af4d", "@noaf4", "@af4late", "@nofx",
                 "@gate", "@gatew", "@nosort", "@f4", "@f4w", "@listorder", "@noflush", "@fcd", "@noswap",
-                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw")),
+                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw", "@rng")),
 ]
 D1_SPECS += D5H_SPECS
 # ---- d5h end ----
@@ -34211,13 +34233,99 @@ def mutant_detection(r):
     return True, ""
 
 
-def closed_rows(funcs, verdicts):
-    """(closed, with_callees): the rows that have callees, and those of them that are VERIFIED with
-    every callee VERIFIED by its own row (one level deep, record §E3.6). Rows with no callee are
-    counted apart, so they cannot make the figure look closer than it is (record §E3.4)."""
+# ---- track J batch j1 (record 2026-10-15-reverse-j-derivations.md §J1): the closure rule's
+# declared non-goals ---------------------------------------------------------------------------
+RUNTIME_BASE = 0x5D000   # tools/port_progress.py's cut: the WATCOM libc / DOS-4GW region the port
+#                        serves from the host libc and does not port (AGENTS.md)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+@dataclass(frozen=True)
+class NonPortable:
+    """The addresses outside the portable set, from the repo's own tables (record §J1: never a
+    hardcoded address list). `classified` is tools/port_classification.txt (addr -> `host-owned` /
+    `deferred`, `port_progress.py`'s and the README's portable denominator); `functions` is
+    port/decomp/prage.functions.csv's entries that are real functions (rows without `::`); `ported` is
+    the port tree's own registry, the addresses port/src registers with `fn_register` or heads with a
+    column-0 `/* 0xADDR` comment (the strict rule tools/entry_triage.py's `load_ported` uses; the
+    loose "anywhere in a comment" form is not used, because it reads prose mentions as
+    implementations — measured: it would also take memset `0x61A70` and the exit chain `0x62003` and
+    re-open 26 further rows, exactly the rows the strict form closes via the runtime allow-mode callee
+    `0x61A70`). An address at or above RUNTIME_BASE is `runtime` by the rule itself;
+    below it, a classified address reads its own class and one the decomp index never lists as a
+    function reads `e2-field` (E2's triage field; the census's "call targets never listed as functions
+    in the decomp index", record G §G3). A listed function reads None: a porting target, which never
+    leaves a row open (the 8 ported functions without a row — the named gaps — are in this set).
+
+    Frozen so a test's flipped table is a new value; the `dict` field makes it unhashable, and
+    nothing hashes it."""
+
+    classified: dict
+    functions: frozenset
+    ported: frozenset
+
+    def class_of(self, addr):
+        if addr >= RUNTIME_BASE:
+            return "runtime"
+        if addr in self.classified:
+            return self.classified[addr]
+        return None if addr in self.functions else "e2-field"
+
+    def excused(self, addr, mode):
+        """True when an open callee `(addr, mode)` does not keep its row open (record §J1): an
+        allow-mode callee outside the portable set that the port tree does not implement. The
+        port-code check (`ported`) is what keeps a registered implementation the decomp index never
+        listed blocking — `0x29D04` and `0x3E484` (with `0x28D68`/`0x3E4C4` the E2-class handler
+        entries `fn_register`ed by port/src/game/actors.c) read `e2-field` from `class_of` yet have a
+        C body, so a row of their own can exist and the five rows `fighter_19020`, `fighter_35050`,
+        `fighter_think_side`, `fighter_pass_a`, `fighter_pass_a_al` stay open on them."""
+        return (mode == "allow" and self.class_of(addr) is not None and addr not in self.ported)
+
+
+def non_portable(root=ROOT):
+    """The repo's NonPortable table (record §J1): tools/port_classification.txt, the decomp index
+    port/decomp/prage.functions.csv, and the port tree's own registry (`port/src`'s `fn_register`
+    calls and column-0 `/* 0xADDR` headers, symbols.h excluded). 4 of the index's 1207 entries are
+    not in `port/src/symbols.h` (they are at or above RUNTIME_BASE, so the two agree on every address
+    the rule can excuse)."""
+    classified = {}
+    with open(os.path.join(root, "tools", "port_classification.txt")) as f:
+        for line in f:
+            if line.strip() and not line.startswith("#"):
+                classified[int(line.split()[0], 16)] = line.split()[1]
+    with open(os.path.join(root, "port", "decomp", "prage.functions.csv"), newline="") as f:
+        functions = frozenset(int(r["entry"], 16) for r in csv.DictReader(f) if "::" not in r["entry"])
+    ported = set()
+    for ext in ("c", "h"):
+        for path in glob.glob(os.path.join(root, "port", "src", "**", "*." + ext), recursive=True):
+            if path.endswith("symbols.h"):
+                continue
+            with open(path, errors="ignore") as f:
+                text = f.read()
+            ported |= {int(m, 16) for m in re.findall(r"fn_register\(\s*0x([0-9A-Fa-f]+)", text)}
+            ported |= {int(m, 16) for m in re.findall(r"^/\* 0x([0-9A-Fa-f]{4,6})\b", text, re.M)}
+    return NonPortable(classified, functions, frozenset(ported))
+
+
+def closed_rows(funcs, verdicts, outside=None):
+    """(closed, with_callees): the rows that have callees, and those of them that are closed. A row
+    is closed when it is VERIFIED and every callee is VERIFIED by its own row or excused (one level
+    deep, record §E3.6). The excused callee (track J j1, record §J1) is an *allow-mode* callee
+    outside the portable set: its bytes already run on both sides inside the row, and its own row can
+    never exist, because the address is `runtime` (>= RUNTIME_BASE), host-owned/deferred
+    (tools/port_classification.txt) or one the decomp index never lists as a function (E2's field) —
+    *and* the port tree does not implement it (`NonPortable.excused`). A recorded *stub* or `real`
+    callee outside the portable set still keeps the row open: the declaration a stub applies, and the
+    arrival a `real` mode records, are exactly what a row of the callee's own would verify. A ported
+    function with no row of its own (the 8 named gaps) is in the portable set and always keeps the
+    row open. `outside` is `non_portable()`; a flipped `NonPortable` compares under a mutated class
+    entry. Rows with no callee are counted apart, so they cannot make the figure look closer than it
+    is (record §E3.4)."""
+    outside = non_portable() if outside is None else outside
     with_callees = [r for r in funcs if r.callees]
     closed = [r for r in with_callees if r.verdict == "VERIFIED"
-              and all(verdicts.get(a) == "VERIFIED" for a, _ in r.callees)]
+              and all(verdicts.get(a) == "VERIFIED" or outside.excused(a, mode)
+                      for a, mode in r.callees)]
     return closed, with_callees
 
 
@@ -34295,11 +34403,15 @@ def main(argv=None):
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
-          "none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees "
-          "stubbed or run as stated." % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
-                                         "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
-                                         if args.self_check else "", len(gaps), len(closed), len(with_callees),
-                                         len(funcs) - len(with_callees)))
+          "none). The closure rule (record J §J1): an allow-mode callee outside the portable set - runtime "
+          ">= 0x%X, host-owned/deferred in tools/port_classification.txt, or an address the decomp index "
+          "never lists as a function - does not keep a row open, provided the port tree does not implement "
+          "the address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a recorded stub "
+          "or real callee and a ported function without a row do. Claim: equivalence on the exercised blocks "
+          "and inputs only, each function with its callees stubbed or run as stated." % (
+              len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
+              "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants)) if args.self_check else "",
+              len(gaps), len(closed), len(with_callees), len(funcs) - len(with_callees), RUNTIME_BASE))
     return 1 if bad or missed else 0
 
 

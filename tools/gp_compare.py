@@ -15,7 +15,11 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
           Frames named in SCAN3_ALLOWED are explained ONLY by their per-frame
           three-segment recipe: a pinned top-row hash that at least one EARLIER
           dump frame must hold, plus one unique adjacent port pair (B, B+1)
-          byte-binding the rows below the top (record §G6). Neither table is
+          byte-binding the rows below the top (record §G6). Frames named in
+          OVERLAY_ALLOWED are explained ONLY by their per-frame glyph-overlay
+          recipe: one port frame's pixels on the mask where a second port frame
+          differs from a third (a pinned glyph fingerprint), and the third's
+          (the screen's) off it (record §G7). None of the three tables is
           ever an extension of the two-frame model.
           The first unexplained capture frame must be >= --min-first N, and the
           window start (the first capture frame that shows the port's first frame)
@@ -135,6 +139,64 @@ SCAN3_ALLOWED = {
 }
 
 
+# Per-scenario named per-frame glyph-overlay allowances (record §G7): the one
+# capture frame whose loader presentation landed on a screen the replay only
+# presents later. The loader blits its `- LOADING -` text (string 489,
+# 0x1B3EA/0x1B3EF) straight into the aperture, over whatever the screen holds,
+# and the read that follows stalls the loop. At the mode-0x12 entry the first
+# read of s16snd2 (index 6) is a *music* request (voice 0x32 case 1, song handle
+# 0x03021BFA): the original's sequencer reads the song through the resource
+# layer (0x1B544, draw arm) in the entry's window, so the text lands over the
+# entry's screen; the port's music path is host-owned (platform/audio/ never
+# resolves), so the replay's first s16snd2 resolve is the *sample* queue of
+# voice 0x3A (0x03022554, also index 6) at f=0xC0E and the same text lands one
+# screen later. The capture frame is therefore `- LOADING -` over the
+# mode-0x12 screen — a composition of two frames the port itself dumped (the
+# presentation frame and the screen), which the two-frame model cannot express.
+# Like BANDS_ALLOWED/SCAN3_ALLOWED this is never a class and never an extension
+# of the two-frame model: only the named capture frames, each only with its own
+# byte recipe. An entry is (capture j, T1, T2, S, glyph_sha): the frame is
+# explained ONLY if
+#   1. sha256 of T1's bytes on the mask {i: T1[i] != T2[i]} equals glyph_sha
+#      (T1 = the port's `- LOADING` frame with the glyphs visible; T2 = the same
+#      indices under the stale black palette, so the mask is exactly the
+#      glyphs' pixels and the mask's shape is part of the fingerprint), and
+#   2. every pixel of the capture equals T1's on the mask and S's (the screen
+#      frame) off it — the whole frame, not a box.
+# So a mutation of T1's overlay bytes, of the mask's shape (via T2) or of any
+# S pixel un-explains the capture frame (OverlayAllowanceTests). Named limits
+# (as SCAN3_ALLOWED's top segment): T2 is only the mask's indicator — its bytes
+# inside the mask bind nothing beyond the `!=` relation, and T1's bytes off the
+# mask are not claimed; the glyph sha binds T1's byte sequence at the sorted
+# mask indices, not the index set itself, so two different index sets carrying
+# identical T1 bytes could coincide. A named frame the two-frame model explains
+# now is reported as a stale name; a named frame that is not its named bytes
+# FAILS.
+OVERLAY_ALLOWED = {
+    'gp-u9-win': (
+        # Capture 2209 (raw 4953) at the mode-0x17->0x12 entry: the loader's
+        # text (port 1776's 166 glyph px, rows 192..197 x 0..85) over the
+        # mode-0x12 screen (port 1777, the frame at f=0xBA1 = the entry).
+        # Port 1775 is the same index image under the stale black palette (the
+        # mask's source). The capture shows the presentation one screen later
+        # than the replay's own (the replay's is over the black screen,
+        # capture 2208 = port 1776); the port's own later presentation of the
+        # same text is dump frame 1805 (f=0xC0E). §G6's "held by no frame"
+        # stands for the whole strip; this names the composition.
+        (2209, 1776, 1775, 1777,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
+    'gp-u10-ending': (
+        # Capture 2062 (raw 4954): the same presentation at U10's entry
+        # (port 1685 over 1686, mask source 1684 — the palette pair is swapped
+        # against U9's). The glyph fingerprint is the same bytes (the same
+        # string at the same place).
+        (2062, 1685, 1684, 1686,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
+}
+
+
 def band_pair(c, port, top_row, band_hi):
     """The unique adjacent port pair P with c's rows [0, top_row) == port[P]'s and
     c's rows [band_hi, FRAME_H) == port[P+1]'s; None if there is not exactly one."""
@@ -212,6 +274,38 @@ def scan3_explain(c, port, entry):
         return None, 'no port frame before %d holds its named top rows' % B
     ex = sorted(set(tops) | ({B, B + 1} if r1 < r2 else {B + 1}))
     return ex, None
+
+
+def overlay_mask(t1, t2):
+    """The pixel indices i where T1 differs from T2 (§G7: the loader's glyph
+    pixels, the presentation frame against the same indices under the stale
+    black palette)."""
+    return [i for i in range(tc.FRAME_W * tc.FRAME_H)
+            if t1[3 * i:3 * i + 3] != t2[3 * i:3 * i + 3]]
+
+
+def overlay_explain(c, port, entry):
+    """(info, None) when capture frame c is byte-identical to the named entry's
+    recipe against this port dump; (None, why) otherwise. info is the mask's
+    size; the caller reports the frames. Every pixel is checked: T1's off the
+    mask and T2's values bind nothing (T2 is the mask's indicator only)."""
+    _j, t1_i, t2_i, s_i, glyph_sha = entry
+    t1, t2, s = port[t1_i], port[t2_i], port[s_i]
+    mask = overlay_mask(t1, t2)
+    got = hashlib.sha256(b''.join(t1[3 * i:3 * i + 3] for i in mask)).hexdigest()
+    if got != glyph_sha:
+        return None, 'its glyph pixels are %s.., not the named %s..' % (got[:12], glyph_sha[:12])
+    mset = set(mask)
+    for i in range(tc.FRAME_W * tc.FRAME_H):
+        if i in mset:
+            want, src = t1, t1_i
+        else:
+            want, src = s, s_i
+        if c[3 * i:3 * i + 3] != want[3 * i:3 * i + 3]:
+            return None, ('its pixel row %d x %d is %s, not port %d\'s %s'
+                          % (i // tc.FRAME_W, i % tc.FRAME_W, c[3 * i:3 * i + 3].hex(),
+                             src, want[3 * i:3 * i + 3].hex()))
+    return len(mask), None
 
 
 def expand_ipx(data):
@@ -308,6 +402,8 @@ def exhibited(kind, data):
         s.update((data, data + 1))     # the named band splice binds port P above and P+1 below
     elif kind == 'scan3':
         s.update(data)                 # the named scan-out binds the earlier top holder(s) and the pair (B, B+1)
+    elif kind == 'overlay':
+        s.update(data)                 # the named overlay binds T1's mask bytes and S's off-mask bytes
     return s
 
 
@@ -351,15 +447,16 @@ def start_check(name, start, raws, max_start, min_first, out=print):
 
 
 def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None,
-                bands=None, scan3=None):
+                bands=None, scan3=None, overlay=None):
     """Returns (rc, first_unexplained or None, next_after_last_classified). In report
     mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
-    "window empty"; main() turns every report-mode rc into 0). `bands` and `scan3`
-    are the scenario's named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED); a
-    named frame that is not its named bytes prints its FAIL in both modes and fails
-    the enforced run."""
+    "window empty"; main() turns every report-mode rc into 0). `bands`, `scan3`
+    and `overlay` are the scenario's named per-frame allowances (BANDS_ALLOWED,
+    SCAN3_ALLOWED, OVERLAY_ALLOWED); a named frame that is not its named bytes
+    prints its FAIL in both modes and fails the enforced run."""
     bands = {} if bands is None else {b[0]: b for b in bands}
     scan3 = {} if scan3 is None else {s[0]: s for s in scan3}
+    overlay = {} if overlay is None else {o[0]: o for o in overlay}
     start = None
     head = min(2, len(port))
     for j in range(len(cap)):
@@ -419,6 +516,22 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         elif j in scan3 and kind != 'unexplained':
             out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
                 'scan-out allowance but %s now; retire the name' % (name, j, raws[j], kind))
+        if kind == 'unexplained' and j in overlay:
+            info, why = overlay_explain(c, port, overlay[j])
+            if info is None:
+                out('gp_compare: %s: frames: FAIL: allowed capture %d (raw %d) is not '
+                    'its named glyph overlay: %s' % (name, j, raws[j], why))
+                allow_bad = 1
+            else:
+                _j, t1_i, t2_i, s_i, _sha = overlay[j]
+                out('gp_compare: %s: frames: captured frame %d (raw %d) allowed by name '
+                    'as a glyph overlay: %d px of port %d over port %d (the mask from '
+                    'port %d, the named glyph bytes)'
+                    % (name, j, raws[j], info, t1_i, s_i, t2_i))
+                kind, data = 'overlay', (t1_i, s_i)
+        elif j in overlay and kind != 'unexplained':
+            out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
+                'overlay allowance but %s now; retire the name' % (name, j, raws[j], kind))
         counts[kind] += 1
         if kind == 'unexplained':
             unexpl.append(j)
@@ -431,9 +544,10 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                 p = max(p, max(ex))              # the port only moves forward in time
         j += 1
     out('gp_compare: %s: frames: window from capture %d (raw %d); %d classified: %d clean, %d splice, '
-        '%d transition, %d band-allowed, %d scan3-allowed, %d unexplained, %d all-black'
+        '%d transition, %d band-allowed, %d scan3-allowed, %d overlay-allowed, %d unexplained, %d all-black'
         % (name, start, raws[start], sum(counts.values()), counts['clean'], counts['splice'],
-           counts['transition'], counts['band'], counts['scan3'], counts['unexplained'], black))
+           counts['transition'], counts['band'], counts['scan3'], counts['overlay'],
+           counts['unexplained'], black))
     for k, u in enumerate(unexpl):
         cu = cap[u]
         m = nearest(cu, rows)
@@ -670,7 +784,8 @@ def main():
     n_trace = None if a.report else _int_or_none(a.trace_min_first)
     rc1, _, _ = frame_claim(name, cap, raws, port, rows, n_frames, a.report, print,
                             None if a.report else _int_or_none(a.max_start),
-                            BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()))
+                            BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()),
+                            OVERLAY_ALLOWED.get(name, ()))
     with open(os.path.join(a.capture, 'poll.log')) as f:
         cl = f.read().splitlines()
     with open(os.path.join(a.port, 'trace.txt')) as f:

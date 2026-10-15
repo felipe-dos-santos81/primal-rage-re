@@ -2950,16 +2950,83 @@ int test_host(void)
     int before = g_failures;
 
     /* The default binding (record gameplay-ground-truth §G.1.2; every bit
-     * captured in gp-pads, §G.7.2): a set-1 scan's kb bit. */
+     * captured in gp-pads, §G.7.2): a set-1 scan's kb bit when the key-config
+     * block is absent (DS_00101514 = 0: no run filled it; track J §J2 reads
+     * the configured scans otherwise -- the block after this one). */
     {
         static const u8 scans[18] = { 0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32, 0x3B,
                                       0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51, 0x3C };
         static const u16 bits[18] = { 0x8000, 0x4000, 0x2000, 0x1000, 0x0100, 0x0200, 0x0400, 0x0800, 0x0100,
                                       0x0080, 0x0040, 0x0020, 0x0010, 0x0001, 0x0002, 0x0004, 0x0008, 0x0001 };
+        u32 saved_base = DSD(DS_00101514);
+        DSD(DS_00101514) = 0u;
         for (int i = 0; i < 18; i++) CHECK_EQ_INT(host_kb_bit(scans[i]), bits[i]);
         CHECK_EQ_INT(host_kb_bit(0x10), 0);     /* Q: Alt-Q's letter is no pad key */
         CHECK_EQ_INT(host_kb_bit(0x38), 0);     /* Alt: read by nothing (record u11 §K.2) */
         CHECK_EQ_INT(host_kb_bit(0x06), 0);     /* '5': the stale "coin" binding */
+        DSD(DS_00101514) = saved_base;
+    }
+
+    /* The configured binding (track J §J2). The raw's sampler reads the 16
+     * scans at [DS_00101514]+0x2DE..+0x2ED by position -- 0x1B610/0x1B730 for
+     * P1 and 0x1B6A0/0x1B7C0 for P2, bits 0x80..0x10 then 1, 2, 4, 8 of each
+     * player's byte -- plus the fixed +0x28F/+0x290 bytes (0x1B850/0x1B870).
+     * config_keys_apply (0x1AE28) fills the block and the service menu can
+     * change it (record gameplay-ground-truth §G.1.2, u11 §K.10 item 8). The
+     * planted table gives no scan its default bit (0x31/0x32 are default scans,
+     * but the expected bits here are 0x0080/0x0040, not the default's
+     * 0x0400/0x0800), so a port that still applied the default binding would
+     * fail every check here. */
+    {
+        const u32 cfg = 0x03F00000u;    /* test-only key-config block (mem[]) */
+        u32 saved_base = DSD(DS_00101514);
+        static const u8 cfg_scan[16] = { 0x11, 0x12, 0x13, 0x14, 0x21, 0x22, 0x23, 0x24,
+                                         0x31, 0x32, 0x33, 0x34, 0x41, 0x42, 0x43, 0x44 };
+        static const u16 cfg_bit[16] = { 0x8000, 0x4000, 0x2000, 0x1000,
+                                         0x0100, 0x0200, 0x0400, 0x0800,
+                                         0x0080, 0x0040, 0x0020, 0x0010,
+                                         0x0001, 0x0002, 0x0004, 0x0008 };
+        mem_fill(cfg, 0, 0x400u);
+        for (u32 i = 0u; i < 16u; i++) DSB(cfg + 0x2DEu + i) = cfg_scan[i];
+        DSD(DS_00101514) = cfg;
+        for (u32 i = 0u; i < 16u; i++) CHECK_EQ_INT(host_kb_bit(cfg_scan[i]), cfg_bit[i]);
+        CHECK_EQ_INT(host_kb_bit(0x1F), 0);     /* S: the default up scan, unbound here */
+        CHECK_EQ_INT(host_kb_bit(0x48), 0);     /* Up */
+        CHECK_EQ_INT(host_kb_bit(0x50), 0);     /* Down */
+        /* +0x28F/+0x290 (F1/F2) sit outside the 16-scan table. */
+        CHECK_EQ_INT(host_kb_bit(0x3B), 0x0100);
+        CHECK_EQ_INT(host_kb_bit(0x3C), 0x0001);
+        /* The sampler tests each position independently: the same scan in two
+         * positions gives both bits. */
+        DSB(cfg + 0x2E2u) = 0x11;               /* P1 b0 = the up scan */
+        CHECK_EQ_INT(host_kb_bit(0x11), 0x8000 | 0x0100);
+        /* F1 as P1 up: the position's bit and 0x1B850's fixed bit. */
+        DSB(cfg + 0x2DEu) = 0x3B;
+        CHECK_EQ_INT(host_kb_bit(0x3B), 0x8000 | 0x0100);
+        CHECK_EQ_INT(host_kb_bit(0x11), 0x0100);    /* its up slot is gone */
+        /* A zeroed table (an image with no binding recorded) falls back to the
+         * default binding, like the absent block above. */
+        mem_fill(cfg, 0, 0x400u);
+        CHECK_EQ_INT(host_kb_bit(0x2C), 0x2000);    /* Z: default P1 left */
+        CHECK_EQ_INT(host_kb_bit(0x50), 0x0040);    /* default P2 down */
+        /* The out-of-range guard's boundary (host.c:96). A block whose 16-scan
+         * table ends exactly at MEM_SIZE is read; one byte further is out of
+         * range and the fallback applies. The seed (0x11, no default bit, in
+         * position 0) answers differently on the two paths, so either a wrong
+         * bound or an off-by-one fails. */
+        const u32 tail = MEM_SIZE - 0x2EEu;      /* table 0x2DE..0x2ED = MEM_SIZE-0x10..-1 */
+        mem_fill(tail + 0x2DEu, 0, 0x10u);
+        DSB(tail + 0x2DEu) = 0x11;               /* P1 up */
+        DSD(DS_00101514) = tail;
+        CHECK_EQ_INT(host_kb_bit(0x11), 0x8000); /* the table is read at the boundary */
+        CHECK_EQ_INT(host_kb_bit(0x1F), 0);      /* ...not the default binding */
+        mem_fill(tail + 0x2DEu, 0, 0x10u);
+        DSB(tail + 1u + 0x2DEu) = 0x11;          /* the same seed one byte past */
+        DSD(DS_00101514) = tail + 1u;
+        CHECK_EQ_INT(host_kb_bit(0x11), 0);      /* the planted table is not read */
+        CHECK_EQ_INT(host_kb_bit(0x1F), 0x8000); /* the default binding answers */
+        mem_fill(tail + 0x2DEu, 0, 0x10u);
+        DSD(DS_00101514) = saved_base;
     }
 
     /* host_pump()/host_present_rgb()/host_shutdown() before host_init(): the
@@ -3056,11 +3123,21 @@ int test_host(void)
 
     /* The K11 key-bits seam (named-gaps A record §A.3): the driver holds the
      * key bitmap game_loop copies from host_key_bits(). The sentinel 0x1234 is
-     * no SDL keyboard state a headless run can report. */
-    host_set_key_bits_override(0x1234u, 1);
-    CHECK_EQ_INT((int)host_key_bits(), 0x1234);
-    host_set_key_bits_override(0x1234u, 0);
-    CHECK(host_key_bits() != 0x1234u, "the key-bits override is off again");
+     * no SDL keyboard state a headless run can report. Track J §J2: with a
+     * non-default table planted (the configured scans the sampler would read),
+     * the seam still answers first, so no replay's pad word can move. */
+    {
+        const u32 cfg = 0x03F00000u;    /* test-only key-config block (mem[]) */
+        u32 saved_base = DSD(DS_00101514);
+        mem_fill(cfg, 0, 0x400u);
+        for (u32 i = 0u; i < 16u; i++) DSB(cfg + 0x2DEu + i) = (u8)(0x11u + i);
+        DSD(DS_00101514) = cfg;
+        host_set_key_bits_override(0x1234u, 1);
+        CHECK_EQ_INT((int)host_key_bits(), 0x1234);
+        host_set_key_bits_override(0x1234u, 0);
+        CHECK(host_key_bits() != 0x1234u, "the key-bits override is off again");
+        DSD(DS_00101514) = saved_base;
+    }
 
     hf_check_hook();
     hf_check_exit();

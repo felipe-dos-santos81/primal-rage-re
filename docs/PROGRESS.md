@@ -8,17 +8,16 @@ Each paragraph corresponds to a stretch of work, generally cross-referencing
 a derivation record (`docs/superpowers/plans/<date>-…-derivations.md`), which
 holds the underlying raw-byte evidence.
 
-**Current state (2026-10-12).** The port is complete (`python3 tools/port_progress.py`
-reads `771 1203 64` raw and `731 731 100` portable) and track D is extending the
-differential verification from the 181 ported functions the callee scan reached
-to all 731: after its waves 1 to 4 and nine batches of wave 5 `make diff-verify` reads
-`944/944 functions VERIFIED; 13795/13795 mutants detected; 1 named gaps;
-582/777 rows with callees closed (167 have none)`, 695 of the 731 have a row and
-36 do not (two open, the rest named) (record `2026-10-11-reverse-d-derivations.md`). The C3g frontier
-statement (every address the callee scan reaches is a row, runtime or a named
-non-row) no longer holds by construction: the 195 open rows are open on those
-36 and on the named non-rows. The paragraphs below are the chronological log;
-a named gap stands until a later paragraph closes it.
+**Current state (2026-10-15).** The port is complete (`python3 tools/port_progress.py`
+reads `787 1203 65` raw and `747 747 100` portable). Track D extended the
+differential verification from the 181 ported functions the callee scan reached,
+and tracks S, I, N, H, F and G added the rest: `make diff-verify` reads
+`1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps;
+774/832 rows with callees closed (175 have none)` (the closure rule, record
+`2026-10-15-reverse-j-derivations.md` §J1), 739 of the 747 ported functions have
+a row (727 full, 12 weaker) and the 8 without one are the named gaps, none open.
+The paragraphs below are the chronological log; a named gap stands until a later
+paragraph closes it.
 
 **Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
 functions**, 0 failures. LE layout and `INDEX` verified; `S16*.GRA` chunk types
@@ -66,10 +65,14 @@ register. The 9866 (port) / 6903 (reduced capture) counts are not a like-for-lik
 gap. Remaining differences are named or excluded with cause, never tuned. **No
 audibility claim**: the oracle is the register write stream, not rendered audio;
 the render is FM music only, without the title announcer sample. The windowed
-run is silent where SDL audio cannot start (here `-66681`); `make audio-render`
+run opens the audio device at the OPL rate on this host (`host_audio_open(49716,2)
+-> 1`, coreaudio, 2026-10-15; the 2026-09-16 report's `-66681` does not reproduce,
+record `2026-10-15-reverse-j-derivations.md` §J2.5); where SDL audio cannot start
+it prints the reason and continues silently. `make audio-render`
 plays the title bank through sequencer + OPL core + mixer to a 16-bit stereo WAV
 at the OPL rate (`AUDIO_WAV`, default `/tmp/pr_title_fm.wav`; `AUDIO_SECONDS`,
-default 12) — the path is real, only the device missing. See
+default 12) — the path is real; rendered audibility still has no device-recording
+oracle. See
 `docs/superpowers/plans/2026-09-16-audio-ail-port-report.md` and
 `docs/superpowers/plans/2026-09-18-opl-driver-report.md`.
 
@@ -1033,3 +1036,5 @@ Gameplay U9/U10 (plan 2026-10-02-gameplay-u9-u10, record `docs/superpowers/plans
 **Track H: the weak rows hardened with a machine model (record `2026-10-14-reverse-h-derivations.md`).** The emulator now answers the hardware the weak rows reach instead of having it poked out: the BIOS keyboard `int 0x16` (AH 0 and 1, the game's only uses, at six sites) from a per-case key queue that the port's binding loads into its own key queue; `in` from a per-case byte list (the retrace port `0x3DA`); the VGA DAC (`0x3C8`/`0x3C9`) through a device model, compared with what the port reports through a new `PR_OUT` hook (inert outside `diffrun`); and the aperture against the port's `gfx_aperture()`. A row that declares no model runs exactly as before (the full self-check was byte-identical). Converted: the palette flush `0x1C470` and the screen reset `0x52106` (every poke gone, every DAC entry compared), the aperture writer `0x51ED8` (drawing cases whose pixels match exactly; one declared difference, the renderers' node scratch, exact on both sides), the quit prompt `0x249F0`, the config screen waits `0x2EA78`/`0x2EA74` (15 -> 20 of 23 blocks) and the game frame `0x24C5C` (its eight rows unpoked and two new rows for the key loop: 116 -> 157 of 161 blocks together). No port correction was needed. The weaker-row list goes from 13 to 9. Counter: `1000/1000 functions VERIFIED; 14884/14884 mutants detected; 1 named gaps; 638/831 rows with callees closed (169 have none)`.
 
 **Track F: a C-library file model for the save-file rows (record `2026-10-14-reverse-f-derivations.md`).** The machine model answers the C library too now: `E.Machine(files=...)` declares the case's directory (content bytes, `F1_ABSENT`, or `F1_GONE`) and the runtime's four file calls — fopen `0x61C60`, fread `0x61CF6`, fwrite `0x62031`, fclose `0x61EC0` — become modelled callees that act on those files, with conventions read from the callees' bytes (name/mode, buffer/size/count/stream, the item count in EAX, `0x61ECD`'s walk-failure answer); every fopen records the (name, mode) strings it read from memory and every fclose mirrors the file's final name, mode, length and bytes into the image gap at `F1_SHADOW` (0x79000, two slots above the D4D rows' pset pool in the zero gap), where the port's binding — which seeds the same files into a scratch save directory and mirrors its real files back — meets the original in the ordinary byte comparison. A case that declares no files runs exactly as before (the full self-check byte-identical twice over, at the mechanism and at the wiring). Converted both rows: `config_file_load` `0x1AFE8` and `config_file_save` `0x1B084` run with no pokes at all — the arguments, the buffer that only the read fills (every byte XOR `0x5A` on both sides), the count that now comes from the real file, the `wb` create and the stale-file replace (the model's write-at-offset-0 rule; the raw's open-time truncate was not pinned — f-conventions.md OPEN Q1 — and every stale file in the rows is shorter than the write, so the readings cannot be told apart here), and the bytes the port wrote are all compared. New case `s4` (a stale file the write-mode open replaces) with the new `@wmode` append mutant caught by it alone; the load row's twelve catch-sets are unchanged. The short read the model can answer now ends the original's run at the runtime's exit (`0x62003`, which never returns), and a memory-backed file never comes back short, so `0x1B04D`/`0x1B0F7` stay named unhit and both rows keep their place in the weaker list — for the exit block, no longer for pokes. No port correction was needed. Counter: `1000/1000 functions VERIFIED; 14885/14885 mutants detected; 1 named gaps; 638/831 rows with callees closed (169 have none)`.
+
+**Track G: widening the proven picture (plan `docs/superpowers/plans/2026-10-14-reverse-g-widening.md`, record `2026-10-14-reverse-g-derivations.md`).** The differential side first: the emulator gained a modelled DOS exit (`E.Machine(exits=True)`: `int 0x21` AH=0x4C stops the run at the instruction with `("exit", AL)` — the only observable), which gave the load row's short-read case its exit block and rowed `0x2EA68` (`0x62003`'s tail; every case terminal, so no mutant by construction — a named weaker row); the six §C3g.7 named non-rows then became rows (`dpmi_clock_read` `0x500BB`, `res_resolve` `0x1B544` (the resident arm only), `0x29D60`, `interrupt_lock` `0x2EA30`, `0x32BAC`, `0x2EA64`), closing 77 callee rows (639→716) and taking the ported-function unrowed count 14→8; `game_loop`'s two RNG code pokes became a recorded `rng_next` stub on `rng_next`'s own VERIFIED row (the calls compared by argument, order and memory-at-call; its `@rng` mutant moved the mutant count to 14900). Counter at the close: `1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps; 716/832 rows with callees closed (175 have none)`; 8 of the 747 ported functions have no row, none open. The capture side: `gp-keys-fight`'s pause, ABANDON and QUIT screens needed no allowance, and the one frame left (835, the QUIT event's scan-out catch-up) is allowed by name at its pinned band bytes — the pause, ABANDON and QUIT screens' first pixel claim — lifting the frame ratchet to the script's end (`GP_KEYS_MIN_FIRST` = 1136, trace 2164). The mode-8 entry's three-frame scan-out (U9 346, U10 331, idle-loss 2064) was isolated as the loop's own gate/catch-up on the entry's over-tick iterations (the loader re-sync hypothesis tested and rejected) and allowed by name in `SCAN3_ALLOWED` with per-frame byte recipes; the two 166 px strips (U9 2209, U10 2062) were attributed to the loader's `- LOADING -` presentation over the entry screen — a host-owned-audio model artifact (the sequencer's exact read frame not isolated), allowed by name in `OVERLAY_ALLOWED`, not a named gap — so the pixel claims reach U9's replay end (f=0xDAE) and, at U10, stop at the genuine unexplained death-animation frame (capture 4113 = port f=0x1502; U10's replay itself runs on to f=0x26E1), not the replay's end. Final pins: gp-idle-loss 7559 (the first fully-content frame past the replayed script — how far the port got), gp-u9-win 2452 (its post-script tail), gp-u10-ending 4113 (the poked final's death animation, NOT allowed — a genuine unexplained frame the ratchet stops at), gp-u6-moves-b 2139 (the replay's script end, unchanged) and gp-keys-fight 1136; the narrow claims' limits (no under-render detection; order and full coverage not claimed) stand.

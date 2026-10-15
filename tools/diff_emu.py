@@ -1180,6 +1180,22 @@ _CALLEE_CLOBBER_FIXES[0x1AE20] = ()
 # `mov eax,ebp`, 0x2D917 and 0x2D91E `test esi,esi`), so 0x2CADC preserves them; EDI stays in the set (no
 # caller shown to read it).
 _CALLEE_CLOBBER_FIXES[0x2CADC] = ("edi",)
+# Track G g4 (record 2026-10-14-reverse-g-derivations section G4): the game_loop row's stubs read the
+# register the raw master loop keeps its draw range in. 0x255CC saves EBP (0x255D1 `push ebp`, 0x256EA
+# `pop ebp`), sets it once (0x255E4 `mov ebp,0x7fff`) and reads it at both draw sites (0x256AF and
+# 0x256D4 `mov eax,ebp`) across all its calls, so the compiler's own code presupposes the ABI: the
+# loop's callees preserve EBP, and for this caller the three stubs below must not poison it. Each of
+# the three bodies itself writes no EBP: 0x292AC's 17 instructions write only EAX/EBX/EDX (saving
+# EBX/EDX) and its one indirect call's every table entry (0xA8744: 0x4F7F4 and 0x5D812) clobbers
+# nothing, so its true set is (); 0x24C5C's 326-instruction body writes EAX/EBX/ECX/EDX/ESI/EDI only
+# (saving EBX/ECX/EDX/ESI/EDI); 0x1C470's writes EAX/EBX/ECX/EDX/ESI only (saving EBX/ECX/EDX/ESI).
+# The scan's EBP (and for 0x24C5C its ESI/EDI, for 0x1C470 its EDI) comes from its callee tree: an
+# indirect call, or a path reaching >= 0x5D000, which the scan takes to clobber everything. In the
+# row's exercised path only EBP is read after these calls (0x256AF/0x256D4), so the others stay in the
+# caller-observed sets (no caller shown to read them, as 0x36870's ESI/EBP in the entry above).
+_CALLEE_CLOBBER_FIXES[0x292AC] = ()
+_CALLEE_CLOBBER_FIXES[0x24C5C] = ("ebx", "ecx", "edx", "esi", "edi")
+_CALLEE_CLOBBER_FIXES[0x1C470] = ("edi",)
 # D6 d6a (record 2026-10-13-reverse-d6a section 6): the runtime memcpy 0x655FF loads ES from DS around its
 # copy (0x65608 `push es`, 0x65609 `mov eax,ds`, 0x6560B `mov es,eax`, 0x6561D `pop es`), as the memmove
 # 0x653A1 does: without the flat descriptors its `ret` pops through a 16-bit stack (the run stopped `int3

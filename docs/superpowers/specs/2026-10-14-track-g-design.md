@@ -57,8 +57,9 @@ it — with the byte-exact oracles and every existing pin intact.
 
 - Porting anything in the runtime region (≥0x5D000) or the 12 deferred
   Smacker-movie-audio lines (verified paper categories: 02 §1–3).
-- Audio bring-up on this host — SDL audio cannot open here (-66681); the item
-  is **queued for a device-capable host**, not dropped.
+- Audio bring-up — the `-66681` open failure is stale on this host (2026-10-15:
+  `host_audio_open(49716,2) -> 1`, coreaudio; record `2026-10-15-reverse-j-derivations.md`
+  §J2.5) and a device-capable host is now available; the item is **queued**, not dropped.
 - CI/packaging for other OSes (recorded as a v0-release unknown, not this phase).
 - Rewriting any oracle's narrow claim into a broad one. Every new claim states
   what it cannot see, in the existing house style.
