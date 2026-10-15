@@ -382,9 +382,11 @@ consolidation gate).
    renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
    callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
    The open rows are open on the 8 unrowed functions and on runtime callees the classification does not target —
-   the ≥0x5D000 AIL wrappers and libc (`0x5D812`, `0x5DEED`, the WATCOM span) and `0x2CB74`/`0x501A3`
-   (§G3's closure ledger; the closure-rule amendment for those is a separate decision, recon item 4). 
-  `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
+   the ≥0x5D000 AIL wrappers and libc (`0x5D812`, `0x5DEED`, the WATCOM span) and `0x2CB74`/`0x501A3`,
+   per §G3's re-measured census: 96 of the open rows carry a ≥0x5D000 blocker (79 only-those), 17 carry E2-
+   non-function blockers (`0x29D04`/`0x51E58`/`0x24568` family); none of the open rows blocks on any of the six
+   (§G3 g3b finalize commits). The closure-rule amendment for those remains a separate decision (recon item 4).
+   A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool
   (`PR_DIFF_JOBS`, default the CPU count; 1 is the sequential loop), one job per function: `diffrun`
