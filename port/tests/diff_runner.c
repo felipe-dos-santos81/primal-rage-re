@@ -39426,9 +39426,10 @@ D5H_F_DROP(25) D5H_F_DROP(30) D5H_F_DROP(31) D5H_F_DROP(32) D5H_F_DROP(33)
 
 /* 0x255CC game_loop: no argument; mask 0 (record §1: 0x20DE8 returns through 0x20DF2 to 0x1C0C2, where
  * 0x10D34 loads EAX at 0x10D43 or returns, 0x1BE30 takes none and 0x1C0CC is `xor eax,eax`). The port
- * splits the prologue's two stores off as game_loop_begin (PORT). Every case applies the project's two
- * master-loop pins (tools/title_pin.py: `call 0x5d7dc` at 0x256B1 and 0x256D6 replaced by `mov eax,0`),
- * which the port is written against (record §2.5). */
+ * splits the prologue's two stores off as game_loop_begin (PORT). The raw's two master-loop draws
+ * (0x256B1/0x256D6) are recorded stubs on 0x5D7DC since track G §G4: the port's game_loop draws
+ * nothing (game_loop_rng_draw, the pinned original's behaviour, tools/title_pin.py) and its seam
+ * records the calls. */
 static void b_d5h_255cc(const u32 *r, u32 *eax) { (void)r; game_loop_begin(); game_loop(); *eax = 0u; }
 
 /* 0x255CC's mutants: the raw read block by block, the host-owned blit and the ISR spin left out.
@@ -39439,7 +39440,7 @@ static void b_d5h_255cc(const u32 *r, u32 *eax) { (void)r; game_loop_begin(); ga
     X(no508) X(no50c) X(nopump) X(notick) X(tickorder) X(scroll) X(scrollw) X(scrollorder) X(noframe) \
     X(frameearly) X(nortbl) X(rorder) X(rearly) X(af4d) X(noaf4) X(af4late) X(nofx) X(gate) X(gatew) X(nosort) \
     X(f4) X(f4w) X(listorder) X(noflush) X(fcd) X(noswap) X(swapearly) X(incearly) X(noinc) X(noaudio) \
-    X(once) X(quitw)
+    X(once) X(quitw) X(nodraw) X(drawarg)
 enum { D5H_L_NONE,
 #define X(n) D5H_L_##n,
        D5H_L_LIST(X)
@@ -39487,6 +39488,10 @@ static void d5h_255cc_core(u32 mut)
             if (D5H_L(fcd)) DSD(0x001014FCu) = 0u;
             if (!D5H_L(noswap) && !D5H_L(swapearly)) swap_buffers();   /* 0x256AA */
         }
+        /* 0x256AF 0x256B1: the body rng draw, recorded (track G §G4); @nodraw drops it, @drawarg
+         * passes a wrong range. The spin's draw (0x256D4 0x256D6) is not reached (the 0x1CF20 stub
+         * steps the tick), so it has no mutant. */
+        if (!D5H_L(nodraw)) (void)d5h_seamr1(0x5D7DCu, D5H_L(drawarg) ? 0u : 0x7FFFu);
         if (D5H_L(incearly)) DSD(0x0010150Cu) = DSD(0x0010150Cu) + 1u;
         if (!D5H_L(noaudio)) d5h_seam0(0x1CF20u);                /* 0x256B6 */
         if (!D5H_L(noinc) && !D5H_L(incearly)) DSD(0x0010150Cu) = DSD(0x0010150Cu) + 1u;   /* 0x256C0 */
@@ -56827,6 +56832,8 @@ static const binding_t k_bindings[] = {
     { "game_loop@noaudio", m_d5h_255cc_noaudio, 0x00000000u },
     { "game_loop@once", m_d5h_255cc_once, 0x00000000u },
     { "game_loop@quitw", m_d5h_255cc_quitw, 0x00000000u },
+    { "game_loop@nodraw", m_d5h_255cc_nodraw, 0x00000000u },
+    { "game_loop@drawarg", m_d5h_255cc_drawarg, 0x00000000u },
     { "game_mode_32_step", b_d5i_296b8, 0x00000000u },
     { "game_mode_32_step_end", b_d5i_296b8, 0x00000000u },
     { "game_mode_32_step_rr", b_d5i_296b8, 0x00000000u },
