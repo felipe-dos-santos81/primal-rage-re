@@ -499,3 +499,267 @@ count is per-run (the debit is RAM, not written back by the debit itself).
 - Typematic repeat and the joystick device words `+0x2D4`/`+0x2D6` (a
   non-zero device switches `0x1BBAC` to the game-port arms) stay out, as
   before (§K.10 items 9 and 10).
+
+## §J3 — the save-reload capture design (Part II, Task 7; awaiting the capture go-ahead)
+
+Task 7 of `docs/superpowers/plans/2026-10-15-reverse-j-closeout.md:285-299`; the standing contract is
+the storage plan's Task 8 (`docs/superpowers/plans/2026-10-13-reverse-s-storage-layer.md:495-511`),
+whose steps 1-2 end here and whose steps 3-5 are not started. This section is the design Step 2 asks
+to show to the user before the capture; it was written from reading only — no DOSBox-X run, no tooling
+change. **The stale reference, one line:** the storage plan's Step 2 says "write the design in the
+record (§S.9)"; §S.9 is now the run clock (storage record:1122) — the design lands here, as the
+track-J plan's Task 7 directs. It would close the named gap of
+`2026-10-13-reverse-s-derivations.md:1064` ("Loading or writing a real save has no recording of the
+original") and its F7 (there:1107); nothing else in track S waits on it.
+
+The capture produces `data/k11-captures/save-reload/` and later `make save-reload-oracle`. The two
+claims it is built for: **write** — the port's replay of boot 1, with a scratch save path, writes a
+file byte-identical to the captured `CMOS`; **load** — the port booted from the captured `CMOS` holds,
+at the pinned frame, the same three polled ranges as boot 2's `poll.log`.
+
+### J3.1 The scenario: two boots, their keys and their limits
+
+A `save-reload` entry in `tools/k11_session.py`'s `SCENARIOS` (the scenario format: `keys`, `pokes`,
+`time_limit`, `k11_session.py:71-79`) plus two designed additions: a `boot2` sub-entry and a writable
+flag (J3.2). No pokes.
+
+**Boot 1** (the run that saves). Keys in order, with what each does and its evidence:
+
+| # | key | screen / effect | evidence |
+|---|---|---|---|
+| 1 | `enter` | the mode-3 Enter; mode 3 → `0x27` (MAIN MENU) | `0x24ECF..0x24EE0`; `k11_session.py:5` |
+| 2 | `enter` | MAIN item 0 → START MENU (`menu_step(0xBCCCC, 0x10, 0)`) | `0x2CB74`; §K11.2:507-510 |
+| 3-4 | `down down` | START MENU rows 1, 2 (`0xBCCFC`, callback `0x2CBF4`) | §K11.2:529-531 |
+| 5 | `esc` | START MENU Esc → `-5`; MAIN MENU re-initialised | §K11.2:540-546 |
+| 6 | `down` | MAIN item 1 = "GAME OPTIONS" highlighted | named-gaps-a:320 |
+| 7 | `enter` | MAIN item 1 → OPTIONS MENU (table `0xBCC1C`); its `menu_run` return is what saves | `0x2CB94`; `svcmenu.c:86-94` |
+| 8 | `enter` | OPTIONS MENU item 0 → CONFIG OPTIONS editor (table `0xA2EB4`, field `0x29`) | `0x2CACC` → `0x33578`; §K11.3:708-710, 603-616 |
+| 9 | `right` | CONFIG OPTIONS record 0 CREDITS, one step (drawn index v+1) | §K11.3:603-618, 674-706 |
+| 10 | `esc` | leave CONFIG OPTIONS → OPTIONS MENU; `0x33578` writes field `0x29` via `0x2DA0C` | §K11.3:705-706, 717-718 |
+| 11 | `esc` | leave OPTIONS MENU (`0x2FA40` flags 0 → `-1`) → **`config_file_save()` at `0x2CBAF`** | §K11.2:547-550; `svcmenu.c:90-92` |
+
+so `keys = 'enter enter down down esc down enter enter right esc esc'` (11 keys): its first eight are
+the walk's own first eight (`k11_session.py:65`, whose comment names the same screens, and whose
+screen list is named-gaps-a:318-327), plus the `right` tap, plus the two Escs — the first unwinds the
+editor, the second exits the OPTIONS MENU whose return saves. CREDITS is chosen because it is the
+editor's first record (one tap, no Down first), it is a stored field (record 0 of `0xA2EB4`, shift
+`0x10`, §K11.3:607), and the saved value is read back at boot as `CREDITS:<n>` (field 0x29's nibble
++ 1; record §J2.6, this record:483). Every key is already in the harness vocabulary: `right` is
+`(0x4D, 0x00)` in `KEYS` (`k11_session.py:60-61`) with BIOS word `0x4DE0` (`k11_capture.py:59-60`,
+"left/right follow the same grey-key E0 form"). The walk's own final `esc esc` left the OPTIONS MENU
+under a read-only mount (screens 165/166 HANDICAP, 168 OPTIONS MENU, 170 the final MAIN MENU,
+named-gaps-a:326-327), so the save path was exercised — and dropped — by an existing capture; nothing
+wrote `data/`.
+
+Timing: boot 1 `time_limit=55` s (DIGS/DE's value, `k11_session.py:75-78`). `ENTER_WAIT` 25 s puts the
+Enter inside the boot attract (logos end ~19 s, title ~31 s; `k11_session.py:41`), the last key lands
+at ~35 s, and the port script's `end` adds `END_TAIL_TICKS` 180 ticks (`k11_session.py:43`). The E
+record's `reason=time-limit` is expected (the emulator's limit ends the run, as the walk's E record
+at named-gaps-a:304-305).
+
+**Boot 2** (the run that loads). `('enter',)`, `time_limit=45` s: one mode-0x27 Enter and stop. It must
+not leave the OPTIONS MENU (that would re-save and move the target) and must not change any option;
+nothing in boot 2 is pixel-claimed.
+
+### J3.2 The staging copy and the two mounts
+
+`k11_capture.py` stages `root/C` (temp) through `title_capture.stage`: **every game-dir entry is
+symlinked except `PRAGE.EXE`, which is copied** (`title_capture.py:52-68`), and mounts it
+`MOUNT C "<game>" -ro` (`k11_capture.py:102`) so the original's save cannot write; the tool's docstring
+says the staging "mounts read-only, so the original's CMOS save (0x1B084) cannot write"
+(`k11_capture.py:11-13`), and `check_cmos` requires the game dir's `CMOS` absent or 2040 zero bytes
+(`CMOS_BYTES`, `k11_capture.py:41`, `:82-91`), which `make verify` runs first (Makefile:1062-1063).
+
+For `save-reload` boot 1:
+- `check_cmos` runs unchanged (an operator's non-zero `CMOS` still aborts) — the rule stays enforced
+  for **every** scenario, with the new test of J3.7(b) saying so.
+- after `stage`, the staging `CMOS` must be a **real file, never a symlink into `data/`**: if
+  `root/C/CMOS` is a symlink (the game dir's zero file), remove the link and write a real copy of its
+  bytes; if the game dir has none, leave it absent. Either way boot 1's starting bytes are exactly the
+  game dir's — which is also what the port's fallback reads (J3.5) — and the condition is recorded as
+  `cmos=zero|absent` in `session.txt` (`k11_capture.py:330-331`; all 22 existing captures say
+  `cmos=zero`, storage record:109-110; the present file is 2040 zero bytes, `data/game/C/CMOS`).
+- boot 1 mounts **without** `-ro` (the one scenario that does), so `fopen("cmos","wb")` succeeds and
+  the file lands in `root/C`. `guard_out` (`k11_capture.py:63-68`) still confines `--out` to
+  `data/k11-captures`; nothing writes `data/`.
+- after boot 1 exits: copy `root/C/CMOS` → `out/CMOS`; CHECK it is 2040 bytes, that its last byte is
+  the XOR of the first `0x7F7` (the save file's invariant, `config.c:1353-1356`, `:1402-1405`), and
+  that it differs from the staged copy (the change reached the file; a save that wrote the untouched
+  defaults would abort the capture as a failed scenario).
+- boot 1's `poll.log` is kept as `out/boot1/poll.log` (the write replay's script source); its frames
+  are not converted (no pixel claim exists for boot 1).
+
+Boot 2 reuses the same staging `root/C` — the file the save wrote is the file the load reads — but
+mounts it `-ro` again: boot 2 has no save to make, and read-only makes a stray write attempt
+impossible, the condition every existing capture ran under. Boot 2 gets its own AVI dir, memory file
+and `poll.log` (the existing `dosbox_cmd` names these under its `root`, `k11_capture.py:94-107`) and
+its frames are converted into `out/` as usual. The capture dir ends:
+
+| file | what |
+|---|---|
+| `CMOS` | boot 1's save (2040 bytes): the write claim's target and the load claim's input |
+| `poll.log` | boot 2's poll log |
+| `frame_%04d.raw`, `window.txt` | boot 2's collapsed frames (`title_capture.write_window`, `k11_capture.py:310-312`) |
+| `boot1/poll.log` | boot 1's poll log (the write replay's script source) |
+| `session.txt`, `dosbox.log`, `last_frame.png`, `prage_*.dro` | the existing artefacts; `session.txt` records both boots |
+
+The no-stray-input rule (AGENTS.md: nobody may type in the DOSBox-X window while a capture runs) holds
+for both boots. The K11 equivalent of `gp_capture check-input` is the existing script check: each poll
+log must validate through `k11_session.port_script` against the scenario's keys
+(`k11_session.py:126-142`, `ScriptError` on any unscripted K record), which the capture tool runs
+before writing `out/`. Its blind spots are `gp_capture`'s documented ones (a stray press inside a
+scripted hold window, a key-up of a non-injected key, a tap between records): named in J3.8.
+
+### J3.3 The three polled ranges and the poll.log format
+
+The three ranges are the storage families the boot chain loads, located from the same raw tables the
+game's own functions read (nothing fitted). All file values below were read at obj-0 file offset
+`VA + 0x52E54` (`k11_fields.py:23`; the descriptor dwords are fixup targets, so the raw value is the
+object-relative offset — `mem.c:290-297`, `:332-334`: the loader writes object base + target offset):
+
+| id | DS range | bytes | what | raw evidence |
+|---|---|---|---|---|
+| `cfg` | `0x100CE4..0x1014DB` | `0x7F8` | the config image `config_file_load`/`config_file_save` read/write | `[0x2D48C] = 0x100CE4` (file value `0x80CE4`); len `0x7F8` (`0x1B006`/`0x1B0CA`); §S.1:12-14; `config.c:1348-1351` |
+| `k0` | `0x105DB0..0x105DD5` | `0x26` | the 38 bookkeeping counters' low bytes (kind 0) | kind-table entry 0 at `0x2D444` = `{cell 0, len 0x26, source 0x85DB0}`; §S.1:27; §S.10:1196-1198 |
+| `hs0` | `0x105E34..0x105EAB` | `0x78` | high-score table 0: 10 records × (4 value + 8 name) | `0x2D3FC[0] = {10, 0x0A, 4, 8}`; `0x2D478[0] = 0x85E34`; kind entry 6 at `0x2D474` = `{cell 0xF6, len 0x78, source 0x85E34}` |
+| `hs1` | `0x105EAC..0x105EC7` | `0x1C` | high-score table 1: 1 × (4 + 24) | `0x2D3FC[1] = {1, 1, 4, 0x18}`; `0x2D478[1] = 0x85EAC`; kind entry 7 (`0x2D47C`) |
+| `hs2` | `0x105EC8..0x105ECC` | `5` | high-score table 2: 1 × (3 + 2) | `0x2D3FC[2] = {1, 1, 3, 2}`; `0x2D478[2] = 0x85EC8`; kind entry 8 (`0x2D484`) |
+
+The `hs*` layout and the descriptor semantics are `0x2DB58`'s own: §S.1:42-43 ("0x2D45C is the
+table's entry 3 … and 0x2D474 its entry 6 … data, not code"), port `config.c:467-480`
+(`hiscore_locate` reads `DSD(0x2D478 + 8*table)` and the `0x2D3FC` descriptor; §S.5.3:283), and the
+harness's independent statement agrees byte-for-byte (`tools/diff_verify.py:11429-11441`:
+`D1I_HS_DESC 0x2D3FC`, `D1I_HS_BASE 0x2D478`, default bases `0x105E34/0x105EAC/0x105EC8`, descs
+`(10,4,8) (1,4,0x18) (1,3,2)`).
+
+**How the poller reads them** (a change to `k11_capture.Poller` and to `poll.log`'s format,
+`k11_session.py:9-18`):
+- when `find_base` has the data base (`k11_capture.py:71-79`), each range's runtime address is
+  `base + <object-relative offset>` with the file values just quoted (`0x80CE4`, `0x85DB0`, `0x85E34`,
+  `0x85EAC`, `0x85EC8`). No code-object base is needed — the `kf.load_descriptors` pattern
+  (`k11_fields.py:26-29`, code VA `0x2D300 + 4*field` from the EXE) applied to the storage tables.
+- new record kinds (the docstring's format list gains them): `L ms=<int> base=<hex8>
+  id=<cfg|k0|hs0|hs1|hs2> at=<hex8> len=<dec>`, once per range when the base is found (a
+  self-describing locate), and `R ms=<int> tick=<hex8> id=<...> img=<hex>` whenever the range's bytes
+  change — the F record's shape for the field window (`k11_capture.py:244-248`; F covers
+  `[0x105DAF,0x105E30)`, `k11_fields.py:16-17`).
+- a capture-side CHECK joins the existing four (`k11_capture.py:342-347`): every range is logged at
+  least once, and for boot 2 no range changes after the Enter (a move would invalidate the pin,
+  J3.8(b)).
+
+### J3.4 The pinned frame of boot 2
+
+The K11 driver dumps only from the capture's Enter on (`k11_dump_if_new`/`k11_armed`,
+`test_game.c:13032-13043`, `:13173-13187`), and the port script's `enter_frame` is the first P record
+with `mode=0x27` after the first K (`k11_session.py:143-146`). **The pin is that frame**: boot 2's
+`enter_frame`, a measured number like the walk's 324 (named-gaps-a:299-301), recorded in the Makefile
+as `SAVE_RELOAD_ENTER_FRAME`. The port dump's frame 0 is the settled screen at exactly that counter —
+the driver asserts `frame_after == enter_frame` on the Enter iteration (`test_game.c:13173-13186`,
+`:13198-13202`).
+
+So the load claim is judged **at the port dump frame whose master counter `f` equals boot 2's
+`enter_frame`** (dump frame 0 by construction), and the oracle additionally compares every later
+dumped frame's ranges and fails at the first that differs — the gp trace's "first difference" ratchet
+form (`gp_compare`). The capture side of the comparison is boot 2's settled snapshot: the ranges load
+in `game_init`, before the frame counter runs, so the L/R records must already hold the final values
+at the Enter, and the oracle reads the R record current at the pin. This design cannot know the
+number — nothing ran; it comes from the capture.
+
+### J3.5 The port driver's save path
+
+`test_k11_oracle` (`test_game.c:13140-13207`) gains one env var, **`PR_K11_SAVE`**: when set and
+non-empty, the driver calls `host_save_set_path(<path>)` before `game_init()` (and can drop it at
+teardown as `test_restart_drive` does, `test_game.c:13876`, `:13887-13888`). The plumbing exists:
+`host_save_read` prefers the path and falls back to the game dir's `cmos`/`CMOS` only when the path is
+absent or unopenable (`host.c:435-451`); `host_save_writable` requires the path set
+(`host.c:453-465`); the fallback is the game dir via `game_set_game_dir` (`flow.c:6806`).
+
+- **Write replay (boot 1):** `PR_K11_SAVE=<dump>/save-reload/boot1-scratch/cmos`; the Makefile creates
+  the scratch dir and `rm -f`s the file first (a stale file would be *loaded* and change the starting
+  condition; the fallback reads the game dir only while the path does not exist, `host.c:440-443`).
+  The replay's OPTIONS MENU exit runs `config_file_save` (`svcmenu.c:86-94`) → `config_storage_touch(1)`,
+  `(2)`, the XOR and the `0x7F8` write (`config.c:1396-1407`).
+- **Load replay (boot 2):** `PR_K11_SAVE=<dump>/save-reload/boot2-cmos`, a *copy* of the capture that
+  the oracle makes (`cp` + a byte check against `save-reload/CMOS`): `config_file_load` reads it at
+  `game_init` (`config.c:1368-1380`). The copy is the point — a later save would overwrite the copy,
+  and `data/` is never written.
+
+No driver change is needed for the ranges: the driver locates them from its own `mem[]` through the
+same raw structures (image `DSD(0x2D48C)` + `0x7F8`; kind 0 `DSW(0x2D444+2)`/`DSD(0x2D444+4)`; tables
+`DSD(0x2D478 + 8t)` with `count * (vb + nb)` from `DSD(0x2D3FC + 8t)`) and writes `<dir>/ranges.txt`,
+one line per dumped frame in the `<idx> f=<hex4> tick=<hex8> …` form the gp driver's `frames.txt`
+uses (`test_game.c:13340-13341`), each range as its full hex bytes.
+
+### J3.6 The two claims, exactly
+
+**Write.** `tools/save_reload.py` requires the boot-1 replay's scratch file to be byte-identical (2040
+bytes) to `data/k11-captures/save-reload/CMOS`. The replay starts from the same condition as the
+capture (both read the game dir's zero `CMOS`; the oracle checks `session.txt`'s `cmos=` against
+`check_cmos(GAME_DIR)` and fails on a mismatch — the data changed since the capture), runs the same
+key/pad script boot 1's `poll.log` yields, and writes the scratch file where the original wrote
+`C:\cmos` (`0x2CBAF` → `0x1B084`). **It does not cover:** the other save sites (`0x1BEB5`
+`game_shutdown`, `0x24AA1` `game_quit_prompt`; §S.7.5:1010-1011); DOS's filename/current-directory
+resolution (the port writes a host path); the failure paths (short write, long file; §S.7.3:951-956);
+whether the image bytes are semantically right (only that they equal the capture's); any CMOS other
+than this one.
+
+**Load.** The oracle requires the port dump's `ranges.txt` at the pinned frame to hold, for all five
+ranges, the bytes of boot 2's `poll.log` at the pin, and every later dumped frame to hold them too
+(the first difference fails and is reported with its frame). **It does not cover:** the display of the
+loaded values (no pixel/frame claim for save-reload — this is not a walk-style oracle); changes the
+capture itself never recorded; the kinds outside the three ranges (1..5); the port's
+`host_save_read` fallback/length semantics versus DOS's fopen/fread (their own rows and named gaps,
+§S.7.3); any CMOS but the captured one; and anything beyond the pin's claim — boot 2 stops at the
+MAIN MENU.
+
+### J3.7 What the implementation will touch (designed here, not done)
+
+(a) `tools/k11_session.py`: the `save-reload` scenario (`keys`, `pokes=()`, `time_limit`, `boot2`,
+`writable`); `port-script`/`autotype` gain `--boot {1,2}`; the `poll.log` docstring gains `L`/`R`.
+(b) `tools/k11_capture.py`: the two-boot flow (staging CMOS de-symlink, writable boot-1 mount, the
+CMOS copy-out and checks, the `-ro` boot-2 reuse), the five ranges in the poller, the new CHECKs. The
+`-ro` default for every other scenario and `check_cmos` for every scenario stay — a test in
+`tools/tests/test_k11_capture.py` next to `test_dosbox_cmd_has_the_verified_flags` (which asserts
+`MOUNT C "/r/C" -ro`) and `test_check_cmos` will say so.
+(c) `tools/save_reload.py` + `tools/tests/test_save_reload.py`: the two claims and the scenario
+parsing (test-first per storage plan Step 3); each new assertion mutation-proved (AGENTS.md's
+discipline).
+(d) `port/tests/test_game.c` `test_k11_oracle`: `PR_K11_SAVE` and `ranges.txt` only.
+(e) `Makefile`: `save-reload-oracle` (target, `.PHONY` next to `k11-*` at Makefile:66, and `verify`
+next to `k11-oracle` at Makefile:1082), plus the pins `SAVE_RELOAD_CMOS_SHA256`,
+`SAVE_RELOAD_POLL_SHA256`, `SAVE_RELOAD_FRAMES`, `SAVE_RELOAD_ENTER_FRAME` with provenance comments as
+the other blocks have. `AGENTS.md`: the Commands line and the capture paragraph. The oracle skips
+without the capture even under `PR_ORACLE_REQUIRED` (the `k11_compare.py:203-207` rule).
+
+### J3.8 Named risks and open questions (unresolvable by reading)
+
+(a) **One `right` tap = one CREDITS step?** The editor's Left/Right are level reads through `0x2EDE0`
+(§K11.3:696-706) and the walk's 11 Down taps each moved one row (named-gaps-a:309-316), so one tap
+should step once — but the tap's hold is the harness's `HOLD_S` (`k11_capture.py:58`), not a game
+value. *Resolved by*: the capture; and it cannot change the claims — the port script is generated from
+the capture's own K/pad records, and the capture's CHECK that `CMOS` differs from the staged copy
+proves the change landed. If the editor moves more than one step, the scenario is recorded as-is.
+(b) **Do the ranges stay settled through boot 2?** The R records answer it. If a range moves after
+the Enter, the single pinned frame is insufficient and the claim must be re-anchored (most likely a
+second pin at the change's frame); the per-frame comparison fails rather than passing silently.
+(c) **Is a writable mount safe for `data/`?** The staging's only real files are `PRAGE.EXE` and
+`CMOS` (`title_capture.py:52-68`); the game's only writer is `fopen("cmos","wb")` (`0x1B084`,
+§S.7.2), and `-f` (`0x101520 = 1`) skips the CD switch (`config.c:1358-1359`). *Mitigation*: before
+boot 1 record the staging's entries and the game dir's mtimes; after boot 1 assert no entry appeared
+besides `CMOS` and no symlink target changed. A DOSBox-X file the check catches aborts the scenario;
+`data/` cannot be written through the mount root because it holds only links.
+(d) **The starting condition.** Boot 1's staged `CMOS` is a copy of the game dir's zero file and the
+port's boot-1 fallback is the same file; an operator changing `data/game/C/CMOS` between capture and
+oracle would start the two sides differently — the oracle's `session.txt cmos=` check (J3.6) turns
+that into a named failure, not a silent pass.
+(e) **The E-record reason.** With `-time-limit` both boots expect `reason=time-limit`
+(`k11_capture.py:296-298`); a clean `exit` would mean the game left early and the capture is suspect.
+(f) **`memsize`.** Every K11 capture used the DOSBox-X default and the walk already saved (dropped) at
+the same settings; nothing here needs `memsize=64` (the U10 ending's harness value, AGENTS.md).
+
+### J3.9 What remains gated
+
+Storage plan Steps 3-5 (implement test-first, capture, oracle) and the track-J plan's step 4 run only
+after the user's go-ahead. If the user declines or the capture cannot be made, the contract's step 6
+applies: the named gap stays the track's main one (already at storage record:1064/1107 and AGENTS.md)
+and this section becomes its design record.
