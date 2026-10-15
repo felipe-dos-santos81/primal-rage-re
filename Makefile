@@ -536,6 +536,14 @@ gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratch
 #   MIN_FIRST: "frames: FIRST UNEXPLAINED capture 2139 (raw 5260): nearest port 1737, rows
 #     64..197, x 1..319 (4279 px)"; U6b Task 15 measured 1005 (the health-bar rows) and the pin
 #     had stayed there while the port's replay advanced the first unexplained frame.
+#     Track G g7 (record 2026-10-14-reverse-g §G7) names that class: 2139 is the first frame of
+#     the capture's post-script tail. The port's script ends at the capture's X record (f=0xCAF,
+#     ms=75222 step=38 end) and the dump's last presented frame is 1737 (f=0xCAF): capture 2139
+#     holds port 1737's rows 0..63 and 198..199 (the still-scanned last screen) and rows 64..197
+#     (the 4279 px) the original's next screen (f>=0xCB0), which no replay of this script can
+#     present. How far the port got, not a divergence (the gp-keys 1136 / gp-idle-loss 7559
+#     class); N=2139 is exact for this capture (a longer script is a re-capture). The window
+#     starts at 88 (GP_MOVES_MAX_START), unchanged.
 #   TRACE_MIN_FIRST: "trace: 0 differing through 3247; ratchet N 2262 ok (every item is
 #     explained: N = 3248 is the exact pin)"; U6b Task 15's first difference was f=8D6 (2262) in
 #     s1_5a: capture 16, port 2D, six frames after P1's 0x24 move at f=0x8D0, with no
@@ -862,7 +870,30 @@ gp-modes-one: build
 # text-row region, but the port did dump that entry's sampled states and none matches: the cause
 # is NOT attributed here — a named gap, not §G6's scan-out class and not allowed. Pin 2210 fails, MAX_START 100 unchanged and
 # exact (99 fails), TRACE/WIN/MILESTONES unchanged (3503/3503/8).
-GP_WIN_MIN_FIRST = 2209
+# Re-measured by track G g7 (record 2026-10-14-reverse-g §G7): the strip is now ATTRIBUTED and
+# ALLOWED BY NAME in OVERLAY_ALLOWED — the loader's `- LOADING -` presentation (string 489, drawn
+# by 0x1B3EA/0x1B3EF at (0,0xE6) = rows 192..197 x 0..85; its 166 glyph px are port 1776's and
+# the mask's source port 1775 is the same indices under the stale black palette) over the
+# mode-0x12 screen (port 1777, the f=0xBA1 entry frame): a composition of two frames the port
+# itself dumped, which the two-frame model cannot express. The port's own presentation of that
+# text is over the black screen (capture 2208 = port 1776) and its next one is dump frame 1805
+# (f=0xC0E, over the later screen): the resolve presenting it is s16snd2's first, and the original's
+# is the same resource one call earlier — the entry's voice 0x32 (case 1) is a music request whose
+# song handle 0x03021BFA is index 6, and the original's sequencer reads that song through the
+# resource layer in the entry's window (the strip's background is the entry's screen, not the
+# later one; the capture's S records show no stall at f=0xC0E and one extra tick in the entry
+# window), while the port's music path is host-owned and never resolves (platform/audio/ has no
+# res_resolve), so the replay's first s16snd2 resolve is the *sample* queue of voice 0x3A at
+# f=0xC0E. The frame of that presentation is thus the host-owned audio model's, not the ported
+# game code's — a model artifact (§G7); the sequencer's exact read frame inside the entry's window
+# is not isolated. With the allowance active every content-bearing
+# capture frame 100..2451 is explained and the first unexplained is 2452 (raw 5603): nearest port
+# 1976, rows 62..169, x 94..218 (1905 px) — the replay's post-script tail (port 1976 is f=0xDAE,
+# the X record; rows 0..61/170..199 are its still-scanned screen). MIN_FIRST 2209 -> 2452; 2453
+# fails (the exact pin). MAX_START 100 unchanged and exact (99 fails), TRACE/WIN/MILESTONES
+# unchanged (3503/3503/8). The pixel claim now reaches the replay's end (f=0xDAE) instead of
+# stopping at the strip.
+GP_WIN_MIN_FIRST = 2452
 GP_WIN_TRACE_MIN_FIRST = 3503
 GP_WIN_MAX_START = 100
 GP_WIN_MILESTONES = 8
@@ -931,7 +962,19 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # (the report's next unexplained after 2062 are 4113..4116).
 # MAX_START 83 unchanged and exact (82 prints the improved line), TRACE/WIN/MILESTONES unchanged
 # (9954/9954/30; TRACE/WIN are at the replay's end, so they cannot rise).
-GP_ENDING_MIN_FIRST = 2062
+# Re-measured by track G g7 (record 2026-10-14-reverse-g §G7): the strip is the SAME presentation
+# as gp-u9-win's 2209 — the same glyph fingerprint (de1c1bb2..) — at U10's entry: port 1685's 166
+# px over the mode-0x12 screen (port 1686, the f=0xB9A entry frame), the mask from port 1684 (the
+# palette pair is swapped against U9's) — and is ALLOWED BY NAME in OVERLAY_ALLOWED. With it active
+# every content-bearing capture frame 83..4112 is explained and the first unexplained is 4113
+# (raw 7858): nearest port 3444 (f=0x1502, mode 0x0D), rows 166..199, x 0..319 (9732 px) — the
+# poked final's death animation (the DEATH_DONE pokes' mode-0x0D region, §W.9's unclaimed death
+# streams), NOT allowed: a genuine unexplained frame the ratchet stops at. MIN_FIRST 2062 -> 4113;
+# 4114 fails (the exact pin). MAX_START 83 unchanged and exact (82 prints the improved line),
+# TRACE/WIN/MILESTONES unchanged (9954/9954/30; TRACE/WIN are at the replay's end, so they cannot
+# rise). The pixel claim now reaches f=0x1502 (the final's 4th death) instead of stopping at the
+# strip (f=0xB9A).
+GP_ENDING_MIN_FIRST = 4113
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83
 GP_ENDING_MILESTONES = 30
