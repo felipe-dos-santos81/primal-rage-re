@@ -31983,8 +31983,12 @@ class RealFunctionTests(unittest.TestCase):
         # render_scroll_setup, fighter_state_33b00, flow_challenge_poll), 0x32BAC +6
         # (hit_chain_resolve, hit_3d004, game_mode_09_step(_rr), frontend_mode12_darken_or_tally(_rr)),
         # 0x2EA64 +1 (spawn_anim_opcode, which needed 0x29D60 too). Total across the six non-rows
-        # with g3aa's +27: 639 -> 716 (+77); the still-open dependents block on unrowed >=0x5D000
-        # runtime callees and 0x2CB74/0x501A3 (record §G3). Measured on the lane.
+        # with g3aa's +27: 639 -> 716 (+77); of the 116 still-open rows NONE blocks on the six — 96
+        # have an unrowed >=0x5D000 runtime callee (the host-owned aperture store 0x501A3 and the
+        # unrowed 0x4F5C8 stub co-block some of those), the other 20 block only on the named item
+        # stub 0x2CB74 (menu_step, menu_run), the host-owned 0x10D34/0x4FB98 (game_shutdown), or
+        # sub-0x5D000 call targets never listed as functions, E2's field (17 rows) — record §G3 has
+        # the full census. Measured on the lane.
         self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14899/14899 mutants detected; 1 named gaps; "
                       "716/832 rows with callees closed (175 have none).", out.getvalue())
 
