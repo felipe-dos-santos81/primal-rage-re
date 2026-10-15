@@ -1029,10 +1029,12 @@ enforced runs:
 - `GP_IDLE_LOSS_MIN_FIRST 7559` **unchanged**: the strips are not in that
   capture (its mode-8 entry is §G6's scan-out), so nothing there moved.
 
-The pixel claims now reach the replays' ends instead of stopping at the strips:
-U9 covers to f=0xDAE (the X record; previously it stopped at f≈0xBA6) and U10
-to f=0x1502 (the final's 4th death; previously f=0xB9A) — the results screens,
-the following rounds' fights and the final's fights are under them.
+The pixel claims now run past the strips to each replay's first genuine unexplained
+frame: U9 covers to f=0xDAE (the X record, its replay's end; previously it stopped
+at f≈0xBA6) and U10 to f=0x1502 (the final's 4th death; previously f=0xB9A) — for
+U10 that genuine unexplained death-animation frame (capture 4113) is short of its
+replay's end f=0x26E1, where only the trace/WIN fields agree. The results screens,
+the following rounds' fights and the final's fights through f=0x1502 are under them.
 
 **Proofs (step 4).** Unit (`tools/tests/test_gp_compare.py OverlayAllowance`, 8
 cases): the named bytes explain (with the message asserted); a mutated screen

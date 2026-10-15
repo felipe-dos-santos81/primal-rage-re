@@ -32025,10 +32025,11 @@ class RealFunctionTests(unittest.TestCase):
                       "774/832 rows with callees closed (175 have none). The closure rule (record J §J1): "
                       "an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred "
                       "in tools/port_classification.txt, or an address the decomp index never lists as a "
-                      "function and the port tree does not implement (no fn_register, no `/* 0xADDR` header) - "
-                      "does not keep a row open, while a recorded stub or real callee and a ported function "
-                      "without a row do. Claim: equivalence on the exercised blocks and inputs only, each "
-                      "function with its callees stubbed or run as stated.", out.getvalue())
+                      "function - does not keep a row open, provided the port tree does not implement the "
+                      "address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a "
+                      "recorded stub or real callee and a ported function without a row do. Claim: "
+                      "equivalence on the exercised blocks and inputs only, each function with its callees "
+                      "stubbed or run as stated.", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

@@ -34250,7 +34250,8 @@ class NonPortable:
     column-0 `/* 0xADDR` comment (the strict rule tools/entry_triage.py's `load_ported` uses; the
     loose "anywhere in a comment" form is not used, because it reads prose mentions as
     implementations — measured: it would also take memset `0x61A70` and the exit chain `0x62003` and
-    re-open 25 further rows). An address at or above RUNTIME_BASE is `runtime` by the rule itself;
+    re-open 26 further rows, exactly the rows the strict form closes via the runtime allow-mode callee
+    `0x61A70`). An address at or above RUNTIME_BASE is `runtime` by the rule itself;
     below it, a classified address reads its own class and one the decomp index never lists as a
     function reads `e2-field` (E2's triage field; the census's "call targets never listed as functions
     in the decomp index", record G §G3). A listed function reads None: a porting target, which never
@@ -34313,12 +34314,13 @@ def closed_rows(funcs, verdicts, outside=None):
     outside the portable set: its bytes already run on both sides inside the row, and its own row can
     never exist, because the address is `runtime` (>= RUNTIME_BASE), host-owned/deferred
     (tools/port_classification.txt) or one the decomp index never lists as a function (E2's field) —
-    *and* the port tree does not implement it (`NonPortable.excused`). A recorded *stub* outside the
-    portable set still keeps the row open: the declaration it applies is exactly what a row of its
-    own would verify. A ported function with no row of its own (the 8 named gaps) is in the portable
-    set and always keeps the row open. `outside` is `non_portable()`; a flipped `NonPortable`
-    compares under a mutated class entry. Rows with no callee are counted apart, so they cannot make
-    the figure look closer than it is (record §E3.4)."""
+    *and* the port tree does not implement it (`NonPortable.excused`). A recorded *stub* or `real`
+    callee outside the portable set still keeps the row open: the declaration a stub applies, and the
+    arrival a `real` mode records, are exactly what a row of the callee's own would verify. A ported
+    function with no row of its own (the 8 named gaps) is in the portable set and always keeps the
+    row open. `outside` is `non_portable()`; a flipped `NonPortable` compares under a mutated class
+    entry. Rows with no callee are counted apart, so they cannot make the figure look closer than it
+    is (record §E3.4)."""
     outside = non_portable() if outside is None else outside
     with_callees = [r for r in funcs if r.callees]
     closed = [r for r in with_callees if r.verdict == "VERIFIED"
@@ -34403,10 +34405,10 @@ def main(argv=None):
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
           "none). The closure rule (record J §J1): an allow-mode callee outside the portable set - runtime "
           ">= 0x%X, host-owned/deferred in tools/port_classification.txt, or an address the decomp index "
-          "never lists as a function and the port tree does not implement (no fn_register, no `/* 0xADDR` "
-          "header) - does not keep a row open, while a recorded stub or real callee and a ported function "
-          "without a row do. Claim: equivalence on the exercised blocks and inputs only, each function with "
-          "its callees stubbed or run as stated." % (
+          "never lists as a function - does not keep a row open, provided the port tree does not implement "
+          "the address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a recorded stub "
+          "or real callee and a ported function without a row do. Claim: equivalence on the exercised blocks "
+          "and inputs only, each function with its callees stubbed or run as stated." % (
               len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
               "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants)) if args.self_check else "",
               len(gaps), len(closed), len(with_callees), len(funcs) - len(with_callees), RUNTIME_BASE))

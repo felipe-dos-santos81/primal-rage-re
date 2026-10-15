@@ -870,6 +870,7 @@ gp-modes-one: build
 # text-row region, but the port did dump that entry's sampled states and none matches: the cause
 # is NOT attributed here — a named gap, not §G6's scan-out class and not allowed. Pin 2210 fails, MAX_START 100 unchanged and
 # exact (99 fails), TRACE/WIN/MILESTONES unchanged (3503/3503/8).
+# SUPERSEDED (track G g7 below attributes the strip to the loader's `- LOADING -` overlay and allows it by name; MIN_FIRST 2209 -> 2452).
 # Re-measured by track G g7 (record 2026-10-14-reverse-g §G7): the strip is now ATTRIBUTED and
 # ALLOWED BY NAME in OVERLAY_ALLOWED — the loader's `- LOADING -` presentation (string 489, drawn
 # by 0x1B3EA/0x1B3EF at (0,0xE6) = rows 192..197 x 0..85; its 166 glyph px are port 1776's and
@@ -962,6 +963,7 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # attributed here — not §G6's class and not allowed. Pin 2063
 # fails; 3686 (§W.16's other next-one) is explained on the current dump since the P4-P7 batches
 # (the report's next unexplained after 2062 are 4113..4116).
+# SUPERSEDED (track G g7 below attributes the same strip to the loader's `- LOADING -` overlay and allows it by name; MIN_FIRST 2062 -> 4113).
 # MAX_START 83 unchanged and exact (82 prints the improved line), TRACE/WIN/MILESTONES unchanged
 # (9954/9954/30; TRACE/WIN are at the replay's end, so they cannot rise).
 # Re-measured by track G g7 (record 2026-10-14-reverse-g §G7): the strip is the SAME presentation

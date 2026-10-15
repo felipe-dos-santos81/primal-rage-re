@@ -164,11 +164,14 @@ SCAN3_ALLOWED = {
 #   2. every pixel of the capture equals T1's on the mask and S's (the screen
 #      frame) off it — the whole frame, not a box.
 # So a mutation of T1's overlay bytes, of the mask's shape (via T2) or of any
-# S pixel un-explains the capture frame (OverlayAllowanceTests). Named limit
+# S pixel un-explains the capture frame (OverlayAllowanceTests). Named limits
 # (as SCAN3_ALLOWED's top segment): T2 is only the mask's indicator — its bytes
 # inside the mask bind nothing beyond the `!=` relation, and T1's bytes off the
-# mask are not claimed. A named frame the two-frame model explains now is
-# reported as a stale name; a named frame that is not its named bytes FAILS.
+# mask are not claimed; the glyph sha binds T1's byte sequence at the sorted
+# mask indices, not the index set itself, so two different index sets carrying
+# identical T1 bytes could coincide. A named frame the two-frame model explains
+# now is reported as a stale name; a named frame that is not its named bytes
+# FAILS.
 OVERLAY_ALLOWED = {
     'gp-u9-win': (
         # Capture 2209 (raw 4953) at the mode-0x17->0x12 entry: the loader's

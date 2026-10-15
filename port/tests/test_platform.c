@@ -2973,8 +2973,10 @@ int test_host(void)
      * player's byte -- plus the fixed +0x28F/+0x290 bytes (0x1B850/0x1B870).
      * config_keys_apply (0x1AE28) fills the block and the service menu can
      * change it (record gameplay-ground-truth §G.1.2, u11 §K.10 item 8). The
-     * planted table holds no default scan, so a port that still applied the
-     * default binding would fail every check here. */
+     * planted table gives no scan its default bit (0x31/0x32 are default scans,
+     * but the expected bits here are 0x0080/0x0040, not the default's
+     * 0x0400/0x0800), so a port that still applied the default binding would
+     * fail every check here. */
     {
         const u32 cfg = 0x03F00000u;    /* test-only key-config block (mem[]) */
         u32 saved_base = DSD(DS_00101514);
@@ -3007,6 +3009,23 @@ int test_host(void)
         mem_fill(cfg, 0, 0x400u);
         CHECK_EQ_INT(host_kb_bit(0x2C), 0x2000);    /* Z: default P1 left */
         CHECK_EQ_INT(host_kb_bit(0x50), 0x0040);    /* default P2 down */
+        /* The out-of-range guard's boundary (host.c:96). A block whose 16-scan
+         * table ends exactly at MEM_SIZE is read; one byte further is out of
+         * range and the fallback applies. The seed (0x11, no default bit, in
+         * position 0) answers differently on the two paths, so either a wrong
+         * bound or an off-by-one fails. */
+        const u32 tail = MEM_SIZE - 0x2EEu;      /* table 0x2DE..0x2ED = MEM_SIZE-0x10..-1 */
+        mem_fill(tail + 0x2DEu, 0, 0x10u);
+        DSB(tail + 0x2DEu) = 0x11;               /* P1 up */
+        DSD(DS_00101514) = tail;
+        CHECK_EQ_INT(host_kb_bit(0x11), 0x8000); /* the table is read at the boundary */
+        CHECK_EQ_INT(host_kb_bit(0x1F), 0);      /* ...not the default binding */
+        mem_fill(tail + 0x2DEu, 0, 0x10u);
+        DSB(tail + 1u + 0x2DEu) = 0x11;          /* the same seed one byte past */
+        DSD(DS_00101514) = tail + 1u;
+        CHECK_EQ_INT(host_kb_bit(0x11), 0);      /* the planted table is not read */
+        CHECK_EQ_INT(host_kb_bit(0x1F), 0x8000); /* the default binding answers */
+        mem_fill(tail + 0x2DEu, 0, 0x10u);
         DSD(DS_00101514) = saved_base;
     }
 

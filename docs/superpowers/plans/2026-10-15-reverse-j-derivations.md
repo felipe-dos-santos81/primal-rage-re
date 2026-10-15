@@ -43,7 +43,8 @@ count does not move for them. Measured variants of the check: `fn_register` ∪ 
 **774/832** (adopted; the two sets are `fn_register` 425 addresses ⊆ the 1250 column-0 headers, 1201
 of the union below the runtime base and 49 at or above), the loose "anywhere in a comment" header form
 748/832 — not adopted, because it reads prose mentions as implementations (it would also take memset
-`0x61A70` and the exit chain `0x62003` and re-open 25 further rows).
+`0x61A70` and the exit chain `0x62003` and re-open 26 further rows — measured: all 26 are the rows
+the adopted form closes via the runtime allow-mode callee `0x61A70`).
 
 **Why the allow mode, and not every mode.** The plan's Step 1 sentence and recon-01 §6 item 4 both
 name the *allow-mode* callee, and §G3 words the amendment "runtime/gap callees that are run from bytes
@@ -57,9 +58,20 @@ with no row is an unmet declaration, so it keeps the row open too. Measured alte
 record (the same replay, `closed_rows` over `SPECS`, with the port-code check in force): allow-mode
 only **774/832** (the rule as adopted), allow + real 776/832, every mode 782/832 (the port-code check
 prunes that reading too: a stubbed or real implementation of a ported address keeps blocking), stubs
-only 719/832 (a control, not a proposal). The every-mode reading would also drain the grunt batch:
-design goal 5's rows for the 13 handler-table entries close **19** of the 58 rows still open under the
-adopted rule (measured, the four port-code entries among the 13 included).
+only 719/832 (a control, not a proposal). The every-mode reading would not drain the grunt batch:
+only **1** of its 8 rows beyond the adopted rule (`fighter_state_3531c`, blocked on the handler entry
+`0x3D0BC`) is among the **19** that design goal 5's rows for the 13 handler-table entries close of the
+58 rows open under the adopted rule — the batch keeps 18 closes under that reading too (measured, the
+four port-code entries among the 13 included).
+
+**Review fix wave (whole-branch review, 2026-10-15).** The loose form's figure above is 26 (was 25)
+and the every-mode drain claim is corrected to the 1-of-19 overlap: re-measured on this tree by the
+static replay (`closed_rows` over `SPECS`, the 13 = recon-01 §3's handler/hook table entries;
+every-mode 782/832 = +8, `allow+real` 776, stubs-only 719). The counter sentence reads the port-code
+guard as all-class (it always was, in `NonPortable.excused` and AGENTS.md) and its exact string is
+re-pinned in `tools/tests/test_diff_verify.py`; the counts do not move — every guard-blocked
+allow-mode callee today is `e2-field` (`0x127C0 0x12800 0x23130 0x28D68 0x29D04 0x3E484 0x3E4C4
+0x45D14 0x47E9C`), so the reword is cosmetic to the counter (774/832).
 
 **The tables the classes are read from (measured).** `tools/port_classification.txt` holds 67 entries,
 all below the runtime base and none of them ported (no `/* 0xADDR` header, no `fn_register`), so no
@@ -82,9 +94,10 @@ the `SPECS` call sets with every spec's own entry VERIFIED) reproduces it exactl
 `1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps; 774/832 rows with callees
 closed (175 have none). The closure rule (record J §J1): an allow-mode callee outside the portable set
 - runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an address the decomp
-index never lists as a function and the port tree does not implement (no fn_register, no `/* 0xADDR`
-header) - does not keep a row open, while a recorded stub or real callee and a ported function without
-a row do.` The function and mutant figures and the per-row table are byte-identical to the baseline's
+index never lists as a function - does not keep a row open, provided the port tree does not implement
+the address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a recorded stub or
+real callee and a ported function without a row do.` (The counter sentence is the fix wave's all-class
+reword; its numbers are the fix-round-1 run's.) The function and mutant figures and the per-row table are byte-identical to the baseline's
 (`diff` of the two `--table` files is empty): the change moves only the closure test, nothing any row
 compares. Closed 716 → 774: **58 rows**, by the only-open-callee class they had — 49 rows on runtime
 allow-mode callees alone, 4 on E2-field + runtime, 3 on host-owned + runtime, 1 on E2-field alone and
