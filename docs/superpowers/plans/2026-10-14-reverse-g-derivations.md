@@ -880,4 +880,223 @@ the model itself needed no behaviour change after those test fixes — the real-
 enforce lines above were measured before them (the allowance consulted path was
 already exercised there via `main()`) and re-measured after, identical.
 
-## §G7 — the gp-moves 2139 diagnosis (pending, lane B task 7)
+## §G7 — the gp-moves 2139 gap and the two strips (lane B task 7)
+
+**Base and measurements (Step 1).** Base `2ccd403e`, worktree `reverse-j2`, `make build`;
+fresh `make gp-replay`/`make gp-report` runs on this tree — dumps at
+`/tmp/pr_gp_dump/{gp-u6-moves-b, gp-u9-win, gp-u10-ending, gp-idle-loss}` (1738 / 1977 /
+4664 / 6301 presented frames; every `fn-miss` set on its pinned known-set, `all checks
+passed`). The gp-moves report with §G6's allowances active (that scenario passes no
+scan3 entries):
+
+```
+frames: window from capture 88 (raw 1741); 2047 classified: 1043 clean, 996 splice, 3 transition, 0 band-allowed, 0 scan3-allowed, 5 unexplained, 9 all-black
+frames: FIRST UNEXPLAINED capture 2139 (raw 5260): nearest port 1737, rows 64..197, x 1..319 (4279 px)
+frames: UNEXPLAINED capture 2140..2143 (raw 5261..5264)
+trace: 0 differing through 3247; moves: 0 differing through 3247
+```
+
+2139 is still the first unexplained; the report's cap hides the rest of the tail (the
+enforced run's exact pin is 2139 — nothing below it is unexplained).
+
+**The gp-moves 2139 anatomy (Step 2) — the replay's end, not a divergence.** A row-anatomy
+pass against the current dump (for each stored capture frame, which dump frames equal each
+row exactly): capture 2134 = splice(1733, 1734) (f=0xCAB→0xCAC), 2135 = splice(1734, 1735),
+2136 = clean 1735 (f=0xCAD), 2137 = clean 1736 (f=0xCAE), 2138 = splice(1736, 1737)
+(f=0xCAE→0xCAF; its rows 12..199 are byte-equal to 1737, so the capture itself verifies the
+port's f=0xCAF screen there), 2139 = port 1737's rows 0..63 + rows 64..189 held by NO dump
+frame (190..193 = 1737, 194/197 no holder, 195/196 both, 198/199 = 1737), 2140/2141 grow the
+no-holder region (rows 0..30 by 2141). The script's X record is `X ms=75222 f=0CAF step=38
+end`; the port's last presented frame is dump 1737 (f=0xCAF, tick 0xD0D, mode 6). The S
+records place 2139 at ≈ f=0xCB0 (raw 5260 ↔ ms≈75230; `S f=0CB0 ms=75236`, f=0xCAF's S is
+ms=75222), and the traced fields do not change between f=0xCAF and 0xCB0 (the fight's
+animation continues). So 2139 is the **f=0xCAF→0xCB0 scan-out**: its top still shows
+f=0xCAF (the port's 1737) and its lower rows the original's f=0xCB0 screen, which the port
+never replays (the script ends at 3247) — **how far the port got**, the gp-keys 1136 /
+gp-charsel 516 class, not a splice/transition/model artifact of the port's and not a true
+mismatch. **Decision: N stays 2139** — it is the exact pin (the first unexplained IS the
+post-script frame; nothing below it is unexplained); the Makefile comment records the class.
+
+**The two strips (Step 2) — the loader's `- LOADING -` frame.** Same row-anatomy pass at
+both poked captures' mode-0x17→0x12 entries; identical shape, told once with U10's numbers:
+capture 2059 = clean 1683 (f=0xB97), 2060 = 1684's image (all-black — the loader text's
+indices on a blanked DAC; the claim's skipped class), 2061 = clean 1685 (the loaded DAC; the
+text's 166 px read 41b2d3), **2062 = unexplained**, 2063 = clean 1686 (the entry screen,
+mode 0x12, f=0xB9A), 2064 = clean 1687 (f=0xBB9), 2065 = clean 1690 (f=0xBC9). U9 is the
+same shape (2204=1772, 2205=1773, 2206=1774, 2207 all-black, 2208 = 1776's image,
+**2209 = unexplained**, 2210=1777 f=0xBA1, 2211=1778). The strip's anatomy:
+
+- `f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03` = sha256 of the
+  capture's RGB24 bytes of rows 192..197, x 0..85, row by row (1548 bytes);
+  `a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa` = the same rows at
+  full width x 0..319 (5760 bytes) — **identical at U9 2209 and U10 2062** (both
+  serializations pinned here; §G6 cited the full-width one, which is this record's
+  serialization note for the deferred minor g6-m4).
+- The 166 differing px vs the base are the text's 166 set pixels (rows 192..197, x 0..85),
+  colour 41b2d3 — the string is `- LOADING -` (string 0x1E9), the loader's own draw
+  (`0x1B3EA/0x1B3EF`: 0x1C500 then the blit at (0,192) through 0x1C65C/0x51ED8, res.c's
+  text-to-aperture seam).
+- Why: the mode-0x17→0x12 entry is `fight_hook_4142c` (0x4142C): `frontend_input_reset`,
+  `actors_reset` (0x2BAF4, EAX=1) → `0x52106(0)` — which zeroes the tick pair, clears both
+  offscreen buffers AND the aperture, and blanks the DAC (the capture's all-black 2060/2207)
+  — then `frontend_spawn_row` and `fight_413c8`'s eight `actor_spawn`s resolve their GRA
+  descriptors; each resolve is 0x1B3AC's draw=1 lazy read, whose text draw lands on the
+  aperture and whose read blocks with the ISR ticking.
+- The port models exactly this (res.c's `res_load_present`; §45-A) and its dump holds the
+  text at its own draw times: the entry's 1684/1685 (U9 1775/1776) — text-on-black, the
+  capture's 2060/2061 clean against them — and a later read's composite at f=0xBC9
+  (1688/1689, the text over THAT screen). What it does not hold is the composition 2062
+  caught: the text drawn over the ENTRY screen. The port's per-read model is atomic (a tick
+  advance per read, all the entry's reads inside the hook, before the entry screen's copy);
+  the original's reads block on the disk and its copy/read interleaving can land a text
+  draw after a present — §45-A's named gap ("the per-read model does not reproduce the
+  original's tick after each read"). The two sides differ in BOTH directions: the capture
+  never shows the port's 1688/1689 composite (its 2065 = 1690 skips them).
+- Class: **a comparison-model limit** — the loader's `- LOADING -` frame over the mode-0x12
+  entry screen. It is NOT §G6's scan-out class (a rectangular 166-px block in the middle of
+  the frame, which the top/bottom row-splice model cannot express) and NOT a wrong
+  tick/catch-up model (the gate's C is the raw's, the port presents once per iteration by
+  design, and the residue is §45-A's documented read-stall approximation). It is not a true
+  mismatch (no bytes to fix): the base (1777/1686) and the overlay (1805/1688) are both
+  port-rendered content at the same game f, held by the dump at their own draw times.
+
+**Decision (Step 3): a named per-frame allowance — `LOADER_ALLOWED` in `tools/gp_compare.py`.**
+The §G5/§G6 pattern, a third shape. An entry is `(capture frame j, r1, r2, x0, x1,
+strip_sha256, rows_sha256)` and the frame is explained ONLY iff (1) the strip serialization
+`loader_region_sha` — row by row, each row's x0..x1-1, RGB24 — hashes to strip_sha256; (2) the
+SAME serialization over the whole named rows at full width (x 0..319) hashes to rows_sha256
+(the two pins are the record's f2089c52.. and a886c0f3.., identical at both captures, so a
+mutation anywhere inside rows [r1, r2) — inside the strip columns or outside them — is not
+silenced; added by the task review, see the fix note below); (3) EXACTLY ONE port frame P
+equals the capture outside rows [r1, r2) (the base bind, byte-verified against the CURRENT
+dump); and (4) inside the strip columns, at EVERY pixel where the capture differs from P, at
+least one port frame T holds the capture (the overlay's existence, deliberately not
+uniqueness: the port dumps several images per iteration, and U10's overlay has 25 holders).
+Like the other tables: consulted only when the two-frame
+model leaves the named frame unexplained; a model-explained named frame prints the
+`retire the name` note; a named frame that is not its named bytes prints `FAIL: allowed
+capture … is not its named loader frame: …` and fails the enforced run in both modes
+(`allow_bad`); the summary line gained the `loader-allowed` count; every other scenario
+passes no entries. The entries (measured on the dumps re-played on `2ccd403e`):
+
+| scenario | capture (raw) | base (unique outside rows 192..197) | overlay holders at the 166 px |
+|---|---|---|---|
+| gp-u9-win | 2209 (4953) | 1777 (f=0xBA1) | 16 frames (10 29 70 132 133 134 135 137 138 1776 1805 1841 1842 1843 1845 1846; the whole region's unique holder is 1805) |
+| gp-u10-ending | 2062 (4954) | 1686 (f=0xB9A) | 25 frames (10 29 68 130 131 132 133 135 136 1685 1688 1689 1835 3277 3279 3280 3361 3362 3363 3386 3387 3408 4240 4241 4507) |
+
+U10's 1688/1689 hold the overlay pixels but neither carries the whole six rows (both have 7
+extra index-0xcb px at row 192 the original never showed — the entry screen's black against
+1688's 101000) — which is why the recipe binds the differing pixels, not the whole region.
+
+**The pins (Step 4).** The enforced `gp_compare` calls in the oracles' form (capture
+identity pins unchanged and matching):
+
+- **`GP_WIN_MIN_FIRST 2209 -> 2452`.** With the allowance active: `captured frame 2209 (raw
+  4953) allowed by name as the loader frame: port 1777 base rows outside 192..197, the
+  overlay rows 192..197 x 0..85 held by port 10 29 70 …`; `2339 classified: 1237 clean,
+  1096 splice, 3 transition, 0 band-allowed, 1 scan3-allowed, 1 loader-allowed, 1
+  unexplained, 14 all-black`; first unexplained `capture 2452 (raw 5603): nearest port
+  1976, rows 62..169, x 94..218 (1905 px)`; `first unexplained 2452, ratchet N 2452 ok`;
+  N = 2453 prints `FAIL: first unexplained 2452 < ratchet N 2453` (the pin is exact). 2452
+  is the replay's end (the X record `ms=80102 f=0DAE`; the port's last presented frame is
+  f=0xDAE, dump 1976), the gp-keys class. MAX_START 100 unchanged and exact (99 fails),
+  TRACE/WIN/MILESTONES unchanged (3503/3503/8).
+- **`GP_ENDING_MIN_FIRST 2062 -> 4113`.** With the allowance active: `captured frame 2062
+  (raw 4954) allowed by name as the loader frame: port 1686 base rows outside 192..197, the
+  overlay …`; `4016 classified: 2355 clean, 1654 splice, 4 transition, 0 band-allowed, 1
+  scan3-allowed, 1 loader-allowed, 1 unexplained, 15 all-black`; first unexplained
+  `capture 4113 (raw 7858): nearest port 3444, rows 166..199, x 0..319 (9732 px)`; N = 4114
+  fails (exact). 4113 is §G6/§W.16's already-known next-one, not attributed here: its rows
+  are a three-segment partial-draw composite (0..165 = port 3444, 166..167 = port 3445,
+  168..199 held by NO dump frame) — the capture's scan-out catches a mid-draw the port's
+  per-iteration dump cannot hold (the same comparison-model family; no name asked for
+  here). MAX_START 83 unchanged and exact (82 prints the improved line), TRACE/WIN/
+  MILESTONES unchanged (9954/9954/30).
+- **gp-moves: N stays 2139** (the classification above). **idle-loss: N stays 7559** —
+  re-measured on this tree: `captured frame 2064 (raw 5190) allowed by name as a
+  three-frame scan-out: …`; `7455 classified: 4093 clean, 3352 splice, 8 transition, 0
+  band-allowed, 1 scan3-allowed, 0 loader-allowed, 1 unexplained, 15 all-black`; `first
+  unexplained 7559, ratchet N 7559 ok`; TRACE 8320 unchanged. No LOADER_ALLOWED entry
+  exists for it (the strips are U9/U10's; its first unexplained is already the replay's
+  end).
+
+**The win/ending pixel claim's new reach.** U9's frame claim now covers content-bearing
+capture frames 100..2451 — from the poke-driven mode-8 entry (f=0x48A, §G6's 346) through
+the conquered-lands screen, the following rounds' fights, the tally entry (f=0xBA1) and its
+animation out to the replay's end f=0xDAE; U10's covers 83..4112 (through the final's seven
+opponents, the ending and the high-score entry, to f=0x26E1). The strips no longer stop
+either claim. The claims stay narrow (§G.16): no under-render detection, no order/coverage
+claim; N and the window start are pins, not coverage.
+
+**Proofs (Step 4).** Unit (`tools/tests/test_gp_compare.py` `LoaderAllowance`, 9 cases;
+`test_gp_compare` 55/55): the named bytes explain (with the base/holders message and the
+`1 loader-allowed` count); a mutated BASE un-explains (`0 port frames hold its rows outside
+2..4, not exactly one`) with the ratchet catching (rc=1, `first unexplained 1 < ratchet
+N 4`); a mutated OVERLAY HOLDER un-explains (`no port frame holds its 12 overlay pixel(s)
+over the base`); a different overlay's bytes are refused by the strip hash (`not the
+named`); a mutation inside the named rows but outside the strip columns (x >= x1) is refused
+by the full-rows hash (`its rows 2..4 (full width) are … not the named`; the review fix
+below, proven to fail when the columns are left unpinned); an ambiguous base (two frames)
+is refused; the overlay may be held by more than one frame (the U10 shape — the existence
+semantics); a model-explained named frame prints the `retire the name` note; and the table's
+two entries are pinned, so a silent name change is a test failure. Disabling the mechanism
+(`loader_explain` stubbed) fails the three runs
+that need it — the tests can fail. Real data on COPIES (`/tmp/g7/u9-mut`, `/tmp/g7/u10-mut`,
+`/tmp/g7/u9-cap`, `/tmp/g7/u9-cap100`; the dumps and the DATA captures untouched):
+
+- **Base bind:** poking the base frame's pixel outside the region (port 1777/1686 byte 0:
+  index 0x1f -> 0x2A, DAC-differing 000000 -> 3871b2) gives `FAIL: allowed capture 2209
+  (raw 4953) is not its named loader frame: 0 port frames hold its rows outside 192..197,
+  not exactly one` + `FAIL: first unexplained 2209 < ratchet N 2452`, EXIT 1 (U10 the same
+  at 2062/1686).
+- **Overlay existence (isolated on the real bytes):** with every overlay holder's first
+  overlay pixel poked (192,0), `loader_explain` answers `no port frame holds its 166
+  overlay pixel(s) over the base` for both captures. The full run on that copy stops
+  earlier (capture 109) because the same text pixels are displayed by the boot loader
+  frames (10/29/…) and their mutation is felt by capture frames below the ratchet — the
+  existence arm's witnesses are shared with early claimed frames (the named limit below),
+  so its isolated proof is the direct call and the unit test.
+- **The capture side (Review Focus #3):** zeroing ONE strip pixel of a capture COPY
+  (`/tmp/g7/u9-cap` frame 2209's row 192 x 0, 41b2d3 -> 000000) fails with `FAIL: allowed
+  capture 2209 (raw 4953) is not its named loader frame: its rows 192..197 x 0..85 are
+  9b1f7bf340ef.., not the named f2089c52c182..` + `FAIL: first unexplained 2209 < ratchet
+  N 2452`, EXIT 1 — the same capture frame with a different byte layout is not silenced.
+  **And the columns beside the strip (the review fix):** with ONE pixel of a capture COPY
+  (`/tmp/g7/u9-cap100`) inside the named rows but outside the strip columns changed (frame
+  2209's row 192 x 100, black -> 41b2d3 — a value the strip itself uses, so no "no frame
+  holds it" argument applies), the full-rows pin refuses it: `FAIL: allowed capture 2209
+  (raw 4953) is not its named loader frame: its rows 192..197 (full width) are
+  b72c0396eee6.., not the named a886c0f3db8b..` + `FAIL: first unexplained 2209 < ratchet
+  N 2452`, EXIT 1.
+
+**Review fix (task review, Important — rows [r1,r2) × columns [x1,320) left unbound).** The
+first version pinned only the strip window's sha, so a capture mutated inside the named rows
+but outside the strip columns (row 192, x=100) was still explained. The entry gained the
+full-rows sha (`a886c0f3..`, already measured and identical at both captures) as its second
+pin — the reviewer's option 1 — and the new unit case
+`test_a_mutation_outside_the_strip_columns_is_not_the_named_frame` plus the `/tmp/g7/u9-cap100`
+run above prove the hole closed. The two measured entries stay green (their only differing
+pixels inside the rows are the strip's 166; enforced runs: U9 `first unexplained 2452,
+ratchet N 2452 ok`, U10 `4113 ok`; `make gp-win-oracle`/`gp-ending-oracle` green).
+
+**Named limits of the claim.** (a) the base is bound by uniqueness, the overlay only by
+existence: several frames hold the same 166 px (U9 16, U10 25 — the boot's own loader frames
+among them), so mutating ONE holder is not felt by this frame; the unit fixture pins both
+the single-holder failure and the multi-holder semantics. (b) the recipe binds the
+capture's strip bytes, the whole named rows' bytes (the full-rows pin) and the base's
+bytes; the strip's content is the loader's text and
+its presence in the dump (any holder) is required, but nothing binds a *specific* draw as
+its producer — the cause is §45-A's named per-read model gap, not a wrongly rendered pixel,
+and the allowance does not claim which read drew it. (c) §H.4 named per the plan's rule:
+the allowance injects no keys (the replay scripts and their key counts are unchanged) and
+reads no screen/data bytes in `[0xA0000, 0xAFA00)` — it reads capture `.raw.gz` and dump
+`.ipx` files only, so the §H.4 hang limit and overlap bound do not bind it. (d) the
+standard gp_compare limits (§G.16): no under-render detection, order and full coverage not
+claimed, frames at/after the pinned start classified against the port's own dump.
+
+**Development notes (fail-first, honest).** The first unit run failed 1 of 8 on a test-side
+bug: mutating the fixture's base frame (port 0) also emptied the window (no capture frame
+exhibited the port's first frame any more), so the base-mutation case was rebuilt with a
+throwaway frame 0 (port [4, 1, 2, 3]) — the model needed no behaviour change. The
+mechanism-disabled sensitivity run and the three real-data proofs were measured before the
+record; the enforced oracle runs (gp-moves/gp-win/gp-ending) are green with the new pins.

@@ -15,8 +15,13 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
           Frames named in SCAN3_ALLOWED are explained ONLY by their per-frame
           three-segment recipe: a pinned top-row hash that at least one EARLIER
           dump frame must hold, plus one unique adjacent port pair (B, B+1)
-          byte-binding the rows below the top (record §G6). Neither table is
-          ever an extension of the two-frame model.
+          byte-binding the rows below the top (record §G6).
+          Frames named in LOADER_ALLOWED are explained ONLY by their per-frame
+          loader recipe: a pinned hash of the named region's bytes, one unique
+          base port frame the capture equals outside it, and a port frame
+          holding every pixel inside it where the capture differs from the base
+          (record §G7). None of the tables is ever an extension of the
+          two-frame model.
           The first unexplained capture frame must be >= --min-first N, and the
           window start (the first capture frame that shows the port's first frame)
           must be <= --max-start and < N, so a regressed port cannot slide the window
@@ -134,6 +139,64 @@ SCAN3_ALLOWED = {
     ),
 }
 
+# Per-scenario named per-frame allowances for the loader's `- LOADING -` frame
+# (record §G7): the lazy INDEX read (0x1B3AC's draw=1 path) blits string 0x1E9
+# straight to the VGA aperture (0x51ED8) before its read blocks, so a 70.09 Hz
+# scan-out can hold the loader's 166-px text over whatever screen the aperture
+# held (record §45-A named the seam: the port's per-read model collapses the
+# original's disk-block interleaving, so the port's dump holds the base screen
+# and the overlay at their own draw times, never their composition). Like
+# BANDS_ALLOWED and SCAN3_ALLOWED this is never a class: only the named capture
+# frames, each only with its own byte recipe. An entry is
+# (capture frame j, r1, r2, x0, x1, strip_sha256, rows_sha256): the frame is
+# explained ONLY if
+#   1. sha256 of its RGB bytes in rows [r1, r2), x in [x0, x1) — the region
+#      serialized row by row, each row's x0..x1-1, as title_compare's ROW/3
+#      pixels — equals strip_sha256 (the capture-pinned strip bytes), and
+#   2. sha256 of its RGB bytes in rows [r1, r2) at FULL width (x 0..319, the same
+#      row-by-row serialization) equals rows_sha256: the whole named rows are
+#      pinned, so a mutation anywhere in them — inside the strip columns or
+#      outside them — is not silenced (Review Focus #3; the two serializations
+#      are record §G7's f2089c52.. and a886c0f3.., identical at both captures),
+#   3. EXACTLY ONE port frame P in the CURRENT dump equals the capture outside
+#      rows [r1, r2): the byte-checked base bind, so a base rendered differently
+#      un-explains the frame, and
+#   4. inside rows [r1, r2), at EVERY pixel of the strip columns where the
+#      capture differs from P, at least one port frame T equals the capture (the
+#      overlay's existence in the dump — not unique: the port dumps every image
+#      of an iteration, so the same overlay can be held by several frames;
+#      record §G7's named limit).
+# A named frame the two-frame model explains now is reported as a stale name; a
+# named frame that is not the named bytes FAILS.
+LOADER_ALLOWED = {
+    'gp-u9-win': (
+        # Capture 2209 (raw 4953): the loader's `- LOADING -` text over the
+        # mode-0x12 entry screen at the mode-0x17 expiry (fight_hook_4142c ->
+        # actors_reset -> the GRA spawns' lazy reads). Base: port 1777 (f=0xBA1,
+        # the entry screen, the dump's unique holder of its bytes outside rows
+        # 192..197). Overlay: the 166-px strip rows 192..197 x 0..85 held by
+        # port 1805 (f=0xC0E, the dump's unique holder of the whole region: the
+        # same entry at 2209 equals 1777 everywhere but its 166 cyan px).
+        # Strip sha f2089c52.. (x 0..85); full-rows sha a886c0f3.. (x 0..319),
+        # identical at gp-u10-ending's 2062 (§G7).
+        (2209, 192, 198, 0, 86,
+         'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+         'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),
+    ),
+    'gp-u10-ending': (
+        # Capture 2062 (raw 4954): the same loader text over the entry screen
+        # (base port 1686, f=0xB9A, the 4664-frame dump's unique holder of its
+        # bytes outside rows 192..197). The overlay px are held by port 1688 and
+        # 1689 (f=0xBC9, two dumps of one iteration); neither carries the whole
+        # six rows (port 1688 has 7 extra index-0xcb px at row 192 the original
+        # never showed), which is why the recipe binds the differing pixels, not
+        # the whole region (record §G7).
+        (2062, 192, 198, 0, 86,
+         'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+         'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),
+    ),
+}
+
 
 def band_pair(c, port, top_row, band_hi):
     """The unique adjacent port pair P with c's rows [0, top_row) == port[P]'s and
@@ -212,6 +275,56 @@ def scan3_explain(c, port, entry):
         return None, 'no port frame before %d holds its named top rows' % B
     ex = sorted(set(tops) | ({B, B + 1} if r1 < r2 else {B + 1}))
     return ex, None
+
+
+def loader_region_sha(c, r1, r2, x0, x1):
+    """The named region's serialization: the RGB bytes of rows [r1, r2), each
+    restricted to x in [x0, x1), concatenated in row order (record §G7 pins it,
+    so the strip's a886c0f3.. / f2089c52.. hashes are re-derivable)."""
+    R = tc.ROW
+    return hashlib.sha256(b''.join(c[r * R + 3 * x0:r * R + 3 * x1]
+                                   for r in range(r1, r2))).hexdigest()
+
+
+def loader_explain(c, port, entry):
+    """((P, holders), None) when capture frame c is byte-identical to the named
+    loader recipe against this port dump; (None, why) otherwise. The strip sha
+    pins the overlay region, the full-rows sha pins the whole named rows (so a
+    mutation outside the strip columns fails too); P is the unique port frame
+    equal to c outside rows [r1, r2) (the base bind); holders are the port
+    frames matching c at every stripe pixel inside the region where c differs
+    from P (by existence, not uniqueness — the same overlay can be dumped
+    twice)."""
+    _j, r1, r2, x0, x1, strip_sha, rows_sha = entry
+    R = tc.ROW
+    got = loader_region_sha(c, r1, r2, x0, x1)
+    if got != strip_sha:
+        return None, 'its rows %d..%d x %d..%d are %s.., not the named %s..' % (
+            r1, r2 - 1, x0, x1 - 1, got[:12], strip_sha[:12])
+    got = loader_region_sha(c, r1, r2, 0, tc.FRAME_W)
+    if got != rows_sha:
+        return None, 'its rows %d..%d (full width) are %s.., not the named %s..' % (
+            r1, r2 - 1, got[:12], rows_sha[:12])
+    lo, hi = r1 * R, r2 * R
+    bases = [m for m in range(len(port))
+             if port[m][:lo] == c[:lo] and port[m][hi:] == c[hi:]]
+    if len(bases) != 1:
+        return None, '%d port frames hold its rows outside %d..%d, not exactly one' % (
+            len(bases), r1, r2 - 1)
+    P = bases[0]
+    diff = [(r, x) for r in range(r1, r2) for x in range(x0, x1)
+            if c[r * R + 3 * x:r * R + 3 * x + 3] != port[P][r * R + 3 * x:r * R + 3 * x + 3]]
+    if not diff:
+        return None, 'the base port frame alone holds its whole region'
+    holders = []
+    for m in range(len(port)):
+        q = port[m]
+        if all(q[r * R + 3 * x:r * R + 3 * x + 3] == c[r * R + 3 * x:r * R + 3 * x + 3]
+               for r, x in diff):
+            holders.append(m)
+    if not holders:
+        return None, 'no port frame holds its %d overlay pixel(s) over the base' % len(diff)
+    return (P, holders), None
 
 
 def expand_ipx(data):
@@ -308,6 +421,10 @@ def exhibited(kind, data):
         s.update((data, data + 1))     # the named band splice binds port P above and P+1 below
     elif kind == 'scan3':
         s.update(data)                 # the named scan-out binds the earlier top holder(s) and the pair (B, B+1)
+    elif kind == 'loader':
+        P, holders = data              # the named loader frame binds its base and its overlay holder(s)
+        s.update((P,))
+        s.update(holders)
     return s
 
 
@@ -351,15 +468,16 @@ def start_check(name, start, raws, max_start, min_first, out=print):
 
 
 def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None,
-                bands=None, scan3=None):
+                bands=None, scan3=None, loader=None):
     """Returns (rc, first_unexplained or None, next_after_last_classified). In report
     mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
-    "window empty"; main() turns every report-mode rc into 0). `bands` and `scan3`
-    are the scenario's named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED); a
-    named frame that is not its named bytes prints its FAIL in both modes and fails
-    the enforced run."""
+    "window empty"; main() turns every report-mode rc into 0). `bands`, `scan3` and
+    `loader` are the scenario's named per-frame allowances (BANDS_ALLOWED,
+    SCAN3_ALLOWED, LOADER_ALLOWED); a named frame that is not its named bytes prints
+    its FAIL in both modes and fails the enforced run."""
     bands = {} if bands is None else {b[0]: b for b in bands}
     scan3 = {} if scan3 is None else {s[0]: s for s in scan3}
+    loader = {} if loader is None else {l[0]: l for l in loader}
     start = None
     head = min(2, len(port))
     for j in range(len(cap)):
@@ -419,6 +537,24 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         elif j in scan3 and kind != 'unexplained':
             out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
                 'scan-out allowance but %s now; retire the name' % (name, j, raws[j], kind))
+        if kind == 'unexplained' and j in loader:
+            res, why = loader_explain(c, port, loader[j])
+            if res is None:
+                out('gp_compare: %s: frames: FAIL: allowed capture %d (raw %d) is not '
+                    'its named loader frame: %s' % (name, j, raws[j], why))
+                allow_bad = 1
+            else:
+                _j, r1, r2, x0, x1, _sha, _rsha = loader[j]
+                P, holders = res
+                out('gp_compare: %s: frames: captured frame %d (raw %d) allowed by name '
+                    'as the loader frame: port %d base rows outside %d..%d, the overlay '
+                    'rows %d..%d x %d..%d held by port %s'
+                    % (name, j, raws[j], P, r1, r2 - 1, r1, r2 - 1, x0, x1 - 1,
+                       ' '.join(str(m) for m in holders)))
+                kind, data = 'loader', res
+        elif j in loader and kind != 'unexplained':
+            out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
+                'loader allowance but %s now; retire the name' % (name, j, raws[j], kind))
         counts[kind] += 1
         if kind == 'unexplained':
             unexpl.append(j)
@@ -431,9 +567,10 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                 p = max(p, max(ex))              # the port only moves forward in time
         j += 1
     out('gp_compare: %s: frames: window from capture %d (raw %d); %d classified: %d clean, %d splice, '
-        '%d transition, %d band-allowed, %d scan3-allowed, %d unexplained, %d all-black'
+        '%d transition, %d band-allowed, %d scan3-allowed, %d loader-allowed, %d unexplained, %d all-black'
         % (name, start, raws[start], sum(counts.values()), counts['clean'], counts['splice'],
-           counts['transition'], counts['band'], counts['scan3'], counts['unexplained'], black))
+           counts['transition'], counts['band'], counts['scan3'], counts['loader'],
+           counts['unexplained'], black))
     for k, u in enumerate(unexpl):
         cu = cap[u]
         m = nearest(cu, rows)
@@ -670,7 +807,8 @@ def main():
     n_trace = None if a.report else _int_or_none(a.trace_min_first)
     rc1, _, _ = frame_claim(name, cap, raws, port, rows, n_frames, a.report, print,
                             None if a.report else _int_or_none(a.max_start),
-                            BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()))
+                            BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()),
+                            LOADER_ALLOWED.get(name, ()))
     with open(os.path.join(a.capture, 'poll.log')) as f:
         cl = f.read().splitlines()
     with open(os.path.join(a.port, 'trace.txt')) as f:

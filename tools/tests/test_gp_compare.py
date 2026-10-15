@@ -619,5 +619,161 @@ class Scan3Allowance(Dirs):
                            '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),))
 
 
+class LoaderAllowance(Dirs):
+    # Track G task 7 (record §G7): the named loader-frame allowance for the lazy
+    # INDEX read's `- LOADING -` blit (0x1B3AC's draw=1 path), which a 70.09 Hz
+    # scan-out can catch over whatever screen the aperture held. The port's
+    # per-read model collapses the original's disk-block interleaving (§45-A), so
+    # its dump holds the base screen and the overlay at their own draw times, not
+    # their composition. The recipe: a pinned region hash, ONE unique base port
+    # frame equal to the capture outside the region, and at least one port frame
+    # holding every pixel where the capture differs from the base. Review Focus
+    # #3: a different byte layout fails (the region hash, the base bind and the
+    # overlay existence each catch their own mutation).
+    #
+    # The fixture: port [4, 1, 2, 3] (ipx(k): flat k except row k = k+1); the
+    # named frame (capture 1) is rgb(1)'s bytes outside rows 2..4 and rgb(2)'s
+    # pixels inside rows 2..4, x 0..3 — no adjacent pair splices it (three
+    # differing rows), so only the recipe can answer. Capture 0 is rgb(4) (the
+    # window start), so mutating the base frame (port 1, not port 0) cannot
+    # empty the window.
+    def setUp(self):
+        super().setUp()
+        R = tc.ROW
+        c = bytearray(rgb(1))
+        t = rgb(2)
+        for r in range(2, 5):
+            c[r * R:r * R + 3 * 4] = t[r * R:r * R + 3 * 4]
+        self.c = bytes(c)
+        self.sha = gc.loader_region_sha(self.c, 2, 5, 0, 4)
+        self.rows_sha = gc.loader_region_sha(self.c, 2, 5, 0, tc.FRAME_W)
+        self.entry = (1, 2, 5, 0, 4, self.sha, self.rows_sha)
+        self.loader = (self.entry,)
+
+    def write_fixture(self):
+        self.write([4, 1, 2, 3], [rgb(4), self.c, rgb(2), rgb(3)])
+
+    def run_loader(self, n=4, **kw):
+        cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
+        port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
+        rows = [tc.row_hashes(port[m]) for m in range(len(port))]
+        out = []
+        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
+                                      kw.get('report', False), out.append,
+                                      kw.get('max_start', 0), None, None, self.loader)
+        return rc, first, out
+
+    def test_the_named_bytes_are_explained(self):
+        self.write_fixture()
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('allowed by name as the loader frame: port 1 base rows outside '
+                            '2..4, the overlay rows 2..4 x 0..3 held by port 2' in l for l in out), out)
+        self.assertTrue(any('1 loader-allowed' in l for l in out), out)
+
+    def test_a_mutated_overlay_holder_unexplains_it_again(self):
+        # Review Focus #1: mutate the dump frame holding the overlay (port 2:
+        # 2 -> 5) without touching the capture. No frame holds the 12 overlay
+        # pixels, the allowance FAILs and the ratchet catches the frame.
+        self.write_fixture()
+        self.assertEqual(self.run_loader()[0], 0)
+        with open(os.path.join(self.port, 'frame_00002.ipx'), 'wb') as f:
+            f.write(ipx(5))
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'no port frame holds its 12 overlay pixel(s)'
+                            in l for l in out), out)
+        self.assertTrue(any('FAIL: first unexplained 1 < ratchet N 4' in l for l in out), out)
+
+    def test_a_mutated_base_unexplains_it_again(self):
+        # Review Focus #1: mutate the dump's base frame (port 1: 1 -> 9). The
+        # capture no longer equals exactly one port frame outside the region.
+        self.write_fixture()
+        with open(os.path.join(self.port, 'frame_00001.ipx'), 'wb') as f:
+            f.write(ipx(9))
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l
+                            and '0 port frames hold its rows outside 2..4, not exactly one' in l
+                            for l in out), out)
+
+    def test_different_region_bytes_are_not_the_named_frame(self):
+        # Review Focus #3 (the capture side): the same base with a different
+        # overlay (rgb(3)'s pixels) is a DIFFERENT byte layout and must not be
+        # silenced — the pinned region hash refuses it.
+        self.write_fixture()
+        R = tc.ROW
+        t = rgb(3)
+        d = bytearray(self.c)
+        for r in range(2, 5):
+            d[r * R:r * R + 3 * 4] = t[r * R:r * R + 3 * 4]
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(bytes(d))
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'not the named' in l for l in out), out)
+
+    def test_a_mutation_outside_the_strip_columns_is_not_the_named_frame(self):
+        # Review Focus #3, the columns beside the named strip: a pixel inside
+        # the named ROWS but at x >= x1 is a DIFFERENT byte layout too. The
+        # full-rows pin refuses it even though the strip columns are untouched
+        # and no port frame holds the mutated pixel.
+        self.write_fixture()
+        R = tc.ROW
+        d = bytearray(self.c)
+        d[3 * R + 3 * 10:3 * R + 3 * 10 + 3] = b'\x09\x09\x09'   # row 3, x 10
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(bytes(d))
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l
+                            and 'its rows 2..4 (full width) are' in l and 'not the named' in l
+                            for l in out), out)
+
+    def test_an_ambiguous_base_is_not_the_named_frame(self):
+        # never a class: two port frames hold the bytes outside the region
+        # (port [4, 1, 1, 2, 3]) -> no unique base -> the named frame is not explained.
+        self.write([4, 1, 1, 2, 3], [rgb(4), self.c])
+        rc, first, out = self.run_loader(3)
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('2 port frames hold its rows outside 2..4, not exactly one' in l
+                            for l in out), out)
+
+    def test_the_overlay_may_be_held_by_more_than_one_frame(self):
+        # the U10 shape: the port dumps every image of an iteration, so two
+        # frames can hold the overlay. The recipe binds it by existence, so a
+        # single holder's mutation is not felt (record §G7's named limit); the
+        # ≥1 holder requirement is what the mutated-holder test proves.
+        self.write([4, 1, 2, 2, 3], [rgb(4), self.c, rgb(2), rgb(3)])
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('the overlay rows 2..4 x 0..3 held by port 2 3' in l for l in out), out)
+
+    def test_a_named_frame_the_model_explains_is_a_stale_name(self):
+        self.write_fixture()
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(rgb(1))                          # now clean: the name is stale
+        rc, first, out = self.run_loader()
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('retire the name' in l for l in out), out)
+
+    def test_the_table_names_the_measured_loader_frames(self):
+        # the pinned recipes of record §G7: gp-u9-win 2209 (base port 1777,
+        # overlay port 1805) and gp-u10-ending 2062 (base port 1686, overlay
+        # ports 1688/1689), both at rows 192..197 x 0..85, strip sha f2089c52..
+        # and full-rows sha a886c0f3.. (the same 166-px loader text). A changed
+        # name is a changed claim: it must move with a re-measurement in the
+        # record, never silently.
+        self.assertEqual(gc.LOADER_ALLOWED['gp-u9-win'],
+                         ((2209, 192, 198, 0, 86,
+                           'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+                           'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),))
+        self.assertEqual(gc.LOADER_ALLOWED['gp-u10-ending'],
+                         ((2062, 192, 198, 0, 86,
+                           'f2089c52c182e444f992971ea91cd21df68f0c5807344d1b2f00d164f062eb03',
+                           'a886c0f3db8b2a973dfce49b8b3d3829958d788fe221da24f7d14cd02b2f23aa'),))
+        self.assertEqual(set(gc.LOADER_ALLOWED), {'gp-u9-win', 'gp-u10-ending'})
+
+
 if __name__ == '__main__':
     unittest.main()
