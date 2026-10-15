@@ -921,7 +921,8 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # by 0x37EA0 29 frames late in the port). The port then still missed 0x37DD4/0x29C78 (batch 6 drops
 # 0x37DD4, below) and b0c now agrees at every frame, so that delay followed the rng and the opponent
 # order (record §W.16).
-# MILESTONES 30: all reproduced. The replay still misses 0x29C78 (33 hits; batch 6 dropped 0x37DD4),
+# MILESTONES 30: all reproduced. The replay still misses 0x29C78 (33 hits; batch 6 dropped 0x37DD4)
+# [SUPERSEDED: track P batch 7 ported 0x29C78 — see the re-measure below],
 # whose effects the traced fields cannot see: the clean trace to f=0x26E1 does
 # not claim the death streams or the mode-0xF content are reproduced, and is no evidence of
 # correctness past the frame ratchet's 331.
