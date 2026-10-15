@@ -60,6 +60,11 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   run prints `audio device open at 49716 Hz`) — rendered audibility still has no
   device-recording oracle, and `make audio-render` renders the FM path to a WAV
   (record `2026-10-15-reverse-j-derivations.md` §J2.5).
+- Linux host: `run_tests` (and so `make verify`) carries a **pre-existing** ASLR-dependent
+  out-of-bounds write in `test_p45_p5_spawns`'s path (`actor_spawn` computes a `pset` past
+  `mem[]` from the inconsistent pool the test seeds; the values are identical with ASLR on and
+  off — base-identical at `2ccd403e`, named in `docs/PROGRESS.md`); run the suite under
+  `setarch -R` until a plan guards the path or the test's seed.
 - `make gp-capture` fails (`check=FAIL unscripted input`) on any key word or pad bit the harness did
   not inject, so nobody may type into the DOSBox-X window while it runs; audit an existing capture
   with `python3 tools/gp_capture.py check-input data/k11-captures/<scenario>`. The check detects

@@ -23,6 +23,9 @@ FRONTEND_DUMP = /tmp/pr_frontend_dump
 K11_CAPTURES = data/k11-captures
 K11_DUMP = /tmp/pr_k11_dump
 GP_DUMP = /tmp/pr_gp_dump
+# K11_DUMP and GP_DUMP are fixed shared /tmp paths: oracle-replay or capture-compare runs across
+# worktrees must be serialized (one user at a time), or given a per-worktree command-line override
+# (`make ... GP_DUMP=/tmp/pr_gp_dump_<lane>`; a command-line variable wins over this file).
 DIFF_IMAGE ?= /tmp/pr_diff_image.bin
 DIFF_TABLE ?= /tmp/pr_diff_table.md
 E2_IMAGE ?= /tmp/pr_e2_image.bin
