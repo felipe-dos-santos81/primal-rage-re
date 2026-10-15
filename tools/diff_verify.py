@@ -26495,8 +26495,9 @@ D5B_SPECS += [
 # `lea ebx,[esp+4]` 0x1C6B4), passed by value. It saves ECX and ESI. A stub cannot advance the column in
 # the caller's frame (0x1C647/0x1C64C add 0xF or 8), so every character is recorded at the first column.
 D5B_GLYPH = E.Call(0x1C5E8, ("eax", "[edx]", "[ebx]"), clobbers=("ebx", "edx", "edi", "ebp"))
-# 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument.
-D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+# 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument. Its caller-observed
+# set is EDI alone (record §G4): 0x1C65C does not read EBP after it.
+D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5B_TEXT = 0x10A010
 
 
@@ -30503,16 +30504,24 @@ D5H_SPECS += [
        d5h_gf_muts("rr")),
 ]
 
-# ---- 0x255CC game_loop (record §2.5): the master loop ------------------------------------------
+# ---- 0x255CC game_loop (record §2.5, track G §G4): the master loop ------------------------------
 # The project's two master-loop pins (tools/title_pin.py, PATCHES 0x78505 and 0x7852A): `call 0x5d7dc`
-# at 0x256B1 (the body draw) and 0x256D6 (the spin draw) replaced by `mov eax,0`. The port is written
-# against that pinned original (flow.c game_loop, PORT). Unpinned, with 0x5D7DC outside the call set,
-# the original stops `unmodeled: call 0x5D7DC from 0x256B1` (measured).
-D5H_LOOP_PINS = {0x000256B1: bytes.fromhex("b800000000"), 0x000256D6: bytes.fromhex("b800000000")}
+# at 0x256B1 (the body draw) and 0x256D6 (the spin draw), both `rng(0x7FFF)` (`mov eax,ebp`, EBP =
+# 0x7FFF at 0x255E4). Track G §G4 turns them from `mov eax,0` pokes into recorded stubs on 0x5D7DC's
+# own row: the raw calls run, are intercepted, and their memory (the LCG state 0xEF6D8) matches the
+# port's seam-only rng_pinned_draw, which never advances it (the pinned original's behaviour). The raw
+# discards both returns — 0x256B6's 0x1CF20 call overwrites EAX and 0x256BB `mov eax,[0x10150C]`
+# follows; the spin's `jmp 0x256C6` reaches the same load — so no case consumes the stub EAX; the call
+# (address, EAX = EBP = 0x7FFF, order, memory at the call) is the observable.
+# The loop's stubs read the range register: EBP is set to 0x7FFF once (0x255E4) and read at both draws,
+# so 0x292AC/0x24C5C/0x1C470 must not poison it (`_CALLEE_CLOBBER_FIXES`, record §G4); the other
+# registers those callees may clobber are not read on the row's exercised path and stay poisoned.
 D5H_PUMP = E.Call(0x500C4, ())
-D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi", "ebp"))
+# Caller-observed sets (record §G4): the loop reads EBP at the draws, so these three stubs must
+# preserve it (`_CALLEE_CLOBBER_FIXES` in tools/diff_emu.py; the scan's ebp/esi/edi are conservatism).
+D5H_SCENE = E.Call(0x292AC, (), clobbers=())
 D5H_EDGE = E.Call(0x389C4, ())
-D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
 # The stubs model what the loop waits on (record §2.5): render entry 0 sets the quit flag 0xA81A8, the
 # effects step arms render entries 0 and 4 for the next iteration, and the audio service steps the ISR
 # tick 0x101508 to 0x10001 (above the
@@ -30522,20 +30531,26 @@ D5H_RENDER4 = E.Call(0x4F5C8, ())
 D5H_FX = E.Call(0x134C0, (), writes=((None, 0x00104AEC, le32(0x00000011)),))
 D5H_SORT = E.Call(0x1C3FC, ())
 D5H_LIST = E.Call(0x14328, (), clobbers=("ebx", "edx"))
-D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
 D5H_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x00101508, le32(0x00010001)),))
+# 0x5D7DC (track G §G4): the master loop's two draws, stubbed on rng_next's own row. The return is
+# dead on both sides (see the row comment above), so the Call carries no per-case EAX (`stub_eax`):
+# there is no consumed value to vary. The argument (EAX at the call) is EBP = 0x7FFF, which the three
+# fixes above keep unpoisoned; it is the range the raw's `mov eax,ebp` passes.
+D5H_RNG = E.Call(0x5D7DC, ("eax",), mode="stub")
 D5H_LOOP_CALLS = (D5H_PUMP, D5H_SCENE, D5H_EDGE, D4B_FILL, D5H_FRAME, D5H_RENDER0, D5H_RENDER4, D5H_FX, D5H_SORT,
-                  D5H_LIST, D5H_FLUSH, D5H_AUDIO)
+                  D5H_LIST, D5H_FLUSH, D5H_RNG, D5H_AUDIO)
 
 
 def d5h_loop_case(aec=0, a54=1, f4=0, af4=0xFFFF, a55=0x55, f5=0xF5):
-    """0x255CC: the pins; the tick pair 0x101508/0x10150C seeded (the prologue zeroes both); the scroll
+    """0x255CC: no code pokes since track G §G4 (the two master-loop draws are recorded stubs; the
+    tick pair 0x101508/0x10150C is seeded, the prologue zeroes both); the scroll
     gate 0x107A54 and the list gate 0x1088F4, each before a seeded byte; the render mask 0x104AEC; the
     frame word 0x104AF4 before the seeded word 0x104AF6; the copy flag 0x1014FC clear before three
     seeded bytes; the quit flag 0xA81A8 clear before a seeded byte; the front buffer 0xE87A0 = 0xB0000
     and the back buffer 0xE87A4 = 0xA0000, the aperture itself, so the dirty blit 0x501A3 (real in the
     original, host-owned) rewrites the bytes it reads."""
-    p = dict(D5H_LOOP_PINS)
+    p = {}
     p.update({
         0x00101508: le32(0x11111111) + le32(0x22222222),
         0x00107A54: bytes([a54, a55]), 0x001088F4: bytes([f4, f5]),
@@ -30551,19 +30566,23 @@ D5H_LOOP_UNHIT = {
              "port presents through gfx_present and never writes mem[0xA0000] (the aperture rule); a named "
              "gap (record §4)",
     0x256D4: "the spin on the ISR tick 0x101508, which the timer ISR 0x1BDF4 steps: the emulator has no "
-             "ISR (the 0x1CF20 stub steps the tick) and the port models it in the spin (game_isr_ticks); a "
-             "named gap (record §4)",
+             "ISR (the 0x1CF20 stub steps the tick past the frame count) and the port models it in the spin "
+             "(game_isr_ticks); the spin's own 0x5D7DC draw (0x256D6) is a recorded stub like the body's "
+             "but no case reaches it; a named gap (record §4)",
 }
 
 D5H_SPECS += [
-    # 0x255CC game_loop under the two pins: the tick pair zeroed; per iteration 0x500C4, 0x292AC, with
+    # 0x255CC game_loop (no code pokes since track G §G4): the tick pair zeroed by the prologue; per
+    # iteration 0x500C4, 0x292AC, with
     # the byte 0x107A54 set 0x389C4 and 0x38A38, 0x24C5C, the render table 0xA86C4 over the mask dword
     # 0x104AEC (entries 0 and 4 here), the word 0x104AF4 + 1 (k0: 0xFFFF wraps and 0x104AF6 keeps its
     # word), 0x134C0; when the frame count 0x10150C equals the tick 0x101508: 0x1C3FC, 0x14328 unless
     # the byte 0x1088F4 is set, 0x1C470, the dirty blit 0x501A3 (the copy flag 0x1014FC clear) and the
-    # swap 0x50188; then 0x1CF20, 0x10150C + 1, and again until the quit flag 0xA81A8 is set. k0/k2/k3
+    # swap 0x50188; then the recorded 0x5D7DC draw (EAX = 0x7FFF), 0x1CF20, 0x10150C + 1, and again
+    # until the quit flag 0xA81A8 is set. k0/k2/k3
     # run two iterations (the second with the gate false and the render entries armed), k1 one. 0x501A3
-    # and 0x50188 run real; the others are stubs. The port's own additions in game_loop are not claimed:
+    # and 0x50188 run real; the others are stubs. The spin's draw (0x256D6) is unreached (the 0x1CF20
+    # stub steps the tick past the frame count). The port's own additions in game_loop are not claimed:
     # the host key fill (it writes zeros over the zero bitmap bytes [0x101514]+0x2D8/9), gfx_present and
     # the dump hooks.
     Spec("game_loop", 0x255CC, [
@@ -30575,7 +30594,7 @@ D5H_SPECS += [
        mutants=("@no508", "@no50c", "@nopump", "@notick", "@tickorder", "@scroll", "@scrollw", "@scrollorder",
                 "@noframe", "@frameearly", "@nortbl", "@rorder", "@rearly", "@af4d", "@noaf4", "@af4late", "@nofx",
                 "@gate", "@gatew", "@nosort", "@f4", "@f4w", "@listorder", "@noflush", "@fcd", "@noswap",
-                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw")),
+                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw", "@rng")),
 ]
 D1_SPECS += D5H_SPECS
 # ---- d5h end ----

@@ -406,7 +406,91 @@ amendment (counting a row closed when its only open callees are runtime/gap call
 from bytes in allow mode) is a separate decision (recon-01 item 4) and stays open after this
 batch.
 
-## §G4 — game_loop's RNG pokes (pending, lane A task 4)
+## §G4 — game_loop's RNG pokes → recorded stubs (lane A task 4: done)
+
+**The conversion.** The `game_loop` (0x255CC) row's two `mov eax,0` code pokes (0x256B1 and 0x256D6 —
+the project's master-loop pins, `tools/title_pin.py` PATCHES 0x78505/0x7852A) are gone. Both call sites
+now run the raw's own bytes with `0x5D7DC` in the call set as a recorded stub on `rng_next`'s own
+VERIFIED row (`D5H_RNG = E.Call(0x5D7DC, ("eax",), mode="stub")`; `D5H_LOOP_PINS` is deleted), and the
+port issues the same calls through a seam-only `rng_pinned_draw(u32 range)`
+(`port/src/game/rng.c`, `PR_SEAM(0x5D7DCu, range)`; declared in `rng.h`): recorded and stubbed in
+`build/diffrun`, inert in every other binary — the port's real stream still draws nothing, the pinned
+original's behaviour (a real draw would advance the LCG per iteration and per spin pass and shift every
+later consumption-site draw against the captures). The row's blocks are unchanged (18/20, the same two
+named unhits) and its call set grows by one stub (13, under the 16-stub case limit).
+
+**What the bytes say the calls are.** 0x255E4 `mov ebp,0x7fff`; 0x256AF and 0x256D4 `mov eax,ebp`;
+0x256B1 and 0x256D6 `call 0x5d7dc` (`e8 26 81 03 00` / `e8 01 81 03 00` in the fixup-applied image).
+The returns are dead at both sites: 0x256B6 `call 0x1cf20` (whose body starts `push edx; xor edx,edx`
+— it reads no caller EAX) and 0x256BB `mov eax,[0x10150c]`; the spin's `jmp 0x256c6` (0x256DB) reaches
+the same load. The plan's "each stub's per-case EAX comes from the original's consumed values" premise
+does not hold — raw over plan, correction recorded here: **there is no consumed rng value**, so no case
+carries a `stub_eax` (a 0 or any other constant would claim a consumption that does not exist). The
+calls' load-bearing observable is the **argument**: EAX = EBP = 0x7FFF (`mov eax,ebp` after EBP's one
+store), recorded and compared on both sides, plus each call's order, its memory-at-call and the LCG
+state 0xEF6D8.
+
+**The range register and the three caller-observed clobber fixes.** The loop's stubs poison the
+registers their byte-derived sets say a callee does not preserve; 0x292AC, 0x24C5C and 0x1C470 all list
+EBP, so the first `mov eax,ebp` read `CLOBBER_POISON` (measured on the converted row: `k0: call #9:
+original 0x5D7DC(0xC10BBE2D), port 0x5D7DC(0x7FFF)`). The raw's own code keeps EBP live across all
+three: 0x255D1 `push ebp` / 0x256EA `pop ebp` around the function, set at 0x255E4, read at 0x256AF and
+0x256D4 — so the compiler's code presupposes the ABI and the three preserve EBP. Each of the three
+bodies itself writes no EBP: 0x292AC's 17 instructions write only EAX/EBX/EDX (saving EBX/EDX) and its
+one indirect call's every table entry (0xA8744: 0x4F7F4 and 0x5D812) clobbers nothing, so its true set
+is `()`; 0x24C5C's 326-instruction body writes EAX/EBX/ECX/EDX/ESI/EDI only (saving EBX/ECX/EDX/ESI/
+EDI); 0x1C470's 49 instructions write EAX/EBX/ECX/EDX/ESI (saving EBX/ECX/EDX/ESI). The scan's EBP (and
+0x24C5C's ESI/EDI, 0x1C470's EDI) comes from the callee trees (an indirect call, or a path reaching
+>= 0x5D000, which the scan takes to clobber everything). The sets are narrowed to the caller-observed
+values in `_CALLEE_CLOBBER_FIXES` (`(tools/diff_emu.py)`: 0x292AC `()`, 0x24C5C
+`("ebx","ecx","edx","esi","edi")`, 0x1C470 `("edi",)`), the same mechanism and comment form as the
+C3g/D3 entries; the registers no caller reads stay poisoned. The four declarations that carry the sets
+(`D5H_SCENE`, `D5H_FRAME`, `D5B_FLUSH`, `D5H_FLUSH`) and the stub-clobbers pin follow. The two other
+rows that stub 0x1C470 — `text_blit_string` (0x1C65C) and `config_screen_wait(_zero)` (0x2EA78/0x2EA74)
+— were re-measured: their `D5B_KINDS`/`D5B_CASES`/`D6A_KINDS`/`D6A_CASES` pins are byte-identical, so
+the narrowing moved no detection of theirs.
+
+**The mutant (step 2).** `game_loop@rng` (`m_d5h_255cc_rng`: `d5h_255cc_core`'s `rng` case advances the
+LCG for real at the body draw — the pre-pin port's `rng_step` — where the recorded stub does not). It is
+caught by all four cases (kinds `call #7`, `call #7 memory`, …, `byte`), i.e. the recorded call is
+load-bearing. The plan's "a mutant that returns the wrong rng value" cannot be built as stated (the
+callee is stubbed on both sides and its return is dead), so the mutant breaks the two things a wrong
+value could show as: the argument/LCG state (the inlined draw skips the recorded call and advances the
+state) — the same defect the pre-§G4 row could not see.
+
+**Re-measured counter and pins (step 3).** Base `1007/1007 functions VERIFIED; 14899/14899 mutants
+detected; 1 named gaps; 716/832 rows with callees closed (175 have none)` → **`1007/1007 functions
+VERIFIED; 14900/14900 mutants detected; 1 named gaps; 716/832 rows with callees closed (175 have
+none)`**. Line by line: only the mutant figure moves (+1, `@rng`); functions, named gaps and the
+closed/no-callee counts are unchanged — `game_loop` stays open (its allow-mode callees 0x501A3,
+0x50188 and 0x5D812 have no rows, and the 0x4F5C8 stub is unrowed; 0x5D7DC joins its list as
+`VERIFIED`). The row's catch-set pins are re-measured for all 33 mutants: the recorded rng calls shift
+every later call index (e.g. `@quitw`'s kinds move from `call #8..#18` to `call #9..#20`), the
+`D5H_KINDS`/`D5H_CASES` game_loop block is regenerated (the file's 'byte'-first, call-N order) and
+`("game_loop@rng", ['k0','k1','k2','k3'])` joins `D5H_CASES`; every other d5h row's pins compare
+identical. The counter sentence in `tools/tests/test_diff_verify.py` is re-pinned with a track G g4
+comment naming the delta, and the expected mutant-name list follows `D1_KINDS` (no separate edit).
+
+**Commands (measured on branch `reverse-j1`, base `2ccd403e`).** Per-function
+`python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE --image <tmp>
+--function game_loop --self-check`: at base `1/1 functions VERIFIED; 32/32 mutants detected`; after the
+body-site conversion `1/1; 32/32` (the row's row VERIFIED with the fix in place); after the spin site
+and `@rng` `1/1; 33/33`. Full `--self-check` prints the counter line above with no row, problem or
+pin line moving besides game_loop's. `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed.
+`python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify`: 211 tests OK.
+`python3 tools/port_progress.py` stays `787 1203 65` / `747 747 100` (no `FN_`, no `fn_register`: the
+seam-only helper is not a raw function). No capture/oracle target was run in this lane; the controller's
+`make verify` is the gate for the byte-exact oracles (this change touches `port/src` only by adding a
+seam-only helper and two calls to it, so no oracle can move — the port's real stream is unchanged).
+
+**Limits this section creates.** The spin's draw (0x256D6) is a recorded stub like the body's, but no
+case reaches the spin (the 0x1CF20 stub steps the tick past the frame count), so the port's spin call
+stays inside the `0x256D4` named unhit — the row does not exercise it. The `0x25680` full-copy unhit is
+unchanged. The row compares the raw's calls under the stub model only: the LCG stays unadvanced on both
+sides (the pins' semantics), so the row says nothing about the real draw's *values* (the raw discards
+them anyway) and nothing about EBP beyond the ABI the raw's own code presupposes. AGENTS.md's
+weaker-row sentence still names `game_loop` for its pokes — Task 2's re-pin (the row now has none; it
+keeps its two named unhits).
 
 ## §G5 — gp-keys-fight frame ratchet (lane B task 5)
 

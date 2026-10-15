@@ -10,4 +10,8 @@ void rng_seed(u32 s);
 u32  rng_next(u32 range);
 void rng_step(void);
 
+/* PORT: the master loop's two pinned draws (0x256B1, 0x256D6): the call seam alone, inert
+ * outside build/diffrun (see rng.c). */
+void rng_pinned_draw(u32 range);
+
 #endif /* PRAGE_GAME_RNG_H */
