@@ -156,3 +156,74 @@ under ASLR on SIGSEGVs again (exit 139). Re-applied → both runs green.
 
 **Gate.** No byte-exact oracle and no pin is involved (A2 touches no comparison and no `port/src`);
 `make verify`'s suite line is unchanged.
+
+## §A1a — pin the gp window reach, retire the under-render blind spot (lane a, task 4: done)
+
+**The gap.** `tools/gp_compare.py`'s frames claim computes both its window (`first`) and its
+coverage count up to `p`, the highest port frame any classified capture frame exhibits
+(`frame_claim`, the `p = max(p, max(ex))` line). A port that stops rendering early therefore
+just *shrinks* `p`: the capture frames past the port's last one are never classified, no
+`unexplained` first is reached below the ratchet N, and the oracle stays green. The window
+start is pinned (`start_check`) but the reach was not, so under-rendering was invisible to
+every gp oracle (the plan's A1 under-render blind spot).
+
+**Change.**
+- `tools/gp_compare.py` gains `reach_check(name, reach, min_reach, out=print) -> int` (beside
+  `start_check`): `reach < min_reach` FAILs ("the port exhibited fewer port frames"),
+  `reach > min_reach` prints "improved: raise the pin", `min_reach is None` FAILs ("the
+  window-reach pin is not set (GP_*_MIN_REACH)") — an unpinned scenario is unguarded.
+- `frame_claim` returns a 4-tuple `(rc, first, j, reach)` from both return points (the window-empty
+  early `return 1, None, 0, 0` and the final `return rc/first/j, p`); `reach` is the `p` it already
+  computed, unchanged.
+- `main` gains `--min-reach` and `rc4 = 0 if a.report else reach_check(name, reach,
+  _int_or_none(a.min_reach), print)`, and `rc4` joins the final return; report mode never applies it.
+- `Makefile`: a `GP_*_MIN_REACH` pin per scenario and `--min-reach "$(…)"` on every enforced
+  `gp_compare.py` invocation (gp-oracle, gp-charsel-oracle, gp-moves-oracle, gp-keys-oracle,
+  gp-twop-oracle, gp-modes-one, gp-win-one). `gp-report` is report-only, no pin.
+
+**Measured reach (`p`), from each scenario's `gp_compare.py … --report` coverage line
+("… up to port %d"), 2026-10-16, on the git-ignored captures below.** Report-mode and enforced-mode
+reach are equal for all fourteen (the oracle run printed no "window reach" line: every reach equals
+its pin exactly).
+
+| pin | capture | measured `p` |
+|---|---|---|
+| `GP_IDLE_LOSS_MIN_REACH` | `data/k11-captures/gp-idle-loss` | 6300 (f=0x207D) |
+| `GP_CHARSEL_MIN_REACH` | `data/k11-captures/gp-u5-charsel` | 358 |
+| `GP_MOVES_MIN_REACH` | `data/k11-captures/gp-u6-moves-b` | 1737 (f=0xCAF) |
+| `GP_KEYS_MIN_REACH` | `data/k11-captures/gp-keys-fight` | 788 (f=0x873) |
+| `GP_TWOP_MIN_REACH` | `data/k11-captures/gp-twop` | 463 (f=0x5E1) |
+| `GP_MODES_RA_MIN_REACH` | `data/k11-captures/gp-u8-right-arcade` | 825 |
+| `GP_MODES_LT_MIN_REACH` | `data/k11-captures/gp-u8-left-training` | 847 |
+| `GP_MODES_RT_MIN_REACH` | `data/k11-captures/gp-u8-right-training` | 845 |
+| `GP_MODES_TW_MIN_REACH` | `data/k11-captures/gp-u8-tug-of-war` | 826 |
+| `GP_MODES_HC_MIN_REACH` | `data/k11-captures/gp-u8-handicap` | 789 |
+| `GP_MODES_EN_MIN_REACH` | `data/k11-captures/gp-u8-endurance` | 163 (f=0x495) |
+| `GP_MODES_AS_MIN_REACH` | `data/k11-captures/gp-u8-attract-start` | 823 |
+| `GP_WIN_MIN_REACH` | `data/k11-captures/gp-u9-win` | 1976 (f=0xDAE) |
+| `GP_ENDING_MIN_REACH` | `data/k11-captures/gp-u10-ending` | 3444 (f=0x1502) |
+
+**Oracle runs (unchanged pins).** `make gp-oracle gp-charsel-oracle gp-moves-oracle gp-keys-oracle
+gp-twop-oracle gp-modes-oracle gp-win-oracle gp-ending-oracle` → exit 0. Every existing N/F/start
+ratchet line is identical to the pre-A1a baseline (e.g. idle-loss 7559/8320, chars-el 516/1513,
+moves 2139/3248, keys 1136/2164, twop 612/1506, RA 1072/2274 … EN 278/1174, U9 2452/3503, U10
+4113/9954), zero `FAIL`, zero `improved`; the only new lines are the reach comparisons, all
+exact (equal → silent).
+
+**Mutation proof.**
+1. Unit: change `elif reach < min_reach:` to `<=` → `test_the_reach_pin_catches_a_shrunken_window`'s
+   exact-equality case FAILS (`1 != 0`, observed); reverted → green.
+2. Integration: run gp-u5-charsel's real command with `--min-reach 999` (a reach above the port's
+   358) → exit 1 and `FAIL: window reach port 358 < pinned reach 999 (the port exhibited fewer port
+   frames)` (observed); the same command with the pinned 358 exits 0.
+
+**Correction (plan-vs-raw).** The brief's unit-test snippet passes `out=io.StringIO()` to
+`reach_check`, but `out` is called as a function (as `start_check`'s is) — a `StringIO` is not
+callable. The test uses `out = []` and `out=out.append`, the convention the rest of the file already
+uses (`run_claim`). The two `TestCli` tests that invoke `main` in enforced mode
+(`test_a_present_capture_needs_pinned_values`, `test_the_capture_identity_pin`) also had to pass
+`--min-reach`, because `main` now fails an unpinned reach by design; the new
+`FAIL: the window-reach pin is not set` line is asserted, and no existing assertion changed meaning.
+
+**Gate.** `python3 -m unittest tools.tests.test_gp_compare` → 55 tests OK (one added);
+`tools.tests.test_gp_win`/`test_gp_modes`/`test_gp_twop` → 47 tests OK.
