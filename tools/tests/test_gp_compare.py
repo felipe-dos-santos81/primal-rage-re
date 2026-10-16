@@ -1,5 +1,5 @@
 # tools/tests/test_gp_compare.py
-import contextlib, gzip, hashlib, io, os, shutil, sys, tempfile, unittest
+import contextlib, gzip, hashlib, io, os, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
@@ -206,6 +206,54 @@ def _S(f, **kw):
     vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
     vals.update(f=f, **kw)
     return gs.format_s(0, vals, 0, 0, 0)
+
+
+class AttractPortExh(unittest.TestCase):
+    # Sub-project A A1c: attract_compare's port attract frames exhibited
+    # (len(port_exh), the set the capture's explanations name) is pinned. A port
+    # that renders fewer attract frames exhibits fewer; the count is independent
+    # of the port dump's own length, so it cannot be shrunk away.
+    ATTRACT_TOOL = os.path.join(ROOT, 'tools', 'attract_compare.py')
+
+    def _run(self, cap, port, *extra):
+        env = dict(os.environ)
+        env.pop('PR_ORACLE_REQUIRED', None)
+        return subprocess.run(
+            [sys.executable, self.ATTRACT_TOOL, '--capture', cap, '--port', port] + list(extra),
+            capture_output=True, text=True, env=env)
+
+    def _write(self, d, fills, fmt='frame_%04d.raw'):
+        for i, v in enumerate(fills):
+            with open(os.path.join(d, fmt % i), 'wb') as f:
+                f.write(bytes([v]) * tc.FRAME_BYTES)
+
+    def _fixtures(self):
+        d = tempfile.mkdtemp(prefix='attract-reach-')
+        self.addCleanup(shutil.rmtree, d, True)
+        cap = os.path.join(d, 'capture')
+        port = os.path.join(d, 'port')
+        attract, title = os.path.join(port, 'attract'), os.path.join(port, 'title')
+        for p in (cap, attract, title):
+            os.makedirs(p)
+        # Two identical attract capture frames (both exhibit port attract 0) and
+        # one title frame. Port attract holds a second screen the capture never
+        # shows, so len(port_exh) is 1 while the dump is 2 long.
+        self._write(cap, [0x11, 0x11, 0x33])
+        self._write(attract, [0x11, 0x22])
+        self._write(title, [0x33])
+        return cap, port
+
+    def test_the_pin_passes_at_the_measured_count(self):
+        cap, port = self._fixtures()
+        r = self._run(cap, port, '--min-port-exh', '1')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('port attract frames exhibited 1/2', r.stdout)
+
+    def test_the_pin_fails_when_the_port_exhibits_fewer(self):
+        cap, port = self._fixtures()
+        r = self._run(cap, port, '--min-port-exh', '2')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('FAIL: port attract frames exhibited 1 < pinned 2', r.stdout)
 
 
 class TestTrace(unittest.TestCase):

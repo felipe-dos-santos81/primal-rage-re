@@ -20,6 +20,11 @@ claim is a failure when broken:
      keys fails. The START still comes from the port's own dump. A scenario
      in K11_OPEN_END (menuesc) replaces claim 4 with a ratchet: the END must
      reach its pinned capture frame, and content past it is reported.
+  5. every non-black port frame up to the final settled screen is exhibited by a
+     capture frame in the window (K11_ALLOWED_MISSING names any legitimate
+     exception), and the distinct exhibited count meets the `--min-exh`
+     (K11_<SCENARIO>_MIN_EXH) pin, so a port that renders fewer frames — which
+     only shrinks its port-derived window and settled list — fails (A1c).
 --report prints the same, plus the first unexplained frames' difference boxes,
 and always exits 0 (the evidence scenarios). An absent capture skips (exit 0)
 unless --required is passed. The environment's PR_ORACLE_REQUIRED is ignored:
@@ -45,6 +50,11 @@ K11_ALLOWED_UNEXPLAINED = {
         151: 'record §A.5: TEST CONTROLS markers mid-draw, port 58/59 plus 88 black glyph px (rows 120..152)',
     },
 }
+# scenario -> (frozenset of port frame indices). Port frames a capture legitimately
+# never exhibits, so the A1c full-coverage claim (every non-black port frame up to
+# the final settled screen is exhibited) can name them. Empty today: the only
+# unexhibited port frames are all-black, which the claim excludes by construction.
+K11_ALLOWED_MISSING = {}
 # scenario -> (min_end, reason). Claim 4 (no content past the window's END)
 # becomes a ratchet: the END must reach capture frame min_end, and content
 # past it is reported, not failed. Only a scenario whose original keeps
@@ -117,7 +127,7 @@ def canonical(port):
     return out
 
 
-def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
+def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_exh=None):
     n = len(port)
     cache = {}
     canon = canonical(port)
@@ -156,8 +166,19 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
         else:
             exh |= exhibited(kind, data)
     wanted = sorted(set(keys + ([end_settled] if end_settled is not None else [])))
-    exh = {canon[m] for m in exh}
-    missing = [m for m in wanted if canon[m] not in exh]
+    port_exh = {canon[m] for m in exh}
+    missing = [m for m in wanted if canon[m] not in port_exh]
+    # Sub-project A A1c: coverage is extended past the settled screens to every
+    # non-black port frame up to the final settled screen (bounded by the port's
+    # own dump; all-black is a documented capture artifact, port/spec/game_flow.md),
+    # with a named allowance; the distinct exhibited count is pinned separately so
+    # a port that renders fewer frames — which only shrinks the port-derived window
+    # and its settled list — fails.
+    cover = [m for m in range(min(end_settled, n)) if any(port[m])]
+    full_missing = [m for m in cover if canon[m] not in port_exh]
+    allowed_missing = K11_ALLOWED_MISSING.get(name, ())
+    bad_missing = [m for m in full_missing if m not in allowed_missing]
+    short_exh = min_exh is not None and len(port_exh) < min_exh
     bad = [j for j in unexpl if j not in allowed]
     print('k11_compare: %s: window distinct [%d..%d] (raw %d..%d)' % (name, start, end, raws[start], raws[end]))
     print('k11_compare: %s: %d frames in window: %d clean, %d splice, %d transition, %d unexplained, %d all-black'
@@ -165,6 +186,14 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
              counts['unexplained'], len(black)))
     print('k11_compare: %s: settled screens exhibited %d/%d; missing %s'
           % (name, len(wanted) - len(missing), len(wanted), missing))
+    print('k11_compare: %s: non-black port frames exhibited %d/%d; missing %s'
+          % (name, len(cover) - len(full_missing), len(cover), full_missing))
+    if short_exh:
+        print('k11_compare: %s: FAIL: port frames exhibited %d < pinned %d '
+              '(the port rendered fewer frames)' % (name, len(port_exh), min_exh))
+    if bad_missing:
+        print('k11_compare: %s: FAIL: non-black port frame(s) up to the final '
+              'settled screen not exhibited: %s' % (name, bad_missing))
     if allowed and unexpl:
         print('k11_compare: %s: allowed by name: %s' % (name, sorted(j for j in unexpl if j in allowed)))
     short = False
@@ -187,7 +216,8 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
         label = 'FIRST UNEXPLAINED' if k == 0 else 'UNEXPLAINED'
         print('k11_compare: %s: %s capture %d (raw %d): nearest port %d, differs in rows %d..%d, x %d..%d (%d px)'
               % ((name, label, j, raws[j], m) + box))
-    return 0 if not bad and not missing and past is None and not short else 1
+    return 0 if not bad and not missing and not bad_missing and not short_exh \
+        and past is None and not short else 1
 
 
 def main():
@@ -197,6 +227,9 @@ def main():
     ap.add_argument('--port', required=True)
     ap.add_argument('--scenario')
     ap.add_argument('--report', action='store_true')
+    ap.add_argument('--min-exh', type=int, default=None,
+                    help='lower bound on the distinct port frames the capture exhibits; a '
+                         'port that renders fewer frames (a smaller count) fails (sub-project A A1c)')
     ap.add_argument('--required', action='store_true',
                     help='fail (exit 1) when the capture is absent; PR_ORACLE_REQUIRED is not read')
     a = ap.parse_args()
@@ -221,7 +254,8 @@ def main():
         print('k11_compare: %s: screens.txt names a frame the dump does not hold (%d frames)'
               % (name, len(port)))
         return 0 if a.report else 1
-    rc = compare(name, frames, raws, port, [tc.row_hashes(p) for p in port], keys, end_settled, a.report)
+    rc = compare(name, frames, raws, port, [tc.row_hashes(p) for p in port], keys, end_settled,
+                 a.report, None if a.report else a.min_exh)
     return 0 if a.report else rc
 
 

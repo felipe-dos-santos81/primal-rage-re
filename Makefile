@@ -164,6 +164,16 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 # last attract capture frame (raw 2180 on `title`, 2175 on `title2`) — so a
 # regression anywhere in frames 0..214 fails. Captures are git-ignored; an
 # absent capture skips (or fails under PR_ORACLE_REQUIRED=1).
+# The port-exhibited pin (sub-project A A1c): ATTRACT_MIN_PORT_EXH is a lower
+# bound on the number of port attract frames the capture exhibits (a statistic
+# the oracle only printed). A port that renders fewer attract frames exhibits
+# fewer, which would otherwise pass; a measured count below the pin FAILs. The
+# pin is MEASURED from both captures: `attract_compare.py --min-port-exh 99999`
+# on data/title-captures/title and .../title2 prints
+# "port attract frames exhibited 173/690" for each, so the pin is 173. Raise it
+# when the number grows (the tool prints no "improved" line; a measured count
+# below the pin fails).
+ATTRACT_MIN_PORT_EXH ?= 173
 attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/title-captures)
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@if [ -d $(TITLE_CAPTURES)/title ]; then \
@@ -174,7 +184,7 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 	fi
 	@$(PYTHON) tools/attract_compare.py --capture $(TITLE_CAPTURES)/title \
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
-		--expect-first 215 --port $(ATTRACT_DUMP)
+		--expect-first 215 --min-port-exh $(ATTRACT_MIN_PORT_EXH) --port $(ATTRACT_DUMP)
 
 # Front-end oracle (the enforced one): the PR_FRONTEND_DUMP driver drives state
 # 2 into states 3/4, one RGB24 frame per presented frame plus a per-frame hash
@@ -382,6 +392,16 @@ k11-capture: title-pin ## Capture the pinned original's service menu (scenario=w
 # 0x4B1-tick timeout.
 # The menuesc window END must reach K11_OPEN_END['menuesc'] = 388 (tools/k11_compare.py): a
 # measured value like the demo-fight N (measured at 14134c9); raise it if the window grows.
+# The port-frame coverage pins (sub-project A A1c): K11_<SCENARIO>_MIN_EXH is a lower
+# bound on the distinct port frames the capture exhibits (the `--min-exh` pin); a port
+# that renders fewer frames — which only shrinks its port-derived window and settled
+# list — exhibits fewer and FAILs. The same comparison also now fails a non-black port
+# frame up to the final settled screen that no capture frame exhibits. Both are
+# MEASURED from the captures: `k11_compare.py --min-exh 99999` on the walk dump prints
+# "port frames exhibited 36 < pinned" (so 36) and on the menuesc dump "… exhibited 184"
+# (so 184). Raise a pin when its count grows; a measured count below the pin fails.
+K11_WALK_MIN_EXH ?= 36
+K11_MENUESC_MIN_EXH ?= 184
 k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips without its data/k11-captures/<scenario>)
 	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="
 	@if [ -d $(K11_CAPTURES)/walk ]; then \
@@ -391,7 +411,8 @@ k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips w
 	else \
 		echo "k11-oracle: no capture at $(K11_CAPTURES)/walk, frames not compared"; \
 	fi
-	@$(PYTHON) tools/k11_compare.py --capture $(K11_CAPTURES)/walk --port $(K11_DUMP)/walk
+	@$(PYTHON) tools/k11_compare.py --capture $(K11_CAPTURES)/walk --port $(K11_DUMP)/walk \
+		--min-exh $(K11_WALK_MIN_EXH)
 	@echo "== K11 soft-restart oracle (pixel-exact, menuesc: the MAIN MENU Esc 0x2520B restart) =="
 	@if [ -d $(K11_CAPTURES)/menuesc ]; then \
 		rm -rf $(K11_DUMP)/menuesc; mkdir -p $(K11_DUMP); \
@@ -400,7 +421,8 @@ k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips w
 	else \
 		echo "k11-oracle: no capture at $(K11_CAPTURES)/menuesc, frames not compared"; \
 	fi
-	@$(PYTHON) tools/k11_compare.py --scenario menuesc --capture $(K11_CAPTURES)/menuesc --port $(K11_DUMP)/menuesc
+	@$(PYTHON) tools/k11_compare.py --scenario menuesc --capture $(K11_CAPTURES)/menuesc --port $(K11_DUMP)/menuesc \
+		--min-exh $(K11_MENUESC_MIN_EXH)
 
 # The evidence scenarios (G1/G2/G3): the same driver and comparison, report-only
 # (menuesc is also enforced by k11-oracle).

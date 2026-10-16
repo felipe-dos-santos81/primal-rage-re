@@ -167,7 +167,32 @@ class K11Compare(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn('missing [1]', out)
 
-    def test_trailing_black_capture_frames_pass(self):
+    def test_the_port_exh_pin_catches_a_port_that_exhibits_less(self):
+        # Sub-project A A1c: the count of distinct port frames the capture
+        # exhibits is pinned; a port that renders fewer frames exhibits fewer.
+        screens = 'key 0 settled 0\nend settled 1\n'
+        r = self.case([self.X, self.A, self.B], [self.A, self.B], screens, '--min-exh', '2')
+        self.assertEqual(r.returncode, 0, r.stdout)
+        r = self.case([self.X, self.A, self.B], [self.A, self.B], screens, '--min-exh', '3')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('FAIL: port frames exhibited 2 < pinned 3', r.stdout)
+
+    def test_an_unexhibited_non_black_port_frame_fails_the_coverage(self):
+        # a non-black port frame below the final settled screen that no capture
+        # frame exhibits (an interior over-render) fails; an all-black port frame
+        # is a documented capture artifact and is excluded.
+        r = self.case([self.X, self.A, self.B], [self.A, self.C, self.B],
+                      'key 0 settled 0\nend settled 2\n')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('non-black port frames exhibited 1/2; missing [1]', r.stdout)
+
+    def test_an_all_black_port_frame_is_not_missing(self):
+        r = self.case([self.X, self.A, self.B], [self.A, bytes(W * H * 3), self.B],
+                      'key 0 settled 0\nend settled 2\n')
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('non-black port frames exhibited 1/1; missing []', r.stdout)
+
+
         r = self.case([self.X, self.A, self.B, bytes(W * H * 3)], [self.A, self.B],
                       'key 0 settled 0\nend settled 1\n')
         self.assertEqual(r.returncode, 0, r.stdout)
