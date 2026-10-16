@@ -34344,6 +34344,11 @@ def closed_rows(funcs, verdicts, outside=None):
     return closed, with_callees
 
 
+def full_rows(closed):
+    """The closed rows whose row is full (not WEAKER): the "closed on full rows" figure."""
+    return [r for r in closed if not r.weaker]
+
+
 def table_row(r, verdicts=None):
     """One row; `verdicts` (entry -> verdict of the real rows) marks each callee with its own check."""
     note = "; reads outside the image: " + ", ".join("0x%X+%d" % o for o in r.outside) if r.outside else ""
@@ -34417,7 +34422,7 @@ def main(argv=None):
     if args.table:
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
-    full = [r for r in closed if not r.weaker]
+    full = full_rows(closed)
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
           "none); %d/%d closed on full rows; %d ported functions with no row. The closure rule (record J §J1): "
           "an allow-mode callee outside the portable set - runtime "

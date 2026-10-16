@@ -32311,15 +32311,13 @@ class CallParseTests(unittest.TestCase):
         self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]), ([0xB], [0xB, 0xC, 0xD]))
 
     def test_the_full_figure_excludes_weaker_rows(self):
-        # A row whose entry is in WEAKER is not counted as closed-on-full, even when
-        # VERIFIED and closed; a plain row is. Mutation: drop the `not r.weaker`
-        # filter (or the WEAKER membership) and the kept set changes -> this fails.
-        import tools.diff_verify as dv
-        plain = dv.SpecResult("p", 0x1000, "VERIFIED", callees=[(0x1100, "allow")])
-        weak = dv.SpecResult("w", next(iter(dv.WEAKER)), "VERIFIED", callees=[(0x1100, "allow")])
-        weak.weaker = weak.entry in dv.WEAKER
-        kept = [r for r in (plain, weak) if not r.weaker]
-        self.assertEqual([r.name for r in kept], ["p"])
+        # A row flagged weaker (its entry is in WEAKER) is not counted as closed-on-full,
+        # even when VERIFIED and closed; a plain row is. Mutation: drop the `not r.weaker`
+        # filter from V.full_rows and the kept set changes -> this fails.
+        plain = V.SpecResult("p", 0x1000, "VERIFIED", callees=[(0x1100, "allow")])
+        weak = V.SpecResult("w", next(iter(V.WEAKER)), "VERIFIED", callees=[(0x1100, "allow")])
+        weak.weaker = True
+        self.assertEqual([r.name for r in V.full_rows([plain, weak])], ["p"])
 
     def test_an_allow_mode_non_goal_does_not_keep_a_row_open_a_stub_or_a_named_gap_does(self):
         # record §J1: the closure rule's declared non-goals, in both directions. The classes come from
