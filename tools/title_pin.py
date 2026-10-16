@@ -57,6 +57,7 @@ def guard(src, out):
     # main checkout's data/) and the literal repo data/ path. A mixed-case out
     # (`Data/...`) does not realpath onto the symlink target on a case-sensitive
     # filesystem, so the literal baseline is what refuses it in a worktree.
+    # Fail-closed: a genuine case-variant sibling (`Data/`) is refused too.
     fold_out = _fold(real_out)
     for base in (real_data, os.path.abspath(DATA_DIR)):
         fold_data = _fold(base)

@@ -85,18 +85,30 @@ module-level `def test_*`, so `unittest` collected **0 tests**).
 - `docs/PROGRESS.md` loses the six stale "`title_pin` unittest failure … outside `make verify`"
   clauses that called the test ungated debt (the batch paragraphs at 981/985/987/989/990/994); the
   closeout paragraph (996) already records that the failure was fixed there.
+- `tools/title_pin.py`'s under-data guard (`16a5620b`) becomes symlink/worktree-robust: the
+  casefold check refuses on EITHER `os.path.realpath(DATA_DIR)` (follows a worktree's
+  `data -> ../../data` symlink to the main checkout) or `os.path.abspath(DATA_DIR)` (the literal
+  repo `data/` path). Fail-closed — the OR only adds refusals; the existing exact-case
+  (`real_src` vs `real_out`) check and the `os.path.samefile` backstop are unchanged, so the main
+  checkout's behavior is unchanged. This closes the worktree failure below (otherwise gating
+  `test_title_pin` would fail `make verify` run from a worktree).
 
 **Measured.** Before deletion, `python3 -m unittest tools.tests.test_mdi_disasm -v` printed
 `Ran 0 tests` (pytest-only collection). After deletion, `grep -rn mdi_disasm Makefile tools` is
-empty (no live reference). `python3 -m unittest tools.tests.test_title_pin -v` is 10 OK in the
-canonical checkout, and `python3 -m unittest tools.tests.test_title_pin tools.tests.test_title_compare`
-runs 20 tests OK.
+empty (no live reference). `python3 -m unittest tools.tests.test_title_pin` is 10 OK with the fixed
+guard **in the worktree and in the main checkout** (the modified file temporarily installed there),
+and `python3 -m unittest tools.tests.test_title_pin tools.tests.test_title_compare` runs 20 tests
+OK.
 
-**Worktree caveat (measured; not a defect in this change).** Run from a `git worktree` whose `data`
-is the cross-checkout symlink (`data -> ../../data`), `test_refuses_an_out_under_data_mixed_case`
-fails: `title_pin.guard` folds `os.path.realpath`, so on a case-sensitive filesystem the literal
-`Data/game/C/…` path does not fold onto the symlink target (the main checkout's real `data/`)
-outside the worktree. The test is host/layout-dependent and unchanged here; the canonical checkout,
-where the gate runs, is 10/10.
+**The worktree failure and its fix.** Before `16a5620b`, run from a `git worktree` whose `data` is
+the cross-checkout symlink, `test_refuses_an_out_under_data_mixed_case` FAILED: `guard` folded only
+`os.path.realpath(DATA_DIR)`, which escapes to the main checkout's real `data/`, so the literal
+`Data/game/C/…` out path never casefolded onto it on a case-sensitive filesystem. With the
+`os.path.abspath(DATA_DIR)` baseline added the worktree refuses it too (10/10). Mutation proof:
+`git stash push -- tools/title_pin.py` restores the old guard and the worktree test fails again
+(`test_refuses_an_out_under_data_mixed_case ... FAIL`, `test_title_pin.py:96`, `Ran 10 … FAILED
+(failures=1)`); `git stash pop` re-applies it and the run is 10 OK. Residual fail-closed limit
+(named in the guard's comment): a genuine case-variant sibling directory (`Data/`, distinct from
+`data/` on a case-sensitive filesystem) is refused too.
 
 **Gate.** No byte-exact oracle and no pin is involved (A3 touches no comparison and no `port/src`).
