@@ -67,3 +67,36 @@ Python's `%` formatting and would instead place the `%d`s after `>= 0x%X` (the r
 the string; the clauses were placed where the string prints them and the tuple values
 (`len(full), len(with_callees), len(UNROWED)`) go in the matching positional slot, before
 `RUNTIME_BASE`. The design's line 284 leaves this to the builder.
+
+## §A3 — the orphan tool tests: gate `test_title_pin`, delete the dead `mdi_disasm` (lane a, task 2: done)
+
+**The gap.** The tools unittest suite is not one target; each gate names its modules in its own
+`-m unittest` line (`Makefile:1148` k11/gp, `:1150` title_compare, the diff list). Two modules ran
+in no gate: `tools/tests/test_title_pin.py` (a live tool's test — `title_pin.py` backs the
+`title-pin` target and the capture targets; a `unittest.TestCase`, green) and
+`tools/tests/test_mdi_disasm.py` (its tool referenced by no gate or capture target; pytest-style
+module-level `def test_*`, so `unittest` collected **0 tests**).
+
+**Change.**
+- `Makefile:1148` (the `verify` target's tools-unittest line, after `tools.tests.test_gp_keys`)
+  gains `tools.tests.test_title_pin`, so it runs in `make verify`.
+- `git rm tools/mdi_disasm.py tools/tests/test_mdi_disasm.py` (152 + 24 lines; the OPL path is C
+  and no file referenced the tool).
+- `docs/PROGRESS.md` loses the six stale "`title_pin` unittest failure … outside `make verify`"
+  clauses that called the test ungated debt (the batch paragraphs at 981/985/987/989/990/994); the
+  closeout paragraph (996) already records that the failure was fixed there.
+
+**Measured.** Before deletion, `python3 -m unittest tools.tests.test_mdi_disasm -v` printed
+`Ran 0 tests` (pytest-only collection). After deletion, `grep -rn mdi_disasm Makefile tools` is
+empty (no live reference). `python3 -m unittest tools.tests.test_title_pin -v` is 10 OK in the
+canonical checkout, and `python3 -m unittest tools.tests.test_title_pin tools.tests.test_title_compare`
+runs 20 tests OK.
+
+**Worktree caveat (measured; not a defect in this change).** Run from a `git worktree` whose `data`
+is the cross-checkout symlink (`data -> ../../data`), `test_refuses_an_out_under_data_mixed_case`
+fails: `title_pin.guard` folds `os.path.realpath`, so on a case-sensitive filesystem the literal
+`Data/game/C/…` path does not fold onto the symlink target (the main checkout's real `data/`)
+outside the worktree. The test is host/layout-dependent and unchanged here; the canonical checkout,
+where the gate runs, is 10/10.
+
+**Gate.** No byte-exact oracle and no pin is involved (A3 touches no comparison and no `port/src`).
