@@ -535,6 +535,12 @@ GP_IDLE_LOSS_TRACE_MIN_FIRST = 8320
 # MAX_START: the window begins at capture frame 90 (raw 1744), the first capture frame that
 # shows the port's first frame (gp_compare prints "window from capture 90"); it must be < MIN_FIRST.
 GP_IDLE_LOSS_MAX_START = 90
+# MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
+# exhibits ("coverage ... up to port 6300"), the replay's last presented frame (f=0x207D);
+# below it both the window and the coverage shrink, so a port that renders fewer screens
+# fails. Measured 2026-10-16 on data/k11-captures/gp-idle-loss via gp_compare --report.
+# Raise it when gp_compare prints "improved: raise the pin".
+GP_IDLE_LOSS_MIN_REACH = 6300
 # The capture the three values belong to: the poll.log sha256 and the frame count of
 # data/k11-captures/gp-idle-loss (record §G.18; run 1 of the two captures, the oracle reads this
 # one). gp-oracle FAILS (never skips) on a present capture with another poll.log: a re-capture
@@ -549,6 +555,7 @@ gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skip
 	@$(PYTHON) tools/gp_compare.py --scenario gp-idle-loss --capture $(K11_CAPTURES)/gp-idle-loss \
 		--port $(GP_DUMP)/gp-idle-loss --min-first "$(GP_IDLE_LOSS_MIN_FIRST)" \
 		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)" --max-start "$(GP_IDLE_LOSS_MAX_START)" \
+		--min-reach "$(GP_IDLE_LOSS_MIN_REACH)" \
 		--capture-sha256 "$(GP_IDLE_LOSS_CAPTURE_SHA256)" --capture-frames "$(GP_IDLE_LOSS_CAPTURE_FRAMES)"
 
 # U5 character-select walk (record 2026-10-01-gameplay-u5 §C5.16-§C5.18): the gp-u5-charsel capture
@@ -566,12 +573,18 @@ GP_CHARSEL_TRACE_MIN_FIRST = 1513
 GP_CHARSEL_MAX_START = 100
 GP_CHARSEL_CAPTURE_SHA256 = 138fb537cd8c364bab0ccc68fc8fdd9079de19f3b0fc789d427f6d9652a18d7e
 GP_CHARSEL_CAPTURE_FRAMES = 1464
+# MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
+# exhibits ("coverage ... up to port 358"), the replay's last presented frame (the script
+# ends at the capture's mode-6 frame). Measured 2026-10-16 on data/k11-captures/gp-u5-charsel
+# via gp_compare --report. Raise it when gp_compare prints "improved: raise the pin".
+GP_CHARSEL_MIN_REACH = 358
 gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratchets (skips without data/k11-captures/gp-u5-charsel)
 	@echo "== gameplay oracle: gp-u5-charsel (frame and trace ratchets) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-u5-charsel GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --scenario gp-u5-charsel --capture $(K11_CAPTURES)/gp-u5-charsel \
 		--port $(GP_DUMP)/gp-u5-charsel --min-first "$(GP_CHARSEL_MIN_FIRST)" \
 		--trace-min-first "$(GP_CHARSEL_TRACE_MIN_FIRST)" --max-start "$(GP_CHARSEL_MAX_START)" \
+		--min-reach "$(GP_CHARSEL_MIN_REACH)" \
 		--capture-sha256 "$(GP_CHARSEL_CAPTURE_SHA256)" --capture-frames "$(GP_CHARSEL_CAPTURE_FRAMES)"
 
 # Plan gameplay-u6b (record gameplay-u6 §U6.22): the gp-u6-moves-b capture (P1 Sauron's twelve
@@ -612,6 +625,12 @@ GP_MOVES_MOVES_MIN_FIRST = 3248
 GP_MOVES_MAX_START = 88
 GP_MOVES_CAPTURE_SHA256 = dcf242da915c41f4b4e381babdabdc30cd04ce89ed83e25f5178601e4878b2e3
 GP_MOVES_CAPTURE_FRAMES = 2205
+# MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
+# exhibits ("coverage ... up to port 1737"), the replay's last presented frame (the script
+# ends at the capture's X record, f=0xCAF). Measured 2026-10-16 on
+# data/k11-captures/gp-u6-moves-b via gp_compare --report. Raise it when gp_compare prints
+# "improved: raise the pin".
+GP_MOVES_MIN_REACH = 1737
 gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves ratchets (skips without data/k11-captures/gp-u6-moves-b)
 	@echo "== gameplay oracle: gp-u6-moves-b (frame, trace and moves ratchets) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-u6-moves-b GP_OPTIONAL=1
@@ -619,6 +638,7 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves 
 		--port $(GP_DUMP)/gp-u6-moves-b --min-first "$(GP_MOVES_MIN_FIRST)" \
 		--trace-min-first "$(GP_MOVES_TRACE_MIN_FIRST)" --max-start "$(GP_MOVES_MAX_START)" \
 		--moves-min-first "$(GP_MOVES_MOVES_MIN_FIRST)" \
+		--min-reach "$(GP_MOVES_MIN_REACH)" \
 		--capture-sha256 "$(GP_MOVES_CAPTURE_SHA256)" --capture-frames "$(GP_MOVES_CAPTURE_FRAMES)"
 
 # U11 in-match keys (plan 2026-10-01-gameplay-u11-in-match-keys.md, record
@@ -664,6 +684,12 @@ GP_KEYS_MIN_FIRST = 1136
 GP_KEYS_TRACE_MIN_FIRST = 2164
 GP_KEYS_MAX_START = 100
 GP_KEYS_CAPTURE_FRAMES = 1166
+# MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
+# exhibits ("coverage ... up to port 788"), the replay's last presented frame (the script
+# ends at the capture's X record, f=0x873). Measured 2026-10-16 on
+# data/k11-captures/gp-keys-fight via gp_compare --report. Raise it when gp_compare prints
+# "improved: raise the pin".
+GP_KEYS_MIN_REACH = 788
 gp-keys-oracle: build ## In-match keys: evidence + effects ratchet and the frame ratchet on gp-keys-fight (skips without data/k11-captures/gp-keys-fight)
 	@echo "== in-match keys oracle: gp-keys-fight (evidence, effects ratchet, frames ratchet) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-keys-fight GP_OPTIONAL=1
@@ -674,6 +700,7 @@ gp-keys-oracle: build ## In-match keys: evidence + effects ratchet and the frame
 	@$(PYTHON) tools/gp_compare.py --scenario gp-keys-fight --capture $(K11_CAPTURES)/gp-keys-fight \
 		--port $(GP_DUMP)/gp-keys-fight --min-first "$(GP_KEYS_MIN_FIRST)" \
 		--trace-min-first "$(GP_KEYS_TRACE_MIN_FIRST)" --max-start "$(GP_KEYS_MAX_START)" \
+		--min-reach "$(GP_KEYS_MIN_REACH)" \
 		--capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)" --capture-frames "$(GP_KEYS_CAPTURE_FRAMES)"
 
 # Gameplay U7 oracle (plan docs/superpowers/plans/2026-10-01-gameplay-u7-two-players.md, record
@@ -710,6 +737,11 @@ GP_TWOP_MAX_START = 83
 # data/k11-captures/gp-twop; another capture FAILS until the four values are re-measured.
 GP_TWOP_CAPTURE_SHA256 = 9c01a73bfb04be19f794316e80b784a86b782b65f06592f2091d1544edf2e22c
 GP_TWOP_CAPTURE_FRAMES = 680
+# MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
+# exhibits ("coverage ... up to port 463"), the replay's last presented frame (the script
+# ends at the capture's X record, f=0x5E1). Measured 2026-10-16 on data/k11-captures/gp-twop
+# via gp_compare --report. Raise it when gp_compare prints "improved: raise the pin".
+GP_TWOP_MIN_REACH = 463
 # END: empty = the replay runs the whole port script (to X, f=0x5E1; record §T.9); a value cuts it
 # (gp_session.py port-script --end), for a replay that stalls.
 GP_TWOP_END =
@@ -723,6 +755,7 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 		--port $(GP_DUMP)/gp-twop --min-first "$(GP_TWOP_MIN_FIRST)" \
 		--trace-min-first "$(GP_TWOP_TRACE_MIN_FIRST)" --max-start "$(GP_TWOP_MAX_START)" \
 		--moves-min-first "$(GP_TWOP_MOVES_MIN_FIRST)" \
+		--min-reach "$(GP_TWOP_MIN_REACH)" \
 		--capture-sha256 "$(GP_TWOP_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_CAPTURE_FRAMES)"
 
 # Gameplay U8 (plan 2026-10-01-gameplay-u8-other-modes.md, record 2026-10-01-gameplay-u8-
@@ -747,6 +780,10 @@ GP_MODES_RA_TRACE_MIN_FIRST = 2274
 GP_MODES_RA_MAX_START = 88
 GP_MODES_RA_CAPTURE_SHA256 = b72dbaa7486b651bd1acfddffe886aeb515eed3f916220d44375f0f67227906f
 GP_MODES_RA_CAPTURE_FRAMES = 1140
+# MIN_REACH (sub-project A §A1): the replay's last exhibited port frame ("coverage ... up
+# to port 825", script ends at the capture's X record). Measured 2026-10-16 on
+# data/k11-captures/gp-u8-right-arcade via gp_compare --report. Raise when it improves.
+GP_MODES_RA_MIN_REACH = 825
 # gp-u8-left-training (record §U8.17): measured at b7f13c6 (+ its miss set) on the capture below.
 # MIN_FIRST: first unexplained capture frame 1076 (raw 4207), nearest port 847 = f=0x921, the
 # port's last frame (the script ends at the capture's X record): how far the port got, not a
@@ -758,6 +795,10 @@ GP_MODES_LT_TRACE_MIN_FIRST = 2338
 GP_MODES_LT_MAX_START = 83
 GP_MODES_LT_CAPTURE_SHA256 = 90eeef83f77dab25d9ed7be30fcadf278bfd0413c068c12bd700ff183ab09917
 GP_MODES_LT_CAPTURE_FRAMES = 1141
+# MIN_REACH (sub-project A §A1): "coverage ... up to port 847", the replay's last exhibited
+# frame (script ends at the capture's X record). Measured 2026-10-16 on
+# data/k11-captures/gp-u8-left-training via gp_compare --report. Raise when it improves.
+GP_MODES_LT_MIN_REACH = 847
 # gp-u8-right-training (record §U8.18): measured at 9170f5c (+ its miss set) on the capture below.
 # MIN_FIRST: first unexplained capture frame 1098 (raw 4272): capture 1097 equals port 845 (f=0x961,
 # the port's last frame, 0 px), so 1098 is the next game frame (f=0x962), which the port never ran
@@ -769,6 +810,10 @@ GP_MODES_RT_TRACE_MIN_FIRST = 2402
 GP_MODES_RT_MAX_START = 90
 GP_MODES_RT_CAPTURE_SHA256 = 496964928c537f3b428414e21d02f254b399af4b2f39b393d10d9855c74f1ea5
 GP_MODES_RT_CAPTURE_FRAMES = 1167
+# MIN_REACH (sub-project A §A1): "coverage ... up to port 845", the replay's last exhibited
+# frame (script ends at the capture's X record). Measured 2026-10-16 on
+# data/k11-captures/gp-u8-right-training via gp_compare --report. Raise when it improves.
+GP_MODES_RT_MIN_REACH = 845
 # gp-u8-tug-of-war (record §U8.19): measured at c212a83 (+ its miss set) on the capture below.
 # MIN_FIRST: first unexplained capture frame 1107 (raw 4343): capture 1106 equals port 826 (f=0x9A1,
 # the port's last frame, 0 px), so 1107 is the next game frame, which the port never ran (its script
@@ -780,6 +825,10 @@ GP_MODES_TW_TRACE_MIN_FIRST = 2466
 GP_MODES_TW_MAX_START = 104
 GP_MODES_TW_CAPTURE_SHA256 = 30cd09b8d24a51a41cc37c0ffebd433a08e5a741b248f28e8112c28ff04d1439
 GP_MODES_TW_CAPTURE_FRAMES = 1176
+# MIN_REACH (sub-project A §A1): "coverage ... up to port 826", the replay's last exhibited
+# frame (script ends at the capture's X record). Measured 2026-10-16 on
+# data/k11-captures/gp-u8-tug-of-war via gp_compare --report. Raise when it improves.
+GP_MODES_TW_MIN_REACH = 826
 # gp-u8-handicap (record §U8.20): measured at 1380841 (+ its miss set) on the capture below.
 # MIN_FIRST: first unexplained capture frame 1022 (raw 4155): capture 1021 equals port 789 (f=0x8E1,
 # the port's last frame, 0 px), so 1022 is the next game frame, which the port never ran (its script
@@ -791,6 +840,10 @@ GP_MODES_HC_TRACE_MIN_FIRST = 2274
 GP_MODES_HC_MAX_START = 80
 GP_MODES_HC_CAPTURE_SHA256 = 8f35fd3abd3a5c527e0f72984ed8ba419cadbcefa4e53b349d5a1ed7b69cdfa3
 GP_MODES_HC_CAPTURE_FRAMES = 1081
+# MIN_REACH (sub-project A §A1): "coverage ... up to port 789", the replay's last exhibited
+# frame (script ends at the capture's X record). Measured 2026-10-16 on
+# data/k11-captures/gp-u8-handicap via gp_compare --report. Raise when it improves.
+GP_MODES_HC_MIN_REACH = 789
 # gp-u8-endurance (record §U8.21): measured at 20c379e (+ its miss set) on the capture below. The
 # scenario ends 300 frames into the team select 0x44798 (decision D3: idle, ENDURANCE never leaves
 # mode 0x10; its fight is a named gap, record §U8.9), so N is where that team-select tail ends.
@@ -804,6 +857,11 @@ GP_MODES_EN_TRACE_MIN_FIRST = 1174
 GP_MODES_EN_MAX_START = 90
 GP_MODES_EN_CAPTURE_SHA256 = 01c9069076ce231d652dbe1d97f0a80155d5e73bef932b0254816a79ec746204
 GP_MODES_EN_CAPTURE_FRAMES = 308
+# MIN_REACH (sub-project A §A1): "coverage ... up to port 163", the replay's last exhibited
+# frame (script ends at the capture's X record, f=0x495; the team select presents every
+# third f). Measured 2026-10-16 on data/k11-captures/gp-u8-endurance via gp_compare
+# --report. Raise when it improves.
+GP_MODES_EN_MIN_REACH = 163
 # gp-u8-attract-start (record §U8.22): measured at 2f0eeed (+ its miss set) on the capture below
 # (the pad arm: P1's F1 in mode 3, arm frame f=0x125, mode 0x1A at f=0x126). MIN_FIRST: first
 # unexplained capture frame 1087 (raw 3854): capture 1086 equals port 823 (f=0x7E1, the port's last
@@ -816,6 +874,10 @@ GP_MODES_AS_TRACE_MIN_FIRST = 2018
 GP_MODES_AS_MAX_START = 80
 GP_MODES_AS_CAPTURE_SHA256 = d6b0cf6b210992de4e7cda211f02cbe5653e21a22d3fbec3dd02e7e30e0351fd
 GP_MODES_AS_CAPTURE_FRAMES = 1156
+# MIN_REACH (sub-project A §A1): "coverage ... up to port 823", the replay's last exhibited
+# frame (script ends at the capture's X record). Measured 2026-10-16 on
+# data/k11-captures/gp-u8-attract-start via gp_compare --report. Raise when it improves.
+GP_MODES_AS_MIN_REACH = 823
 GP_MODES_SCENARIOS =
 GP_MODES_SCENARIOS += RA:gp-u8-right-arcade
 GP_MODES_SCENARIOS += LT:gp-u8-left-training
@@ -841,6 +903,7 @@ gp-modes-one: build
 			--port $(GP_DUMP)/$(scenario) --min-first "$(GP_MODES_$(GP_MODES_ID)_MIN_FIRST)" \
 			--trace-min-first "$(GP_MODES_$(GP_MODES_ID)_TRACE_MIN_FIRST)" \
 			--max-start "$(GP_MODES_$(GP_MODES_ID)_MAX_START)" \
+			--min-reach "$(GP_MODES_$(GP_MODES_ID)_MIN_REACH)" \
 			--capture-sha256 "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_SHA256)" \
 			--capture-frames "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_MODES_KEEP)" ] || rm -rf $(GP_DUMP)/$(scenario); exit $$rc; \
@@ -952,6 +1015,11 @@ GP_WIN_MILESTONES = 8
 GP_WIN_WIN_MIN_FIRST = 3503
 GP_WIN_CAPTURE_SHA256 = 7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8
 GP_WIN_CAPTURE_FRAMES = 2521
+# MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
+# exhibits ("coverage ... up to port 1976"), the replay's last presented frame (f=0xDAE,
+# the X record). Measured 2026-10-16 on data/k11-captures/gp-u9-win via gp_compare --report.
+# Raise it when gp_compare prints "improved: raise the pin".
+GP_WIN_MIN_REACH = 1976
 # gp-u10-ending (record §W.14; re-measured by track P batch 2, plan reverse-p2 Task 9, record §W.16,
 # once 0x2381C is ported): measured at 20e8f4a (P2 rebased onto b16922d, + its new miss set) on the
 # capture below (poll.log sha256 and its 5704 stored frames pinned together). Report lines, verbatim:
@@ -1036,6 +1104,11 @@ GP_ENDING_MILESTONES = 30
 GP_ENDING_WIN_MIN_FIRST = 9954
 GP_ENDING_CAPTURE_SHA256 = a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8deebd3feff38
 GP_ENDING_CAPTURE_FRAMES = 5704
+# MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
+# exhibits ("coverage ... up to port 3444" = f=0x1502, the first unexplained death-animation
+# frame 4113's nearest port). Measured 2026-10-16 on data/k11-captures/gp-u10-ending via
+# gp_compare --report. Raise it when gp_compare prints "improved: raise the pin".
+GP_ENDING_MIN_REACH = 3444
 # The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's
 # GP_MODES_KEEP; record §W.10: 129 MB and 302 MB of /tmp).
 GP_WIN_KEEP ?=
@@ -1054,6 +1127,7 @@ gp-win-one: build
 		$(PYTHON) tools/gp_compare.py --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--port $(GP_DUMP)/$(scenario) --min-first "$(GP_$(GP_WIN_ID)_MIN_FIRST)" \
 			--trace-min-first "$(GP_$(GP_WIN_ID)_TRACE_MIN_FIRST)" --max-start "$(GP_$(GP_WIN_ID)_MAX_START)" \
+			--min-reach "$(GP_$(GP_WIN_ID)_MIN_REACH)" \
 			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" --capture-frames "$(GP_$(GP_WIN_ID)_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--port $(GP_DUMP)/$(scenario) --min-milestones "$(GP_$(GP_WIN_ID)_MILESTONES)" \

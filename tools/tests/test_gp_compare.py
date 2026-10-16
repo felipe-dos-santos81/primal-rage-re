@@ -45,7 +45,7 @@ class Dirs(unittest.TestCase):
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
-        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report, out.append, max_start)
+        rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report, out.append, max_start)
         return rc, first, out
 
 
@@ -149,6 +149,19 @@ class TestFrames(Dirs):
         rc, first, out = self.run_claim(2, max_start=None)
         self.assertEqual(rc, 1, out)
         self.assertTrue(any('window-start pin is not set' in l for l in out), out)
+
+    def test_the_reach_pin_catches_a_shrunken_window(self):
+        # sub-project A §A1 (the under-render blind spot): the window and coverage are
+        # computed up to the reach p, so a port that renders fewer screens just shrinks
+        # them and passes; the reach must be at least the pinned one.
+        out = []
+        self.assertEqual(gc.reach_check('s', 40, 50, out=out.append), 1)   # shrank -> FAIL
+        self.assertEqual(gc.reach_check('s', 50, 50, out=out.append), 0)   # exact -> ok
+        self.assertEqual(gc.reach_check('s', 60, 50, out=out.append), 0)   # grew -> ok (raise)
+        self.assertEqual(gc.reach_check('s', 40, None, out=out.append), 1)  # unpinned -> FAIL
+        self.assertTrue(any('pinned reach 50' in l for l in out), out)
+        self.assertTrue(any('improved: raise the pin' in l for l in out), out)
+        self.assertTrue(any('reach pin is not set' in l for l in out), out)
 
     def test_report_mode_prints_no_verdict_and_checks_no_pin(self):
         bad = bytes([9]) * tc.FRAME_BYTES
@@ -319,11 +332,13 @@ class TestCli(Dirs):
         self.assertEqual(rc, 1, out)
         self.assertEqual(out.count('FAIL: the ratchet N is not pinned'), 2, out)
         self.assertIn('FAIL: the window-start pin is not set', out)
+        self.assertIn('FAIL: the window-reach pin is not set', out)
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                            '--min-first', '2', '--trace-min-first', '13')
-        self.assertEqual(rc, 1, out)                     # the start pin alone is still unset
+        self.assertEqual(rc, 1, out)                     # the start and reach pins are still unset
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
-                           '--min-first', '2', '--trace-min-first', '13', '--max-start', '0')
+                           '--min-first', '2', '--trace-min-first', '13', '--max-start', '0',
+                           '--min-reach', '1')
         self.assertEqual(rc, 0, out)
         self.assertIn('0 differing through 12; ratchet N 13 ok', out)
 
@@ -334,7 +349,7 @@ class TestCli(Dirs):
         import hashlib
         good = hashlib.sha256(open(os.path.join(self.cap, 'poll.log'), 'rb').read()).hexdigest()
         base = ['--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
-                '--min-first', '2', '--trace-min-first', '13', '--max-start', '0']
+                '--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--min-reach', '1']
         rc, out = self.cli(*base, '--capture-sha256', good, '--capture-frames', '2')
         self.assertEqual(rc, 0, out)
         self.assertIn('matches the pin', out)
@@ -424,7 +439,7 @@ class BandAllowance(Dirs):
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
-        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
+        rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
                                       kw.get('report', False), out.append,
                                       kw.get('max_start', 0), self.bands)
         return rc, first, out
@@ -517,7 +532,7 @@ class Scan3Allowance(Dirs):
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
-        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
+        rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
                                       kw.get('report', False), out.append,
                                       kw.get('max_start', 0), None, self.s3)
         return rc, first, out
@@ -589,7 +604,7 @@ class Scan3Allowance(Dirs):
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
-        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, 4,
+        rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, 4,
                                       False, out.append, 0, None, s3)
         self.assertEqual((rc, first), (0, None), out)
         self.assertTrue(any('three-frame scan-out: top rows 0..4 held by port 0, '
@@ -686,7 +701,7 @@ class OverlayAllowance(Dirs):
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
-        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
+        rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
                                       kw.get('report', False), out.append,
                                       kw.get('max_start', 0), None, None,
                                       kw.get('ov', self.ov))

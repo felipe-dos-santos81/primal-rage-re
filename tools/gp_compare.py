@@ -446,14 +446,35 @@ def start_check(name, start, raws, max_start, min_first, out=print):
     return rc
 
 
+def reach_check(name, reach, min_reach, out=print):
+    """The window REACH is ratcheted (sub-project A §A1): `reach` is the highest port frame
+    any classified capture frame exhibits. Both the window and the coverage count are
+    computed up to it, so a port that renders fewer screens stops at a lower reach and
+    passes; it must be at least the pinned reach. A larger reach is an improvement (raise
+    the pin). `min_reach is None` fails (a gp scenario without the pin is unguarded)."""
+    rc = 0
+    if min_reach is None:
+        out('gp_compare: %s: frames: FAIL: the window-reach pin is not set (GP_*_MIN_REACH)' % name)
+        rc = 1
+    elif reach < min_reach:
+        out('gp_compare: %s: frames: FAIL: window reach port %d < pinned reach %d '
+            '(the port exhibited fewer port frames)' % (name, reach, min_reach))
+        rc = 1
+    elif reach > min_reach:
+        out('gp_compare: %s: frames: window reach port %d > pinned reach %d '
+            '(improved: raise the pin)' % (name, reach, min_reach))
+    return rc
+
+
 def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None,
                 bands=None, scan3=None, overlay=None):
-    """Returns (rc, first_unexplained or None, next_after_last_classified). In report
+    """Returns (rc, first_unexplained or None, next_after_last_classified, reach). In report
     mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
     "window empty"; main() turns every report-mode rc into 0). `bands`, `scan3`
     and `overlay` are the scenario's named per-frame allowances (BANDS_ALLOWED,
     SCAN3_ALLOWED, OVERLAY_ALLOWED); a named frame that is not its named bytes
-    prints its FAIL in both modes and fails the enforced run."""
+    prints its FAIL in both modes and fails the enforced run. `reach` is `p`, the
+    highest exhibited port frame, the window's end (sub-project A §A1)."""
     bands = {} if bands is None else {b[0]: b for b in bands}
     scan3 = {} if scan3 is None else {s[0]: s for s in scan3}
     overlay = {} if overlay is None else {o[0]: o for o in overlay}
@@ -469,7 +490,7 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
             break
     if start is None:
         out("gp_compare: %s: frames: window empty: no capture frame exhibits the port's first frame" % name)
-        return 1, None, 0
+        return 1, None, 0, 0
     p, counts, black, unexpl, seen = 0, collections.Counter(), 0, [], set()
     allow_bad = 0
     j = start
@@ -567,10 +588,10 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
             out('gp_compare: %s: frames: 0 unexplained through %d' % (name, len(cap) - 1))
         if allow_bad:
             out('gp_compare: %s: frames: FAIL: an allowance named its frame but not its bytes' % name)
-        return 0, first, j
+        return 0, first, j, p
     rc = max(ratchet(name, 'frames', first, len(cap), min_first, out),
              start_check(name, start, raws, max_start, min_first, out), allow_bad)
-    return rc, first, j
+    return rc, first, j, p
 
 
 def nearest(c, rows):
@@ -747,6 +768,9 @@ def main():
     ap.add_argument('--min-first', default=None)
     ap.add_argument('--trace-min-first', default=None)
     ap.add_argument('--max-start', default=None)
+    ap.add_argument('--min-reach', default=None,
+                    help='the pinned highest port frame any classified capture frame exhibits '
+                         '(sub-project A §A1): a port that renders fewer screens fails')
     ap.add_argument('--capture-sha256', default=None,
                     help="the pinned sha256 of the capture's poll.log; with it a different capture fails")
     ap.add_argument('--capture-frames', default=None,
@@ -782,10 +806,11 @@ def main():
     raws = tc.raw_map(a.capture) or list(range(len(cap)))
     n_frames = None if a.report else _int_or_none(a.min_first)
     n_trace = None if a.report else _int_or_none(a.trace_min_first)
-    rc1, _, _ = frame_claim(name, cap, raws, port, rows, n_frames, a.report, print,
-                            None if a.report else _int_or_none(a.max_start),
-                            BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()),
-                            OVERLAY_ALLOWED.get(name, ()))
+    rc1, _, _, reach = frame_claim(name, cap, raws, port, rows, n_frames, a.report, print,
+                                   None if a.report else _int_or_none(a.max_start),
+                                   BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()),
+                                   OVERLAY_ALLOWED.get(name, ()))
+    rc4 = 0 if a.report else reach_check(name, reach, _int_or_none(a.min_reach), print)
     with open(os.path.join(a.capture, 'poll.log')) as f:
         cl = f.read().splitlines()
     with open(os.path.join(a.port, 'trace.txt')) as f:
@@ -800,7 +825,7 @@ def main():
     elif a.moves_min_first is not None or (a.report and has_moves):
         rc3, _ = trace_claim(name, cl, pl, None if a.report else _int_or_none(a.moves_min_first),
                              print, a.report, gs.MOVE_FIELDS, 'moves')
-    return 0 if a.report else (1 if rc1 or rc2 or rc3 else 0)
+    return 0 if a.report else (1 if rc1 or rc2 or rc3 or rc4 else 0)
 
 
 if __name__ == '__main__':
