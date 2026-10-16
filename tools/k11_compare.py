@@ -50,7 +50,7 @@ K11_ALLOWED_UNEXPLAINED = {
         151: 'record §A.5: TEST CONTROLS markers mid-draw, port 58/59 plus 88 black glyph px (rows 120..152)',
     },
 }
-# scenario -> (frozenset of port frame indices). Port frames a capture legitimately
+# scenario -> (tuple of port frame indices). Port frames a capture legitimately
 # never exhibits, so the A1c full-coverage claim (every non-black port frame up to
 # the final settled screen is exhibited) can name them. Empty today: the only
 # unexhibited port frames are all-black, which the claim excludes by construction.

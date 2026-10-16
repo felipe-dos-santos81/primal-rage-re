@@ -111,7 +111,7 @@ def check_capture(capture, port_attract, port_attract_rows,
     if min_port_exh is not None and len(port_exh) < min_port_exh:
         print("attract_compare: %s: FAIL: port attract frames exhibited %d < pinned %d "
               "(the port rendered fewer frames)" % (capture, len(port_exh), min_port_exh))
-        return 1, (None, None)
+        return 1, None
     if first is not None:
         f = frames[first]
         print("attract_compare: %s: FIRST DIVERGENCE at capture frame %d "

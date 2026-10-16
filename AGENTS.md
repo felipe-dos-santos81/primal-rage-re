@@ -318,8 +318,8 @@ consolidation gate).
   capture's X record; its 30-frame boot-movie tail is how far the port got, not claimed),
   the trace ratchets at `GP_KEYS_TRACE_MIN_FIRST` = 2164 and the capture identity is pinned
   (sha256 + `GP_KEYS_CAPTURE_FRAMES` = 1166, the same capture U11 pinned); the claim is narrow
-  the same way — no under-render detection, order and coverage not claimed; it skips without
-  the capture.
+  the same way — no under-render detection *inside* the window, order and coverage not claimed;
+  it skips without the capture.
   `make gp-twop-oracle` (in `make verify`; record gameplay-u7 §T.8-§T.11) checks that
   `data/k11-captures/gp-twop` is a two-human match from P2's join in the character select (f=2C3, `cred 4 -> 4`)
   to the scenario's end (`tools/gp_twop.py check`, from the raw's command-word writers), then ratchets as
@@ -430,8 +430,8 @@ consolidation gate).
    one of them blocks on a recorded *stub* outside the portable set, on the recorded `real` mode (`0x5D812`,
    8 rows), or on a **port-code** implementation the decomp index never listed (`0x28D68` 6 rows, `0x3E484` 3,
    `0x29D04` 2 and `0x3E4C4` 1 — allow-mode, `fn_register`ed, unrowed: rows of their own can exist, and the
-   port-code check keeps them blocking). By blocker (citations, not rows: a row may name more than
-   one, so these sum above the 58): the stubs `0x65431` (11 rows), `0x5DD03` (10),
+   port-code check keeps them blocking). By blocker (a row may name more than one, so these row
+   counts sum above the 58): the stubs `0x65431` (11 rows), `0x5DD03` (10),
    `0x40CB0` (8), `0x24568`/`0x5DEED` (7 each), `0x24804`/`0x5DCC5` (6 each), `0x5DECA` (5),
    `0x5DC0F`/`0x5DC8B` (4 each), `0x5DEAF` (3), `0x29D04`/`0x2CB74`/`0x6C4CF` (2 each) and one each for
    `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
