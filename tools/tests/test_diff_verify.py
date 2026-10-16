@@ -32022,7 +32022,8 @@ class RealFunctionTests(unittest.TestCase):
         # 0x5DCA6, 0x5DCE4, 0x61A70 and 0x65546. No row blocks on a ported function in the portable set:
         # the rule's boundary. Measured on the lane.
         self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps; "
-                      "774/832 rows with callees closed (175 have none). The closure rule (record J §J1): "
+                      "774/832 rows with callees closed (175 have none); 768/832 closed on full rows; "
+                      "8 ported functions with no row. The closure rule (record J §J1): "
                       "an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred "
                       "in tools/port_classification.txt, or an address the decomp index never lists as a "
                       "function - does not keep a row open, provided the port tree does not implement the "
@@ -32308,6 +32309,17 @@ class CallParseTests(unittest.TestCase):
         verdicts = {r.entry: r.verdict for r in (a, b, c, d)}
         closed, with_callees = V.closed_rows([a, b, c, d], verdicts)
         self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]), ([0xB], [0xB, 0xC, 0xD]))
+
+    def test_the_full_figure_excludes_weaker_rows(self):
+        # A row whose entry is in WEAKER is not counted as closed-on-full, even when
+        # VERIFIED and closed; a plain row is. Mutation: drop the `not r.weaker`
+        # filter (or the WEAKER membership) and the kept set changes -> this fails.
+        import tools.diff_verify as dv
+        plain = dv.SpecResult("p", 0x1000, "VERIFIED", callees=[(0x1100, "allow")])
+        weak = dv.SpecResult("w", next(iter(dv.WEAKER)), "VERIFIED", callees=[(0x1100, "allow")])
+        weak.weaker = weak.entry in dv.WEAKER
+        kept = [r for r in (plain, weak) if not r.weaker]
+        self.assertEqual([r.name for r in kept], ["p"])
 
     def test_an_allow_mode_non_goal_does_not_keep_a_row_open_a_stub_or_a_named_gap_does(self):
         # record §J1: the closure rule's declared non-goals, in both directions. The classes come from

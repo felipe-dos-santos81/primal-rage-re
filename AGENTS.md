@@ -382,8 +382,11 @@ consolidation gate).
    lock `0x2EA30`, `0x32BAC`, `0x2EA64` — the six together closed 77 callee rows, 639→716; each new row's claim
    states exactly what it compares, the reversal's wording rule). Track G g4 and track J j1 re-pinned it:
    `make diff-verify`'s counter is `1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps;
-   774/832 rows with callees closed (175 have none)` (`0x24C5C` has ten rows); 8 of the 747 ported functions have
-   no row (the named gaps, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
+   774/832 rows with callees closed (175 have none); 768/832 closed on full rows; 8 ported functions with no
+   row` (`0x24C5C` has ten rows). The two new clauses count the explicit frozensets `tools/diff_verify.py`
+   keeps: `WEAKER` (12 — the rowed functions whose row is not full: a code poke, a reachable block left out,
+   or a declared terminal difference) and `UNROWED` (8 — the ported functions with no differential row at
+   all, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
    g4 (`game_loop`'s recorded RNG stub, `@rng`). The closure rule (`closed_rows`, record §J1): a row counts closed
    when every callee is VERIFIED by its own row, or is an **allow-mode** callee outside the portable set — runtime
    ≥ 0x5D000, host-owned/deferred in `tools/port_classification.txt`, or an address the decomp index

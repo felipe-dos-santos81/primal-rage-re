@@ -385,6 +385,18 @@ def compare(orig, port, mask=0xFFFFFFFF):
     return out + h0_compare(orig, port)
 
 
+# The rowed functions whose row is not full (record 2026-10-15-reverse-j-derivations.md
+# §J1; AGENTS.md:398-412): a row that runs the original under code pokes, leaves
+# reachable blocks out, or declares a terminal difference. Function entries, not spec
+# names; keep in step with AGENTS.md. The counter could not tell these from a full row.
+WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1BE30, 0x1C740,
+                    0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30})
+# The 8 ported functions with no differential row at all (record §J1:26;
+# AGENTS.md:385-386): "1 named gaps" is the spec NAMED_GAP count and never named these.
+UNROWED = frozenset({0x1B120, 0x1B3AC, 0x1BEC4, 0x1C930, 0x1CF40, 0x20C10,
+                     0x47370, 0x4FBA2})
+
+
 @dataclass
 class SpecResult:
     name: str
@@ -400,6 +412,7 @@ class SpecResult:
     diffs: int = 0                                   # eax, call and byte differences (not port errors)
     callees: list = field(default_factory=list)      # (addr, how) for every allowed or call-set callee
     gap: str = ""                                    # the named gap's blocking instruction, when the spec is one
+    weaker: bool = False                             # a poked/partial/terminal row (WEAKER)
 
 
 def verify_gap(spec, image):
@@ -409,6 +422,7 @@ def verify_gap(spec, image):
     info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
                          resolved=E.RESOLVED_JUMPS)
     res = SpecResult(spec.name, spec.entry, "NAMED_GAP", len(spec.cases), 0, len(info.leaders), gap=spec.gap)
+    res.weaker = spec.entry in WEAKER
     executed = set()
     for c in spec.cases:
         orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c),
@@ -486,6 +500,7 @@ def verify_spec(spec, image, port_results, port_name=None, original=None):
                      len(info.leaders), problems, [a for a in unhit if a not in spec.unhit_named],
                      sorted(outside), port_errors, diffs)
     res.callees = sorted([(a, "allow") for a in spec.allow_calls] + [(k.addr, k.mode) for k in spec.calls])
+    res.weaker = spec.entry in WEAKER
     # An indirect call hides no block of the function (it returns to the next instruction, which the
     # scan follows), and a run that reached one resolved its target into the allow-list or the call
     # set, or stopped (NOT_EXERCISABLE): only an indirect jump that is not a bounded switch keeps a
@@ -34402,8 +34417,10 @@ def main(argv=None):
     if args.table:
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
+    full = [r for r in closed if not r.weaker]
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
-          "none). The closure rule (record J §J1): an allow-mode callee outside the portable set - runtime "
+          "none); %d/%d closed on full rows; %d ported functions with no row. The closure rule (record J §J1): "
+          "an allow-mode callee outside the portable set - runtime "
           ">= 0x%X, host-owned/deferred in tools/port_classification.txt, or an address the decomp index "
           "never lists as a function - does not keep a row open, provided the port tree does not implement "
           "the address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a recorded stub "
@@ -34411,7 +34428,8 @@ def main(argv=None):
           "and inputs only, each function with its callees stubbed or run as stated." % (
               len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
               "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants)) if args.self_check else "",
-              len(gaps), len(closed), len(with_callees), len(funcs) - len(with_callees), RUNTIME_BASE))
+              len(gaps), len(closed), len(with_callees), len(funcs) - len(with_callees),
+              len(full), len(with_callees), len(UNROWED), RUNTIME_BASE))
     return 1 if bad or missed else 0
 
 
