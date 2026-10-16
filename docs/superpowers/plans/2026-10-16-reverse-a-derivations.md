@@ -227,3 +227,53 @@ uses (`run_claim`). The two `TestCli` tests that invoke `main` in enforced mode
 
 **Gate.** `python3 -m unittest tools.tests.test_gp_compare` → 55 tests OK (one added);
 `tools.tests.test_gp_win`/`test_gp_modes`/`test_gp_twop` → 47 tests OK.
+
+## §A1b — pin the front-end window END, retire the front-end under-render blind spot (lane a, task 5: done)
+
+**The gap.** `tools/title_compare.py`'s `--frontend` branch discards `check_capture`'s `rc`
+(which counts coverage and bad endpoints, `title_compare.py:653`) and keeps only `res['unexpl']`
+— a documented choice, because the port dump legitimately runs into state 9 and raw coverage
+false-fails. But the window `res['window'] = (a, b)` is derived from content alignment alone
+(`b = idx[-1]`, the last capture frame any port frame is exhibited by, `:274`). A port that
+renders fewer front-end frames stops the window **earlier**: the capture frames it used to
+explain become `unexplained`, but they fall *outside* the shrunken window `range(a, b+1)`, so
+`unexpl_j` never reaches them and the branch still prints "0 unexplained" and exits 0. The
+window END was the under-render leak; the START is likewise unpinned but is not this task's.
+
+**Change.**
+- `tools/title_compare.py` gains `--frontend-end` (`argparse`, default `None`). In the
+  `--frontend` branch, immediately after `res is None` is handled and before the `unexpl`
+  handling (`:662`): `b < pin` FAILs ("the port exhibited fewer frames"), `b > pin` warns
+  ("improved: raise the pin"), `pin is None` FAILs ("the window-end pin is not set
+  (--frontend-end)") — an unpinned front-end run is unguarded. The existing `rc` discard and
+  the `FRONTEND_ALLOWED_UNEXPLAINED` (832, 833) allowance are untouched; the check runs before
+  them, so a shrunken window fails regardless of the unexplained set.
+- `Makefile`: `FRONTEND_END ?= 1884` with a provenance comment, and
+  `--frontend-end $(FRONTEND_END)` on the `frontend-oracle` invocation.
+
+**Measured `b`.** `title_compare.py --frontend` on `data/title-captures/frontend` against the
+`PR_FRONTEND_DET` dump prints `window distinct [560..1884] (raw 3108..4791)`; the end `b = 1884`
+and the pin is 1884. (Same window the demo-fight comment records: `[560..1884]`, the frame before
+the capture's first all-black frame 1885.) The exhibited count is unchanged (`1145/1382`), the
+allowed set is unchanged (`[(832, 3671), (833, 3740)]`), endpoints `OK`.
+
+**Oracle runs (unchanged pins).** `make frontend-oracle` → exit 0. The verdict line is
+byte-identical to the pre-A1b run: `window distinct [560..1884]`, `1325 frames in window: 517
+clean, 801 splice, 3 transition, 2 unexplained`, and
+`2 unexplained captured frame(s) allowed by name: [(832, 3671), (833, 3740)]; no other
+unexplained frame in the window.` The new pin is silent when `b == pin` (equal → no line); the
+only new output is on a violation. Live checks: `--frontend-end 1885` → exit 1,
+`FAIL: window ends at capture 1884 < pinned end 1885 (the port exhibited fewer frames)`;
+`--frontend-end 1883` → exit 0, `window ends at capture 1884 > pinned end 1883 (improved: raise
+the pin)`.
+
+**Mutation proof.** Unit, in `tools/tests/test_title_compare.py`'s new `FrontendEndPinTest`:
+port frames `0x11, 0x22`, capture frames `0x11, 0x22`.
+1. Pin 1, two-frame port dump → exit 0, `window distinct [0..1]`, `0 unexplained`.
+2. Pin 1, **one-frame** port dump → capture frame 1 is no longer exhibited so it lies outside
+   `[0..0]`; the unexplained set is still empty (`0 unexplained` printed) and only the end pin
+   can fail → exit 1, `window ends at capture 0 < pinned end 1`. Removing the `b < pin` check
+   (mutation) makes case 2 return 0 and the assertion FAIL (`0 != 1`, observed); reverted green.
+
+**Gate.** `python3 -m unittest tools.tests.test_title_compare` → 12 tests OK (2 added);
+`make frontend-oracle` → exit 0. `port/src` untouched; `data/` untouched.
