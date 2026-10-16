@@ -64,6 +64,7 @@ chunk ?= 0
         smk-oracle title-pin title-capture title-oracle attract-oracle \
         frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report \
+        save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one \
@@ -400,6 +401,53 @@ k11-report: build ## Report-only K11 comparison of the evidence captures (idle, 
 			echo "k11-report: no capture at $(K11_CAPTURES)/$$s"; \
 		fi; \
 	done
+
+# Save-reload oracle (plan 2026-10-15-reverse-j-closeout.md task 7; record
+# 2026-10-15-reverse-j-derivations.md §J3). data/k11-captures/save-reload is two
+# boots of the pinned original: boot 1 (the one writable mount, the 11 keys ending
+# in CONFIG OPTIONS' `right` tap and two Escs) leaves the OPTIONS MENU, whose
+# menu_run return calls config_file_save (0x2CBAF); boot 2 (read-only, one Enter)
+# starts from the file boot 1 wrote. The two claims (tools/save_reload.py):
+# write — the port's boot-1 replay with PR_K11_SAVE=<scratch> writes a file
+# byte-identical to the capture's CMOS; load — the port booted from a copy of that
+# CMOS holds, at the pinned frame and in every later dumped frame, the five
+# storage ranges of §J3.3 that boot 2's poll.log holds at the pin. Both narrow:
+# no display claim, no coverage of the other save sites, the kinds outside the
+# ranges, or anything past the pin. Enforced like k11-oracle: skips without the
+# capture (PR_ORACLE_REQUIRED is not read) and fails on a broken claim once it
+# exists; a difference is a finding, never a re-pin towards the port.
+# Pins, all measured on the one capture (2026-10-15, DOSBox-X 2026.08.31 at
+# /usr/local/bin/dosbox-x, session.txt):
+#   CMOS_SHA256: data/k11-captures/save-reload/CMOS (2040 bytes, the XOR last
+#     byte); POLL_SHA256: .../poll.log, boot 2's (boot 1's is .../boot1/poll.log,
+#     sha cfc05e51af655c0ab59f7e15b0253eef75e660cc92f83d9844c03a7eb3875bfc);
+#   ENTER_FRAME 491: boot 2's first P record with mode 0x27 after its K
+#     (f=0x1EB; boot 1's is 304) — the port dump frame the load claim judges from;
+#   FRAMES 162: boot 2's frame_*.raw count.
+SAVE_RELOAD_CMOS_SHA256 = dad3b1f6f84bd851eee675281a7a3310dcf967d42a375b1b9919fb1a41f104f9
+SAVE_RELOAD_POLL_SHA256 = fb9ab5aa5f833e4decd680c55358e3df25b4dda887e1837d1033e25cb19a05f5
+SAVE_RELOAD_ENTER_FRAME = 491
+SAVE_RELOAD_FRAMES = 162
+save-reload-oracle: build ## Save-reload oracle: boot 1's replay writes the captured CMOS, boot 2 loads it (skips without data/k11-captures/save-reload)
+	@echo "== save-reload oracle (the write claim, then the load claim) =="
+	@if [ -d $(K11_CAPTURES)/save-reload ]; then \
+		rm -rf $(K11_DUMP)/save-reload; mkdir -p $(K11_DUMP)/save-reload/boot1-scratch; \
+		rm -f $(K11_DUMP)/save-reload/boot1-scratch/cmos; \
+		$(PYTHON) tools/k11_session.py port-script --scenario save-reload --boot 1 --capture $(K11_CAPTURES)/save-reload/boot1 --out $(K11_DUMP)/save-reload/boot1.script && \
+		PR_K11_DUMP=$(K11_DUMP)/save-reload/boot1 PR_K11_SCRIPT=$(K11_DUMP)/save-reload/boot1.script \
+			PR_K11_SAVE=$(K11_DUMP)/save-reload/boot1-scratch/cmos PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests && \
+		$(PYTHON) tools/save_reload.py write --capture $(K11_CAPTURES)/save-reload \
+			--scratch $(K11_DUMP)/save-reload/boot1-scratch/cmos --game-dir $(GAME_DIR) \
+			--cmos-sha256 "$(SAVE_RELOAD_CMOS_SHA256)" && \
+		cp -f $(K11_CAPTURES)/save-reload/CMOS $(K11_DUMP)/save-reload/boot2-cmos && \
+		cmp $(K11_CAPTURES)/save-reload/CMOS $(K11_DUMP)/save-reload/boot2-cmos && \
+		$(PYTHON) tools/k11_session.py port-script --scenario save-reload --boot 2 --capture $(K11_CAPTURES)/save-reload --out $(K11_DUMP)/save-reload/boot2.script && \
+		PR_K11_DUMP=$(K11_DUMP)/save-reload/boot2 PR_K11_SCRIPT=$(K11_DUMP)/save-reload/boot2.script \
+			PR_K11_SAVE=$(K11_DUMP)/save-reload/boot2-cmos PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests && \
+		$(PYTHON) tools/save_reload.py load --capture $(K11_CAPTURES)/save-reload \
+			--port $(K11_DUMP)/save-reload/boot2 --enter-frame "$(SAVE_RELOAD_ENTER_FRAME)" \
+			--poll-sha256 "$(SAVE_RELOAD_POLL_SHA256)" --capture-frames "$(SAVE_RELOAD_FRAMES)"; \
+	else echo "save-reload-oracle: no capture at $(K11_CAPTURES)/save-reload (skipped)"; fi
 
 # Gameplay capture (spec 2026-09-30-gameplay-ground-truth-design.md §4.1): the
 # pinned original under DOSBox-X with frame-keyed injection and a per-frame
@@ -1080,6 +1128,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
 	@echo "== K11 service-menu oracles (the walk and the menuesc restart; each skips without its capture) =="
 	@$(MAKE) --no-print-directory k11-oracle
+	@echo "== save-reload oracle (boot 1's write and boot 2's load; skips without its capture) =="
+	@$(MAKE) --no-print-directory save-reload-oracle
 	@echo "== gameplay replay driver (the gp-pads capture; skips without it; record §G.11) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-pads GP_OPTIONAL=1
 	@echo "== gameplay oracle (frame and trace ratchets; skips without its capture; record §G.16) =="
@@ -1095,7 +1145,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

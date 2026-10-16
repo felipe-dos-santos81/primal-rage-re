@@ -20,6 +20,7 @@ make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame
 make attract2-oracle       # ratchet on the attract's second cycle after the demo (N pinned in the Makefile); in make verify
 make k11-oracle            # K11 service-menu oracles (the walk and menuesc); in make verify; each skips without its data/k11-captures/<scenario>
 make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes data/k11-captures/<scenario>)
+make save-reload-oracle    # save-reload: boot 1's replay writes the captured CMOS byte-identically and boot 2 loads it (the five storage ranges at the pinned frame); in make verify; skips without data/k11-captures/save-reload
 make gp-capture scenario=gp-pads  # DOSBox-X gameplay capture (frame-keyed injection, per-frame snapshot log); writes data/k11-captures/<scenario> (scenario names are gp-…)
 make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP driver, .ipx frames + trace); in make verify on gp-pads, which skips without data/k11-captures/gp-pads
 make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11-captures/gp-idle-loss (N values in the Makefile); in make verify; skips without the capture
@@ -347,7 +348,15 @@ consolidation gate).
   2040 zero bytes or absent. The run clock `0x32970` reads the tick `0x105D88`, which the port's modelled
   ISR ticks advance (`game_isr_ticks`, `config.c`'s key wait), not wall time (record §S.9). Named gaps
   (record §S.8, its first item now a declared terminal difference on `0x2EA68`'s row, §G2): `0x2EA68` returns where the original exits; a short `cmos` gives the defaults where the
-  original exits; no recording of the original writing or loading a real save exists yet.
+  original exits; the third (no recording of the original writing or loading a real save) is closed
+  by `data/k11-captures/save-reload` (record §J3.10; `make save-reload-oracle`, in `make verify`):
+  boot 1 (the one writable mount, the 11 keys ending in CONFIG OPTIONS' `right` tap and two Escs)
+  leaves the OPTIONS MENU, whose `menu_run` return calls `config_file_save` (`0x2CBAF`); the port's
+  replay of that boot with a scratch `PR_K11_SAVE` path writes a file byte-identical to the
+  capture's `CMOS`, and the port booted from a copy of that `CMOS` holds, at the pinned frame
+  (`f=0x1EB`) and every later dumped frame, the five storage ranges (the `config` image, the kind-0
+  counters and the three high-score tables, §J3.3) boot 2's `poll.log` holds at the pin;
+  `data/game/C` is proven untouched (the capture's own `CHECK staging`).
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
   adjacent port frames rather than a 1:1 match.

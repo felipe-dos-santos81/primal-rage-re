@@ -763,3 +763,96 @@ Storage plan Steps 3-5 (implement test-first, capture, oracle) and the track-J p
 after the user's go-ahead. If the user declines or the capture cannot be made, the contract's step 6
 applies: the named gap stays the track's main one (already at storage record:1064/1107 and AGENTS.md)
 and this section becomes its design record.
+
+### J3.10 The capture and the two claims (2026-10-15, resolved)
+
+The go-ahead came; §J3.9's gate is lifted. Storage plan Steps 3-7 and track-J plan step 4 ran on
+`reverse-jc-save-reload` (base `9d65b30d`). One capture, one run, nobody typing: the host's
+`/usr/bin/dosbox-x` was first tried and **cannot run this harness at all** — DOSBox-X 2024.03.01
+predates the `[dosbox] memory file` option (added in the 2025.01.01 release; absent from that
+binary's strings, reference conf and `-set` handling), so no K11/GP poller gets guest RAM and the
+run ends `CHECK poll.log: FAIL` with no `guest.mem`; the controller then built the version every
+existing capture used, DOSBox-X 2026.08.31 for aarch64, at `/usr/local/bin/dosbox-x`, and the
+capture succeeded on its first run. A capture is a host artefact of that build; this is the only
+save-reload capture and the only Linux-host capture in `data/k11-captures/`.
+
+**The capture** (`data/k11-captures/save-reload`, `session.txt`): `cmos=zero pokes=[] input=inject
+enter_wait=25 pace=1`; boot 1 `time_limit=55 wall_s=55.7 rc=0 reason=time-limit` (J3.8(e) answered:
+both boots end by the harness limit, not an early exit), boot 2 `time_limit=45 wall_s=45.7 rc=0`;
+162 `frame_*.raw` for boot 2, raw window 1169..3148, `fps=70.0866`. `sha256`:
+`CMOS` `dad3b1f6f84bd851eee675281a7a3310dcf967d42a375b1b9919fb1a41f104f9` (2040 bytes, its last
+the XOR of the first 0x7F7, and `CMOS[0:0x7F8]` is byte-identical to the cfg range's R record at
+the save — the file is the original's own image post-save); boot 2's `poll.log`
+`fb9ab5aa5f833e4decd680c55358e3df25b4dda887e1837d1033e25cb19a05f5`; boot 1's
+`boot1/poll.log` `cfc05e51af655c0ab59f7e15b0253eef75e660cc92f83d9844c03a7eb3875bfc`. Every
+capture-side CHECK passed for both boots (`base`, `keys 11/11` then `1/1`, `mode 0x27 after the
+Enter`, `pokes`, `script` — `k11_session.port_script` revalidated both poll logs, the K11 equivalent
+of `check-input` (`gp_capture.py check-input` answers `no S records: not a gp poll.log`, rc 2) —
+`ranges`, and boot 1's `save`/`staging`).
+
+**The poller's five ranges** (the `L` records, boot 1 ms 814; base `0x266000`):
+`at` `0x2E6CE4` (cfg), `0x2EBDB0` (k0), `0x2EBE34` (hs0), `0x2EBEAC` (hs1), `0x2EBEC8` (hs2) —
+exactly `base + (va - 0x80000)` for the VAs of §J3.3, confirming the poller's formula and the raw
+table values.
+
+**J3.8(a) — one `right` tap is one step. Resolved yes.** Boot 1's cfg R records: all-zero at tick 0
+(ms 814); the attract's writes at tick 0x18 (ms 2406/2408); the high-score build at tick 0xCE
+(ms 5441/5449, when hs0/hs1 are filled); then **tick 0x77C (ms 34021, the `right` at 33 s and the
+editor's Esc at 34 s)** moves the twelve stored copies of the CREDITS value by exactly one step
+(bytes 0x0, 0x8, 0x10, 0x20, 0x40, 0x78 and their +0xB6 duplicates: `0x83/0xD9/0x78/0xBC/0xA2/0x14`
+→ `0x82/0xD8/0x79/0xBD/0xA3/0x15`, mixed directions, i.e. one encoded step), and **tick 0x7B7
+(ms 35006, the OPTIONS MENU Esc at 35 s → `config_file_save` `0x2CBAF`)** changes only the image's
+last byte `0x7F7` `0x00` → `0x31` — the XOR the save writes (`0x1B0D4`). Field 0x29's window value
+(`tools/k11_fields.get` over the `F` record) goes `0x142095` → `0x152095` at the same tick 0x77C,
+and boot 2 loads `0x152095` (§J2.6's `CREDITS` readback). So the scenario is recorded as-is: no
+multi-step editor, no re-anchor.
+
+**J3.8(b) — the ranges stay settled through boot 2. Resolved yes.** Boot 2's R records: all-zero at
+tick 0 (ms 811); the loaded image at tick 9 (ms 2095; its head `82007000EE…`, byte-identical to
+boot 1's post-save cfg R, and `post_save image == loaded image` is true over all 0x7F8); the two
+high-score tables at tick 0x16 (ms 2315); **nothing after the Enter's K (ms 25001)**. The single
+pinned frame stands; the capture-side `ranges` CHECK and the oracle's re-check both pass.
+
+**The two claims, both green on the first oracle run** (`make save-reload-oracle`, pins in the
+Makefile):
+
+```
+save_reload: write: the replay wrote 2040 bytes identical to the capture's CMOS (sha256 dad3b1f6…)
+save_reload: load: capture identity: poll.log sha256 fb9ab5aa…, 162 frames
+save_reload: load: the port holds the capture's five ranges at f=01EB and every later dumped frame (3 compared)
+```
+
+The write replay's driver run and the load replay's each missed only the base pair
+(`0x5D812 actor_spawn`/`set_dead`, `distinct=2 dropped=0`), so no `test_platform.c` miss-set change
+is needed. Boot 2's port dump holds 3 frames, all at `f=0x1EB` (the settled MAIN MENU lets the
+master counter hold), idx 0 the pin; the oracle compares all three. **No difference arose**, so
+there is no finding to fix: the port's `config_field_set` → `config_storage_touch` → `config_file_save`
+path reproduces the original's save byte for byte, and `config_file_load` plus the RAM tables
+reproduce the loaded state at the pin.
+
+**§J3.4's pin, amended by the capture.** Boot 2's `enter_frame` is **491** (`f=0x1EB`; the
+Makefile's `SAVE_RELOAD_ENTER_FRAME`), a measured number like the walk's 324. Boot 1's is **304**
+(`f=0x130`): the two boots of the *same* capture enter at different master counters although their
+Enter keys land at the same harness wall-clock (ms 25001) and the same ISR tick (0x562 vs 0x566), so
+the master counter's phase/rate relative to the ISR clock differed between the two runs (the counter
+is not proportional to the tick in either). The design's per-boot measured pin is what this
+requires; what the port's driver proves at each boot is narrower than "it would reach the frame on
+its own": it arms the Enter at that boot's `enter_frame` - 1 and asserts `mode_before == 3`,
+`mode_after == 0x27`, `frame_after == enter_frame` — i.e. the port is still in the mode-3
+Enter-accepting state at the scripted iteration and makes the transition there, for both configs.
+Nothing in either claim rests on explaining the 304/491 difference; the load claim's evidence is the
+byte comparison at the pin, which passed.
+
+**J3.8(c) — the writable mount is safe. Resolved yes.** The capture's `CHECK staging: ok` (no
+staging entry appeared or changed besides `CMOS`, no symlink target moved, the game dir's
+mtimes/sizes unchanged), and after the whole capture `data/game/C/CMOS` is still 2040 zero bytes
+with its original mtime. **J3.8(d) — the starting condition.** `session.txt` says `cmos=zero`, and
+the oracle's `write` re-checks that against `check_cmos(GAME_DIR)` on every run; the game dir is
+untouched. **J3.8(f) — `memsize`:** the default (16 MB), no memsize in either boot's argv.
+
+**The pins** (`Makefile`, provenance in its comment): `SAVE_RELOAD_CMOS_SHA256`,
+`SAVE_RELOAD_POLL_SHA256`, `SAVE_RELOAD_ENTER_FRAME = 491`, `SAVE_RELOAD_FRAMES = 162`; the target
+is in `make verify` (skips without the capture, ignoring `PR_ORACLE_REQUIRED`, like `k11-oracle`),
+and `tools.tests.test_save_reload` is in verify's tool-test line. The claims' limits stand as
+§J3.6 wrote them: the write claim covers this one save site and this one CMOS; the load claim says
+nothing about the display, the kinds outside the five ranges, or anything past the pin.

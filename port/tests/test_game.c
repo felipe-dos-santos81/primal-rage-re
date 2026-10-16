@@ -12977,7 +12977,14 @@ int test_voice_sites(void)
  * the script's pokes there. From the host pump hook it then queues each `key`
  * and holds each `pad` once the ISR clock DS_00101500 has run `dtick` past the
  * Enter's. Every distinct displayed frame (indices + gfx_dac) from the Enter on
- * becomes <dir>/frame_%04d.raw through fe_write_frame. */
+ * becomes <dir>/frame_%04d.raw through fe_write_frame, and <dir>/ranges.txt
+ * gains one line per dumped frame holding the five storage ranges of record
+ * 2026-10-15-reverse-j §J3.3 (write claim: the save path; load claim).
+ * PR_K11_SAVE=<file> (save-reload, record §J3.5) sets the host save path
+ * before game_init(): host_save_read prefers it and reads it, host_save_writable
+ * requires it -- so a scratch path that does not exist yet is loaded through
+ * the game dir's fallback and then saved to, and a copy of the capture's CMOS
+ * is loaded as it stands. Dropped at teardown, as test_restart_drive does. */
 #define K11_MAX_STEPS 512u
 #define K11_MAX_LOOPS 20000u
 #define K11_STALL_PUMPS 200000u
@@ -12988,7 +12995,7 @@ static u32 k11_n, k11_next, k11_nkeys, k11_keys_sent, k11_enter_frame, k11_enter
 static u32 k11_t0, k11_pad_end, k11_dumped, k11_hash_last, k11_idle_pumps;
 static int k11_armed, k11_done, k11_pad_on, k11_failed;
 static char k11_dir[1024];
-static FILE *k11_screens, *k11_log;
+static FILE *k11_screens, *k11_log, *k11_ranges;
 /* The script's end can fall inside a blocking loop that only a key the
  * script does not send would leave (the de scenario's STATISTICS page after
  * the capture's #DE abort, record §A.8); the hook then leaves game_loop()
@@ -13029,6 +13036,34 @@ static u32 k11_fnv(u32 h, const u8 *p, u32 n)
     return h;
 }
 
+/* The five storage ranges (record §J3.3), read through the same raw tables the
+ * game's own code reads, so no address here is fitted: the config image
+ * [0x2D48C] + 0x7F8 (0x1B006/0x1B0CA), kind 0's `{len, source}` at 0x2D444
+ * (the 0x2D444 table family the loader fixes up) and the high-score tables
+ * {count, value bytes, name bytes} at 0x2D3FC[t] over the bases 0x2D478[t]
+ * (0x2DB58's descriptors). Each range is its full hex bytes. */
+static void k11_range_hex(const char *id, u32 base, u32 len)
+{
+    fprintf(k11_ranges, " %s=", id);
+    for (u32 i = 0u; i < len; i++) fprintf(k11_ranges, "%02X", (unsigned)DSB(base + i));
+}
+
+static void k11_ranges_line(u32 idx)
+{
+    fprintf(k11_ranges, "%05u f=%04X tick=%08X", idx,
+            (unsigned)DSW(DS_000EF6DC), (unsigned)DSD(DS_00101500));
+    k11_range_hex("cfg", DSD(DS_0002D48C), 0x7F8u);
+    k11_range_hex("k0", DSD(DS_0002D444 + 4u), DSW(DS_0002D444 + 2u));
+    for (u32 t = 0u; t < 3u; t++) {
+        u32 desc = DS_0002D3FC + t * 8u;
+        u32 len = (u32)DSW(desc) * ((u32)DSW(desc + 4u) + (u32)DSW(desc + 6u));
+        char id[8];
+        snprintf(id, sizeof id, "hs%u", (unsigned)t);
+        k11_range_hex(id, DSD(DS_0002D478 + t * 8u), len);
+    }
+    fputc('\n', k11_ranges);
+}
+
 static void k11_dump_if_new(void)
 {
     const u8 *fb = gfx_display();
@@ -13037,7 +13072,8 @@ static void k11_dump_if_new(void)
     if (k11_dumped > 0u && h == k11_hash_last) return;
     char path[1200];
     snprintf(path, sizeof path, "%s/frame_%04u.raw", k11_dir, k11_dumped);
-    if (!fe_write_frame(path)) { k11_failed = 1; return; }
+    if (k11_ranges == NULL || !fe_write_frame(path)) { k11_failed = 1; return; }
+    k11_ranges_line(k11_dumped);
     k11_hash_last = h;
     k11_dumped++;
 }
@@ -13153,12 +13189,16 @@ int test_k11_oracle(void)
     k11_screens = fopen(p, "w");
     snprintf(p, sizeof p, "%s/k11.log", dump);
     k11_log = fopen(p, "w");
-    CHECK(k11_screens != NULL && k11_log != NULL, "the K11 dump files open");
-    if (k11_screens == NULL || k11_log == NULL) return g_failures - before;
+    snprintf(p, sizeof p, "%s/ranges.txt", dump);
+    k11_ranges = fopen(p, "w");
+    CHECK(k11_screens != NULL && k11_log != NULL && k11_ranges != NULL, "the K11 dump files open");
+    if (k11_screens == NULL || k11_log == NULL || k11_ranges == NULL) return g_failures - before;
 
     const char *dir = getenv("PR_GAME_DIR");
     if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
     game_set_game_dir(dir);
+    const char *save = getenv("PR_K11_SAVE");          /* save-reload §J3.5 */
+    if (save != NULL && save[0] != '\0') host_save_set_path(save);
     game_init();
     actors_pin_anim_tick_zero(1);
     host_set_pump_hook(k11_hook, NULL);
@@ -13191,9 +13231,11 @@ int test_k11_oracle(void)
     host_set_pump_hook(NULL, NULL);
     res_set_screen_hook(NULL);
     (void)host_set_fault_hook(k11_prev_fault);
+    host_save_set_path(NULL);                           /* the §J3.5 scratch path is the driver's */
     k11_key_bits(0u);
     fclose(k11_screens);
     fclose(k11_log);
+    fclose(k11_ranges);
 
     CHECK(k11_armed, "the loop reached the capture's Enter frame");
     CHECK_EQ_INT((int)mode_before, 3);                  /* 0x24ECF: the Enter arm needs mode 3 */

@@ -12,10 +12,18 @@ poll.log (written by k11_capture.py), one record per line:
             latch=.. raw=.. pad=.. kb=<hex4> bios=<hex4>   any value changed
   K ms=<int> tick=<hex8> f=<hex4> key=<hex4>      one BIOS keyboard-buffer insert
   F ms=<int> tick=<hex8> img=<hex>                the field window [0x105DAF,0x105E30) changed
+  L ms=<int> base=<hex8> id=<cfg|k0|hs0|hs1|hs2> at=<hex8> len=<int>
+                                                  one storage range's runtime locate (§J3.3)
+  R ms=<int> tick=<hex8> id=<...> img=<hex>       one storage range's bytes changed
   W ms=<int> ds=<hex8> linear=<hex8> old=<hex2> new=<hex2>   one poked byte
   E ms=<int> reason=<exit|time-limit> rc=<int>    the run ended
   I ms=<int> key=<hex4> down=<hex8> tab=<hex2> ring=<0|1>   one injected key press
   I ms=<int> up=<hex8> tab=<hex2>                 its release (k11_capture --input inject)
+
+  The L/R records carry the five storage ranges of record §J3.3 (the config
+  image, the kind-0 counters and the three high-score tables): L once per
+  range when the data base is found, R on the range's every observed value
+  (the first read included, as F).
 
 The port script (read by test_k11_oracle, port/tests/test_game.c):
   enter_frame <dec>        DS_000EF6DC after the iteration that took mode 3 to 0x27
@@ -25,9 +33,11 @@ The port script (read by test_k11_oracle, port/tests/test_game.c):
   pad <dtick> <kb hex4> <nticks>     hold [DS_00101514]+0x2D8/+0x2D9 = kb >> 8, kb & 0xFF
   key <dtick> <scan hex> <ascii hex> queue in the int 16h buffer
   end <dtick>
-dtick counts DS_00101500 ticks from the Enter's K record. Usage:
-  k11_session.py autotype --scenario NAME [--enter-wait S] [--pace S]
-  k11_session.py port-script --scenario NAME --capture DIR --out FILE
+dtick counts DS_00101500 ticks from the Enter's K record. A scenario with a
+`boot2` sub-entry (save-reload, §J3.1) selects its keys/pokes with --boot:
+boot 2 is the one-Enter load run over the file boot 1 wrote. Usage:
+  k11_session.py autotype --scenario NAME [--boot {1,2}] [--enter-wait S] [--pace S]
+  k11_session.py port-script --scenario NAME [--boot {1,2}] --capture DIR --out FILE
   k11_session.py check-fields --scenario NAME --port DIR [--exe PATH]"""
 import argparse
 import os
@@ -68,6 +78,16 @@ WALK = tuple((
     'down enter esc down enter esc down enter esc esc'       # TEST CONTROLS, ADJUST VOLUME, 2 PLAYER HANDICAP, leave
 ).split())
 
+# save-reload (record §J3.1, track J task 7), boot 1: the run that saves. Its
+# first eight keys are the walk's own first eight (to CONFIG OPTIONS), then one
+# `right` tap (record 0 CREDITS, field 0x29) and two Escs: the first leaves the
+# editor (0x33578 writes the field via 0x2DA0C), the second leaves the OPTIONS
+# MENU, whose menu_run return calls config_file_save() at 0x2CBAF. Boot 1 runs
+# on a writable mount (the one scenario that does), so the save lands in the
+# staging copy. Boot 2 is the one-Enter load run over that file: it must not
+# re-save, so it is mounted read-only and sends nothing after the Enter.
+SAVE_RELOAD_KEYS = tuple('enter enter down down esc down enter enter right esc esc'.split())
+
 SCENARIOS = {
     'walk': dict(keys=WALK, pokes=(), time_limit=75),
     'idle': dict(keys=('enter',), pokes=(), time_limit=90),
@@ -76,6 +96,8 @@ SCENARIOS = {
                   pokes=(('ds_or', 0x107410, 0x10),), time_limit=55),
     'de': dict(keys=tuple('enter down enter down enter , , , esc esc esc esc esc esc'.split()),
                pokes=(('field', 8, 0xFFFF), ('field', 6, 0x0001)), time_limit=55),   # spec §8, record §A.1.2
+    'save-reload': dict(keys=SAVE_RELOAD_KEYS, pokes=(), time_limit=55, writable=True,
+                        boot2=dict(keys=('enter',), time_limit=45)),
 }
 
 
@@ -88,6 +110,18 @@ def key_word(name):
     return scan << 8 | asc
 
 
+def keys_for(name, boot=1):
+    """The scenario's key list: boot 1 (the default), or the `boot2` sub-entry's
+    (only save-reload has one)."""
+    sc = SCENARIOS[name]
+    return sc['keys'] if boot == 1 else sc['boot2']['keys']
+
+
+def pokes_for(name, boot=1):
+    sc = SCENARIOS[name]
+    return sc['pokes'] if boot == 1 else sc['boot2'].get('pokes', ())
+
+
 def normalise(word):
     """int 16h AH=0 hands a grey arrow's 0xE0 ascii back as 0 (0x24D26); the
     BIOS buffer the poller reads keeps the 0xE0."""
@@ -96,8 +130,8 @@ def normalise(word):
     return word
 
 
-def autotype_line(name, enter_wait=ENTER_WAIT, pace=PACE):
-    return 'AUTOTYPE -w %g -p %g %s' % (enter_wait, pace, ' '.join(SCENARIOS[name]['keys']))
+def autotype_line(name, enter_wait=ENTER_WAIT, pace=PACE, boot=1):
+    return 'AUTOTYPE -w %g -p %g %s' % (enter_wait, pace, ' '.join(keys_for(name, boot)))
 
 
 def format_p(ms, vals, kb, bios):
@@ -112,9 +146,9 @@ def parse(line):
     rec = {'kind': parts[0]}
     for part in parts[1:]:
         key, _, val = part.partition('=')
-        if key in ('ms', 'rc'):
+        if key in ('ms', 'rc', 'len'):
             rec[key] = int(val)
-        elif key == 'reason':
+        elif key in ('reason', 'id'):
             rec[key] = val
         elif key == 'img':
             rec[key] = bytes.fromhex(val)
@@ -123,10 +157,21 @@ def parse(line):
     return rec
 
 
-def port_script(name, lines):
-    sc = SCENARIOS[name]
+def enter_record(recs):
+    """The mode-3 Enter as the capture shows it: (the first K record, the first
+    P record with mode 0x27 at or after it), or (None, None). Its P record's
+    `f` is the port script's enter_frame."""
+    kev = [r for r in recs if r['kind'] == 'K']
+    if not kev:
+        return None, None
+    k = kev[0]
+    p27 = next((r for r in recs if r['kind'] == 'P' and r['ms'] >= k['ms'] and r['mode'] == 0x27), None)
+    return k, p27
+
+
+def port_script(name, lines, boot=1):
     recs = [r for r in (parse(l) for l in lines) if r]
-    keys = [k for k in sc['keys'] if k != ',']
+    keys = [k for k in keys_for(name, boot) if k != ',']
     kev = [r for r in recs if r['kind'] == 'K']
     if not kev:
         raise ScriptError('no K record: the BIOS keyboard buffer never advanced (plan Task 14 F2)')
@@ -140,10 +185,11 @@ def port_script(name, lines):
     if got != want:
         raise ScriptError('observed keys %s differ from scenario %s %s'
                           % (['%04X' % w for w in got], name, ['%04X' % w for w in want]))
-    t0, ms0 = kev[0]['tick'], kev[0]['ms']
-    p27 = next((r for r in recs if r['kind'] == 'P' and r['ms'] >= ms0 and r['mode'] == 0x27), None)
+    k0, p27 = enter_record(recs)
     if p27 is None:
         raise ScriptError('mode 0x27 never observed after the Enter (raise --enter-wait?)')
+    ms0 = k0['ms']
+    t0 = k0['tick']
     dt = lambda tick: (tick - t0) & 0xFFFFFFFF
     timed = []
     for kname, r in zip(keys[1:], kev[1:]):
@@ -163,7 +209,7 @@ def port_script(name, lines):
     out = ['# k11 port script v1: scenario %s' % name,
            'enter_frame %d' % p27['f'],
            'enter_state %04X' % p27['st']]
-    out += ['%s %X %X' % (kind, a, b) for kind, a, b in sc['pokes']]
+    out += ['%s %X %X' % (kind, a, b) for kind, a, b in pokes_for(name, boot)]
     out += [text for _, _, text in sorted(timed)]
     out.append('end %d' % (last + END_TAIL_TICKS))
     return '\n'.join(out) + '\n'
@@ -197,6 +243,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('cmd', choices=('autotype', 'port-script', 'check-fields'))
     ap.add_argument('--scenario', required=True, choices=sorted(SCENARIOS))
+    ap.add_argument('--boot', type=int, choices=(1, 2), default=1,
+                    help='save-reload: the boot whose keys/script is meant (default 1)')
     ap.add_argument('--enter-wait', type=float, default=ENTER_WAIT)
     ap.add_argument('--pace', type=float, default=PACE)
     ap.add_argument('--capture')
@@ -205,13 +253,13 @@ def main():
     ap.add_argument('--exe', default='data/game/C/PRAGE.EXE')
     a = ap.parse_args()
     if a.cmd == 'autotype':
-        print(autotype_line(a.scenario, a.enter_wait, a.pace))
+        print(autotype_line(a.scenario, a.enter_wait, a.pace, a.boot))
         return 0
     if a.cmd == 'check-fields':
         return check_fields(a.scenario, a.port, a.exe)
     with open(os.path.join(a.capture, 'poll.log')) as f:
         try:
-            text = port_script(a.scenario, f.read().splitlines())
+            text = port_script(a.scenario, f.read().splitlines(), a.boot)
         except ScriptError as e:
             print('k11_session: port-script: %s: %s' % (a.scenario, e))
             return 1
