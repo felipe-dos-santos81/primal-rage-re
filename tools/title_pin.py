@@ -53,9 +53,15 @@ def guard(src, out):
     if _fold(real_src) == _fold(real_out):
         raise SystemExit("title_pin: refusing to write over the source: %s" % out)
     real_data = os.path.realpath(DATA_DIR)
-    fold_out, fold_data = _fold(real_out), _fold(real_data)
-    if fold_out == fold_data or fold_out.startswith(fold_data + os.sep):
-        raise SystemExit("title_pin: refusing to write under data/: %s" % out)
+    # Two baselines: the resolved data/ (in a worktree `data` is a symlink to the
+    # main checkout's data/) and the literal repo data/ path. A mixed-case out
+    # (`Data/...`) does not realpath onto the symlink target on a case-sensitive
+    # filesystem, so the literal baseline is what refuses it in a worktree.
+    fold_out = _fold(real_out)
+    for base in (real_data, os.path.abspath(DATA_DIR)):
+        fold_data = _fold(base)
+        if fold_out == fold_data or fold_out.startswith(fold_data + os.sep):
+            raise SystemExit("title_pin: refusing to write under data/: %s" % out)
     # Filesystem-accurate backstop: the output's directory is the data/ dir.
     if os.path.isdir(real_data) and os.path.isdir(os.path.dirname(real_out)):
         try:
