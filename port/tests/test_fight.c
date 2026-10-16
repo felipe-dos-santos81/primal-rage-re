@@ -47051,6 +47051,11 @@ static void p45_check_p5_spawns(void)
             CHECK(f != NULL, "the spawn target is registered");
             if (f == NULL) return;
             z_fseed();
+            /* 0x48A20 reads the pool base actor_spawn() indexes against; seed it
+             * before c4r_pool() so the free list is built under it (the old
+             * order built the list under the process's real base and then moved
+             * the base, so actor_spawn()'s index ran off the pool). */
+            if (addr[k] == 0x48A20u) DSD(0x001014F4u) = Z_R1;
             c4r_pool();
             DSD(Z_R0 + 0x14u) = Z_S0;
             DSD(Z_R0 + 0x18u) = 0x00001818u;
@@ -47063,7 +47068,6 @@ static void p45_check_p5_spawns(void)
             DSD(Z_R0 + 0x20u) = 0x20202020u;
             DSD(Z_R0 + 0x24u) = 0x24242424u;
             if (addr[k] == 0x48A20u) {
-                DSD(0x001014F4u) = Z_R1;
                 DSB(Z_R0 + 0x4Bu) = 0u;
             }
             if (addr[k] == 0x403A0u) {
@@ -47076,6 +47080,11 @@ static void p45_check_p5_spawns(void)
             CHECK_EQ_INT((int)x, 1);
             if (x != 1u) continue;
             if (addr[k] == 0x48A20u) {
+                /* The re-seed's point: the returned child must be a real record
+                 * of the pool actor_spawn() indexed, so a reverted seed (index
+                 * run off the pool) fails here instead of writing past mem[]. */
+                CHECK(actor_index(child) < 0x100u,
+                      "the child is an in-pool record");
                 CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(child + 0x56u));
             } else if (addr[k] == 0x40FBCu) {
                 CHECK_EQ_INT((int)DSB(child + 0x59u), 2);
