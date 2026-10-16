@@ -551,6 +551,9 @@ def main():
     ap.add_argument('--capture', action='append', required=True)
     ap.add_argument('--port', required=True)
     ap.add_argument('--frames', type=int, default=0)
+    ap.add_argument('--frontend-end', type=int, default=None,
+                    help='the pinned window end of the front-end comparison; a port that '
+                         'stops earlier fails (sub-project A A1)')
     ap.add_argument('--verbose', action='store_true')
     ap.add_argument('--frontend', action='store_true',
                     help='front-end window (states 3/4): content-alignment '
@@ -657,6 +660,18 @@ def main():
                   "dump (rc %d)." % rc)
             return 1 if rc else 0
         raws = raw_map(capture) or list(range(len(res['frames'])))
+        a_win, b_win = res['window']
+        if a.frontend_end is None:
+            print("title_compare: frontend: FAIL: the window-end pin is not set "
+                  "(--frontend-end)")
+            return 1
+        if b_win < a.frontend_end:
+            print("title_compare: frontend: FAIL: window ends at capture %d < pinned end %d "
+                  "(the port exhibited fewer frames)" % (b_win, a.frontend_end))
+            return 1
+        if b_win > a.frontend_end:
+            print("title_compare: frontend: window ends at capture %d > pinned end %d "
+                  "(improved: raise the pin)" % (b_win, a.frontend_end))
         black = res['black']
         print("title_compare: frontend: %d all-black capture frame(s) excluded "
               "as artifacts: %s"

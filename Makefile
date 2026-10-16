@@ -185,8 +185,21 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 # in tools/title_compare.py's FRONTEND_ALLOWED_UNEXPLAINED. All-black capture
 # frames are dropped as documented artifacts (port/spec/game_flow.md); a
 # content-bearing frame that disagrees still fails. The window is derived from
-# the port's own dump, so the gate cannot detect an under-rendering port.
+# the port's own dump; A1b (below) pins its END so a port that renders fewer
+# frames — which would shrink the window and leave the unexplained set empty —
+# fails the gate.
 # Captures are git-ignored; an absent capture skips both.
+# The window END pin (sub-project A A1b): the front-end window is the capture
+# frames a port frame is exhibited by, and its end b is where the port's last
+# exhibited frame lands. A port that renders fewer frames stops the window
+# earlier, but the frames it drops fall OUTSIDE the shrunken window, so the
+# unexplained set stays empty and only the end pin catches them. b is MEASURED
+# from the enforced capture: `title_compare.py --frontend` on
+# data/title-captures/frontend against the PR_FRONTEND_DET dump prints
+# "window distinct [560..1884]" (raw 3108..4791), so the pin is 1884. Raise it
+# when the window grows (the tool warns "improved: raise the pin"); a measured
+# b below it FAILS the gate.
+FRONTEND_END ?= 1884
 frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title-captures/frontend)
 	@echo "== front-end oracle (pixel-exact, states 3/4) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -195,7 +208,8 @@ frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title
 	else \
 		echo "frontend-oracle: no capture at $(TITLE_CAPTURES)/frontend, frames not compared"; \
 	fi
-	@$(PYTHON) tools/title_compare.py --frontend --capture $(TITLE_CAPTURES)/frontend \
+	@$(PYTHON) tools/title_compare.py --frontend --frontend-end $(FRONTEND_END) \
+		--capture $(TITLE_CAPTURES)/frontend \
 		--port $(FRONTEND_DUMP)/run1
 
 # Demo window report: the same PR_FRONTEND_DUMP run as frontend-oracle (its frame

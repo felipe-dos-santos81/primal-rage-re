@@ -27,6 +27,52 @@ def run_tool(capture, port, frames):
         capture_output=True, text=True, env=env)
 
 
+def run_frontend(capture, port, frames, pin):
+    # The enforced front-end gate with its window-end pin (sub-project A A1b).
+    env = dict(os.environ)
+    env.pop("PR_ORACLE_REQUIRED", None)
+    return subprocess.run(
+        [sys.executable, TOOL, "--frontend", "--frontend-end", str(pin),
+         "--capture", capture, "--port", port, "--frames", str(frames)],
+        capture_output=True, text=True, env=env)
+
+
+class FrontendEndPinTest(unittest.TestCase):
+    # Sub-project A A1b: the front-end window end (the last capture frame a port
+    # frame is exhibited by) is pinned. A port that renders fewer frames stops
+    # the window earlier, but the frames it drops fall OUTSIDE the shrunken
+    # window, so the unexplained set stays empty and only the end pin catches it.
+    def _fixtures(self, d):
+        port = os.path.join(d, "port")
+        capture = os.path.join(d, "capture")
+        os.mkdir(port)
+        os.mkdir(capture)
+        write_frame(port, 0, 0x11)
+        write_frame(port, 1, 0x22)
+        write_frame(capture, 0, 0x11)
+        write_frame(capture, 1, 0x22)
+        return port, capture
+
+    def test_full_dump_meets_the_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            r = run_frontend(capture, port, 2, 1)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("window distinct [0..1]", r.stdout)
+            self.assertIn("0 unexplained", r.stdout)
+
+    def test_one_frame_shorter_dump_fails_the_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            # One port frame: capture frame 1 is no longer exhibited, so it falls
+            # outside the window [0..0], leaves the unexplained set empty, and
+            # the end pin is the only thing that can fail.
+            r = run_frontend(capture, port, 1, 1)
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertIn("window ends at capture 0 < pinned end 1", r.stdout)
+            self.assertIn("0 unexplained", r.stdout)
+
+
 class TitleCompareTest(unittest.TestCase):
     def test_reports_total_non_alignment_without_crashing(self):
         # A capture whose every frame matches no port frame, no splice and no
