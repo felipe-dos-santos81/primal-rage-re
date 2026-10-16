@@ -112,3 +112,47 @@ the cross-checkout symlink, `test_refuses_an_out_under_data_mixed_case` FAILED: 
 `data/` on a case-sensitive filesystem) is refused too.
 
 **Gate.** No byte-exact oracle and no pin is involved (A3 touches no comparison and no `port/src`).
+
+## §A2 — re-seed `p45_check_p5_spawns`, retire the ASLR out-of-bounds write (lane a, task 3: done)
+
+**The gap.** `test_fight.c`'s `p45_check_p5_spawns` (the `addr[k] == 0x48A20u` arm) built the actor
+free list under the process's real pool base — `c4r_pool()` → `actors_reset()` reads `pool_base() =
+DSD(0x1014F4)` — and only *then* rewrote the base `DSD(0x1014F4) = Z_R1`. `actor_spawn` (`actors.c`)
+computes `index = (rec - pool_base()) / ACTOR_REC_SIZE` against the new base, so a record the free
+list returned under the old base indexes off the pool; the pset it derives
+(`DSD(0x1014EC) + (index & 0xffff) * PSET_SIZE`) then writes past `mem[]`. There is no in-pool guard
+on `actor_spawn`'s index, so the write is silent where the wild address lands in mapped memory (ASLR
+off) and a SIGSEGV where it does not (ASLR on).
+
+**Measured, pre-fix** (gdb, `set disable-randomization off`, SIGSEGV caught in
+`actor_spawn` at `actors.c:3865` `DSW(pset+0x00)`): the free-list record `rec = 0x2A7DAE0`, the wild
+index `index = 0x272F83F` (41,089,087), and the wild `pset = 0x41107E0` (68,224,992) = the process
+base + `0x41107E0` — the address AGENTS/PROGRESS named, reproduced base-identically. The existing
+`DSB(Z_R0+0x4B) == DSB(child+0x56)` check could not catch it: `fighter_48a20` stores the child's
+`+0x56` byte into `Z_R0+0x4B` by construction, so the two sides are equal no matter what index ran.
+
+**Change (`port/tests/test_fight.c` only; `port/src` untouched).**
+- The `0x48A20` arm assigns `DSD(0x1014F4) = Z_R1` *before* `c4r_pool()`, so `actors_reset` builds the
+  free list under `Z_R1`, the base `actor_spawn` reads; the later pre-run block keeps only
+  `DSB(Z_R0+0x4B) = 0u`.
+- The post-run arm gains an in-pool assertion before the kept `+0x4B`/`+0x56` check:
+  `CHECK(actor_index(child) < 0x100u, "the child is an in-pool record")`. `actor_index` (`actors.h`)
+  returns `-1u` for a non-pool offset, so an inconsistent seed fails loudly here.
+- `AGENTS.md` (the Linux-host bullet) and `docs/PROGRESS.md:1044` drop the `setarch -R` instruction
+  and the named pre-existing OOB write, and state the pool seed is consistent and the suite runs
+  under ASLR.
+
+**Measured, post-fix.** With the base re-seeded before `c4r_pool()`, `c4r_pool` takes records 0..2 of
+the `Z_R1` pool, so `actor_spawn`'s next free record is `Z_R1 + 3*0x68` → **index 3** (in-pool).
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` (ASLR on, no `setarch`) → exit 0, `all checks passed`;
+`setarch -R env PR_ORACLE_REQUIRED=1 ./build/run_tests` → exit 0, `all checks passed`.
+
+**Mutation proof.** Reverting the re-seed (base rewrite moved back after `c4r_pool()`, the loop's
+`if (addr[k] == 0x48A20u) { DSD(0x1014F4) = Z_R1; DSB(Z_R0+0x4B) = 0u; }`) and running under
+`setarch -R` (so the wild write does not SIGSEGV and the assertion is reached) fails the new check
+alone: `FAIL …/test_fight.c:47083: the child is an in-pool record`, `FAILURES: 1` (exit 1); the kept
+`+0x4B`/`+0x56` check still passes, which is exactly why it is not the guard. The same reverted tree
+under ASLR on SIGSEGVs again (exit 139). Re-applied → both runs green.
+
+**Gate.** No byte-exact oracle and no pin is involved (A2 touches no comparison and no `port/src`);
+`make verify`'s suite line is unchanged.
