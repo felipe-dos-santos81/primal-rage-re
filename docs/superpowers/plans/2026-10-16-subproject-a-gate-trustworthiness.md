@@ -373,6 +373,12 @@ In `frame_claim`, at both return points (`:472` and `:573`) return `p` as a four
 the early `return 1, None, 0, 0` and the final `return rc, first, j, p`. Update the
 docstring's Returns line.
 
+**Update every `frame_claim` caller for the new arity.** `tools/tests/test_gp_compare.py`
+unpacks a 3-tuple at five call sites — lines 48, 427, 520, 592, 689 — change each
+`rc, first, _ = gc.frame_claim(...)` to `rc, first, _, _ = gc.frame_claim(...)`. (The only
+production caller is `main` at `gp_compare.py:785`, updated in Step 3.) Confirm with
+`grep -n 'frame_claim' tools/tests/test_gp_compare.py` that all five are updated.
+
 - [ ] **Step 3: Wire `--min-reach` in `main`.**
 
 Add `ap.add_argument('--min-reach', default=None)` beside `--max-start` (`:749`). Change
