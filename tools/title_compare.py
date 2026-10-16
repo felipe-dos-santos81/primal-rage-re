@@ -561,9 +561,10 @@ def main():
                          'all-black capture frames as artifacts; returns 1 on '
                          'any unexplained frame except the two named in '
                          'FRONTEND_ALLOWED_UNEXPLAINED (the enforced front-end '
-                         'gate). The window is derived from the port dump and '
-                         'coverage is ignored, so this cannot detect an '
-                         'under-rendering port')
+                         'gate). The window is derived from the port dump and its '
+                         'END is pinned by --frontend-end, so a port that stops '
+                         'early fails; coverage INSIDE the window (port frames no '
+                         'captured frame exhibits) is still not ratcheted')
     ap.add_argument('--demo', action='store_true',
                     help='demo window (states 9/6/7): the same content-alignment '
                          'classification over the capture region after the '
@@ -625,20 +626,22 @@ def main():
     # dump return 1 (see the returns below). The result is now a gate: any
     # unexplained frame returns 1.
     #
-    # Known limitation of the gate: only `unexplained` capture frames fail it,
-    # and `unexplained` is evaluated only inside the window the port's own dump
-    # exhibits (`check_capture` derives that window from `idx`, then the branch
-    # discards `rc`). The ignored `rc` counts port frames no capture frame
-    # exhibits (coverage) and `endpoints BAD`. The 120 s capture does end before
-    # the 300 dumped frames do (the port dump runs into state 9, which the passive
-    # original leaves for the attract loop), but that is not the whole story: the
-    # ignored coverage is exactly what lets a port that UNDER-RENDERS the
-    # front-end pass. A dump of 300 identical copies of port frame 0 exits 0
-    # (window [557..559], 2 clean, 0 unexplained, exhibited 1/300), and a dump of
-    # only the first 12 real frames exits 0 (window [557..569], exhibited 9/12).
-    # "The oracle passes" therefore means "no content-bearing capture frame inside
-    # the port-exhibited window is unexplained", NOT "every dumped port frame was
-    # exhibited" and NOT "the front-end was rendered".
+    # Known limitation of the gate (narrowed by A1b's end pin): `unexplained` is
+    # evaluated only inside the window the port's own dump exhibits
+    # (`check_capture` derives that window from `idx`, then the branch discards
+    # `rc`). The ignored `rc` counts port frames no capture frame exhibits
+    # (coverage) and `endpoints BAD`. The window END is now pinned by
+    # --frontend-end: a port whose dump stops early shrinks the window end below
+    # the pin and fails. The two shrunken dumps the earlier text recorded as
+    # passing now both return 1 — 300 identical copies of port frame 0 (window
+    # [557..559], 2 clean, 0 unexplained, exhibited 1/300) and only the first 12
+    # real frames (window [557..569], exhibited 9/12) — because 559 and 569 are
+    # below the pin 1884. What the pin does NOT close is coverage INSIDE the
+    # window: a port frame no captured frame exhibits (a mid-window gap) is still
+    # ignored. "The oracle passes" therefore means "no content-bearing capture
+    # frame inside the port-exhibited window is unexplained AND the window reaches
+    # the pinned end", NOT "every dumped port frame was exhibited" and NOT "the
+    # front-end was rendered".
     if a.frontend:
         capture = a.capture[0]
         if not os.path.isdir(capture):
@@ -660,7 +663,7 @@ def main():
                   "dump (rc %d)." % rc)
             return 1 if rc else 0
         raws = raw_map(capture) or list(range(len(res['frames'])))
-        a_win, b_win = res['window']
+        b_win = res['window'][1]
         if a.frontend_end is None:
             print("title_compare: frontend: FAIL: the window-end pin is not set "
                   "(--frontend-end)")

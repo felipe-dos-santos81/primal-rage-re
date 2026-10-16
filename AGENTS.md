@@ -257,9 +257,12 @@ consolidation gate).
   the top-level dump, or the front-end window matches them against the
   capture's first attract.
 - The front-end oracle's claim is narrow: it proves only that no content-bearing
-  capture frame inside the window the port exhibits is unexplained. It **cannot**
-  detect a port that under-renders, and its window is derived from the port's own
-  dump. Do not read a green oracle as "the frame is correct".
+  capture frame inside the window the port exhibits is unexplained and that the
+  window reaches its pinned END (`FRONTEND_END`, sub-project A A1b), so a port
+  that stops early fails. But the window START is still derived from the port's
+  own dump and coverage *inside* the window is not ratcheted (a mid-window port
+  frame no capture frame exhibits is ignored). Do not read a green oracle as
+  "the frame is correct".
   The K11 oracle (`make k11-oracle`) is narrow the same way: its window START
   comes from the port's dump and its END is the capture's last non-black frame;
   it proves that no content-bearing capture frame in that window is
