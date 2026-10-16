@@ -50,7 +50,8 @@ and the game-over/high-score flows. Two claims back that:
   `0x1B084`, `0x1BE30`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
   `0x1B544`, `0x2EA30`; the other 8 are named gaps, none is open; records
   `2026-10-11-reverse-d-derivations.md` and `2026-10-14-reverse-g-derivations.md`),
-  and its rows have found 172 raw-over-port corrections. The
+  and its rows have found 172 raw-over-port corrections (track D; 174
+  program-wide including track N's two, `PROGRESS.md:1034`). The
   E2 triage's remaining rows are the 231 table-driven span-writers — not ported
   one by one (decision D2: the port blits a span as one routine) — and 2
   classified host-owned/deferred callbacks (`0x1BDF4`, `0x10604`).

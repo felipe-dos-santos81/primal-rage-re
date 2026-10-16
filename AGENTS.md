@@ -255,7 +255,10 @@ consolidation gate).
   the driver's separate `cycle2/` dump only. That dump holds the frames presented
   after the exit frame, the logo player's screens included. Keep them out of
   the top-level dump, or the front-end window matches them against the
-  capture's first attract.
+  capture's first attract. The attract prefix oracle itself (`make attract-oracle`)
+  likewise pins the count of port attract frames the capture exhibits
+  (`ATTRACT_MIN_PORT_EXH` = 173, sub-project A A1c), so a port that renders fewer
+  attract frames fails; the window's interior coverage is otherwise not claimed.
 - The front-end oracle's claim is narrow: it proves only that no content-bearing
   capture frame inside the window the port exhibits is unexplained and that the
   window reaches its pinned END (`FRONTEND_END`, sub-project A A1b), so a port
@@ -273,11 +276,16 @@ consolidation gate).
   that comparison ratchets its window END at 388 (`K11_OPEN_END` in
   `tools/k11_compare.py`, a measured value like the demo-fight N: raise it when
   the window grows), because an END taken from the port's own dump passes a
-  port that never restarts.
+  port that never restarts. It now also covers every non-black port frame up to
+  the final settled screen and pins the distinct exhibited count (`K11_WALK_MIN_EXH`
+  = 36, `K11_MENUESC_MIN_EXH` = 184, `--min-exh`; sub-project A A1c), so a port
+  that renders fewer frames fails.
   The gameplay oracle (`make gp-oracle`, in `make verify`) ratchets the first
   unexplained capture frame and the first differing trace frame of
   `data/k11-captures/gp-idle-loss`; its N values and provenance are in the
-  Makefile (with the capture's `poll.log` sha256: another capture fails); it skips without the capture,
+  Makefile (with the capture's `poll.log` sha256: another capture fails); it also pins the
+  port-frame window reach (`GP_*_MIN_REACH`, one per enforced gp scenario; sub-project A A1a), so a
+  port that renders fewer frames fails; it skips without the capture,
   even under `PR_ORACLE_REQUIRED`. The `PR_GP_DUMP` driver pins its own `fn_resolve` miss set per
   scenario (`test_platform.c`, record gameplay-ground-truth §G.24).
   `make gp-charsel-oracle` (in `make verify`) does the same for `data/k11-captures/gp-u5-charsel`
@@ -287,7 +295,7 @@ consolidation gate).
   frame from the window start up to N is unexplained and the traced fields
   agree below F; the window start is pinned too (`GP_IDLE_LOSS_MAX_START`), so a
   regressed port cannot slide it forward. It cannot detect a port that
-  under-renders, and **the order of the port's frames and that every port frame
+  under-renders *inside* the window, and **the order of the port's frames and that every port frame
   appears are not claimed** (a named gap; a coverage count is only reported). Where
   the port's script ends before the capture the first unexplained frame is how far
   the port got, not a defect.
@@ -422,7 +430,8 @@ consolidation gate).
    one of them blocks on a recorded *stub* outside the portable set, on the recorded `real` mode (`0x5D812`,
    8 rows), or on a **port-code** implementation the decomp index never listed (`0x28D68` 6 rows, `0x3E484` 3,
    `0x29D04` 2 and `0x3E4C4` 1 — allow-mode, `fn_register`ed, unrowed: rows of their own can exist, and the
-   port-code check keeps them blocking). By blocker: the stubs `0x65431` (11 rows), `0x5DD03` (10),
+   port-code check keeps them blocking). By blocker (citations, not rows: a row may name more than
+   one, so these sum above the 58): the stubs `0x65431` (11 rows), `0x5DD03` (10),
    `0x40CB0` (8), `0x24568`/`0x5DEED` (7 each), `0x24804`/`0x5DCC5` (6 each), `0x5DECA` (5),
    `0x5DC0F`/`0x5DC8B` (4 each), `0x5DEAF` (3), `0x29D04`/`0x2CB74`/`0x6C4CF` (2 each) and one each for
    `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
