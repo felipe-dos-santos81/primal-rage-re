@@ -79,10 +79,15 @@ window END follow the port's matches. Concretely, from the recon:
 exhibits fewer port frames than the measured baseline, in addition to today's
 "every content-bearing capture frame is explained":
 
-1. `gp_compare.py` — make `start_check` two-sided (a shrink fails; a genuine
-   growth is allowed by name, as today's improvement line already anticipates),
-   and ratchet the coverage `missing` list via a new `GP_*_COVERAGE` pin
-   (both-bounds, not the natural one-sided "≤", or the shrink direction leaks).
+1. `gp_compare.py` — pin the window **reach** (`p`, the highest port frame any
+   classified capture frame exhibits) as a two-sided ratchet: a port that stops
+   early (smaller `p`) fails, a genuine extension is allowed by name (the same
+   "improved: raise the pin" pattern `start_check` already uses at `:439-441`).
+   `start_check` itself keeps its one-directional semantics — an earlier START
+   is genuinely better — because the truncation leak is the END, not the START.
+   Optionally ratchet the coverage `missing` list for interior skips (a
+   `GP_*_MAX_MISSING` pin with a named allowance); both-bounds, since the
+   one-sided "≤" leaks the shrink direction.
 2. `title_compare.py` — ratchet the window end `b` and stop the front-end
    branch discarding its `rc` (`:653`); pin the front-end window end. The
    front-end dump legitimately runs into state 9, so its coverage false-fails on
