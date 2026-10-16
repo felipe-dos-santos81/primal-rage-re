@@ -363,3 +363,57 @@ OK; `make attract-oracle k11-oracle` → exit 0; `make k11-report` → exit 0. `
 its body into the new all-black test (the module still imported and ran, so the count read 19
 with the trailing test silently gone). Restored the `def`; the module is 20 tests and the
 trailing-black claim is asserted again.
+
+## §A5 — doc truth: the save-reload paragraph, the corrections scope and the oracle paragraphs (lane a, task 7: done)
+
+**Files.** `docs/PROGRESS.md`, `README.md`, `AGENTS.md` only (`port/src` untouched; `data/` untouched).
+
+**The save-reload paragraph.** `docs/PROGRESS.md` gains a paragraph after the Track-J host-findings one
+(record §J3.10; commit `bffb779e`): boot 1's replay (scratch `PR_K11_SAVE`) writes 2040 bytes
+byte-identical to the capture's `CMOS` (sha256 `dad3b1f6…`); boot 2, from a copy of that `CMOS`, holds
+the five storage ranges (`config`, k0, hs0..hs2, §J3.3) at the pin `f=0x1EB` and every later dumped frame
+(3 compared); `make save-reload-oracle` is in `make verify`, skipping without the capture; `data/game/C`
+is proven untouched (the capture's own `CHECK staging`). It closes §S.8 F7 ("No recording of the original
+behind a written or a loaded save", `2026-10-13-reverse-s-derivations.md:1107`).
+
+**The two stale sentences.** `PROGRESS.md`'s Track-S paragraph named "no recording of the original writing
+or loading a real save exists yet" among its gaps; the clause now reads that the §S.8 F7 gap is **closed**
+by the `save-reload` capture (record §J3.10; `make save-reload-oracle`, in `make verify`). The Track-J
+Part-I paragraph said its capture wave "is held"; it now reads that save-reload has landed and the
+remaining captures (ENDURANCE, ending2, win-live, join, twop2, joystick) are held.
+
+**The corrections scope.** `README.md`'s differential bullet read "its rows have found 172 raw-over-port
+corrections", which a reader could take for the program total. The figure is track-D-scoped and deliberate;
+it now reads "172 raw-over-port corrections (track D; 174 program-wide including track N's two,
+`PROGRESS.md:1034`)". `PROGRESS.md:1034` is Track N's paragraph, whose two corrections (`0x1B194`,
+`0x1B26F`) are the only ones after track D's 172 (tracks S, I, H, F, G and J found none), so 172 + 2 = 174;
+`PROGRESS.md:1042` already records the 174→172 rescope.
+
+**The oracle paragraphs (carried from Tasks 4/5/6).** `AGENTS.md`'s gp-oracle, attract and k11 paragraphs
+now state each oracle's new port-frame reach/coverage pin (the front-end one landed in Task 5):
+- gp: "it also pins the port-frame window reach (`GP_*_MIN_REACH`, one per enforced gp scenario;
+  sub-project A A1a), so a port that renders fewer frames fails", and the gp-charsel narrow claim's
+  "cannot detect a port that under-renders" is scoped to "*inside* the window" so it stays true with the
+  reach pin (A1a).
+- attract: "The attract prefix oracle itself (`make attract-oracle`) likewise pins the count of port
+  attract frames the capture exhibits (`ATTRACT_MIN_PORT_EXH` = 173, sub-project A A1c), so a port that
+  renders fewer attract frames fails; the window's interior coverage is otherwise not claimed."
+- k11: "It now also covers every non-black port frame up to the final settled screen and pins the distinct
+  exhibited count (`K11_WALK_MIN_EXH` = 36, `K11_MENUESC_MIN_EXH` = 184, `--min-exh`; sub-project A A1c),
+  so a port that renders fewer frames fails."
+
+Also folded in (design A5): the blocker-count sentence's unit — "By blocker (citations, not rows: a row may
+name more than one, so these sum above the 58)". The per-blocker citations sum above the 58 open rows
+because a row may cite more than one blocker (§J1's per-row table).
+
+**Re-measurement (not transcription).**
+- `python3 tools/port_progress.py` → `787 1203 65` / `747 747 100`; README's title (`65%`), "787 of the
+  original's 1203 real functions" and "100% (747 of 747)" all match, so the title/counts need no change.
+- `python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE --image
+  /tmp/pr_diff_image.bin --table /tmp/pr_diff_table.md --self-check | tail -1` → `1007/1007 functions
+  VERIFIED; 14900/14900 mutants detected; 1 named gaps; 774/832 rows with callees closed (175 have none);
+  768/832 closed on full rows; 8 ported functions with no row.` — equal to Task 1's AGENTS.md clause and
+  README's figure.
+
+**Gate.** Docs-only: no test, `symbols.h`, or E2 change; the two commands above are the brief's Step 4.
+`port/src` untouched; `data/` never written.
