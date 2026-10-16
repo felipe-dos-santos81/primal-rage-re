@@ -352,8 +352,14 @@ walk/menuesc windows, the settled `38/38` and `2/2`, the `K11_OPEN_END` `END 388
   passes it); unlike the gp/title pins, unattended triggering is not made fatal — following the
   brief's `if min_port_exh is not None` form.
 
-**Gate.** `python3 -m unittest tools.tests.test_gp_compare tools.tests.test_k11_compare` → 76
-tests OK (57 + 19; 2 attract + 3 k11 added); the full gate list (`test_k11_* test_save_reload
-test_gp_* test_title_pin`, under `PR_ORACLE_REQUIRED=1`) → 242 OK; `test_title_compare` → 12
+**Gate.** `python3 -m unittest tools.tests.test_gp_compare tools.tests.test_k11_compare` → 77
+tests OK (57 + 20; 2 attract + 3 k11 added); the full gate list (`test_k11_* test_save_reload
+test_gp_* test_title_pin`, under `PR_ORACLE_REQUIRED=1`) → 243 OK; `test_title_compare` → 12
 OK; `make attract-oracle k11-oracle` → exit 0; `make k11-report` → exit 0. `port/src` untouched;
 `data/` untouched; `symbols.h` untouched.
+
+**Fix round 1/5 (1 addressed, 0 open).** The first edit of the k11 tests replaced the
+`def test_trailing_black_capture_frames_pass` line instead of inserting beside it, orphaning
+its body into the new all-black test (the module still imported and ran, so the count read 19
+with the trailing test silently gone). Restored the `def`; the module is 20 tests and the
+trailing-black claim is asserted again.

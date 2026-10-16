@@ -192,7 +192,7 @@ class K11Compare(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn('non-black port frames exhibited 1/1; missing []', r.stdout)
 
-
+    def test_trailing_black_capture_frames_pass(self):
         r = self.case([self.X, self.A, self.B, bytes(W * H * 3)], [self.A, self.B],
                       'key 0 settled 0\nend settled 1\n')
         self.assertEqual(r.returncode, 0, r.stdout)
