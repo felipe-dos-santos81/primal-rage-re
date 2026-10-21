@@ -67,7 +67,7 @@ chunk ?= 0
         save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
-        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle \
+        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1348,6 +1348,48 @@ gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips
 			--capture-sha256 "$(GP_U15_CAPTURE_SHA256)" --capture-frames "$(GP_U15_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u15-join; exit $$rc; fi
 
+# Gameplay truth II U16 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 8;
+# gp_session.SCENARIOS['gp-u16-twop2']): gp-twop's two-human start played past its script
+# end to the match result (mode 0x09) and on to the conquered-lands screen (mode 0x12), with
+# the three finisher entries (keyboard 0x17/0x18/0x19 -> reactions 0x32/0x33/0x34, the
+# starters 0x37640/0x37774/0x37898) attempted on the defeated P2 in mode 9. Each starter's
+# gate is the other slot's +0x42 bit 5 and +0x43 bit 3 (0x3766E/0x37678); 0x36F10's arm A
+# sets both (`word [slot+0x42] |= 0x820`, 0x36FD4) for the side the match result
+# DS_00104AD4 beat (0x36F71..0x36F9A), reached from the health sync 0x34BE8 and its
+# position gate 0x36E2C, and DS_00105B3A (the config word's bit 8, 0x20C9F) is 0 on the
+# all-zero CMOS. The presses are tools/gp_moves.py's and UNMEASURED (Task 12 measures which
+# land). gp_twop.py check is the two-human claim (both sides press in mode 6, b1f 3, no debit
+# at the join); gp_compare's frame, trace and window ratchets are the rest. The moves claim
+# (gp_compare's --moves-min-first) is not pinned here: the scenario's S records carry the
+# move fields, so a report run shows it, and a pin can be added once measured.
+# The pins are EMPTY until data/k11-captures/gp-u16-twop2 is captured and measured
+# (Task 12): the target skips on the absent capture directory (`[ ! -d ]`), and a present
+# capture with an empty pin fails first in gp_compare's sha check ("poll.log sha256 ... !=
+# the pinned (unpinned)").
+# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture
+# frame, TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture
+# frame, MIN_REACH the replay's last exhibited port frame, and the capture identity (poll.log
+# sha256 and the frame_*.raw.gz count). Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH when they
+# improve.
+GP_U16_MIN_FIRST =
+GP_U16_TRACE_MIN_FIRST =
+GP_U16_MAX_START =
+GP_U16_MIN_REACH =
+GP_U16_CAPTURE_SHA256 =
+GP_U16_CAPTURE_FRAMES =
+gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human match and finishers (skips without data/k11-captures/gp-u16-twop2)
+	@echo "== gameplay oracle: gp-u16-twop2 (an extended two-human match and the finishers) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_twop
+	@if [ ! -d $(K11_CAPTURES)/gp-u16-twop2 ]; then echo "gp-u16-oracle: no capture at $(K11_CAPTURES)/gp-u16-twop2 (skipped)"; else \
+		$(PYTHON) tools/gp_twop.py check --capture $(K11_CAPTURES)/gp-u16-twop2 && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u16-twop2 GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u16-twop2 --capture $(K11_CAPTURES)/gp-u16-twop2 \
+			--port $(GP_DUMP)/gp-u16-twop2 --min-first "$(GP_U16_MIN_FIRST)" \
+			--trace-min-first "$(GP_U16_TRACE_MIN_FIRST)" --max-start "$(GP_U16_MAX_START)" \
+			--min-reach "$(GP_U16_MIN_REACH)" \
+			--capture-sha256 "$(GP_U16_CAPTURE_SHA256)" --capture-frames "$(GP_U16_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u16-twop2; exit $$rc; fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario) --max-unexplained "$(GP_REPORT_MAX)"
@@ -1436,6 +1478,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u14-oracle
 	@echo "== gameplay oracle: gp-u15-join (a mid-round join; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u15-oracle
+	@echo "== gameplay oracle: gp-u16-twop2 (an extended two-human match and the finishers; skips without its capture) =="
+	@$(MAKE) --no-print-directory gp-u16-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify

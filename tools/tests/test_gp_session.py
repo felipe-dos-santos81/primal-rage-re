@@ -561,6 +561,40 @@ class TestMidMatchJoin(unittest.TestCase):
         self.assertIn('gp-u15-join', gs.STOP_AT_END)
 
 
+class TestExtendedTwop(unittest.TestCase):
+    """gp-u16-twop2 (plan 2026-10-20-gameplay-truth-ii Task 8; design W7): gp-twop's
+    two-human start, extended past the first match's script end to the match result,
+    with the three finisher entries (0x37640/0x37774/0x37898, reactions 0x32..0x34)
+    attempted on the defeated P2. The press sequence is the builder's and UNMEASURED
+    (Task 12's capture measures it); these tests are shape-only."""
+
+    def test_the_extended_twop_scenario_runs_past_the_first_match(self):
+        scn = gs.SCENARIOS['gp-u16-twop2']
+        self.assertGreater(scn['time_limit'], gs.SCENARIOS['gp-twop']['time_limit'])
+        self.assertTrue(any(s[0] == 'until_mode' and s[1] in (0x09, 0x12) for s in scn['steps']))
+
+    def test_the_two_human_start_is_preserved(self):
+        # The join (F2 in the character select, 0x11F28(1)) and both sides' confirms
+        # (0x43CAD) are gp-twop's own steps, in order: the whole prefix through the
+        # mode-6 walk-in is shared (gp_twop.two_human's evidence starts there).
+        steps = gs.SCENARIOS['gp-u16-twop2']['steps']
+        twop = gs.SCENARIOS['gp-twop']['steps']
+        n = next(k for k, s in enumerate(twop) if s[0] == 'after_mode' and s[1] == 0x06)
+        self.assertEqual(steps[:n + 1], twop[:n + 1])
+        self.assertIn('gp-u16-twop2', gs.STOP_AT_END)
+
+    def test_the_finisher_entries_are_pressed_on_the_match_result(self):
+        # gp_moves.py steps --char 2 --facing 0 --moves 17,18,19 --gap 100 --step 4:
+        # the three finisher starters' entries (0x17..0x19 -> reactions 0x32..0x34),
+        # each attempt's b0+b2 held 16, 12 and 12, 100 frames apart.
+        steps = gs.SCENARIOS['gp-u16-twop2']['steps']
+        i = next(k for k, s in enumerate(steps) if s[0] == 'after_entry' and s[1] == 0x09)
+        self.assertEqual(steps[i][:4], ('after_entry', 0x09, 1, 10))   # the match result
+        fin = steps[i:-1]
+        self.assertEqual([s[-1][2] for s in fin if s[-1][1] == ('p1.b0', 'p1.b2')], [16, 12, 12])
+        self.assertEqual(steps[-1], ('until_mode', 0x12, 0))          # after the presses
+
+
 class TestPokeScript(unittest.TestCase):
     def setUp(self):
         gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())

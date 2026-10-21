@@ -516,6 +516,81 @@ SCENARIOS['gp-u15-join'] = dict(time_limit=75, steps=(
 ))
 
 
+# Gameplay truth II U16 (plan 2026-10-20-gameplay-truth-ii.md Task 8; design W7):
+# gp-twop's two-human start, played past its script end to the match result (mode 0x09),
+# with the three finisher entries attempted on the defeated P2.
+#
+# The finisher entries are the keyboard table's 0x17/0x18/0x19 (reactions 0x32/0x33/0x34,
+# the starters 0x37640/0x37774/0x37898; record gameplay-u6 §U6.10's per-character table,
+# record gameplay-u0 §U0.4). Each starter returns unless DS_00105B3A == 0 (0x37648: the
+# config word's bit 8, 0x20C9F; an all-zero CMOS gives 0), the other slot exists
+# (0x37666), its +0x42 bit 5 is set (0x3766E) and its +0x43 bit 3 (0x37678). The one
+# writer of both bits is 0x36F10's arm A (`word [slot+0x42] |= 0x820`, 0x36FC8/0x36FD4),
+# reached from the health sync's in-range arm (0x34BE8) for a side whose +0x42 bit 0x10
+# is set (0x36E78, +0x5A >= 0x78) and whose +0x52 is 0/1/5/6/7 with +0x54 <= 1 (0x36E2C),
+# when the *other* side is the match result DS_00104AD4 (0x36F71..0x36F9A). 0x27FA8's
+# 0x28024..0x2803B enters mode 9 only once the match result is decided (0..2: 0/1 a
+# winner, 2 a draw), so the gate is the defeated side on the match-result screen and the
+# winner presses the finisher there. The screen's 0x258-frame hold DS_00104AF8 becomes
+# 0x384 on a finisher (0x37759) and 0x41310 awards 50000 (0x3774F..0x37760).
+# The presses are tools/gp_moves.py's (`steps --char 2 --facing 0 --moves 17,18,19
+# --gap 100 --step 4`; P1 is TALON, character-select cell 1 = class 2, gp-twop's
+# p1.right), the builder's and UNMEASURED: which presses land, and whether the gate is
+# open on the frames they reach, is Task 12's capture. Harness values, not game values:
+# gp-twop's 60/30-frame gaps and 5-frame holds, the 16-frame 1A/1B gap and 4-frame hold
+# (gp-u14-win-live's), a 12-frame p1.right walk every eight attempts (a knockback would
+# take the idle P2 out of stationary punches' reach), the 10 frames into each anchored
+# mode (U9's), the end on the conquered-lands screen (mode 0x12: 0x4142C, the mode-0x17
+# hook 0x28BC6 installs after mode 9's hold, 0x41494) and the 240 s limit
+# (gp-u10-ending's; two fought rounds plus the result screen).
+U16_GAP = 16          # frames between the 1A/1B attempts
+U16_WALK = 12         # the p1.right hold between groups
+U16_GROUP = 8         # attempts per group
+
+
+def _u16_round(attempts, first_gap, anchor=None):
+    """P1's 1A/1B attempts (gp-u14-win-live's two 1-frame normals) `first_gap` frames
+    after the previous step, then U16_GAP apart, with a p1.right walk every U16_GROUP
+    (harness values). `anchor` = (mode, k) makes the first attempt an after_entry step."""
+    out, gap = [], first_gap
+    for k in range(attempts):
+        name = U14_PUNCH if k % 2 == 0 else U14_KICK
+        if k == 0 and anchor is not None:
+            out.append(('after_entry', anchor[0], anchor[1], first_gap, ('pad', name, 4)))
+            gap = U16_GAP
+            continue
+        if k and k % U16_GROUP == 0:
+            out.append(('after', gap, ('pad', ('p1.right',), U16_WALK)))
+            gap = 20
+        out.append(('after', gap, ('pad', name, 4)))
+        gap = U16_GAP
+    return tuple(out)
+
+
+# gp_moves.py's three attempts (char 2, facing 0, entries 0x17/0x18/0x19), the first
+# offset 0 re-anchored to 10 frames into mode 9 below.
+U16_FINISHER = (
+    ('after', 0, ('pad', ('p1.right',), 4)),        # entry 0x17: reaction 0x32
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 16)),
+    ('after', 4, ('pad', ('p1.left',), 4)),
+    ('after', 4, ('pad', ('p1.up',), 4)),
+    ('after', 4, ('pad', ('p1.down',), 4)),
+    ('after', 88, ('pad', ('p1.right',), 6)),       # entry 0x18: reaction 0x33
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 8, ('pad', ('p1.right',), 4)),
+    ('after', 92, ('pad', ('p1.left',), 6)),        # entry 0x19: reaction 0x34
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 8, ('pad', ('p1.left',), 4)),
+)
+SCENARIOS['gp-u16-twop2'] = dict(time_limit=240, steps=(
+    SCENARIOS['gp-twop']['steps'][:11] +           # the start, the walk-in and both presses
+    _u16_round(32, 30) +                           # round 1's attempts (the KO)
+    _u16_round(32, 10, anchor=(0x06, 2)) +         # round 2's (the second mode-6 entry)
+    (('after_entry', 0x09, 1, 10, U16_FINISHER[0][-1]),) + U16_FINISHER[1:] +
+    (('until_mode', 0x12, 0),)                     # the conquered-lands screen
+))
+
+
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
     if action[0] == 'key':
@@ -636,12 +711,16 @@ class Schedule:
 # gp-u15-join (gameplay truth II U15) stops too: its end is 60 frames into the join's
 # 0x78-frame mode 0x17 (0x28E75) and nothing past it is compared; without the stop the
 # 75 s limit would run on through the wipe into the character select.
+# gp-u16-twop2 (gameplay truth II U16) stops too: its end is the conquered-lands
+# screen (mode 0x12, the mode-0x17 hook 0x4142C's store) after the match-result
+# screen's finisher attempts, and nothing past it is compared; without the stop the
+# 240 s limit would run on through mode 0x12.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
                          'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
                          'gp-u13-ending2', 'gp-u12-endurance', 'gp-u14-win-live',
-                         'gp-u15-join'})
+                         'gp-u15-join', 'gp-u16-twop2'})
 
 
 class ScriptError(Exception):
