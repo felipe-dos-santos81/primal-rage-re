@@ -185,60 +185,78 @@ static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank,
             if (dst != NULL) {
                 lo = (col > src_l) ? col : src_l;
                 hi = (col + n < src_l + vis) ? col + n : src_l + vis;
-                if (!mirror) {
-                    /* PORT: the 0x81110 literal writers add the bank as a
-                     * dword (`edx = [esi] + ebx`), so the four pixels of each
-                     * dword add carry into the next byte (0x58D20/0x58D2C
-                     * write the carried word/dword, 0x58D40 a dword). The
-                     * writer call starts at the window's first visible pixel
-                     * and the chain restarts every four. Record §W1. */
-                    u32 carry = 0;
-                    for (int c = lo; c < hi; c++) {
-                        if (((c - lo) & 3) == 0) carry = 0;
-                        u32 v = (u32)src[c - col] + (u32)bank + carry;
-                        carry = v >> 8;
-                        dst[c - src_l] = (u8)v;
-                    }
-                } else {
-                    /* TODO(verify): 0x57F80/0x57FFB use the same writers, so
-                     * the carry reaches a mirrored span too; its group and byte
-                     * order in the backward destination walk is not derived. */
-                    for (int c = lo; c < hi; c++)
-                        dst[vis - 1 - (c - src_l)] = (u8)(src[c - col] + bank);
+                /* PORT: the 0x81110 literal writers add the bank as a dword
+                 * (`edx = [esi] + ebx`), so the four pixels of each dword add
+                 * carry into the next byte (0x58D20/0x58D2C write the carried
+                 * word/dword, 0x58D40 a dword). The writer call starts at the
+                 * window's first visible pixel and the chain restarts every
+                 * four. The hflip table 0x80E0C carries the same dword and
+                 * `bswap`s it into the backward destination (0x529B4 n=4,
+                 * 0x52A18 n=8; its tails are the low bytes reversed,
+                 * 0x52990 n=2 `dl`/`dh`), so a mirrored span uses the same
+                 * carried bytes with the reversed column. Record §W1. */
+                u32 carry = 0;
+                for (int c = lo; c < hi; c++) {
+                    if (((c - lo) & 3) == 0) carry = 0;
+                    u32 v = (u32)src[c - col] + (u32)bank + carry;
+                    carry = v >> 8;
+                    int d = c - src_l;
+                    if (mirror) d = vis - 1 - d;
+                    dst[d] = (u8)v;
                 }
             }
             src += b;              /* PORT: the run length, not the visible count */
         } else if (b < 0xC0) {
             n = b & 0x3F;
-            /* PORT: the run colour is the dword COLOUR_TABLE[n] + the bank
-             * dword: the add carries between the four bytes, and the 0x81010
-             * writer writes one dword per full group of four pixels. Its tail
-             * is not uniform: for a run of 12 or more pixels a 2/3-byte tail
-             * starts with the carried word (0x586A4/0x58750: `mov word
-             * [edi+N], dx`, then `dl`), for a shorter run every tail byte is
-             * `dl` (0x5855C/0x58564/0x58580). Record §W1. The address is
-             * spelled literally because the table sits in a region Ghidra
-             * never decompiled, so gen_symbols.py does not emit it. */
-            u32 sum = DSD(0x00081314u + (u32)(*src) * 4u)
-                    + (u32)bank * 0x01010101u;
-            src++;
+            u8 colour = *src++;
             if (dst != NULL) {
+                /* PORT: the run colour is the dword COLOUR_TABLE[n] + the bank
+                 * dword; the add carries between the four bytes. The two fill
+                 * tables write one dword per full group of four pixels but
+                 * place the tail differently: 0x81010 writes the low-end 1..3
+                 * bytes as `dl` (0x5855C/0x58564/0x58580), with a carried
+                 * *word* for a 2/3-byte tail once the run has 14+ pixels
+                 * (0x585F0 n=14: 3 dwords + `mov word [edi+0xc], dx`; 0x58600
+                 * n=15: word + `dl`; n=13 0x585E0 is one `dl`). The hflip
+                 * table 0x80D0C anchors the dwords at the run's HIGH end and
+                 * writes the low-end tail as `dl` (0x521E8 n=2, 0x52204 n=5,
+                 * 0x5222C n=8 two dwords) until that same 14+ word rule
+                 * (0x52284 n=14 word; 0x52294 n=15 word + `dl` at the low
+                 * byte), so its ascending pattern is the low tail first and
+                 * the natural dword groups after it. Record §W1. The address
+                 * is spelled literally because the table sits in a region
+                 * Ghidra never decompiled, so gen_symbols.py does not emit it. */
+                u32 sum = DSD(0x00081314u + (u32)colour * 4u)
+                        + (u32)bank * 0x01010101u;
                 lo = (col > src_l) ? col : src_l;
                 hi = (col + n < src_l + vis) ? col + n : src_l + vis;
-                int full = (hi - lo) & ~3;
-                int tail_word = (hi - lo) >= 12;
-                for (int c = lo; c < hi; c++) {
-                    int d = c - src_l;
-                    int k = c - lo;
-                    u8 v;
-                    if (k < full) v = (u8)(sum >> (8 * (k & 3)));
-                    else if (k - full == 1) v = (u8)(sum >> (tail_word ? 8 : 0));
-                    else v = (u8)sum;
-                    /* TODO(verify): the mirrored writers' dword/byte order in
-                     * the backward destination walk is not derived; the low
-                     * byte is what the port modelled before §W1. */
-                    if (mirror) { d = vis - 1 - d; v = (u8)sum; }
-                    dst[d] = v;
+                int nvis = hi - lo;
+                if (!mirror) {
+                    int full = nvis & ~3;
+                    int tail_word = nvis >= 14;
+                    for (int c = lo; c < hi; c++) {
+                        int k = c - lo;
+                        u8 v;
+                        if (k < full) v = (u8)(sum >> (8 * (k & 3)));
+                        else if (k - full == 1) v = (u8)(sum >> (tail_word ? 8 : 0));
+                        else v = (u8)sum;
+                        dst[c - src_l] = v;
+                    }
+                } else {
+                    int t = nvis & 3;
+                    int tail_word = nvis >= 14;
+                    for (int c = lo; c < hi; c++) {
+                        int q = hi - 1 - c;      /* 0 = the visible run's left end */
+                        int idx;
+                        if (q < t) {
+                            if (t == 2) idx = (tail_word && q == 1) ? 1 : 0;
+                            else if (t == 3) idx = (tail_word && q == 2) ? 1 : 0;
+                            else idx = 0;
+                        } else {
+                            idx = (q - t) & 3;
+                        }
+                        dst[vis - 1 - (c - src_l)] = (u8)(sum >> (8 * idx));
+                    }
                 }
             }
         } else {

@@ -1671,10 +1671,10 @@ static void check_bank_and_colour(void)
     /* The bank is added as a dword (0x81010/0x81110 + 0x81310): a byte sum
      * above 0xFF carries into the next pixel of the same four-pixel group. The
      * run colour's dword is COLOUR_TABLE[n] + the bank dword, written as one
-     * dword per full group and as its low byte for a 1..3 tail (0x58578,
-     * 0x5859C, 0x585C0). Record §W1: 0xFE + 4 = 0x102, so a four-pixel fill
-     * is 02 03 03 03, a three-pixel fill 02 02 02 and a five-pixel one
-     * 02 03 03 03 02. The old byte-wise add gave 02 everywhere. */
+     * dword per full group with a 1..3 tail (0x58578 n=5, 0x58580 n=6,
+     * 0x5858C n=7; the 14+ word tail is below). Record §W1: 0xFE + 4 = 0x102,
+     * so a four-pixel fill is 02 03 03 03, a three-pixel fill 02 02 02 and a
+     * five-pixel one 02 03 03 03 02. The old byte-wise add gave 02 everywhere. */
     static const u8 fill4[2] = { 0x84, 0xFE };
     static const u8 fill3[2] = { 0x83, 0xFE };
     static const u8 fill5[2] = { 0x85, 0xFE };
@@ -1691,10 +1691,11 @@ static void check_bank_and_colour(void)
     CHECK_EQ_INT(sprite_render_rle(fill5, f4, 5, 1, 6, 4), 0);
     CHECK_EQ_INT(f4[0], 0x02); CHECK_EQ_INT(f4[1], 0x03); CHECK_EQ_INT(f4[2], 0x03);
     CHECK_EQ_INT(f4[3], 0x03); CHECK_EQ_INT(f4[4], 0x02); CHECK_EQ_INT(f4[5], 0xEE);
-    /* A run of 12 or more pixels writes a two-pixel tail as the carried word
-     * (0x81010's 0x586A4/0x58750: dwords then `mov word [edi+N], dx`), so a
-     * 14-pixel fill ends 02 03 and a 15-pixel one 02 03 02; a shorter run's
-     * tail is dl repeated (0x5855C/0x58564), e.g. the 5-pixel 02 above. */
+    /* A run of 14 or more pixels writes a two-pixel tail as the carried word
+     * (0x585F0 n=14 is the first word-tail writer: 3 dwords then `mov word
+     * [edi+0xc], dx`; 0x58600 n=15 word + dl), so a 14-pixel fill ends 02 03
+     * and a 15-pixel one 02 03 02; a shorter run's tail is dl repeated
+     * (0x5855C/0x58564; n=13 is 0x585E0, one dl). */
     memset(f4, 0xEE, sizeof f4);
     CHECK_EQ_INT(sprite_render_rle(fill14, f4, 14, 1, 20, 4), 0);
     for (int i = 0; i < 12; i++) CHECK_EQ_INT(f4[i], (i & 3) ? 0x03 : 0x02);
@@ -1710,11 +1711,49 @@ static void check_bank_and_colour(void)
     CHECK_EQ_INT(sprite_render_rle(lit4, l4, 4, 1, 4, 4), 0);
     CHECK_EQ_INT(l4[0], 0x02); CHECK_EQ_INT(l4[1], 0x04);
     CHECK_EQ_INT(l4[2], 0x06); CHECK_EQ_INT(l4[3], 0x06);
+
+    /* The hflip writers carry the same dword (0x80E0C literals: 0x529B4 n=4
+     * bswaps it into [edi-3], 0x52990 n=2 writes dl at edi and dh at edi-1;
+     * 0x80D0C fills: 0x521FC/0x5222C write the dword at [edi-3]/[edi-7] and
+     * the low-end tail as dl, 0x52284 n=14 is the word tail). The mirrored
+     * patterns are not the plain ones reversed: the fill dwords stay in
+     * natural byte order at the run's high end, and the literal group phase
+     * starts at the visible source start. Record §W1. */
+    static const u8 mfill5[2] = { 0x85, 0xFE };
+    static const u8 mfill15[2] = { 0x8F, 0xFE };
+    u8 m[20]; memset(m, 0xEE, sizeof m);
+    CHECK_EQ_INT(sprite_render_rle_clipped(mfill5, m, 5, 1, 5, 4, 0,0,0, 1), 0);
+    CHECK_EQ_INT(m[0], 0x02); CHECK_EQ_INT(m[1], 0x02); CHECK_EQ_INT(m[2], 0x03);
+    CHECK_EQ_INT(m[3], 0x03); CHECK_EQ_INT(m[4], 0x03);
+    memset(m, 0xEE, sizeof m);
+    CHECK_EQ_INT(sprite_render_rle_clipped(mfill15, m, 15, 1, 20, 4, 0,0,0, 1), 0);
+    CHECK_EQ_INT(m[0], 0x02); CHECK_EQ_INT(m[1], 0x02); CHECK_EQ_INT(m[2], 0x03);
+    for (int i = 3; i < 15; i++) CHECK_EQ_INT(m[i], ((i - 3) & 3) ? 0x03 : 0x02);
+    CHECK_EQ_INT(m[15], 0xEE);
+    /* Literal 6, mirrored: source FE FF 01 02 (group) 03 04 (tail), bank 4;
+     * 0x529DC writes the bswapped dword at [edi-3] then dl/dh at [edi-4/-5],
+     * so the row is 08 07 06 06 04 02. */
+    static const u8 mlit6[7] = { 0x06, 0xFE,0xFF,0x01,0x02,0x03,0x04 };
+    memset(m, 0xEE, sizeof m);
+    CHECK_EQ_INT(sprite_render_rle_clipped(mlit6, m, 6, 1, 6, 4, 0,0,0, 1), 0);
+    CHECK_EQ_INT(m[0], 0x08); CHECK_EQ_INT(m[1], 0x07); CHECK_EQ_INT(m[2], 0x06);
+    CHECK_EQ_INT(m[3], 0x06); CHECK_EQ_INT(m[4], 0x04); CHECK_EQ_INT(m[5], 0x02);
+    /* The group phase starts at the VISIBLE source, not the run's start:
+     * width 6, clip_l 0, clip_r 1 -> vis 5 and the mirrored source window is
+     * [1,6); the run 11 FE FF 01 02 03 is drawn from FE (0x529C4's n=5:
+     * bswapped dword + dl at [edi-4]), so the row is 07 06 06 04 02. */
+    static const u8 mlit6c[7] = { 0x06, 0x11,0xFE,0xFF,0x01,0x02,0x03 };
+    memset(m, 0xEE, sizeof m);
+    CHECK_EQ_INT(sprite_render_rle_clipped(mlit6c, m, 6, 1, 8, 4, 0,1,0, 1), 0);
+    CHECK_EQ_INT(m[0], 0x07); CHECK_EQ_INT(m[1], 0x06); CHECK_EQ_INT(m[2], 0x06);
+    CHECK_EQ_INT(m[3], 0x04); CHECK_EQ_INT(m[4], 0x02);
+    for (int i = 5; i < 8; i++) CHECK_EQ_INT(m[i], 0xEE);
 }
 
 static void check_raw_copy(void)
 {
-    /* A 4x2 raw fixture with the bank offset applied byte-wise. */
+    /* A 4x2 raw fixture; the bank is the dword add of 0x81110 (carry inside
+     * each four-pixel group). */
     const u8 src[8] = { 1,2,3,4, 5,6,7,8 };
     /* dst must fit two stride-16 rows: the brief's dst[16] would write row 1
      * at dst[16..19], past the end, clobbering the adjacent stack. */

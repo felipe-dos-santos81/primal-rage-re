@@ -1134,16 +1134,22 @@ GP_WIN_MIN_REACH = 1976
 # TRACE/WIN/MILESTONES unchanged (9954/9954/30; TRACE/WIN are at the replay's end, so they cannot
 # rise). The pixel claim now reaches f=0x1502 (the final's 4th death) instead of stopping at the
 # strip (f=0xB9A).
+# BEFORE Task 3 (superseded by the next block): 4113 was the first unexplained until the span-writer
+# fix explained it; 4114 no longer fails, and the pixel claim now reaches f=0x26E1.
 # Re-measured by gameplay truth II Task 3 (record 2026-10-20-gameplay-truth-ii §W1): 4113..4134 were
 # a REAL port divergence in the RLE span writers — the bank is added as a dword (0x81110/0x81010),
 # so a byte sum above 0xFF carries into the next pixel of the four-pixel group, and a run colour's
-# 2/3-byte tail is a carried word for runs of 12+ pixels (0x81010's 0x586A4/0x58750) but dl
-# repeated below that (0x5855C..0x5859C). The port added the bank byte-wise (sprite.c rle_row /
-# copy_run). With the fix the two dead fighters' flash-palette frames (port 3444..3463) match and
+# 2/3-byte tail is a carried word for runs of 14+ pixels (0x585F0 n=14 is the first word-tail
+# writer, 0x58600 n=15; n=13 is one dl) but dl repeated below that (0x5855C..0x585C0), with the
+# same threshold in the mirror fill table (0x52284/0x52294). The port added the bank byte-wise
+# (sprite.c rle_row / copy_run) and the mirrored span wrote one byte for every pixel; the fix also
+# reproduces the hflip tables 0x80D0C/0x80E0C (high-end dwords, low-end dl tail, bswapped literal).
+# With the fix the two dead fighters' flash-palette frames (port 3444..3463) match and
 # every capture frame 83..5436 is explained; the first unexplained is 5437 (raw 13279) — the
 # capture's post-script tail (§W1 run 2, the port's replay ends at f=0x26E1), NOT allowed:
 # MIN_FIRST 4113 -> 5437 and 5438 fails (the exact pin). The window REACH rises 3444 -> 4662
-# (the replay's last frame, f=0x26E1) because the enforced run no longer stops at 4113; 4663 fails.
+# (the highest port frame the capture exhibits; the dump's last frame index is 4663, f=0x26E1,
+# and is not exhibited) because the enforced run no longer stops at 4113; 4663 fails.
 # MAX_START 83 unchanged and exact (82 prints the improved line), TRACE/WIN/MILESTONES unchanged.
 GP_ENDING_MIN_FIRST = 5437
 GP_ENDING_TRACE_MIN_FIRST = 9954
@@ -1154,8 +1160,9 @@ GP_ENDING_CAPTURE_SHA256 = a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8d
 GP_ENDING_CAPTURE_FRAMES = 5704
 # MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
 # exhibits. Measured 2026-10-21 by gameplay truth II Task 3 after the §W1 span-writer fix:
-# 4662 = the replay's last frame (f=0x26E1, the capture's X) — the enforced run no longer
-# stops at capture 4113. Before it: 3444 (4113's nearest port, the first unexplained).
+# 4662 = the highest port frame the capture exhibits (the dump's last frame is index 4663,
+# f=0x26E1, and is not exhibited) — the enforced run no longer stops at capture 4113.
+# Before it: 3444 (4113's nearest port, the first unexplained).
 # Raise it when gp_compare prints "improved: raise the pin".
 GP_ENDING_MIN_REACH = 4662
 # The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's

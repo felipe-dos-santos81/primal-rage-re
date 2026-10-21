@@ -26484,6 +26484,10 @@ D5B_SPECS += [
         # and the raw bitmap's 0x50..0x6F. The original carries into the next pixel of each four-pixel
         # group (0x58D20..0x58D40, 0x58578..0x585C0); a byte-wise bank add fails this case. Record §W1.
         d5b_bl("b8", [(D5B_R, 10, 2, 0), (D5B_W, 40, 2, 0)], 0x80, bank=0xFE),
+        # b9: b8's high bank over the MIRRORED RLE renderer (0x57F80, type 9): 0x80D0C's fill dwords
+        # anchor at the run's high end and 0x80E0C's literal dword is bswapped (0x529B4/0x52A18), so a
+        # byte-wise bank add is low on the rightmost group's bytes. Record §W1.
+        d5b_bl("b9", [(D5B_R | 0x8000, 10, 2, 0), (D5B_W, 40, 2, 0)], 0x80, bank=0xFE),
     ], allow_calls=D5B_BLIT_ALLOW, eax_mask=0xFFFFFFFF,
        mutants=("@bank", "@rowtab", "@clipb", "@noshear", "@t5", "@nomirror", "@t0a", "@lr", "@notop",
                 "@nomirrorclip", "@stride")),

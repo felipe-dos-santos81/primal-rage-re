@@ -370,7 +370,9 @@ The 22 frames are the poked final's death animation. Capture 4113 (raw 7858) is 
 mode=000D`); the port's T record at `f = 0x1502` has the same mode, state, rng and
 credit (`trace.txt`; the trace claim reports `0 differing through 9953`).
 
-Measured on the frame bytes (not a pin; `gp_compare`'s loaders over the whole dump):
+Measured on the frame bytes (not a pin; `gp_compare`'s loaders over the whole dump).
+**These two bullets are the pre-fix measurement; the Task 3 decision below replaces
+them** ("no other frame" held only because every candidate held the offset palette):
 
 - capture 4113's rows 0..165 are byte-equal to port 3444 and to **no other** frame of
   the 4664-frame dump;
@@ -412,13 +414,27 @@ The cause is the **dword bank add** of the original's span writers:
   four-pixel group** (`0x81010`/`0x81110` are the unrolled writers);
 - a *run colour* is `DAT_00081314[colour] (= colour replicated) + ebx`; its full
   four-pixel groups write the carried dword, and the 2/3-pixel tail is a **carried
-  word** when the run has 12+ pixels (`0x586A4`: `mov word [edi+0x14], dx`;
-  `0x58750` the same) but `dl` repeated for shorter runs (`0x5855C`/`0x58564`);
-- the port added the bank byte-wise (`dst[i] = src[i] + bank`) and wrote the low
-  byte for every tail byte. That is exact while `colour + bank <= 0xFF`, which is
-  why the arena, HUD and the title/attract oracles never saw it; the death flash
-  palettes (start 244/275, run colours 0xFD..0xFF) overflow, so their pixels
-  rendered one entry low.
+  word** when the run has 14+ pixels (`0x585F0` n=14 is the first word-tail writer:
+  3 dwords + `mov word [edi+0xc], dx`; `0x58600` n=15 word + `dl`; n=13 is `0x585E0`,
+  one `dl`) but `dl` repeated for shorter runs (`0x5855C`/`0x58564`); the mirror fill
+  table `0x80D0C` has the same threshold (`0x52284` n=14 word, `0x52294` n=15 word +
+  `dl`);
+- the hflip tables carry the same dword: `0x80E0C`'s literals add the bank dword and
+  `bswap` it into the backward destination (`0x529B4` n=4: `[edi-3] = bswap(edx)`; the
+  tails are `dl`/`dh` at `edi`/`edi-1`, `0x52990` n=2), and `0x80D0C`'s fills anchor
+  the natural dwords at the run's high end (`0x521FC` n=4 `[edi-3]`, `0x5222C` n=8 two
+  dwords) with the low-end 1..3 bytes as `dl` and the 14+ word tail at the low byte
+  (`0x52284` n=14, `0x52294` n=15). The mirrored span is therefore not the plain
+  pattern reversed: its fill groups keep the dword's byte order, and its literal
+  group phase starts at the visible source start. The write maps of all four tables
+  (0x81010, 0x81110, 0x80D0C, 0x80E0C) were extracted for n=1..63 from the unrolled
+  routines and compared with the implemented byte rules: 0 mismatches;
+- the port added the bank byte-wise (`dst[i] = src[i] + bank`) and, for a mirrored
+  span, wrote `(u8)sum` / `src + bank` for every pixel. That is exact while
+  `colour + bank <= 0xFF`, which is why the arena, HUD and the title/attract oracles
+  never saw it; the death flash palettes (start 244/275, run colours 0xFD..0xFF)
+  overflow, so their pixels rendered one entry low. The mirrored low-end group was
+  low on its rightmost bytes too.
 
 The failing-first evidence: the new assertions in `test_platform.c`'s
 `check_bank_and_colour`/`check_raw_copy` (4-pixel fill `02 03 03 03`, 3-pixel
@@ -426,8 +442,15 @@ The failing-first evidence: the new assertions in `test_platform.c`'s
 `FE FF 01 02`+4 → `02 04 06 06`) fail on the pre-fix tree (the old byte-wise add
 prints `2 != 3`, `3 != 4`, `5 != 6`) and pass after; the new differential case
 `render_list_blit` `b8` (bank byte 0xFE, offset 253, every drawn colour overflows)
-reports `original 0x68, port 0x67` on the old code and VERIFIED after, and the
-harness suite pins its catch set (`@bank`, `@rowtab`, `@stride` gain `b8`).
+reports `original 0x68, port 0x67` on the old code and VERIFIED after; the mirrored
+case `b9` (b8's bank over `D5B_R | 0x8000`, type 9) reports `original 0x11, port 0x10`
+on the pre-mirror-fix tree and VERIFIED after; the harness suite pins the catch sets
+(`@bank`, `@rowtab`, `@stride` gain `b8`/`b9`, `@nomirror` gains `b9`). The unit
+`check_bank_and_colour` cases pin the mirrored fill 5 (`02 02 03 03 03`), 15
+(`02 02 03 02 03 03 03 ...`), the mirrored literal 6 (`08 07 06 06 04 02`) and a
+clipped mirrored literal whose group phase starts at the visible source (`07 06 06 04
+02`). The differential fixture's longest run is 8, so the 14+ word tail is
+unit-tested only (raw-derived, and the n=1..63 table check above).
 
 **The measured consequence (2026-10-21, `make gp-ending-oracle`):**
 
@@ -443,8 +466,8 @@ gp_compare: gp-u10-ending: win: 0 differing through 9953; ratchet N 9954 ok
 Runs 2..4 (below) are the capture's post-script tail and are not in the enforced
 window: the first unexplained is 5437, run 2's start, exactly the next pin the
 reviewer named. Pins: `GP_ENDING_MIN_FIRST` 4113 → **5437** (5438 fails);
-`GP_ENDING_MIN_REACH` 3444 → **4662** (the replay's last frame, f=0x26E1; 4663
-fails); `GP_ENDING_MAX_START` 83, `GP_ENDING_TRACE_MIN_FIRST` 9954,
+`GP_ENDING_MIN_REACH` 3444 → **4662** (the highest port frame the capture exhibits;
+the dump's last frame is index 4663, f=0x26E1, and is not exhibited; 4663 fails); `GP_ENDING_MAX_START` 83, `GP_ENDING_TRACE_MIN_FIRST` 9954,
 `GP_ENDING_WIN_MIN_FIRST` 9954 and `GP_ENDING_MILESTONES` 30 unchanged (the trace,
 win and path lines still pass at their exact pins). The run is fully explained; the
 B and C candidates are closed — B cannot hold because the port applies the same
@@ -483,8 +506,8 @@ logo; 5648's first box rows 163..199 x 112..192, 766 px, is the logo assembling;
 
 Same post-script tail. 5690 is the 166 px `CREDITS: 5` band (rows 7..12, x 130..196) on
 black; 5691..5703 is the waterfall attract title with `CREDITS: 5` (32400..55514 px
-against the port's boot frame). **Candidate: none of A/B/C — the same script end.** Task 3
-needs nothing; these screens belong to the front-end/smk oracles, not to a U10 tail pin.
+against the port's boot frame). **None of A/B/C — the same script end.** These screens
+belong to the front-end/smk oracles, not to a U10 tail pin.
 
 ### The pokes (verbatim from `poll.log`)
 
