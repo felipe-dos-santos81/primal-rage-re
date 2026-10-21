@@ -586,7 +586,7 @@ the game logic:
 | `0x1AE28` | `config_keys_apply` writes the device words (`DSW` at `0x1AE3B`/`0x1AE4F`) | `port/src/game/config.c:1285,1287` |
 | `0x31F24` | OPTIONS MENU MODIFY CONTROLS edits device 0/2/4/6 and calls `0x1AE28` (`0x32347`, argument at `0x32345`) | `port/src/game/svcmenu.c:848` |
 | `0xA2C62` | the default key record: device words 0/0 (keyboard) | raw `00 00 ... 00 00 ...` at data-object file offset `0xE94B6` |
-| `0x20DAC`/`0x20DD1` | boot controller checks: `call 0x4FBBB` (the game-port wait) and clear the device word `+0x2D4` (`0x20DBA`) / `+0x2D6` (`0x20DDF`) when the check fails | host-owned, `tools/port_classification.txt:63`; record named-gaps-b §B.6a |
+| `0x20DAC`/`0x20DD1` | boot controller checks: they call the host-owned `0x4FBBB` (the game-port wait) and clear the device word `+0x2D4` (`0x20DBA`) / `+0x2D6` (`0x20DDF`) when the check fails; the port leaves `0x20D0F..0x20DE3` out (`port/src/game/flow.c:6980`) | `tools/port_classification.txt:63` (the callee `0x4FBBB`); record named-gaps-b §B.6a |
 | `0x5004A` | the calibration (PIT `0x50021`, game port `0x201` via `0x4FC05`/`0x4FCFD`); callers `0x1C0AC`, `0x24DD3` (Alt-J), `0x2EB4D` | host-owned, `tools/port_classification.txt:66` |
 
 The chain is: `0x1BBAC` → `+0x2D8`/`+0x2D9` → `0x500C4`'s level word `0xE1C34` → `0x4F644`'s pad
@@ -597,8 +597,9 @@ keyboard (0/0), so a default boot has no joystick input; a service-menu selectio
 saved image reaches the sampler's joystick arms. All the live game-port sampling code is
 host-owned; the config writers `0x1AE28`/`0x31F24` are ported. The unreferenced sampler routines
 `0x1B934..0x1BB73` (callers of `0x4FF8F`/`0x4FFD8` at `0x1B976`/`0x1B9B6`/`0x1BA16`/`0x1BA96`/
-`0x1BAD6`/`0x1BB36`) are not in those rows and have no row (`tools/port_classification.txt`
-rows 34-44, 62-67, 70-71 cover the live sampler, the calibration and the axis readers).
+`0x1BAD6`/`0x1BB36`, named as callers by `tools/port_classification.txt:70-71`) have no row of
+their own (`tools/port_classification.txt` rows 34-44, 62-67, 70-71 cover the live sampler, the
+calibration and the axis readers).
 
 ### What follows for the host phase
 

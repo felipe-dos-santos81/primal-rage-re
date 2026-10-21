@@ -272,9 +272,11 @@ capture task writes its own record section (the track-J `§J4`..`§J9` shape).
 2. Each of the five replay captures either exists with a clean `check-input`
    and its pins/target in `make verify`, or is named with the user's decline and
    the reason.
-3. The joystick verdict is recorded from the raw evidence (no gameplay path; an
-   SDL map is additive); any Alt-J/boot probe the user requests is labeled
-   report-only.
+3. The joystick verdict is recorded from the raw evidence (the game logic never
+   reads the joystick; the original's joystick path is the host-owned ISR
+   sampler `0x1BBAC`'s device-2/4/6 arms; `0x4F644`'s gate never opens; an SDL
+   map is additive host input); any Alt-J/boot probe the user requests is
+   labeled report-only.
 4. `make verify` exits 0; every existing pin and oracle line is unchanged or
    has a recorded re-measure; no fitted constants.
 5. `docs/PROGRESS.md`, `AGENTS.md` and the README are truthful about what the
@@ -305,10 +307,12 @@ capture task writes its own record section (the track-J `§J4`..`§J9` shape).
   and the ending2 claim.
 - **The five replay captures keep the track-J names and contracts.** The old
   `gp-u8-endurance` capture and pins stay; new evidence gets new names.
-- **The joystick probe is replaced by a raw verdict.** The original never reads
-  the joystick in gameplay (`0x2D2F0` is a stub; `0x4F644`'s gate never opens),
-  so an SDL map is additive. A report-only Alt-J/boot session is optional and
-  is not a `gp-*` fixture; no SDL gamepad code lands here.
+- **The joystick probe is replaced by a raw verdict.** The game logic never
+  reads the joystick; the original's joystick path is the host-owned ISR
+  sampler `0x1BBAC`'s device-2/4/6 arms, and `0x4F644`'s gate never opens
+  (`0x2D2F0` is a stub), so an SDL map is additive host input. A report-only
+  Alt-J/boot session is optional and is not a `gp-*` fixture; no SDL gamepad
+  code lands here.
 - **A capture that cannot be made is a named gap, not a weakened claim.** The
   phase can succeed with fewer than five replay captures if each missing one is
   named with its evidence and the user's decision.
