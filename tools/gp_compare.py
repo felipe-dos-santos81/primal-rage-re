@@ -35,9 +35,10 @@ The search for a frame's explanation tries the port frames [p - BACK, p +
 AHEAD) around the last explained index p first, then the whole dump, so the
 result is the unwindowed classification (the window is a search order, a
 harness value). Enforced runs stop at the first unexplained frame; --report
-goes on (up to REPORT_MAX) and always exits 0. An absent capture skips (exit
-0); a present capture with an unpinned N or start fails. Stdlib only; title_compare and
-gp_session are read-only here."""
+goes on (up to REPORT_MAX; --max-unexplained overrides, 0 lifts the cap) and
+always exits 0. An absent capture skips (exit 0); a present capture with an
+unpinned N or start fails. Stdlib only; title_compare and gp_session are
+read-only here."""
 import argparse
 import collections
 import gzip
@@ -467,14 +468,16 @@ def reach_check(name, reach, min_reach, out=print):
 
 
 def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None,
-                bands=None, scan3=None, overlay=None):
+                bands=None, scan3=None, overlay=None, max_unexplained=REPORT_MAX):
     """Returns (rc, first_unexplained or None, next_after_last_classified, reach). In report
     mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
-    "window empty"; main() turns every report-mode rc into 0). `bands`, `scan3`
-    and `overlay` are the scenario's named per-frame allowances (BANDS_ALLOWED,
-    SCAN3_ALLOWED, OVERLAY_ALLOWED); a named frame that is not its named bytes
-    prints its FAIL in both modes and fails the enforced run. `reach` is `p`, the
-    highest exhibited port frame, the window's end (sub-project A §A1)."""
+    "window empty"; main() turns every report-mode rc into 0). `max_unexplained`
+    caps the report-mode unexplained list (0 lifts the cap; the enforced run
+    always stops at the first). `bands`, `scan3` and `overlay` are the scenario's
+    named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED, OVERLAY_ALLOWED); a
+    named frame that is not its named bytes prints its FAIL in both modes and
+    fails the enforced run. `reach` is `p`, the highest exhibited port frame, the
+    window's end (sub-project A §A1)."""
     bands = {} if bands is None else {b[0]: b for b in bands}
     scan3 = {} if scan3 is None else {s[0]: s for s in scan3}
     overlay = {} if overlay is None else {o[0]: o for o in overlay}
@@ -556,7 +559,7 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         counts[kind] += 1
         if kind == 'unexplained':
             unexpl.append(j)
-            if not report or len(unexpl) >= REPORT_MAX:
+            if not report or (max_unexplained and len(unexpl) >= max_unexplained):
                 break
         else:
             ex = exhibited(kind, data)
@@ -779,6 +782,8 @@ def main():
                     help='the moves claim over gp_session.MOVE_FIELDS (record gameplay-u6 §U6.11); '
                          'report mode runs it whenever the capture records those fields')
     ap.add_argument('--report', action='store_true')
+    ap.add_argument('--max-unexplained', type=int, default=REPORT_MAX,
+                    help='report mode: stop after this many unexplained frames (0 = no cap; default 5)')
     a = ap.parse_args()
     name = a.scenario
     if a.report:
@@ -809,7 +814,8 @@ def main():
     rc1, _, _, reach = frame_claim(name, cap, raws, port, rows, n_frames, a.report, print,
                                    None if a.report else _int_or_none(a.max_start),
                                    BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()),
-                                   OVERLAY_ALLOWED.get(name, ()))
+                                   OVERLAY_ALLOWED.get(name, ()),
+                                   max_unexplained=a.max_unexplained)
     rc4 = 0 if a.report else reach_check(name, reach, _int_or_none(a.min_reach), print)
     with open(os.path.join(a.capture, 'poll.log')) as f:
         cl = f.read().splitlines()

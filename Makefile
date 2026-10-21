@@ -489,6 +489,7 @@ save-reload-oracle: build ## Save-reload oracle: boot 1's replay writes the capt
 # pinned original under DOSBox-X with frame-keyed injection and a per-frame
 # snapshot log. Writes only data/k11-captures/gp-<scenario>/ (gp_capture.guard_gp).
 GP_ARGS ?=
+GP_REPORT_MAX ?= 5
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
 
@@ -1172,7 +1173,7 @@ gp-win-one: build
 
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
-	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
+	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario) --max-unexplained "$(GP_REPORT_MAX)"
 
 # Differential verification (spec 2026-09-30-reverse-completion-design §5): the original's own
 # bytes run in an emulator against the port's C functions from the same image; compares every

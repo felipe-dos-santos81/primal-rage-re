@@ -40,12 +40,14 @@ class Dirs(unittest.TestCase):
         with open(os.path.join(self.cap, 'window.txt'), 'w') as f:
             f.write(''.join('%05d %d\n' % (j, 100 + j) for j in range(len(cap_frames))))
 
-    def run_claim(self, n, report=False, max_start=100):
+    def run_claim(self, n, report=False, max_start=100, max_unexplained=gc.REPORT_MAX):
         cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
-        rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report, out.append, max_start)
+        rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report,
+                                         out.append, max_start,
+                                         max_unexplained=max_unexplained)
         return rc, first, out
 
 
@@ -122,6 +124,15 @@ class TestFrames(Dirs):
         self.assertTrue(any('FIRST UNEXPLAINED capture 1 (raw 101)' in l for l in out), out)
         rc, first, out = self.run_claim(0, report=False)
         self.assertEqual(sum('UNEXPLAINED capture' in l for l in out), 1, out)   # enforced: stops at the first
+
+    def test_the_report_cap_can_be_lifted(self):
+        bad = [bytes([9]) * tc.FRAME_BYTES] * 7
+        self.write([1, 2], [rgb(1), rgb(2)] + bad)
+        for cap, want in ((gc.REPORT_MAX, gc.REPORT_MAX), (0, 7)):
+            rc, first, out = self.run_claim(0, report=True, max_unexplained=cap)
+            self.assertEqual(sum('UNEXPLAINED capture' in l for l in out), want, out)
+        rc, first, out = self.run_claim(0, report=False)      # enforced mode still stops at 1
+        self.assertEqual(sum('UNEXPLAINED capture' in l for l in out), 1, out)
 
     def test_the_window_start_cannot_slide_forward(self):
         # review 1, Important 1: a port that regressed to a screen recurring later in the
@@ -395,7 +406,8 @@ class TestCli(Dirs):
         # must fail, not skip, and say the pins are invalidated
         self.dump()
         import hashlib
-        good = hashlib.sha256(open(os.path.join(self.cap, 'poll.log'), 'rb').read()).hexdigest()
+        with open(os.path.join(self.cap, 'poll.log'), 'rb') as f:
+            good = hashlib.sha256(f.read()).hexdigest()
         base = ['--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                 '--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--min-reach', '1']
         rc, out = self.cli(*base, '--capture-sha256', good, '--capture-frames', '2')
@@ -456,6 +468,19 @@ class TestCli(Dirs):
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                            '--min-first', '1', '--trace-min-first', '1', '--max-start', '0')
         self.assertEqual(rc, 1, out)
+
+    def test_the_report_max_option(self):
+        self.dump()                                   # clean frames 0-1 and the logs
+        bad = [bytes([9]) * tc.FRAME_BYTES] * 7
+        self.write([1, 2], [rgb(1), rgb(2)] + bad)    # frames 0-1 clean, 2-8 unexplained
+        rc, out = self.cli('--report', '--scenario', 'gp-x', '--capture', self.cap,
+                           '--port', self.port)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.count('UNEXPLAINED capture'), gc.REPORT_MAX, out)
+        rc, out = self.cli('--report', '--scenario', 'gp-x', '--capture', self.cap,
+                           '--port', self.port, '--max-unexplained', '0')
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.count('UNEXPLAINED capture'), 7, out)
 
 
 class BandAllowance(Dirs):
