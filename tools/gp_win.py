@@ -2,6 +2,8 @@
 """Gameplay U9/U10 (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md §W.9): the win path
 and the ending, reached under memory pokes (gp_session's ('poke', ...) steps).
+gp-u14-win-live (gameplay truth II U14, spec W5) uses the same start and match-1 rows
+without pokes: its match is fought, and the capture (its Task 11) measures the hits.
 
   check  evidence: the capture's S records show the scenario's raw-derived path, every
          MILESTONES row in order (each found in the k-th entry into its mode, from the
@@ -118,6 +120,14 @@ MILESTONES['gp-u13-ending2'] = _START1 + (
      lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['w3'] == 0 and r['ad4'] == NO_RESULT
      and lands(r) == [0x80 | r['c0']] * 7),
 ) + _MATCH1[1:] + _ending_tail(1, 'BLIZZARD')
+
+# Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec W5): a match won
+# by fought hits (gp_session's gp-u14-win-live, no pokes). The rows are the shared start and
+# match-1 rows unchanged: the KO the game reaches is the same mode-8 entry with P2's +0x5A at
+# 0x78 (0x27C48/0x27FA8), and the won land is marked by 0x286BC as in U9. The seven-lands
+# row is U10's poke of round 1, so it does not apply. The rows say nothing about which
+# opponent is fought (c1) or how the hits landed: that is the capture's, Task 11's.
+MILESTONES['gp-u14-win-live'] = _START + _MATCH1
 
 
 def entries(recs, start):

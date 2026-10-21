@@ -513,6 +513,31 @@ class TestSecondEnding(unittest.TestCase):
                                               (0x10789E, b'\x78'))))
 
 
+class TestLiveWin(unittest.TestCase):
+    """gp-u14-win-live (plan 2026-10-20-gameplay-truth-ii Task 6; spec W5): a match won
+    by fought hits, without the WIN_MENU pokes. The hit sequence is the builder's and
+    UNMEASURED (the Task 11 capture measures the KOs); these tests are shape-only."""
+
+    def test_the_live_win_has_no_pokes(self):
+        scn = gs.SCENARIOS['gp-u14-win-live']
+        self.assertFalse(any(s[-1][0] == 'poke' for s in scn['steps'] if isinstance(s[-1], tuple)))
+        self.assertEqual(scn['extra'], gs.WIN_EXTRA)      # the milestones' WIN fields
+
+    def test_the_two_rounds_anchor_on_their_own_mode_6_entries(self):
+        steps = gs.SCENARIOS['gp-u14-win-live']['steps']
+        anchors = [st for st in steps if st[0] == 'after_entry']
+        self.assertEqual([(a[1], a[2], a[3]) for a in anchors], [(0x06, 1, 10), (0x06, 2, 10)])
+        i = steps.index(anchors[0])
+        j = steps.index(anchors[1])
+        block = steps[i + 1:j]
+        self.assertEqual([st[-1][1] for st in (anchors[0],) + block],
+                         [('p1.b0', 'p1.b1'), ('p1.b2', 'p1.b3')] * 16)   # 1A/1B
+        self.assertTrue(all(st[0] == 'after' and st[1] == 16 and st[-1][2] == 4 for st in block))
+        self.assertEqual(steps[j + 1:-1], block)         # the same rows, a shared tuple
+        self.assertEqual(steps[-1], ('until_mode', 0x12, 0))   # stops on the conquered lands
+        self.assertIn('gp-u14-win-live', gs.STOP_AT_END)
+
+
 class TestPokeScript(unittest.TestCase):
     def setUp(self):
         gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())

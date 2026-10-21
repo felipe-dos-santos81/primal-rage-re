@@ -215,8 +215,16 @@ class TestPath(unittest.TestCase):
         self.assertEqual(n, 5)                    # the conquered-lands screen is the 6th row
         self.assertEqual((rows[5][1], rows[5][2]), (0xBA7, 0xBA9))
 
+    def test_the_live_win_uses_the_unpoked_match_rows(self):
+        # gp-u14-win-live (plan 2026-10-20-gameplay-truth-ii Task 6; spec W5): a match won
+        # by fought hits, so the poked rows' seven-lands expectations do not apply; the
+        # rows are exactly the shared start and match-1 rows.
+        rows = gw.MILESTONES['gp-u14-win-live']
+        self.assertEqual([r[:3] for r in rows], [r[:3] for r in gw._START + gw._MATCH1])
+
     def test_rows_cover_all_scenarios_in_order(self):
-        self.assertEqual(sorted(gw.MILESTONES), ['gp-u10-ending', 'gp-u13-ending2', 'gp-u9-win'])
+        self.assertEqual(sorted(gw.MILESTONES),
+                         ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():
             for label, mode, k, pred in rows:
                 self.assertTrue(0 < mode < 0x40 and k >= 1, (name, label))

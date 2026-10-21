@@ -459,6 +459,40 @@ SCENARIOS['gp-u13-ending2'] = dict(
          ('poke', ((0x108106, lands_marked(0, 1)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
 
+# Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec §W5): a match
+# won by fought hits, so the win path's pokes are not needed. The menu path is gp-idle-loss's
+# with WIN_MENU's immediate confirm of character 0 (SAURON); the two rounds are punched.
+# The presses are tools/gp_moves.py's (`steps --char 0 --facing 0 --step 4 --gap 16
+# --moves 1A,1B,1A,1B,...`, 32 entries): 1A = new b0+b1 (character 0's keyboard entry
+# 0x1A, reaction 0x10) and 1B = new b2+b3 (entry 0x1B, reaction 0x11), each held 4.
+# Those are the table's two 1-frame normals (0xC6B9C: m0 0x3 / 0xC, d = e = 1); the
+# motion moves cost 20+ frames per attempt. UNMEASURED: no capture has run this path — which presses land, whether the CPU
+# is KO'd in both rounds and the round lengths are Task 11's measurement. The damage note is
+# the raw's, not a measurement: 0x39834/0x39738/0x392A0 read the (character, reaction) record
+# 0xDE114 + (char << 6 | reaction) * 11 and add a scaled byte to +0x5A, whose KO value is
+# 0x78 (0x27FA8). 0x10 and 0x11 start 16 and 15 in SAURON's rows (14 and 15 in BLIZZARD's —
+# the gp-u6-moves-b capture's c1 = 1 at this path's round 1, 0x1078BE) and 0x392A0's
+# v * 0x78 / 0x64 makes a first hit 16..19, while 0x39738's combo table (0xBEC28: 100, 60,
+# 55, ...) scales a chain's later hits; roughly 7-12 landed hits reach 0x78, so 32 attempts
+# per round leave room for whiffs. Harness values, not game values: the 10 frames into each
+# round (U9's poke delay), the 16-frame gap (>= the 4-frame hold + 0x500C4's 2-frame release,
+# gp_moves.REPRESS) and the 200 s limit (gp-idle-loss's; two fought rounds can run the round
+# timer's ~3280 frames each). The capture stops on the conquered-lands screen (mode 0x12,
+# STOP_AT_END).
+U14_PUNCH = ('p1.b0', 'p1.b1')      # entry 1A, reaction 0x10
+U14_KICK = ('p1.b2', 'p1.b3')       # entry 1B, reaction 0x11
+U14_GAP = 16                        # frames between attempts (harness)
+U14_HITS = 32                       # attempts per round (harness; see the landed-hit estimate)
+U14_PRESSES = tuple(('after', U14_GAP, ('pad', n, 4)) for n in
+                    ([U14_PUNCH, U14_KICK] * (U14_HITS // 2))[1:])
+SCENARIOS['gp-u14-win-live'] = dict(time_limit=200, extra=WIN_EXTRA, steps=WIN_MENU + (
+    ('after_entry', 0x06, 1, 10, ('pad', U14_PUNCH, 4)),   # round 1's first press
+) + U14_PRESSES + (
+    ('after_entry', 0x06, 2, 10, ('pad', U14_PUNCH, 4)),   # round 2's first press
+) + U14_PRESSES + (
+    ('until_mode', 0x12, 0),                               # the conquered-lands screen
+))
+
 
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
@@ -575,12 +609,13 @@ class Schedule:
 # gameplay truth II U13) stop too: nothing past their end is compared.
 # gp-u12-endurance (gameplay truth II U12) stops too: its end is the first 300 frames of
 # mode 0x30 and nothing past it is compared, so the fight's idle remainder of the 70 s
-# limit would only cost bytes.
+# limit would only cost bytes. gp-u14-win-live (gameplay truth II U14) stops too: its end
+# is the conquered-lands screen's first frame and nothing past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
                          'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
-                         'gp-u13-ending2', 'gp-u12-endurance'})
+                         'gp-u13-ending2', 'gp-u12-endurance', 'gp-u14-win-live'})
 
 
 class ScriptError(Exception):

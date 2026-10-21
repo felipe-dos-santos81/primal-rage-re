@@ -67,7 +67,7 @@ chunk ?= 0
         save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
-        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle \
+        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1259,6 +1259,51 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 			--win-min-first "$(GP_U13_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U13_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u13-ending2; exit $$rc; fi
 
+# Gameplay truth II U14 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 6;
+# gp_session.SCENARIOS['gp-u14-win-live'] and gp_win.MILESTONES['gp-u14-win-live']): a match
+# won by fought hits, without the WIN_MENU pokes (spec W5). The menu path is gp-idle-loss's
+# with the character-select confirm of character 0; two rounds of alternating 1A/1B presses
+# (tools/gp_moves.py's rows, UNMEASURED) aim at the CPU's KO byte. Its claim is the poked wins'
+# narrow one plus what a poke could not claim: the game itself raises P2's +0x5A to 0x78 and
+# reaches the same mode-8/mode-9 entries and the land mark. Which presses land, the round
+# lengths and the death animation are Task 11's measurement; spec W5's shared-code limit still
+# applies — the gp-u6-moves-b capture has c1 = 1 (BLIZZARD) at this path's round 1, so the KO'd
+# fighter's death stream is that character's, not U10's SAURON (character 0). Task 11's own
+# capture records c1 (a SNAP field). The pins are EMPTY until
+# data/k11-captures/gp-u14-win-live is captured and measured (Task 11): an
+# absent capture skips the target (gp-replay's GP_OPTIONAL=1, gp_win.py's own no-poll.log
+# skip), while a present capture with an empty pin FAILS (gp_compare's ratchet and identity
+# checks print "not pinned").
+# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture frame,
+# TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
+# MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's
+# two ratchets, and the capture identity (poll.log sha256 and the frame_*.raw.gz count). Raise
+# MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/WIN_MIN_FIRST when they improve.
+GP_U14_MIN_FIRST =
+GP_U14_TRACE_MIN_FIRST =
+GP_U14_MAX_START =
+GP_U14_MIN_REACH =
+GP_U14_CAPTURE_SHA256 =
+GP_U14_CAPTURE_FRAMES =
+GP_U14_MILESTONES =
+GP_U14_WIN_MIN_FIRST =
+gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips without data/k11-captures/gp-u14-win-live)
+	@echo "== gameplay oracle: gp-u14-win-live (a match won by fought hits) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u14-win-live ]; then echo "gp-u14-oracle: no capture at $(K11_CAPTURES)/gp-u14-win-live (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u14-win-live --capture $(K11_CAPTURES)/gp-u14-win-live \
+			--capture-sha256 "$(GP_U14_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u14-win-live GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u14-win-live --capture $(K11_CAPTURES)/gp-u14-win-live \
+			--port $(GP_DUMP)/gp-u14-win-live --min-first "$(GP_U14_MIN_FIRST)" \
+			--trace-min-first "$(GP_U14_TRACE_MIN_FIRST)" --max-start "$(GP_U14_MAX_START)" \
+			--min-reach "$(GP_U14_MIN_REACH)" \
+			--capture-sha256 "$(GP_U14_CAPTURE_SHA256)" --capture-frames "$(GP_U14_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u14-win-live --capture $(K11_CAPTURES)/gp-u14-win-live \
+			--port $(GP_DUMP)/gp-u14-win-live --min-milestones "$(GP_U14_MILESTONES)" \
+			--win-min-first "$(GP_U14_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U14_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u14-win-live; exit $$rc; fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario) --max-unexplained "$(GP_REPORT_MAX)"
@@ -1343,6 +1388,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u12-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u13-oracle
+	@echo "== gameplay oracle: gp-u14-win-live (a fought win; skips without its capture) =="
+	@$(MAKE) --no-print-directory gp-u14-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify
