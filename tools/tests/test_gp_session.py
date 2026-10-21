@@ -476,6 +476,43 @@ class TestEnduranceFight(unittest.TestCase):
         self.assertIn('gp-u12-endurance', gs.STOP_AT_END)
 
 
+class TestSecondEnding(unittest.TestCase):
+    """gp-u13-ending2 (plan 2026-10-20-gameplay-truth-ii Task 5; record
+    2026-10-01-gameplay-u5 §C5.4/§C5.7, 2026-10-02-gameplay-u9-u10 §W.6): the
+    non-character-0 ending. The character-select cursor starts on cell 0 (0xC8880 = 00 05)
+    and each p1.right moves it one cell (0x43B24); the confirm is 0x43D60's
+    DS_0010816A = 0xC8882[cursor] (0x43D6E/0x43D74) and 0xC8882 = 00 02 03 01 06 04 05,
+    so cell 3 is class 1 (BLIZZARD), whose ending is DS_0010782A[DS_00104AD4 * 0x94] = 1.
+    U5's capture confirms cell 1 and shows TALON (class 2), not BLIZZARD."""
+
+    def test_the_cursor_reaches_cell_three_before_the_confirm(self):
+        steps = gs.SCENARIOS['gp-u13-ending2']['steps']
+        u10 = gs.SCENARIOS['gp-u10-ending']['steps']
+        i = next(k for k, st in enumerate(steps)
+                 if st[0] == 'after_mode' and st[1] == 0x10)
+        j = next(k for k, st in enumerate(steps) if st[-1] == ('pad', ('p1.start',), 6))
+        self.assertEqual([st[-1] for st in steps[i:j]], [('pad', ('p1.right',), 4)] * 3)
+        self.assertEqual([st[2] if st[0] == 'after_mode' else st[1] for st in steps[i:j]],
+                         [60, 30, 30])
+        self.assertEqual(steps[j], ('after', 30, ('pad', ('p1.start',), 6)))
+        self.assertEqual(steps[:i], u10[:i])                    # the same menu path
+        self.assertIsNot(steps, u10)                            # a new tuple, u10 unchanged
+        self.assertIn('gp-u13-ending2', gs.STOP_AT_END)
+
+    def test_the_first_poke_marks_blizzards_lands(self):
+        # 0x41C28 state 1 tallies a mark only when (mark & 0x7F) == DS_0010782A[side] |
+        # side << 6 (0x41D39/0x41D5C): SAURON's 0x80 bytes count no land for P1 = class 1.
+        steps = gs.SCENARIOS['gp-u13-ending2']['steps']
+        u10 = gs.SCENARIOS['gp-u10-ending']['steps']
+        i = next(k for k, st in enumerate(steps) if st[0] == 'after_entry' and st[1] == 0x06)
+        k = next(k for k, st in enumerate(u10) if st[0] == 'after_entry' and st[1] == 0x06)
+        self.assertEqual(steps[i][4], ('poke', ((0x108106, gs.lands_marked(0, 1)),
+                                                (0x10789E, b'\x78'))))
+        self.assertEqual(steps[i + 1:], u10[k + 1:])            # the rest is u10's
+        self.assertEqual(u10[k][4], ('poke', ((0x108106, gs.lands_marked(0, 0)),
+                                              (0x10789E, b'\x78'))))
+
+
 class TestPokeScript(unittest.TestCase):
     def setUp(self):
         gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())

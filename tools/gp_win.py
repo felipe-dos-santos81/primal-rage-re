@@ -44,6 +44,12 @@ def _all(**want):
     return lambda r: all(r[n] == v for n, v in want.items())
 
 
+# The mode-0x1F ending row's label: the winner's character slot
+# DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x20914) selects the ending (record §W.6).
+_ENDING_LABEL = ("%s's ending (mode 0x1F, 0x208F8): the winner's character "
+                 "DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x20914) is %d")
+
+
 # One row per milestone: (label, mode, k, predicate). The frame of a row is the first record
 # of the k-th entry into `mode` whose predicate holds. Raw sources: record §W.3-§W.6.
 _START = (
@@ -83,13 +89,35 @@ MILESTONES = {
         ('final opponent %d replaced (0x274FC, count %d)' % (k, k), 0x0C, k + 1, _all(b21=k)),
     )[:2 if k < 7 else 1]) + (
         ('YOU ARE MASTER OF THE NEW URTH: mode 0xF, count 7 (0x274FC)', 0x0F, 1, _all(b21=7)),
-        ('SAURON\'s ending (mode 0x1F, 0x208F8): the winner\'s character DS_0010782A[DS_00104AD4 * 0x94] '
-         '(0x20900..0x20914) is 0', 0x1F, 1, _all(ad4=0, c0=0)),
+        (_ENDING_LABEL % ('SAURON', 0), 0x1F, 1, _all(ad4=0, c0=0)),
         ('the ending, second part (mode 0x1F, state 3)', 0x1F, 2, None),
         ('the high-score entry (mode 0x1E)', 0x1E, 1, None),
         ('back in mode 3', 0x03, 1, None),
     ),
 }
+
+
+def _ending_tail(c0, name):
+    """MILESTONES['gp-u10-ending']'s rows from the seventh land ('0x41C28 state 3') on, with
+    the mode-0x1F ending row's predicate and label for a winner of character `c0`."""
+    rows = MILESTONES['gp-u10-ending']
+    first = next(i for i, r in enumerate(rows) if r[0].startswith('0x41C28 state 3'))
+    return tuple((_ENDING_LABEL % (name, c0), 0x1F, 1, _all(ad4=0, c0=c0))
+                 if (r[1], r[2]) == (0x1F, 1) else r for r in rows[first:])
+
+
+# The second ending (gameplay truth II U13): P1 is character 1 (BLIZZARD), cell 3 of the
+# character select (gp_session.WIN_MENU1: 0xC8882 = 00 02 03 01 06 04 05, so cell 1 is
+# class 2 TALON and cell 3 is class 1). _START is shared by U9/U10 and keeps character 0.
+_START1 = (
+    ('character select (mode 0x10)', 0x10, 1, None),
+    ('round 1: P1 is character 1 (cursor 3 confirmed, 0x43CAD)', 0x06, 1, _all(c0=1, b1e=1)),
+)
+MILESTONES['gp-u13-ending2'] = _START1 + (
+    ('round 1 KO with the seven lands poked P1\'s', 0x08, 1,
+     lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['w3'] == 0 and r['ad4'] == NO_RESULT
+     and lands(r) == [0x80 | r['c0']] * 7),
+) + _MATCH1[1:] + _ending_tail(1, 'BLIZZARD')
 
 
 def entries(recs, start):

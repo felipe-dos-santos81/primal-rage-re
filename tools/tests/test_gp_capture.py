@@ -405,21 +405,23 @@ class TestStopAtEnd(unittest.TestCase):
 
 
 class TestMemsize(unittest.TestCase):
-    """gp-u10-ending runs DOSBox-X with memsize=64, a harness value of that scenario only
-    (record §W.13); every other scenario's argv is the one its capture was taken with."""
+    """The poked final runs DOSBox-X with memsize=64, a harness value of those scenarios
+    only (record §W.13): gp-u13-ending2 shares gp-u10-ending's final and its seven poked
+    KOs, and every other scenario's argv is the one its capture was taken with."""
     MEM = ['-set', 'dosbox memsize=64']
+    POKED_FINAL = ('gp-u10-ending', 'gp-u13-ending2')
 
     def cmd(self, name, root='/r'):         # as gp_capture.main builds it
         scn = gs.SCENARIOS[name]
         return gc.dosbox_cmd(root, os.path.join(root, 'C'), os.path.join(root, 'CD', 'RAGECD.ISO'),
                              scn['time_limit'], name in gs.STOP_AT_END, scn.get('memsize'))
 
-    def test_only_gp_u10_ending_sets_it(self):
+    def test_only_the_poked_finals_set_it(self):
         for name in gs.SCENARIOS:
             cmd, old = self.cmd(name), gc.dosbox_cmd('/r', '/r/C', '/r/CD/RAGECD.ISO',
                                                      gs.SCENARIOS[name]['time_limit'],
                                                      name in gs.STOP_AT_END)
-            if name == 'gp-u10-ending':
+            if name in self.POKED_FINAL:
                 i = cmd.index('dosbox memory file=/r/guest.mem') + 1
                 self.assertEqual(cmd[i:i + 2], self.MEM)
                 self.assertEqual(cmd[:i] + cmd[i + 2:], old)

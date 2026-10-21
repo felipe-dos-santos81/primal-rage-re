@@ -215,16 +215,37 @@ class TestPath(unittest.TestCase):
         self.assertEqual(n, 5)                    # the conquered-lands screen is the 6th row
         self.assertEqual((rows[5][1], rows[5][2]), (0xBA7, 0xBA9))
 
-    def test_rows_cover_both_scenarios_in_order(self):
-        self.assertEqual(sorted(gw.MILESTONES), ['gp-u10-ending', 'gp-u9-win'])
+    def test_rows_cover_all_scenarios_in_order(self):
+        self.assertEqual(sorted(gw.MILESTONES), ['gp-u10-ending', 'gp-u13-ending2', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():
             for label, mode, k, pred in rows:
                 self.assertTrue(0 < mode < 0x40 and k >= 1, (name, label))
-        u10 = [(m, k) for _, m, k, _ in gw.MILESTONES['gp-u10-ending']]
-        self.assertEqual(u10.count((0x0D, 7)), 1)
-        self.assertLess(u10.index((0x0D, 1)), u10.index((0x0C, 2)))
-        self.assertLess(u10.index((0x0C, 7)), u10.index((0x0D, 7)))
-        self.assertEqual(u10[-1], (0x03, 1))
+        for name in ('gp-u10-ending', 'gp-u13-ending2'):
+            rows = [(m, k) for _, m, k, _ in gw.MILESTONES[name]]
+            self.assertEqual(len(rows), 30)
+            self.assertEqual(rows.count((0x0D, 7)), 1)
+            self.assertLess(rows.index((0x0D, 1)), rows.index((0x0C, 2)))
+            self.assertLess(rows.index((0x0C, 7)), rows.index((0x0D, 7)))
+            self.assertEqual(rows[-1], (0x03, 1))
+
+    def test_the_second_ending_pins_character_one(self):
+        rows = gw.MILESTONES['gp-u13-ending2']
+        ending = [r for r in rows if r[1] == 0x1F and r[2] == 1]
+        self.assertTrue(ending)
+        self.assertEqual(ending[0][3](dict(ad4=0, c0=1)), True)
+        self.assertEqual(ending[0][3](dict(ad4=0, c0=0)), False)
+        start = [r for r in rows if r[1] == 0x06 and r[2] == 1]
+        self.assertTrue(start)
+        self.assertEqual(start[0][3](dict(c0=1, b1e=1)), True)
+        self.assertEqual(start[0][3](dict(c0=0, b1e=1)), False)
+        # the round-1 row's land marks follow c0: BLIZZARD's 0x81, not SAURON's 0x80
+        round1 = [r for r in rows if r[1] == 0x08 and r[2] == 1]
+        self.assertTrue(round1)
+        self.assertEqual(round1[0][3](dict(c0=1, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                           **_marks(l0=0x81, l1=0x81, l2=0x81, l3=0x81,
+                                                    l4=0x81, l5=0x81, l6=0x81))), True)
+        self.assertEqual(round1[0][3](dict(c0=1, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                           **ALL7)), False)
 
 
 if __name__ == '__main__':

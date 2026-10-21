@@ -431,6 +431,34 @@ SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, memsize=64, s
     ('until_mode', 0x03, 0),                          # back in mode 3 after the high-score entry
 ))
 
+# Gameplay truth II U13 (plan 2026-10-20-gameplay-truth-ii.md Task 5): the ending of a
+# character other than 0. The plan's one p1.right is corrected by the raw: the cell
+# table DS_000C8882 = 00 02 03 01 06 04 05 (file 0x10F6D6, record gameplay-u5 §C5.4) is
+# indexed by the cursor DS_00108166[0] (0xC8880 = 00 05 starts P1 on cell 0) at the
+# confirm 0x43D60 (0x43D6E/0x43D74 DS_0010816A[side] = 0xC8882[cursor]), so cell 1 is
+# class 2 TALON (U5's capture shows TALON on the HUD after confirming cell 1, §C5.7) and
+# class 1 BLIZZARD is cell 3: three rights, each its own edge. The 60-frame wait into
+# mode 0x10, the 4-frame hold (gp-u8's; through 0x500C4's debounce) and the 30-frame gaps
+# are harness values. The rest is gp-u10-ending's steps from its second poke on (a new
+# tuple: neither WIN_MENU nor gp-u10-ending's steps are mutated); time_limit 240,
+# WIN_EXTRA and memsize 64 are its (record §W.13: the poked final OOMs at 16 MB).
+# Its first poke differs from u10's: the seven land marks are BLIZZARD's (0x80 | side 0 |
+# class 1 = 0x81), not SAURON's 0x80, because 0x41C28 state 1 tallies a mark only when
+# (mark & 0x7F) == DS_0010782A[side] | side << 6 (0x41D39/0x41D5C); the u10 bytes would
+# count no land for P1 and never reach the seventh-land row.
+WIN_MENU1 = WIN_MENU[:-1] + (
+    ('after_mode', 0x10, 60, ('pad', ('p1.right',), 4)),   # cell 0 -> 1 (class 2)
+    ('after', 30, ('pad', ('p1.right',), 4)),              # 1 -> 2 (class 3)
+    ('after', 30, ('pad', ('p1.right',), 4)),              # 2 -> 3 (class 1, BLIZZARD)
+    ('after', 30, ('pad', ('p1.start',), 6)),              # confirm cursor 3
+)
+SCENARIOS['gp-u13-ending2'] = dict(
+    time_limit=240, extra=WIN_EXTRA, memsize=64,
+    steps=WIN_MENU1 + (
+        ('after_entry', 0x06, 1, 10,
+         ('poke', ((0x108106, lands_marked(0, 1)), (0x10789E, b'\x78')))),
+    ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
+
 
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
@@ -543,15 +571,16 @@ class Schedule:
 # the 60-frame tail still holds the frames past the end that N names; ENDURANCE
 # ends 300 frames into its team select (D3), where the idle tail is a still
 # screen. The attract start stops too (record §U8.14): the same arrangement, its N and F
-# sit at the replay's end. gp-u9-win and gp-u10-ending (plan U9/U10) stop too: nothing
-# past their end is compared. gp-u12-endurance (gameplay truth II U12) stops too: its end
-# is the first 300 frames of mode 0x30 and nothing past it is compared, so the fight's
-# idle remainder of the 70 s limit would only cost bytes.
+# sit at the replay's end. gp-u9-win, gp-u10-ending and gp-u13-ending2 (plan U9/U10;
+# gameplay truth II U13) stop too: nothing past their end is compared.
+# gp-u12-endurance (gameplay truth II U12) stops too: its end is the first 300 frames of
+# mode 0x30 and nothing past it is compared, so the fight's idle remainder of the 70 s
+# limit would only cost bytes.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
                          'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
-                         'gp-u12-endurance'})
+                         'gp-u13-ending2', 'gp-u12-endurance'})
 
 
 class ScriptError(Exception):

@@ -67,7 +67,7 @@ chunk ?= 0
         save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
-        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle \
+        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1217,6 +1217,48 @@ gp-win-one: build
 			--win-min-first "$(GP_$(GP_WIN_ID)_WIN_MIN_FIRST)" --capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/$(scenario); exit $$rc; fi
 
+# Gameplay truth II U13 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 5;
+# gp_session.WIN_MENU1 and gp_win.MILESTONES['gp-u13-ending2']): gp-u13-ending2, the ending of
+# a character other than 0. P1 confirms character-select cell 3 (class 1, BLIZZARD): the plan's
+# one p1.right is corrected by the raw (0xC8882 = 00 02 03 01 06 04 05, indexed by the cursor at
+# 0x43D6E/0x43D74), so cell 1 is class 2 TALON and BLIZZARD needs three (record gameplay-u5
+# §C5.4/§C5.7). Its first poke writes BLIZZARD's land marks (0x81, not u10's SAURON 0x80:
+# 0x41C28 state 1 tallies (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C), and
+# the rest are gp-u10-ending's from its second poke on; the ending row is therefore
+# _all(ad4=0, c0=1) rather than SAURON's c0 = 0. The pins are EMPTY until
+# data/k11-captures/gp-u13-ending2 is captured and measured (Task 10): an absent capture skips
+# the target (gp-replay's GP_OPTIONAL=1, gp_win.py's own no-poll.log skip), while a present
+# capture with an empty pin FAILS (gp_compare's ratchet and identity checks print "not pinned").
+# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture frame,
+# TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
+# MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's
+# two ratchets, and the capture identity (poll.log sha256 and the frame_*.raw.gz count). Raise
+# MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/WIN_MIN_FIRST when they improve.
+GP_U13_MIN_FIRST =
+GP_U13_TRACE_MIN_FIRST =
+GP_U13_MAX_START =
+GP_U13_MIN_REACH =
+GP_U13_CAPTURE_SHA256 =
+GP_U13_CAPTURE_FRAMES =
+GP_U13_MILESTONES =
+GP_U13_WIN_MIN_FIRST =
+gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 ending (skips without data/k11-captures/gp-u13-ending2)
+	@echo "== gameplay oracle: gp-u13-ending2 (BLIZZARD's ending under pokes) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u13-ending2 ]; then echo "gp-u13-oracle: no capture at $(K11_CAPTURES)/gp-u13-ending2 (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u13-ending2 --capture $(K11_CAPTURES)/gp-u13-ending2 \
+			--capture-sha256 "$(GP_U13_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u13-ending2 GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u13-ending2 --capture $(K11_CAPTURES)/gp-u13-ending2 \
+			--port $(GP_DUMP)/gp-u13-ending2 --min-first "$(GP_U13_MIN_FIRST)" \
+			--trace-min-first "$(GP_U13_TRACE_MIN_FIRST)" --max-start "$(GP_U13_MAX_START)" \
+			--min-reach "$(GP_U13_MIN_REACH)" \
+			--capture-sha256 "$(GP_U13_CAPTURE_SHA256)" --capture-frames "$(GP_U13_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u13-ending2 --capture $(K11_CAPTURES)/gp-u13-ending2 \
+			--port $(GP_DUMP)/gp-u13-ending2 --min-milestones "$(GP_U13_MILESTONES)" \
+			--win-min-first "$(GP_U13_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U13_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u13-ending2; exit $$rc; fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario) --max-unexplained "$(GP_REPORT_MAX)"
@@ -1299,6 +1341,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-modes-oracle
 	@echo "== gameplay oracle: gp-u12-endurance (the team pass and fight; skips without its capture; record §J4) =="
 	@$(MAKE) --no-print-directory gp-u12-oracle
+	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
+	@$(MAKE) --no-print-directory gp-u13-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify
