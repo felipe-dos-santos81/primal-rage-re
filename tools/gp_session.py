@@ -326,6 +326,47 @@ SCENARIOS['gp-u8-attract-start'] = dict(time_limit=61, arm='pad', steps=(
 ))
 
 
+# Gameplay truth II U12 (plan 2026-10-20-gameplay-truth-ii.md Task 4; the named gap of
+# record 2026-10-01-gameplay-u8-derivations.md §U8.9): gp-u8-endurance's path (the mode-3
+# Enter, START MENU row 5's five p1.down presses and the Enter, mode 0x2B's ENDURANCE
+# divert 0x4454C -> 0x444C8) continued through the team pass 0x44798 and the fight it
+# opens (modes 0x30/0x31). The pass starts both sides in state 1 with the cursor
+# 0xC8880 = 00 05 (P1 on cell 0, P2 on 5; 0x445D8), fills four class slots per side
+# (0x108134[side*4 + k]) and drops a repeated class (0x4434C); a pick is command bit 0
+# (0x448F4), the stick the character select's 0x10/0x20 (0x44833), and the only exit
+# 0x4482A arms 0x4F980(0x11) once BOTH sides reach state 3, i.e. four distinct classes
+# each. The class is 0xC8882[cursor] = 00 02 03 01 06 04 05 (record
+# 2026-10-01-gameplay-u5 §C5.4): P1 picks cells 0,1,2,3 = classes 0,2,3,1; P2 picks
+# 5,4,3,2 = 4,6,1,3. Then 0x11 -> 0x17 (its 0xF0-frame countdown runs 0x259CC) ->
+# 0x4F980(0x30), mode 0x1A/0x1B, mode 0x30 (which runs ~120 frames before 0x31; record
+# gameplay-u8 §U8.4/§U8.9). Harness values, not game values: the 60-frame wait into
+# mode 0x10 (u8's menu gaps; u5-charsel's after_mode step), the 6-frame hold
+# (u5-charsel's: one level edge through 0x500C4's debounce, record
+# gameplay-ground-truth §G.7.2), the 30-frame gaps (gp-twop's), the end 300 frames into
+# mode 0x30 and time_limit 70 s: 25.0 boot + 8.5 menus + 0.8 to 0x10 + 1 + 13 x 0.5 +
+# ~5.2 to 0x30 + 5 = ~52.
+ENDURANCE_PICKS = (
+    ('after_mode', 0x10, 60, ('pad', ('p1.b0',), 6)),  # P1 cell 0 (class 0)
+    ('after', 30, ('pad', ('p1.right',), 6)),          # 0 -> 1
+    ('after', 30, ('pad', ('p1.b0',), 6)),             # class 2
+    ('after', 30, ('pad', ('p1.right',), 6)),          # 1 -> 2
+    ('after', 30, ('pad', ('p1.b0',), 6)),             # class 3
+    ('after', 30, ('pad', ('p1.right',), 6)),          # 2 -> 3
+    ('after', 30, ('pad', ('p1.b0',), 6)),             # class 1: P1 full, state 3
+    ('after', 30, ('pad', ('p2.b0',), 6)),             # P2 cell 5 (class 4)
+    ('after', 30, ('pad', ('p2.left',), 6)),           # 5 -> 4
+    ('after', 30, ('pad', ('p2.b0',), 6)),             # class 6
+    ('after', 30, ('pad', ('p2.left',), 6)),           # 4 -> 3
+    ('after', 30, ('pad', ('p2.b0',), 6)),             # class 1
+    ('after', 30, ('pad', ('p2.left',), 6)),           # 3 -> 2
+    ('after', 30, ('pad', ('p2.b0',), 6)),             # class 3: state 3, the pass exits
+)
+SCENARIOS['gp-u12-endurance'] = dict(time_limit=70, steps=(
+    SCENARIOS['gp-u8-endurance']['steps'][:-1] + ENDURANCE_PICKS + (
+        ('until_mode', 0x30, 300),                     # the fight's first 300 frames
+    )))
+
+
 # Plan gameplay-u9-u10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.2-§W.6): the
 # win path and the ending, reached under memory pokes (spec 2026-09-30-reverse-completion-design
 # §4 G, §7 "Wins and endings without pokes"). A ('poke', ((addr, bytes), ...)) action writes
@@ -503,11 +544,14 @@ class Schedule:
 # ends 300 frames into its team select (D3), where the idle tail is a still
 # screen. The attract start stops too (record §U8.14): the same arrangement, its N and F
 # sit at the replay's end. gp-u9-win and gp-u10-ending (plan U9/U10) stop too: nothing
-# past their end is compared.
+# past their end is compared. gp-u12-endurance (gameplay truth II U12) stops too: its end
+# is the first 300 frames of mode 0x30 and nothing past it is compared, so the fight's
+# idle remainder of the 70 s limit would only cost bytes.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
-                         'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending'})
+                         'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
+                         'gp-u12-endurance'})
 
 
 class ScriptError(Exception):

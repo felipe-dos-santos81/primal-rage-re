@@ -50,7 +50,8 @@ class TestTables(unittest.TestCase):
         # (U11 rebase onto U6b): review of U6b Task 1 (m1): the names alone let a placeholder of
         # the wrong width or a DS_ symbol of the wrong address through.
         import re
-        src = open(os.path.join(ROOT, 'port', 'tests', 'test_game.c')).read()
+        with open(os.path.join(ROOT, 'port', 'tests', 'test_game.c')) as fh:
+            src = fh.read()
         body = src[src.index('static void gp_trace_line(void)'):]
         call = body[:body.index(');\n    gp_trace_lines++')]
         # comments (/* */ and //) go before the format string and the arguments are read
@@ -457,6 +458,22 @@ class TestWinPokes(unittest.TestCase):
         for name in ('gp-u9-win', 'gp-u10-ending'):
             self.assertIn(name, gs.STOP_AT_END)
             self.assertEqual(gs.SCENARIOS[name]['extra'], gs.WIN_EXTRA)
+
+
+class TestEnduranceFight(unittest.TestCase):
+    """gp-u12-endurance (plan 2026-10-20-gameplay-truth-ii, record §J4): the ENDURANCE
+    team pass 0x44798 and modes 0x30/0x31, past gp-u8-endurance's D3 cut."""
+
+    def test_the_endurance_fight_scenario_reaches_the_team_pass(self):
+        scn = gs.SCENARIOS['gp-u12-endurance']
+        self.assertGreater(scn['time_limit'], 46)
+        self.assertTrue(any(s[0] == 'until_mode' and s[1] in (0x10, 0x30) for s in scn['steps']))
+        self.assertTrue(any(s[0] in ('after', 'after_mode', 'after_entry') for s in scn['steps']))
+
+    def test_the_capture_stops_at_the_scenarios_end(self):
+        # The 70 s limit leaves ~18 s of idle fight past the end frame; gp_capture
+        # stops STOP_TAIL frames after it (a name not in STOP_AT_END would run on).
+        self.assertIn('gp-u12-endurance', gs.STOP_AT_END)
 
 
 class TestPokeScript(unittest.TestCase):

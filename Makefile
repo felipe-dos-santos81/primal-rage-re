@@ -67,7 +67,7 @@ chunk ?= 0
         save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
-        gp-win-oracle gp-ending-oracle gp-win-one \
+        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -948,6 +948,33 @@ gp-modes-one: build
 		echo "gp-modes-oracle: no capture at $(K11_CAPTURES)/$(scenario), skipped"; \
 	fi
 
+# Gameplay truth II U12 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 4;
+# record §J4): gp-u12-endurance, the ENDURANCE team pass 0x44798's eight picks and the fight
+# they open (modes 0x30/0x31), the named gap record 2026-10-01-gameplay-u8-derivations.md
+# §U8.9 leaves past gp-u8-endurance's 300-frame team-select cut (D3; that capture and its
+# GP_MODES_EN_* pins stay as they are). The pins are EMPTY until data/k11-captures/
+# gp-u12-endurance is captured and measured (Task 9): an absent capture skips the target
+# (gp-replay's GP_OPTIONAL=1 and gp_compare's own skip), while a present capture with an empty
+# pin FAILS (gp_compare's ratchet and identity checks print "not pinned"). Provenance goes
+# here with the measured values: MIN_FIRST the first unexplained capture frame, TRACE_MIN_FIRST
+# the first differing traced f, MAX_START the window's first capture frame, MIN_REACH the
+# replay's last exhibited port frame, and the capture identity (poll.log sha256 and the
+# frame_*.raw.gz count). Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH when they improve.
+GP_U12_MIN_FIRST =
+GP_U12_TRACE_MIN_FIRST =
+GP_U12_MAX_START =
+GP_U12_MIN_REACH =
+GP_U12_CAPTURE_SHA256 =
+GP_U12_CAPTURE_FRAMES =
+gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fight (skips without data/k11-captures/gp-u12-endurance)
+	@echo "== gameplay oracle: gp-u12-endurance (team pass and modes 0x30/0x31) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-u12-endurance GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_compare.py --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance \
+		--port $(GP_DUMP)/gp-u12-endurance --min-first "$(GP_U12_MIN_FIRST)" \
+		--trace-min-first "$(GP_U12_TRACE_MIN_FIRST)" --max-start "$(GP_U12_MAX_START)" \
+		--min-reach "$(GP_U12_MIN_REACH)" \
+		--capture-sha256 "$(GP_U12_CAPTURE_SHA256)" --capture-frames "$(GP_U12_CAPTURE_FRAMES)"
+
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
 # (data/k11-captures/gp-u9-win) and the ending (data/k11-captures/gp-u10-ending), each reached
@@ -1270,6 +1297,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-keys-oracle
 	@$(MAKE) --no-print-directory gp-twop-oracle
 	@$(MAKE) --no-print-directory gp-modes-oracle
+	@echo "== gameplay oracle: gp-u12-endurance (the team pass and fight; skips without its capture; record §J4) =="
+	@$(MAKE) --no-print-directory gp-u12-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify
