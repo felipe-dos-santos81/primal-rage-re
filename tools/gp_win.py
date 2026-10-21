@@ -8,8 +8,11 @@ without pokes: its match is fought, and the capture (its Task 11) measures the h
   check  evidence: the capture's S records show the scenario's raw-derived path, every
          MILESTONES row in order (each found in the k-th entry into its mode, from the
          first frame in mode 0x27 on), and every DEATH_DONE poke found the death-done
-         byte still 0 (the game had not ended a death animation itself). Exit 1 on the
-         first failure.
+         byte still 0 (the game had not ended a death animation itself). For
+         gp-u14-win-live also the live win's own proof (spec W5): an S record with
+         b0c = 1 at or after the round-2 KO row and no DEATH_DONE poke — the game
+         itself ended a KO'd fighter's death animation (0x37EA0 -> 0x37FF2). Exit 1 on
+         the first failure.
   path   the port's T records (trace.txt) reach the same milestones at the same frame,
          judged over the frames the capture snapshotted (as gp_compare's trace claim);
          the leading count reproduced must be >= --min-milestones N (a ratchet). With
@@ -200,6 +203,44 @@ def death_done_set(lines, snaps):
     return out
 
 
+# Spec W5's live-win proof (gameplay truth II U14): a fought match must show the game's own
+# death-animation end. 0x37EA0 (the remains streams' 0xD100 target) sets DS_00104B0C = 1 at
+# 0x37FF2 when a KO'd fighter's death animation ends; the poked wins replaced that write.
+# The byte is not cleared between rounds — only mode 0x17's setup (0x271E0's 0x27200) and the
+# final's consumers (0x27582, 0x29744) write it to 0 — so a set byte at the match-end screen
+# proves a game death animation ended by then, not that round 2's specifically did: the
+# frames and the WIN trace carry which animation ran (record §W.5, §W.9).
+LIVE_WIN = frozenset({'gp-u14-win-live'})
+
+
+def live_death(name, frames, lines, snaps, out=print):
+    """The live win's death-done rule (LIVE_WIN): 0 ok, 1 FAIL. `frames` is
+    milestone_frames(name, ...). Fails when a W record wrote DS_00104B0C (the DEATH_DONE
+    poke) or when no S record at or after the round-2 KO row (mode 9, k = 1) has b0c = 1."""
+    addr = gs.DEATH_DONE[1][0][0]
+    poked = next((r['f'] for r in (gs.parse(l) for l in lines)
+                  if r and r['kind'] == 'W' and r['addr'] == addr), None)
+    if poked is not None:
+        out("gp_win: %s: evidence: FAIL: a DEATH_DONE poke at f=%X stands for the game's own "
+            'death-done byte (0x37FF2), which a fought win must reach itself' % (name, poked))
+        return 1
+    ko = next((f for (_, mode, k, _), f in zip(MILESTONES[name], frames) if (mode, k) == (0x09, 1)),
+              None)
+    if ko is None:
+        out('gp_win: %s: evidence: FAIL: no round-2 KO row (mode 9, k 1) to anchor the '
+            'death-done byte on' % name)
+        return 1
+    got = next((f for f in sorted(snaps) if f >= ko and snaps[f]['b0c'] == 1), None)
+    if got is None:
+        out("gp_win: %s: evidence: FAIL: no S record with b0c = 1 at or after the round-2 KO "
+            "(mode 9, f=%X): the game never ended a KO'd fighter's death animation "
+            '(0x37EA0 -> 0x37FF2), the write the U9/U10 DEATH_DONE poke replaced' % (name, ko))
+        return 1
+    out("gp_win: %s: evidence: the game ended a KO'd fighter's death animation itself "
+        '(b0c = 1 at f=%X, no DEATH_DONE poke)' % (name, got))
+    return 0
+
+
 def evidence(name, lines, out=print):
     """The check. Returns 0 ok, 1 FAIL."""
     snaps = snaps_from(lines)
@@ -211,7 +252,8 @@ def evidence(name, lines, out=print):
         out('gp_win: %s: evidence: FAIL: mode 0x27 never observed' % name)
         return 1
     prev = start
-    for (label, mode, k, _), f in zip(MILESTONES[name], milestone_frames(name, snaps, start)):
+    frames = milestone_frames(name, snaps, start)
+    for (label, mode, k, _), f in zip(MILESTONES[name], frames):
         if f is None or f < prev:
             out('gp_win: %s: evidence: FAIL: %s (mode 0x%X entry %d)%s'
                 % (name, label, mode, k, '' if f is None else ' at f=%X, before the previous milestone' % f))
@@ -221,6 +263,8 @@ def evidence(name, lines, out=print):
     bad = death_done_set(lines, snaps)
     if bad:
         out('gp_win: %s: evidence: FAIL: the death-done poke at f=%X did not find a clear byte in the mode-0xD entry' % (name, bad[0]))
+        return 1
+    if name in LIVE_WIN and live_death(name, frames, lines, snaps, out):
         return 1
     out('gp_win: %s: evidence: %d/%d milestones ok' % (name, len(MILESTONES[name]), len(MILESTONES[name])))
     return 0

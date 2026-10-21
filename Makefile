@@ -1264,16 +1264,21 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # won by fought hits, without the WIN_MENU pokes (spec W5). The menu path is gp-idle-loss's
 # with the character-select confirm of character 0; two rounds of alternating 1A/1B presses
 # (tools/gp_moves.py's rows, UNMEASURED) aim at the CPU's KO byte. Its claim is the poked wins'
-# narrow one plus what a poke could not claim: the game itself raises P2's +0x5A to 0x78 and
-# reaches the same mode-8/mode-9 entries and the land mark. Which presses land, the round
-# lengths and the death animation are Task 11's measurement; spec W5's shared-code limit still
-# applies — the gp-u6-moves-b capture has c1 = 1 (BLIZZARD) at this path's round 1, so the KO'd
-# fighter's death stream is that character's, not U10's SAURON (character 0). Task 11's own
-# capture records c1 (a SNAP field). The pins are EMPTY until
-# data/k11-captures/gp-u14-win-live is captured and measured (Task 11): an
-# absent capture skips the target (gp-replay's GP_OPTIONAL=1, gp_win.py's own no-poll.log
-# skip), while a present capture with an empty pin FAILS (gp_compare's ratchet and identity
-# checks print "not pinned").
+# narrow one plus what a poke could not claim: the game itself raises P2's +0x5A to 0x78,
+# reaches the same mode-8/mode-9 entries and the land mark, and gp_win.py check requires an S
+# record with the death-done byte b0c = 1 at or after the round-2 KO (mode 9) with no
+# DEATH_DONE poke — the game's own 0x37EA0 -> 0x37FF2 write that U9/U10 poked (spec W5). The
+# byte is not cleared between rounds (only mode 0x17's setup 0x271E0 and the final's consumers
+# clear it), so the rule proves a game death animation ended by the match-end screen, not that
+# round 2's specifically did; the frames and the WIN trace carry which animation ran. Which
+# presses land and the round lengths are Task 11's measurement; spec W5's shared-code limit
+# still applies — the same path's gp-u9-win (first mode-6 S f=0x480) and gp-u10-ending (f=0x479)
+# captures have c1 = 6 (CHAOS), afc = 5, so the KO'd fighter's death stream is not U10's final
+# SAURON's; Task 11's own capture records both (SNAP fields) and records a raw surprise if
+# they differ. The pins are EMPTY until data/k11-captures/gp-u14-win-live is captured and
+# measured (Task 11): the target skips on the absent capture directory (`[ ! -d ]`), and a
+# present capture with an empty pin fails first in gp_win.py check's sha_ok ("poll.log sha256
+# ... != the pinned (unpinned)").
 # Provenance goes here with the measured values: MIN_FIRST the first unexplained capture frame,
 # TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
 # MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's

@@ -470,11 +470,12 @@ SCENARIOS['gp-u13-ending2'] = dict(
 # is KO'd in both rounds and the round lengths are Task 11's measurement. The damage note is
 # the raw's, not a measurement: 0x39834/0x39738/0x392A0 read the (character, reaction) record
 # 0xDE114 + (char << 6 | reaction) * 11 and add a scaled byte to +0x5A, whose KO value is
-# 0x78 (0x27FA8). 0x10 and 0x11 start 16 and 15 in SAURON's rows (14 and 15 in BLIZZARD's —
-# the gp-u6-moves-b capture's c1 = 1 at this path's round 1, 0x1078BE) and 0x392A0's
-# v * 0x78 / 0x64 makes a first hit 16..19, while 0x39738's combo table (0xBEC28: 100, 60,
-# 55, ...) scales a chain's later hits; roughly 7-12 landed hits reach 0x78, so 32 attempts
-# per round leave room for whiffs. Harness values, not game values: the 10 frames into each
+# 0x78 (0x27FA8). 0x10 and 0x11 start 16 and 15 in SAURON's rows (14 and 15 in CHAOS's —
+# this path's P2 is c1 = 6, afc = 5 in the same-path gp-u9-win (first mode-6 S f=0x480) and
+# gp-u10-ending (f=0x479) captures, 0x1078BE/0x104AFC) and 0x392A0's v * 0x78 / 0x64 makes a
+# first hit 16..19, while 0x39738's combo table (0xBEC28: 100, 60, 55, ...) scales a chain's
+# later hits; roughly 7-12 landed hits reach 0x78, so 32 attempts per round leave room for
+# whiffs. Harness values, not game values: the 10 frames into each
 # round (U9's poke delay), the 16-frame gap (>= the 4-frame hold + 0x500C4's 2-frame release,
 # gp_moves.REPRESS) and the 200 s limit (gp-idle-loss's; two fought rounds can run the round
 # timer's ~3280 frames each). The capture stops on the conquered-lands screen (mode 0x12,
@@ -482,9 +483,9 @@ SCENARIOS['gp-u13-ending2'] = dict(
 U14_PUNCH = ('p1.b0', 'p1.b1')      # entry 1A, reaction 0x10
 U14_KICK = ('p1.b2', 'p1.b3')       # entry 1B, reaction 0x11
 U14_GAP = 16                        # frames between attempts (harness)
-U14_HITS = 32                       # attempts per round (harness; see the landed-hit estimate)
+U14_ATTEMPTS = 32                   # attempts per round (harness; see the landed-hit estimate)
 U14_PRESSES = tuple(('after', U14_GAP, ('pad', n, 4)) for n in
-                    ([U14_PUNCH, U14_KICK] * (U14_HITS // 2))[1:])
+                    ([U14_PUNCH, U14_KICK] * (U14_ATTEMPTS // 2))[1:])
 SCENARIOS['gp-u14-win-live'] = dict(time_limit=200, extra=WIN_EXTRA, steps=WIN_MENU + (
     ('after_entry', 0x06, 1, 10, ('pad', U14_PUNCH, 4)),   # round 1's first press
 ) + U14_PRESSES + (

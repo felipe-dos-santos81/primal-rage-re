@@ -527,13 +527,15 @@ class TestLiveWin(unittest.TestCase):
         steps = gs.SCENARIOS['gp-u14-win-live']['steps']
         anchors = [st for st in steps if st[0] == 'after_entry']
         self.assertEqual([(a[1], a[2], a[3]) for a in anchors], [(0x06, 1, 10), (0x06, 2, 10)])
+        self.assertEqual(anchors[0][-1], ('pad', gs.U14_PUNCH, 4))
         i = steps.index(anchors[0])
         j = steps.index(anchors[1])
         block = steps[i + 1:j]
         self.assertEqual([st[-1][1] for st in (anchors[0],) + block],
                          [('p1.b0', 'p1.b1'), ('p1.b2', 'p1.b3')] * 16)   # 1A/1B
         self.assertTrue(all(st[0] == 'after' and st[1] == 16 and st[-1][2] == 4 for st in block))
-        self.assertEqual(steps[j + 1:-1], block)         # the same rows, a shared tuple
+        self.assertEqual(steps[j + 1:-1], block)         # the same rows
+        self.assertIs(steps[j + 1], steps[i + 1])        # ... one shared tuple, not a copy
         self.assertEqual(steps[-1], ('until_mode', 0x12, 0))   # stops on the conquered lands
         self.assertIn('gp-u14-win-live', gs.STOP_AT_END)
 

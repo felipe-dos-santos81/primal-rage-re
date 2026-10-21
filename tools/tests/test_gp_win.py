@@ -197,6 +197,48 @@ class TestEvidence(unittest.TestCase):
         self.assertEqual(gw.death_done_set(L2 + [ok], gs.snapshots(L2)), [0x15])
 
 
+class TestLiveWin(unittest.TestCase):
+    """gp-u14-win-live (gameplay truth II U14 fix; spec W5): a fought win must show the
+    game's own death-animation end (b0c = 1), not the U9/U10 DEATH_DONE poke. The U9 fixture
+    satisfies every gp-u14 milestone row (afc=5, the land marked, w2/ad4) with b0c = 0."""
+
+    def run_check(self, lines):
+        out = io.StringIO()
+        rc = gw.evidence('gp-u14-win-live', lines, lambda s: out.write(s + '\n'))
+        return rc, out.getvalue()
+
+    def test_the_milestones_alone_do_not_prove_the_death(self):
+        rc, text = self.run_check(_log(U9))
+        self.assertEqual(rc, 1)
+        self.assertIn('no S record with b0c = 1 at or after the round-2 KO', text)
+
+    def test_the_game_must_set_the_death_done_byte_after_the_ko(self):
+        # b0c set only before the mode-9 entry (0x85E) does not count: the rule anchors on
+        # the match-end screen's own byte (its f >= ko window).
+        before = _log(U9, change=lambda f, m, k: dict(k, b0c=1) if f < 0x85E else k)
+        rc, text = self.run_check(before)
+        self.assertEqual(rc, 1)
+        self.assertIn('no S record with b0c = 1 at or after the round-2 KO', text)
+        after = _log(U9, change=lambda f, m, k: dict(k, b0c=1) if f >= 0x85E else k)
+        rc, text = self.run_check(after)
+        self.assertEqual(rc, 0)
+        self.assertIn("the game ended a KO'd fighter's death animation itself", text)
+        self.assertIn('6/6 milestones ok', text)
+
+    def test_a_death_done_poke_is_refused(self):
+        # the rule's second half on its own: the byte is set, but a W record wrote it
+        L = _log([(0x10, 0x20, 0x09, dict(b0c=1))])
+        frames = [None, None, None, None, 0x10, None]   # _START + _MATCH1: the mode-9 row
+        out = io.StringIO()
+        self.assertEqual(gw.live_death('gp-u14-win-live', frames, _pokes([0x18]),
+                                       gs.snapshots(L), lambda s: out.write(s + '\n')), 1)
+        self.assertIn('a DEATH_DONE poke at f=18', out.getvalue())
+        out = io.StringIO()
+        self.assertEqual(gw.live_death('gp-u14-win-live', frames, L, gs.snapshots(L),
+                                       lambda s: out.write(s + '\n')), 0)
+        self.assertIn('(b0c = 1 at f=10, no DEATH_DONE poke)', out.getvalue())
+
+
 class TestPath(unittest.TestCase):
     def test_a_capture_without_mode_27_fails_cleanly(self):
         cap = _log([(0x100, 0x140, 0x03, {}), (0x141, 0x150, 0x10, {})])
