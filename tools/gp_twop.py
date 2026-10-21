@@ -4,6 +4,12 @@ two-human match? Plan docs/superpowers/plans/2026-10-01-gameplay-u7-two-players.
 record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
 
   gp_twop.py check --capture DIR    exit 0 when DIR/poll.log is a two-human match
+  gp_twop.py check --join --capture DIR
+                                    the mid-round join (0x28CC8, gp-u15-join): the
+                                    capture ends inside the join's mode-0x17 window
+                                    (0x28E75), so the check is the join's evidence
+                                    (mode 6 -> 0x17, the joining side's start mask,
+                                    b1f, no debit), not the two-human fight claim
   gp_twop.py check --trace FILE     the same over a port trace.txt (T records)
                                     (a trace is converted only when the file is named
                                     trace.txt; any other name is read as a poll.log
@@ -30,8 +36,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gp_session as gs
 
-ENTRANCE_WORDS = (0xA000, 0x9000)     # 0x246EE / 0x246F9 (mode 5 only)
-FIGHT_MODE = 6                        # the fight frame (spec §3.9 item 1)
+ENTRANCE_WORDS = (0xA000, 0x9000)      # 0x246EE / 0x246F9 (mode 5 only)
+FIGHT_MODE = 6                         # the fight frame (spec §3.9 item 1)
+JOIN_MODE = 0x17                       # 0x28DA4's DS_00104B00 store (0x28E3A/0x28E66)
+START_MASK = (0x01000000, 0x00000100)  # DS_0009ACBC: side 0 F1/U, side 1 F2/Home level bits
 
 
 def pad_word(new, held, side):
@@ -64,30 +72,65 @@ def load(path):
     return lines
 
 
-def two_human(lines):
+def two_human(lines, join_only=False):
     """The evidence that a log is a two-human match, up to its X record (all
     records when it has none). Returns a dict: join (the first f with b1f == 3),
     end (the X record's f or None), frames (S records from the join to the end),
     counts ({class: n} per side), pressed (fight-mode S records with a non-zero
-    pad word, per side), cred_before/cred_join, and fail (the reasons it is not)."""
+    pad word, per side), cred_before/cred_join, join_mode/before_mode/b1f_before/
+    b1f_join, and fail (the reasons it is not).
+
+    join_only checks the mid-round join instead of the two-human fight (the
+    gp-u15-join capture): the S record before the join is the fight (mode 6) with one
+    side human, the join's own record is the join window mode 0x17 (0x28DA4 stores it,
+    0x28E3A/0x28E66), the joining side's start mask DS_0009ACBC[side] is newly pressed
+    in DS_001088E4, and b1f stays 3 to the end; the credit check is shared (0x2CA93).
+    The fight-press and command-word claims are skipped: the capture ends inside the
+    join's 0x78-frame 0x17 window (0x28E75), where no fight frame runs and the CPU
+    command block still writes the joining side's word (gp-keys-fight f=0x85A..0x85C:
+    e2 = 0 while the pad holds 0x100)."""
     xrec = next((r for r in (gs.parse(l) for l in lines) if r and r['kind'] == 'X'), None)
     end = None if xrec is None else xrec['f']
     snap = gs.snapshots(lines)
     fs = sorted(f for f in snap if end is None or f <= end)
     out = dict(join=None, end=end, frames=0, counts=[{}, {}], pressed=[0, 0],
-               cred_before=None, cred_join=None, fail=[])
+               cred_before=None, cred_join=None, join_mode=None, before_mode=None,
+               b1f_before=None, b1f_join=None, fail=[])
     join = next((f for f in fs if snap[f]['b1f'] == 3), None)
     if join is None:
         out['fail'].append('b1f never reaches 3 (no S record has both sides human)')
         return out
     out['join'] = join
     out['cred_join'] = snap[join]['cred']
+    out['join_mode'] = snap[join]['mode']
+    out['b1f_join'] = snap[join]['b1f']
     before = [f for f in fs if f < join]
     if before:
-        out['cred_before'] = snap[before[-1]]['cred']
+        prev = snap[before[-1]]
+        out['cred_before'] = prev['cred']
+        out['before_mode'] = prev['mode']
+        out['b1f_before'] = prev['b1f']
         if out['cred_join'] != out['cred_before']:
             out['fail'].append('credit %X -> %X at the join f=%X: P2 joining must not debit (0x2CA93 skips 0x2CA9C when b1f != 0)'
                                % (out['cred_before'], out['cred_join'], join))
+    if join_only:
+        if out['join_mode'] != JOIN_MODE:
+            out['fail'].append('the join at f=%X is in mode %X, not the join window %X (0x28DA4 stores it)'
+                               % (join, out['join_mode'], JOIN_MODE))
+        if not before:
+            out['fail'].append('the join at f=%X has no S record before it' % join)
+        elif out['before_mode'] != FIGHT_MODE:
+            out['fail'].append('the join at f=%X is not mid-round: the record before it is mode %X (want the fight mode %X)'
+                               % (join, out['before_mode'], FIGHT_MODE))
+        else:
+            newly = out['b1f_before'] ^ out['b1f_join']
+            side = {1: 0, 2: 1}.get(newly)
+            if side is None:
+                out['fail'].append('b1f %X -> %X at the join f=%X: not one side joining'
+                                   % (out['b1f_before'], out['b1f_join'], join))
+            elif (snap[join]['new'] & START_MASK[side]) == 0:
+                out['fail'].append('the joining side %d start mask %08X is not newly pressed at f=%X (new %08X)'
+                                   % (side, START_MASK[side], join, snap[join]['new']))
     for f in fs:
         if f < join:
             continue
@@ -99,14 +142,15 @@ def two_human(lines):
             c = classify(r, side)
             out['counts'][side][c] = out['counts'][side].get(c, 0) + 1
             e = r['e2'] if side else r['e0']
-            if c == 'other' and not any('side %d' % side in x for x in out['fail']):
+            if not join_only and c == 'other' and not any('side %d' % side in x for x in out['fail']):
                 out['fail'].append('side %d command word %04X at f=%X (mode %X) is not a pad word: a CPU wrote it'
                                    % (side, e, f, r['mode']))
             if r['mode'] == FIGHT_MODE and c == 'pad' and e != 0:
                 out['pressed'][side] += 1
-    for side in (0, 1):
-        if out['pressed'][side] == 0:
-            out['fail'].append('side %d never pressed a key in the fight (mode %d)' % (side, FIGHT_MODE))
+    if not join_only:
+        for side in (0, 1):
+            if out['pressed'][side] == 0:
+                out['fail'].append('side %d never pressed a key in the fight (mode %d)' % (side, FIGHT_MODE))
     return out
 
 
@@ -128,6 +172,8 @@ def main():
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument('--capture')
     src.add_argument('--trace')
+    ap.add_argument('--join', action='store_true',
+                    help="check the mid-round join only (0x28CC8/0x28DA4); the capture ends inside the join's mode-0x17 window")
     a = ap.parse_args()
     path = os.path.join(a.capture, 'poll.log') if a.capture else a.trace
     lines = load(path)
@@ -137,7 +183,7 @@ def main():
             print('%s:%d f=%X mode=%X b1f=%X cred=%X e0=%04X e2=%04X'
                   % (os.path.basename(path), n, f, m, b1f, cred, e0, e2))
         return 0
-    r = two_human(lines)
+    r = two_human(lines, join_only=a.join)
     if r['join'] is not None:
         print('gp_twop: %s: join f=%X (cred %s -> %X); %d S records from the join to %s; '
               'side 0 %s, side 1 %s; fight presses %d/%d'
@@ -145,11 +191,14 @@ def main():
                  r['cred_join'], r['frames'], 'the end' if r['end'] is None else 'X f=%X' % r['end'],
                  sorted(r['counts'][0].items()), sorted(r['counts'][1].items()),
                  r['pressed'][0], r['pressed'][1]))
+        if a.join:
+            print('gp_twop: %s: mid-round join: mode %X -> %X, b1f %X -> %X'
+                  % (name, r['before_mode'], r['join_mode'], r['b1f_before'], r['b1f_join']))
     for x in r['fail']:
         print('gp_twop: %s: FAIL: %s' % (name, x))
     if r['fail']:
         return 1
-    print('gp_twop: %s: two-human match: ok' % name)
+    print('gp_twop: %s: %s: ok' % (name, 'mid-round join' if a.join else 'two-human match'))
     return 0
 
 

@@ -494,6 +494,27 @@ SCENARIOS['gp-u14-win-live'] = dict(time_limit=200, extra=WIN_EXTRA, steps=WIN_M
     ('until_mode', 0x12, 0),                               # the conquered-lands screen
 ))
 
+# Gameplay truth II U15 (plan 2026-10-20-gameplay-truth-ii.md Task 7): P2 joins the
+# gp-idle-loss fight mid-round. F2 (p2.start) in mode 6 is the join poll 0x28CC8 (the
+# mode-6 caller 0x2525F): side 1 lacks its bit in b1f (DS_00104B1F = 1, LEFT PLAYER
+# ARCADE's), its start mask DS_0009ACBC[1] = 0x00000100 is newly pressed in
+# DS_001088E4, so 0x28D13 sets b1f |= 2 and 0x28D19 calls the credit spend 0x2CA7C,
+# which 0x2CA93 skips while b1f != 0: the join is free (record gameplay-u7 §T.1.3).
+# 0x28DA4 then stores the join's own mode 0x17 (0x28E3A/0x28E66) for 0x78 frames
+# (0x28E75). No character-select confirm: the join is mid-round, and the scenario ends
+# inside that 0x17 window, before it returns to mode 0x10. Harness values, not game
+# values: the three menu steps are gp-idle-loss's (150-frame gaps), the 5-frame hold is
+# gp-twop's (a press reaches the pad level one iteration late, record §G.7.2), the end
+# is 60 frames after the join, and the 75 s limit is the path's 55.1 s mode-6 entry
+# (record §G.18) plus the join's 60 frames and this end, with margin.
+SCENARIOS['gp-u15-join'] = dict(time_limit=75, steps=(
+    ('boot', ENTER_WAIT, ('key', 'enter')),        # mode 3 -> 0x27, MAIN MENU on "Start"
+    ('after_mode', 0x27, 150, ('key', 'enter')),   # START MENU, cursor on row 0 (spec §3.3)
+    ('after', 150, ('key', 'enter')),              # LEFT PLAYER ARCADE: mode 0x2D
+    ('after_mode', 0x06, 60, ('pad', ('p2.start',), 5)),  # F2: 0x28CC8 joins side 1
+    ('after', 60, ('end',)),                       # 60 frames into the join's mode 0x17
+))
+
 
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
@@ -612,11 +633,15 @@ class Schedule:
 # mode 0x30 and nothing past it is compared, so the fight's idle remainder of the 70 s
 # limit would only cost bytes. gp-u14-win-live (gameplay truth II U14) stops too: its end
 # is the conquered-lands screen's first frame and nothing past it is compared.
+# gp-u15-join (gameplay truth II U15) stops too: its end is 60 frames into the join's
+# 0x78-frame mode 0x17 (0x28E75) and nothing past it is compared; without the stop the
+# 75 s limit would run on through the wipe into the character select.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
                          'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
-                         'gp-u13-ending2', 'gp-u12-endurance', 'gp-u14-win-live'})
+                         'gp-u13-ending2', 'gp-u12-endurance', 'gp-u14-win-live',
+                         'gp-u15-join'})
 
 
 class ScriptError(Exception):

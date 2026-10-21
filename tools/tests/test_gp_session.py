@@ -540,6 +540,27 @@ class TestLiveWin(unittest.TestCase):
         self.assertIn('gp-u14-win-live', gs.STOP_AT_END)
 
 
+class TestMidMatchJoin(unittest.TestCase):
+    """gp-u15-join (plan 2026-10-20-gameplay-truth-ii Task 7): P2 presses F2 in the
+    gp-idle-loss fight. The join poll 0x28CC8 (mode 6's 0x2525F) accepts side 1's
+    start mask, sets b1f and calls the credit spend whose 0x2CA93 skips the debit;
+    0x28DA4 stores the join's mode 0x17."""
+
+    def test_the_join_scenario_presses_f2_in_the_fight(self):
+        scn = gs.SCENARIOS['gp-u15-join']
+        self.assertTrue(any(s[0] == 'after_mode' and s[1] == 0x06 and 'p2.start' in s[3][1]
+                            for s in scn['steps']))
+
+    def test_the_menu_path_ends_sixty_frames_after_the_join(self):
+        steps = gs.SCENARIOS['gp-u15-join']['steps']
+        i = next(k for k, s in enumerate(steps) if s[0] == 'after_mode' and s[1] == 0x06)
+        self.assertEqual(steps[i][:3], ('after_mode', 0x06, 60))
+        self.assertEqual(steps[i][3], ('pad', ('p2.start',), 5))
+        self.assertEqual(steps[i + 1], ('after', 60, ('end',)))
+        self.assertEqual(steps[:i], gs.SCENARIOS['gp-idle-loss']['steps'][:3])
+        self.assertIn('gp-u15-join', gs.STOP_AT_END)
+
+
 class TestPokeScript(unittest.TestCase):
     def setUp(self):
         gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())

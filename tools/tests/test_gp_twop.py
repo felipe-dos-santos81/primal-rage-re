@@ -62,6 +62,51 @@ class TestScenario(unittest.TestCase):
         self.assertTrue(all(a[2] >= 2 for a in acts))       # a 1-frame press never reaches the level
 
 
+def _join(new=0x100, before_mode=6, join_mode=0x17):
+    """A mid-round join (0x28CC8/0x28DA4): `before_mode` with P1 only, then F2 at
+    0x400 (new 0x100 = DS_0009ACBC[1]) takes b1f 1 -> 3 in the join's mode 0x17 and
+    cred stays 4; X at 0x440, with no mode-6 record after the join."""
+    L = [_s(f, mode=before_mode, b1f=1) for f in range(0x3F0, 0x400)]
+    L += [_s(0x400, mode=join_mode, b1f=3, new=new)]
+    L += [_s(f, mode=join_mode) for f in range(0x401, 0x440)]
+    L += ['X ms=0 f=0440 step=9 end']
+    return L
+
+
+class TestMidRoundJoin(unittest.TestCase):
+    """The join-only claim (gp-u15-join): the capture ends inside the join's
+    mode-0x17 window, where no fight press can happen."""
+
+    def test_the_join_check_does_not_require_a_fight_press(self):
+        # gp-keys-fight's own join (f=0x85A): mode 6 -> 0x17, b1f 1 -> 3, cred 4 -> 4,
+        # new=0x100; the two-human rule fails on both presses, the join rule passes.
+        L = _join()
+        self.assertEqual(gt.two_human(L)['fail'],
+                         ['side 0 never pressed a key in the fight (mode 6)',
+                          'side 1 never pressed a key in the fight (mode 6)'])
+        r = gt.two_human(L, join_only=True)
+        self.assertEqual(r['fail'], [])
+        self.assertEqual((r['join'], r['end'], r['cred_before'], r['cred_join']),
+                         (0x400, 0x440, 4, 4))
+        self.assertEqual((r['before_mode'], r['join_mode'], r['b1f_before'], r['b1f_join']),
+                         (6, 0x17, 1, 3))
+
+    def test_the_join_must_come_from_the_fight(self):
+        r = gt.two_human(_join(before_mode=0x10), join_only=True)
+        self.assertIn('is not mid-round', r['fail'][0])
+
+    def test_the_join_must_enter_the_join_window(self):
+        # 0x28DA4 stores mode 0x17 (0x28E3A/0x28E66): an accepted start that stays in
+        # mode 6 is not the join path
+        r = gt.two_human(_join(join_mode=6), join_only=True)
+        self.assertIn('join window', r['fail'][0])
+
+    def test_the_joining_sides_start_mask_must_be_pressed(self):
+        # DS_0009ACBC[1] is F2's level bit (0x00000100, gp_keys.P1_B0_NEW's side-1 twin)
+        r = gt.two_human(_join(new=0), join_only=True)
+        self.assertIn('start mask', r['fail'][0])
+
+
 class TestTwoHuman(unittest.TestCase):
     def test_pad_word_is_0x4f644(self):
         # gp-pads f=0x3D6 (record §T.2.1): new = held = 0x24001000 -> e0 2424, e2 1010

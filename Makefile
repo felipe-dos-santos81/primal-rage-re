@@ -67,7 +67,7 @@ chunk ?= 0
         save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
-        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle \
+        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1309,6 +1309,45 @@ gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips
 			--win-min-first "$(GP_U14_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U14_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u14-win-live; exit $$rc; fi
 
+# Gameplay truth II U15 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 7;
+# gp_session.SCENARIOS['gp-u15-join']): P2 joins the gp-idle-loss fight mid-round with F2.
+# Mode 6's caller 0x2525F runs the join poll 0x28CC8: side 1's start mask DS_0009ACBC[1]
+# is newly pressed in DS_001088E4, 0x28D13 sets b1f and 0x28D19 calls the credit spend
+# 0x2CA7C, which 0x2CA93 skips while b1f != 0 (the free-credit join), and 0x28DA4 stores
+# the join's own mode 0x17 for 0x78 frames (0x28E75). The scenario ends 60 frames into
+# that window, so gp_twop.py check --join judges the join's evidence (the record before
+# it mode 6, the join record mode 0x17, the joining side's start mask in the newly-
+# pressed word, b1f 1 -> 3, no debit) instead of the two-human fight claim: no fight
+# frame follows the join, and the CPU command block still writes the joining side's
+# word in 0x17 (gp-keys-fight f=0x85A..0x85C: e2 = 0 while the pad holds 0x100). The
+# pins are EMPTY until data/k11-captures/gp-u15-join is captured and measured (Task 12):
+# the target skips on the absent capture directory (`[ ! -d ]`), and a present capture
+# with an empty pin fails first in gp_compare's sha check ("poll.log sha256 ... != the
+# pinned (unpinned)").
+# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture
+# frame, TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first
+# capture frame, MIN_REACH the replay's last exhibited port frame, and the capture
+# identity (poll.log sha256 and the frame_*.raw.gz count). Raise
+# MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH when they improve.
+GP_U15_MIN_FIRST =
+GP_U15_TRACE_MIN_FIRST =
+GP_U15_MAX_START =
+GP_U15_MIN_REACH =
+GP_U15_CAPTURE_SHA256 =
+GP_U15_CAPTURE_FRAMES =
+gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips without data/k11-captures/gp-u15-join)
+	@echo "== gameplay oracle: gp-u15-join (a mid-round join) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_twop
+	@if [ ! -d $(K11_CAPTURES)/gp-u15-join ]; then echo "gp-u15-oracle: no capture at $(K11_CAPTURES)/gp-u15-join (skipped)"; else \
+		$(PYTHON) tools/gp_twop.py check --join --capture $(K11_CAPTURES)/gp-u15-join && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u15-join GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u15-join --capture $(K11_CAPTURES)/gp-u15-join \
+			--port $(GP_DUMP)/gp-u15-join --min-first "$(GP_U15_MIN_FIRST)" \
+			--trace-min-first "$(GP_U15_TRACE_MIN_FIRST)" --max-start "$(GP_U15_MAX_START)" \
+			--min-reach "$(GP_U15_MIN_REACH)" \
+			--capture-sha256 "$(GP_U15_CAPTURE_SHA256)" --capture-frames "$(GP_U15_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u15-join; exit $$rc; fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario) --max-unexplained "$(GP_REPORT_MAX)"
@@ -1395,6 +1434,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u13-oracle
 	@echo "== gameplay oracle: gp-u14-win-live (a fought win; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u14-oracle
+	@echo "== gameplay oracle: gp-u15-join (a mid-round join; skips without its capture) =="
+	@$(MAKE) --no-print-directory gp-u15-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify
