@@ -560,14 +560,16 @@ so the gate at `0x4F68B` (`f6 05 d4 88 08 00 02` = `test byte [0x1088d4],2`, `74
 `mov eax,[0x1088d8]`, `09 05 e4 88 08 00` = `or [0x1088e4],eax`) never runs. The row records the
 same in ``unhit_named={0x4F694: "dead with 0x2D2F0 real (`xor eax,eax; ret`): the byte 0x1088D4 it
 has just stored is 0, so `test byte [0x1088d4],2; je` 0x4F68B is always taken"}``. `0x1088D4`'s only
-other reads, `0x35770` and its `0x38526` twin, take bit 2 (`0x1088D4 & 4`) into `0x1078FB`, a
-constant 3 in the shipped bytes; `0x1088DC` has no reader.
+other read, `0x3575E` (`f6 05 d4 88 08 00 04` = `test byte [0x1088d4],4`) and its `0x38526` twin,
+feeds the `0x35770`/`0x38538` store of `0x1078FB` (`((0x1088D4 & 4) == 0) + 2`), a constant 3 in
+the shipped bytes; `0x1088DC` has no reader.
 
 **Correction to W8's wording (the raw wins).** The dword the dead gate would merge is `0x1088D8`,
 the held mask from the second `0x50161` selector (`port/src/platform/input.c:118`), not a
 joystick word; the joystick result words are `0x1088DC`/`0x1088D4`, and they are 0. W8's "the only
 other game-port reader is `0x5004A`" is also too narrow: the live game-port sampler is the
-host-owned ISR `0x1BBAC`.
+host-owned ISR `0x1BBAC`, and the boot checks `0x20DAC`/`0x20DD1` also wait on the game port
+(`0x4FBBB`) and clear the device words `+0x2D4`/`+0x2D6` when the check fails.
 
 ### The original's joystick is host-owned input
 
@@ -577,22 +579,26 @@ the game logic:
 | address | what | evidence |
 |---|---|---|
 | `0x1BBAC` | the timer ISR's input sampler; called at `0x1BE1C` from `0x1BDF4` | `e8 8b fd ff ff` = `call 0x1bbac` at `0x1BE1C`; host-owned, `tools/port_classification.txt:44` |
-| `+0x2D4`/`+0x2D6` | the key-config device words it switches on (0 keyboard, 2/4/6 joystick) | `0x1BBB6`/`0x1BBDC`; `0x1BD06` `jmp [eax*4+0x1BB74]`, table `0x1BD0E/0x1BD15/0x1BD2E/0x1BD3C` for 0/2/4/6 |
-| `0x4FF8F`/`0x4FFD8` | calibrated A/B axis bits from `0xE1C1E..0xE1C2C` (±0x1D) | host-owned, rows 70-71; called from the sampler's 2/4/6 arms (`0x1BD15`, `0x1BD2E`, `0x1BD3C`, `0x1BDA4`, `0x1BDC9`) |
+| `+0x2D4`/`+0x2D6` | the key-config device words it switches on (0 keyboard, 2/4/6 joystick) | `0x1BBB6`/`0x1BBDC`; the `+0x2D4` switch `0x1BD06` `jmp [eax*4+0x1BB74]`, table `0x1BD0E/0x1BD15/0x1BD2E/0x1BD3C` for 0/2/4/6; the `+0x2D6` switch `0x1BD61`/`0x1BD7C` `jmp [edx*4+0x1BB90]`, table `0x1BD84/0x1BD8B/0x1BDA4/0x1BDC9` for 0/2/4/6 |
+| `0x4FF8F`/`0x4FFD8` | calibrated A/B axis bits from `0xE1C1E..0xE1C2C`: the bit sets at `abs(diff) >= 0x1E` (a ±0x1D dead band) | host-owned, rows 70-71; `0x4FFA2`/`0x4FFAC` (`66 83 f9 1e`/`66 83 f9 e2`) and `0x4FFC4`/`0x4FFCE` for A, `0x4FFEB`/`0x4FFF5` and `0x5000D`/`0x50017` for B; called from the sampler's 2/4/6 arms (`0x1BD15`, `0x1BD2E`, `0x1BD3C`, `0x1BD8B`, `0x1BDA4`, `0x1BDC9`) |
 | `0x1B890`/`0x1B8DC`/`0x1B908` | `in 0x201` button bits | host-owned, rows 41-43 |
-| `+0x2D8`/`+0x2D9` | the key bitmap the arms write (`0x1BD5B`, `0x1BDC0`, `0x1BDE8`) | `0x500C4` reads them (`input.c:92`) |
-| `0x1AE28` | `config_keys_apply` writes the device words (`0x1AE3B`/`0x1AE4F`) | `port/src/game/config.c:1280` |
-| `0x31F24` | OPTIONS MENU MODIFY CONTROLS edits device 0/2/4/6 and calls `0x1AE28` (`0x32345`) | `port/src/game/svcmenu.c:848` |
-| `0xA2C62` | the default key record: device bytes 0/0 (keyboard) | raw `00 00 ... 00 00 ...` at data-object file offset `0xE94B6` |
+| `+0x2D8`/`+0x2D9` | the key bitmap the arms write (`0x1BD5B`, `0x1BDC0`, `0x1BDE8`) | `0x500C4` reads them (`input.c:92-93`) |
+| `0x1AE28` | `config_keys_apply` writes the device words (`DSW` at `0x1AE3B`/`0x1AE4F`) | `port/src/game/config.c:1285,1287` |
+| `0x31F24` | OPTIONS MENU MODIFY CONTROLS edits device 0/2/4/6 and calls `0x1AE28` (`0x32347`, argument at `0x32345`) | `port/src/game/svcmenu.c:848` |
+| `0xA2C62` | the default key record: device words 0/0 (keyboard) | raw `00 00 ... 00 00 ...` at data-object file offset `0xE94B6` |
+| `0x20DAC`/`0x20DD1` | boot controller checks: `call 0x4FBBB` (the game-port wait) and clear the device word `+0x2D4` (`0x20DBA`) / `+0x2D6` (`0x20DDF`) when the check fails | host-owned, `tools/port_classification.txt:63`; record named-gaps-b §B.6a |
 | `0x5004A` | the calibration (PIT `0x50021`, game port `0x201` via `0x4FC05`/`0x4FCFD`); callers `0x1C0AC`, `0x24DD3` (Alt-J), `0x2EB4D` | host-owned, `tools/port_classification.txt:66` |
 
 The chain is: `0x1BBAC` → `+0x2D8`/`+0x2D9` → `0x500C4`'s level word `0xE1C34` → `0x4F644`'s pad
 words `0x1088E0`/`0x1088E2` → `fight.c`'s stick bits (`0x43BB5` etc.). The keyboard case 0 of the
 same switch is what the port's host models (`host.c` `host_kb_bit`, the device-0 arms); the
-joystick cases 2/4/6 are unported. The default record is keyboard (0/0), so a default boot has no
-joystick input; a service-menu selection of 2/4/6 plus a saved image reaches the sampler's
-joystick arms. All the game-port code is host-owned (`tools/port_classification.txt` rows 34-44,
-62-67, 70-71).
+joystick cases 2/4/6 are host-owned, not modelled by the port's host. The default record is
+keyboard (0/0), so a default boot has no joystick input; a service-menu selection of 2/4/6 plus a
+saved image reaches the sampler's joystick arms. All the live game-port sampling code is
+host-owned; the config writers `0x1AE28`/`0x31F24` are ported. The unreferenced sampler routines
+`0x1B934..0x1BB73` (callers of `0x4FF8F`/`0x4FFD8` at `0x1B976`/`0x1B9B6`/`0x1BA16`/`0x1BA96`/
+`0x1BAD6`/`0x1BB36`) are not in those rows and have no row (`tools/port_classification.txt`
+rows 34-44, 62-67, 70-71 cover the live sampler, the calibration and the axis readers).
 
 ### What follows for the host phase
 
@@ -600,13 +606,13 @@ An SDL-gamepad map is **additive**: it belongs in the host input layer (`host.c`
 already stands in for `0x1BBAC`, and it feeds the same key bitmap. It is not a reimplementation of
 a ported path and needs no `0x4F644` change; the `0x2D2F0`/`0x4F644` gate stays dead. If the host
 wants the original's joystick behaviour, the thing to model is the sampler's device-2/4/6 arms
-(the ±0x1D calibrated axis thresholds and the `in 0x201` button bits), not `0x4F644`. A report-only
-Alt-J/boot probe (`0x5004A`, `0x24DD3`; `0x2EB4D`) is optional, a K11-style session, and is not a
-`gp-*` fixture and not a pin.
+(the `|diff| >= 0x1E` axis thresholds — a ±0x1D dead band — and the `in 0x201` button bits), not
+`0x4F644`. A report-only Alt-J/boot probe (`0x5004A`, `0x24DD3`; `0x2EB4D`) is optional, a
+K11-style session, and is not a `gp-*` fixture and not a pin.
 
 ### What this section does not claim
 
 It does not claim the port reproduces the original's game-port sampling, the service menu's device
-selection, the ±0x1D axis thresholds or the button bits. It adds no capture, no `gp-*` scenario, no
-pin and no `port/src` change; the `0x2D2F0` and `0x4F644` rows are unchanged and VERIFIED. The
-verdict is raw-only, measured at `f1f665c2`.
+selection, the `|diff| >= 0x1E` axis thresholds (a ±0x1D dead band) or the button bits. It adds no
+capture, no `gp-*` scenario, no pin and no `port/src` change; the `0x2D2F0` and `0x4F644` rows are
+unchanged and VERIFIED. The verdict is raw-only, measured at `f1f665c2`.

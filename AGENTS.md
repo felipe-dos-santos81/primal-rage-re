@@ -352,16 +352,18 @@ consolidation gate).
   2026-10-04-reverse-p7 §P7.8).
 - **The game logic has no joystick path; the original's joystick is host-owned input.** `0x2D2F0`
   (`input_joystick_device`) is `xor eax,eax; ret` (raw `31 c0 c3`; it has its own differential
-  row), so `0x4F644` stores 0 in `0x1088D4`/`0x1088DC` and its merge at `0x4F68B`
-  (`test byte [0x1088d4],2; je`; the row's `unhit_named` `0x4F694`, `newly |= held`) never runs.
-  The original's only gameplay game-port sampling is the host-owned ISR sampler `0x1BBAC` (called
-  at `0x1BE1C`; the key-config device words `+0x2D4/+0x2D6` select keyboard 0 or joystick 2/4/6,
-  and its arms write the same key bitmap `+0x2D8/+0x2D9` that `0x500C4` reads), with the
-  host-owned calibration `0x5004A` (`0x50021`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x4FF8F`,
-  `0x4FFD8`; `tools/port_classification.txt` rows 34-44, 62-67, 70-71). The port's host models
-  only the sampler's device-0 (keyboard) arms (`host.c` `host_kb_bit`), so an SDL-gamepad map is
-  **additive** host input, not a reimplementation of a ported path; a report-only Alt-J/boot
-  probe is optional and is not a `gp-*` fixture (record gameplay-truth-ii §J9).
+  row), so `0x4F644` stores 0 in `0x1088D4`/`0x1088DC`; its gate at `0x4F68B`
+  (`test byte [0x1088d4],2; je`) never opens and the merge at `0x4F694`/`0x4F699` never runs
+  (the row's `unhit_named` `0x4F694` says the gate is always taken). The original's only gameplay
+  game-port sampling is the host-owned ISR sampler `0x1BBAC` (called at `0x1BE1C`; the key-config
+  device words `+0x2D4/+0x2D6` select keyboard 0 or joystick 2/4/6, and its arms write the same
+  key bitmap `+0x2D8/+0x2D9` that `0x500C4` reads), with the host-owned calibration `0x5004A`
+  (`0x50021`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`) and the sampler's host-owned axis readers
+  `0x4FF8F`/`0x4FFD8` (`tools/port_classification.txt` rows 34-44, 62-67, 70-71). The port's
+  host models only the sampler's device-0 (keyboard) arms (`host.c` `host_kb_bit`), so an
+  SDL-gamepad map is **additive** host input, not a reimplementation of a ported path; a
+  report-only Alt-J/boot probe is optional and is not a `gp-*` fixture (record
+  gameplay-truth-ii §J9).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
