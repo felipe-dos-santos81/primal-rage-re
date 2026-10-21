@@ -1350,9 +1350,10 @@ gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips
 
 # Gameplay truth II U16 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 8;
 # gp_session.SCENARIOS['gp-u16-twop2']): gp-twop's two-human start played past its script
-# end to the match result (mode 0x09) and on to the conquered-lands screen (mode 0x12), with
-# the three finisher entries (keyboard 0x17/0x18/0x19 -> reactions 0x32/0x33/0x34, the
-# starters 0x37640/0x37774/0x37898) attempted on the defeated P2 in mode 9. Each starter's
+# end to the match result (mode 0x09; mode 8 is the undecided round's result) and on to the
+# conquered-lands screen (mode 0x12), with TALON's three finisher entries (keyboard
+# 0x15/0x16/0x17 -> reactions 0x32/0x33/0x34, the starters 0x37640/0x37774/0x37898; 0x17..0x19
+# are characters 0/1/3/4/5/6's entries) attempted on the defeated P2 in mode 9. Each starter's
 # gate is the other slot's +0x42 bit 5 and +0x43 bit 3 (0x3766E/0x37678); 0x36F10's arm A
 # sets both (`word [slot+0x42] |= 0x820`, 0x36FD4) for the side the match result
 # DS_00104AD4 beat (0x36F71..0x36F9A), reached from the health sync 0x34BE8 and its
@@ -1364,8 +1365,8 @@ gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips
 # move fields, so a report run shows it, and a pin can be added once measured.
 # The pins are EMPTY until data/k11-captures/gp-u16-twop2 is captured and measured
 # (Task 12): the target skips on the absent capture directory (`[ ! -d ]`), and a present
-# capture with an empty pin fails first in gp_compare's sha check ("poll.log sha256 ... !=
-# the pinned (unpinned)").
+# capture with an empty pin fails first in gp_compare's capture_identity ("the capture
+# identity (poll.log sha256) is not pinned").
 # Provenance goes here with the measured values: MIN_FIRST the first unexplained capture
 # frame, TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture
 # frame, MIN_REACH the replay's last exhibited port frame, and the capture identity (poll.log

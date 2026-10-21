@@ -1,8 +1,9 @@
 # tools/tests/test_gp_session.py
-import os, sys, unittest
+import os, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import gp_moves as gm
 import gp_session as gs
 
 
@@ -561,12 +562,27 @@ class TestMidMatchJoin(unittest.TestCase):
         self.assertIn('gp-u15-join', gs.STOP_AT_END)
 
 
+def real_image():
+    """The fixed-up image build/diffrun dumps, or None (skip; test_gp_moves' fixture)."""
+    diffrun = os.path.join(ROOT, 'build', 'diffrun')
+    exe = os.path.join(ROOT, 'data', 'game', 'C', 'PRAGE.EXE')
+    if not (os.path.exists(diffrun) and os.path.exists(exe)):
+        return None
+    fd, path = tempfile.mkstemp(suffix='.bin')
+    os.close(fd)
+    try:
+        subprocess.run([diffrun, '--exe', exe, '--image-out', path], check=True, capture_output=True)
+        return gm.Image.load(path)
+    finally:
+        os.remove(path)
+
+
 class TestExtendedTwop(unittest.TestCase):
     """gp-u16-twop2 (plan 2026-10-20-gameplay-truth-ii Task 8; design W7): gp-twop's
-    two-human start, extended past the first match's script end to the match result,
-    with the three finisher entries (0x37640/0x37774/0x37898, reactions 0x32..0x34)
-    attempted on the defeated P2. The press sequence is the builder's and UNMEASURED
-    (Task 12's capture measures it); these tests are shape-only."""
+    two-human start, extended past the first match's script end to the match result
+    (mode 9; mode 8 is the undecided round's result), with the three finisher starters
+    (0x37640/0x37774/0x37898, reactions 0x32..0x34) attempted on the defeated P2. The
+    press sequence is the builder's and UNMEASURED (Task 12's capture measures it)."""
 
     def test_the_extended_twop_scenario_runs_past_the_first_match(self):
         scn = gs.SCENARIOS['gp-u16-twop2']
@@ -574,25 +590,42 @@ class TestExtendedTwop(unittest.TestCase):
         self.assertTrue(any(s[0] == 'until_mode' and s[1] in (0x09, 0x12) for s in scn['steps']))
 
     def test_the_two_human_start_is_preserved(self):
-        # The join (F2 in the character select, 0x11F28(1)) and both sides' confirms
-        # (0x43CAD) are gp-twop's own steps, in order: the whole prefix through the
-        # mode-6 walk-in is shared (gp_twop.two_human's evidence starts there).
+        # The join (F2 in the character select, 0x11F28(1)), both confirms (0x43CAD) and
+        # both sides' mode-6 presses are gp-twop's own steps, in order: the whole prefix
+        # before gp-twop's end, whose boundary is computed rather than an index that a
+        # future gp-twop step could shift.
         steps = gs.SCENARIOS['gp-u16-twop2']['steps']
-        twop = gs.SCENARIOS['gp-twop']['steps']
-        n = next(k for k, s in enumerate(twop) if s[0] == 'after_mode' and s[1] == 0x06)
-        self.assertEqual(steps[:n + 1], twop[:n + 1])
+        prefix = gs.steps_before_end(gs.SCENARIOS['gp-twop']['steps'])
+        self.assertEqual(steps[:len(prefix)], prefix)
+        self.assertEqual(steps[len(prefix) - 2:len(prefix)],
+                         (('after', 60, ('pad', ('p1.b1', 'p2.b2'), 5)),
+                          ('after', 30, ('pad', ('p1.b2', 'p2.b1'), 5))))
         self.assertIn('gp-u16-twop2', gs.STOP_AT_END)
 
     def test_the_finisher_entries_are_pressed_on_the_match_result(self):
-        # gp_moves.py steps --char 2 --facing 0 --moves 17,18,19 --gap 100 --step 4:
-        # the three finisher starters' entries (0x17..0x19 -> reactions 0x32..0x34),
-        # each attempt's b0+b2 held 16, 12 and 12, 100 frames apart.
+        # gp_moves.py steps --char 2 --facing 0 --moves 15,16,17 --gap 100 --step 4:
+        # TALON's three finisher entries (0x15/0x16/0x17 -> reactions 0x32/0x33/0x34,
+        # the starters 0x37640/0x37774/0x37898), each attempt's b0+b2 held 16, 100
+        # frames apart. (0x17..0x19 are characters 0/1/3/4/5/6's entries; for char 2
+        # 0x17 is the reaction-0x34 starter and 0x18/0x19 are reactions 0x24/0x25.)
         steps = gs.SCENARIOS['gp-u16-twop2']['steps']
         i = next(k for k, s in enumerate(steps) if s[0] == 'after_entry' and s[1] == 0x09)
         self.assertEqual(steps[i][:4], ('after_entry', 0x09, 1, 10))   # the match result
         fin = steps[i:-1]
-        self.assertEqual([s[-1][2] for s in fin if s[-1][1] == ('p1.b0', 'p1.b2')], [16, 12, 12])
+        self.assertEqual([s[-1][2] for s in fin if s[-1][1] == ('p1.b0', 'p1.b2')], [16, 16, 16])
+        self.assertEqual(len(fin), 15)                                 # the anchor + 14 steps
         self.assertEqual(steps[-1], ('until_mode', 0x12, 0))          # after the presses
+
+    def test_the_finisher_steps_are_gp_moves_output_for_entries_15_16_17(self):
+        # TestU6Moves' regeneration (test_gp_moves.TestRealImage): the constant must be
+        # the tool's own output for TALON's entries, so a wrong --moves pairing fails.
+        img = real_image()
+        if img is None:
+            self.skipTest('no build/diffrun or data/game/C/PRAGE.EXE')
+        att = gm.plan(gm.decode(img, 2), [0x15, 0x16, 0x17], 0, 100, 4)
+        first, steps = gm.scenario_steps(att)
+        self.assertEqual(first, 0)
+        self.assertEqual(gs.U16_FINISHER, tuple(steps))
 
 
 class TestPokeScript(unittest.TestCase):
