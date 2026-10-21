@@ -3,8 +3,8 @@
 Plan: `docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md` (Task 2).
 Spec: `docs/superpowers/specs/2026-10-20-gameplay-truth-ii-design.md` §W1.
 All addresses are linear (Ghidra) addresses. §W1 is a report pass: it measures every
-unexplained run of the U10 capture from 4113 to the capture's last frame and decides no
-class and no pin (Task 3 owns the first run's class).
+unexplained run of the U10 capture from 4113 to the capture's last frame, and Task 3's
+decision subsection under Run 1 records the class, the fix and the pin it moved.
 
 ## §W1 The whole U10 tail (Task 2, measured at 60c99a51)
 
@@ -362,7 +362,7 @@ the dump has no frame after the replay's end, so the nearest is the port's boot 
 (0 or 1) and the boxes are against it (the same artefact the U5 record's §C5.18 records
 for its tail).
 
-### Run 1 — capture 4113..4134: candidate A/B/C, unresolved
+### Run 1 — capture 4113..4134: A, the RLE span writers' bank carry (Task 3)
 
 The 22 frames are the poked final's death animation. Capture 4113 (raw 7858) is at
 `f = 0x1502` (its S record `ms=112273 f=1502 mode=000D ... rng=39F4CD40 cred=00000004`,
@@ -378,26 +378,81 @@ Measured on the frame bytes (not a pin; `gp_compare`'s loaders over the whole du
   4114 rows 168..199 and 4134 rows 138..199), so the run is not a splice of any two
   dumped port frames;
 - the box moves from rows 166..199 (9732 px) at 4113 to rows 138..186 (1209 px) at
-  4134; 4123 is the run's largest frame (rows 27..199, 47747 px) with its bottom rows
+  4134 (the tested band of 4134's 138..199 box with the matching rows below 186);
+  4123 is the run's largest frame (rows 27..199, 47747 px) with its bottom rows
   185..199 equal to port 3454, a scene flash inside the run.
 
 The port frames 3444..3463 are `f = 0x1502..0x1515`, modes `0x0D/0x0C`; the alternating
 pokes `0x104B0C = 1` / `0x10789E = 0x78` fire at `f = 0x14CB..0x1543` (the same
 `0x10789E` also at `f = 0x14BF`; below), so the run is inside the poked path.
-**Candidate: A/B/C unresolved.** The no-holder measurement is evidence for A (the state
-and the top of the screen agree, the death-animation band does not, and the trace cannot
-see the death streams' per-hit effects). B must be argued from the pokes: Task 3 has to
-quote the W records and the raw path the un-poked final takes, and show the capture's
-band is a poked-only state (the replay applies the same pokes at `W.f + 1`, the U9/U10
-record's §W.8, so the port is in the capture's poked state). C is open only through the
-one-frame-per-f named gap (the U11 record's §K.10 item 2): no dumped port frame holds
-the band, so the existing `SCAN3_ALLOWED`/`OVERLAY_ALLOWED` recipe (which binds the
-band to a port frame) cannot express it. Task 3's evidence list: the 22 capture frames'
-band bytes against the port's presents around 3444..3463; the S/T records of
-`f = 0x1502..0x1515`; the W records below; `0x37EA0` (the death-animation end), the
-`0x37DD4`/`0x29C78` streams (first `f = 0x14FB` mode `0xC` and `f = 0x14FE` mode `0xD`,
-the U9/U10 record's §W.16) and the mode-`0xD`/`0xF` difference (that section's
-`0x3DA50`/`0x475EC` first reach mode `0xF`).
+
+**Task 3's decision (measured 2026-10-21 at `969b6410` + the fix): A — a real port
+divergence in the RLE span writers.** The state, sprite ids, positions and shapes agree;
+only the *palette index* of the drawn pixels differs. Measured over the whole run:
+
+- capture 4113's rows 0..165 are byte-equal to port 3444 and rows 166..199 to port
+  3445 — a normal 70.09/60.05 splice, i.e. no missing content; the pre-fix
+  comparer saw no splice because of the index offset below;
+- every differing pixel of the run maps to `DAC[port_index + 1]` (701 of 701 in
+  frame 4113's band; the per-frame rate is 58-100% one step, most frames 100%, the
+  remainders being the splice's animation-frame edges), and the rest of the screen
+  is byte-equal;
+- the drawn sprites are the dying CPU fighters' death-animation sprites: id `0x0F9D`
+  (130x160, palette entry 0x1BB9FCD8, start 275 → wrapped DAC 19..49, bank 18) and
+  id `0x1825` (52x49, 0x10A50F70, start 244, bank 243), both at layer 224, plus
+  their neighbouring animation frames (`0x0F9C`, `0x0F9B`, ...), so the animation
+  frame index and the handles are the capture's; the player (0x1BB9FD58, start 142,
+  bank 141) and the arena (0x0C039CA0, start 82, bank 81) are byte-exact.
+
+The cause is the **dword bank add** of the original's span writers:
+
+- `0x51E91` reads `ebx = DAT_00081310[bank_byte]` = (bank_byte-1) replicated over
+  four bytes; `0x58D14..0x58D40` (literal) and `0x58554..0x58750` (run) add it with
+  `add edx, ebx`, so a byte sum above 0xFF **carries into the next pixel of the same
+  four-pixel group** (`0x81010`/`0x81110` are the unrolled writers);
+- a *run colour* is `DAT_00081314[colour] (= colour replicated) + ebx`; its full
+  four-pixel groups write the carried dword, and the 2/3-pixel tail is a **carried
+  word** when the run has 12+ pixels (`0x586A4`: `mov word [edi+0x14], dx`;
+  `0x58750` the same) but `dl` repeated for shorter runs (`0x5855C`/`0x58564`);
+- the port added the bank byte-wise (`dst[i] = src[i] + bank`) and wrote the low
+  byte for every tail byte. That is exact while `colour + bank <= 0xFF`, which is
+  why the arena, HUD and the title/attract oracles never saw it; the death flash
+  palettes (start 244/275, run colours 0xFD..0xFF) overflow, so their pixels
+  rendered one entry low.
+
+The failing-first evidence: the new assertions in `test_platform.c`'s
+`check_bank_and_colour`/`check_raw_copy` (4-pixel fill `02 03 03 03`, 3-pixel
+`02 02 02`, 5-pixel `02 03 03 03 02`, 14-pixel tail `02 03`, literal
+`FE FF 01 02`+4 → `02 04 06 06`) fail on the pre-fix tree (the old byte-wise add
+prints `2 != 3`, `3 != 4`, `5 != 6`) and pass after; the new differential case
+`render_list_blit` `b8` (bank byte 0xFE, offset 253, every drawn colour overflows)
+reports `original 0x68, port 0x67` on the old code and VERIFIED after, and the
+harness suite pins its catch set (`@bank`, `@rowtab`, `@stride` gain `b8`).
+
+**The measured consequence (2026-10-21, `make gp-ending-oracle`):**
+
+```text
+gp_compare: gp-u10-ending: frames: window from capture 83 (raw 1745); 5334 classified: 3144 clean, 2181 splice, 6 transition, 0 band-allowed, 1 scan3-allowed, 1 overlay-allowed, 1 unexplained, 21 all-black
+gp_compare: gp-u10-ending: frames: FIRST UNEXPLAINED capture 5437 (raw 13279): nearest port 0, rows 0..199, x 0..319 (63947 px)
+gp_compare: gp-u10-ending: frames: first unexplained 5437, ratchet N 5437 ok
+gp_compare: gp-u10-ending: frames: window reach port 4662 > pinned reach 3444 (improved: raise the pin)
+gp_compare: gp-u10-ending: trace: 0 differing through 9953; ratchet N 9954 ok
+gp_compare: gp-u10-ending: win: 0 differing through 9953; ratchet N 9954 ok
+```
+
+Runs 2..4 (below) are the capture's post-script tail and are not in the enforced
+window: the first unexplained is 5437, run 2's start, exactly the next pin the
+reviewer named. Pins: `GP_ENDING_MIN_FIRST` 4113 → **5437** (5438 fails);
+`GP_ENDING_MIN_REACH` 3444 → **4662** (the replay's last frame, f=0x26E1; 4663
+fails); `GP_ENDING_MAX_START` 83, `GP_ENDING_TRACE_MIN_FIRST` 9954,
+`GP_ENDING_WIN_MIN_FIRST` 9954 and `GP_ENDING_MILESTONES` 30 unchanged (the trace,
+win and path lines still pass at their exact pins). The run is fully explained; the
+B and C candidates are closed — B cannot hold because the port applies the same
+pokes and the capture's state is the port's (the W records' `was=00 now=01` only
+show the poke was not pre-empted), and C is not needed because the frames are a
+clean splice of two dumped port frames (the allowance tables bind exact bytes; a
+palette transform is not one of their classes).
+
 
 ### Run 2 — capture 5437..5646: none of A/B/C, the capture's post-script tail
 
@@ -411,18 +466,18 @@ frame 0's raw 1391 at 19.85 s against the first S record's `ms=19999`), i.e. wit
 capture interval of the X. The content is the attract's first boot logo, `twi5.smk` (the
 Time Warner Interactive logo; `attract_step` case 0, the original `0x11000` case 0's
 `0x1C740` calls, `port/src/game/attract.c:227-233`), which the replay's script ends
-before. **Candidate: none of A/B/C — how far the port got, not a divergence** (review
-focus 3). Task 3 needs nothing here; a later task that wants these frames compared must
-extend the replay's `end` past `0x26E1` (the capture's tail is 60 iterations) and treat
-the movie pacing as its own claim (`smk-oracle` already compares twi5/twg in isolation).
+before. **None of A/B/C — how far the port got, not a divergence** (review focus 3).
+Task 3's fix leaves 5437, this run's start, as the pin: these frames are not in the
+enforced window. A later task that wants them compared must extend the replay's `end`
+past `0x26E1` (the capture's tail is 60 iterations) and treat the movie pacing as its
+own claim (`smk-oracle` already compares twi5/twg in isolation).
 
 ### Run 3 — capture 5648..5688: none of A/B/C, the second boot logo
 
 Same post-script tail (the X and `tail=60` above). The 41 frames are `twg.smk` (the TWG
 logo; 5648's first box rows 163..199 x 112..192, 766 px, is the logo assembling;
 5660..5688's 57513 px is the settled logo against the port's black boot frame).
-**Candidate: none of A/B/C — the same script end.** Task 3 needs nothing; the same
-`end` extension covers it.
+**None of A/B/C — the same script end.** The same `end` extension covers it.
 
 ### Run 4 — capture 5690..5703: none of A/B/C, the attract title
 
@@ -458,8 +513,10 @@ forced death-done path whose frames 4113..4134 measure.
 
 ### What this section does not claim
 
-No class, no pin, no allowance and no named gap is decided here; the A/B/C decision, a
-pin move or a named gap belongs to Task 3. Runs 2..4 are the capture's post-script tail
-(60 iterations after the X), not port behaviour past the replay's end. The 287
-unexplained frames are the exact count for this dump and this capture at 60c99a51: a
-replay that changes the presents moves it, and the list must be re-measured then.
+This report pass decided no class, no pin, no allowance and no named gap; Task 3's
+decision subsection under Run 1 now does (A, the span writers' bank carry, pins 5437 and
+4662). Runs 2..4 are the capture's post-script tail (60 iterations after the X), not
+port behaviour past the replay's end. The 287 unexplained frames were the exact count
+for this dump and this capture at 60c99a51: the fix makes Run 1 explained, so the
+enforced run stops at 5437 and the report lists 265 unexplained (runs 2..4) — re-measure
+it when the presents change.

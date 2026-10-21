@@ -26479,6 +26479,11 @@ D5B_SPECS += [
         d5b_bl("b6", [(D5B_R, 10, 2, 0), (D5B_W, 40, 2, 0), (D5B_R | 0x8000, 70, 2, 0)], 0x80, bank=1),
         d5b_bl("b7", [(D5B_R, 10, 2, 3, True), (D5B_W, 40, 2, 2), (D5B_W, 70, 99, 1), (D5B_R, 100, 99, 2)], 0x80,
                g38=0, g3a=0, g3e=0, g4e=0, aec=d5b_at_px(2, 0xD56) << 6),
+        # b8: the bank byte 0xFE (offset 253) makes the dword add overflow on every drawn colour: the
+        # literal bytes 0x11..0x13/0x31..0x35/0x41..0x48 and the run colours 0x21/0x22 (0x81110/0x81010),
+        # and the raw bitmap's 0x50..0x6F. The original carries into the next pixel of each four-pixel
+        # group (0x58D20..0x58D40, 0x58578..0x585C0); a byte-wise bank add fails this case. Record §W1.
+        d5b_bl("b8", [(D5B_R, 10, 2, 0), (D5B_W, 40, 2, 0)], 0x80, bank=0xFE),
     ], allow_calls=D5B_BLIT_ALLOW, eax_mask=0xFFFFFFFF,
        mutants=("@bank", "@rowtab", "@clipb", "@noshear", "@t5", "@nomirror", "@t0a", "@lr", "@notop",
                 "@nomirrorclip", "@stride")),

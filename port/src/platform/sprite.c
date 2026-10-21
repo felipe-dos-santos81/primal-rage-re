@@ -113,7 +113,20 @@ u32 sprite_bank(u32 pal_ptr)
 
 static void copy_run(u8 *dst, const u8 *src, int n, u8 bank)
 {
-    for (int i = 0; i < n; i++) dst[i] = (u8)(src[i] + bank);
+    /* PORT: 0x58CBD copies through the literal span writers of 0x81110, which
+     * add the bank as a dword (`edx = [esi] + ebx`, ebx = (bank byte - 1)
+     * replicated four times). The dword add carries between the four pixel
+     * bytes, so a byte after an overflowing one is one higher than a byte-wise
+     * add gives. The writer call starts at the row's visible origin and a full
+     * group of four is one dword add; the carry chain restarts every four
+     * pixels (0x58D40/0x58D90: one `add edx, ebx` per dword). Record §W1. */
+    u32 carry = 0;
+    for (int i = 0; i < n; i++) {
+        if ((i & 3) == 0) carry = 0;
+        u32 v = (u32)src[i] + (u32)bank + carry;
+        carry = v >> 8;
+        dst[i] = (u8)v;
+    }
 }
 
 /* PORT: the single row decoder. It walks one row of `width` pixels of RLE
@@ -172,28 +185,60 @@ static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank,
             if (dst != NULL) {
                 lo = (col > src_l) ? col : src_l;
                 hi = (col + n < src_l + vis) ? col + n : src_l + vis;
-                for (int c = lo; c < hi; c++) {
-                    int d = c - src_l;
-                    if (mirror) d = vis - 1 - d;
-                    dst[d] = (u8)(src[c - col] + bank);
+                if (!mirror) {
+                    /* PORT: the 0x81110 literal writers add the bank as a
+                     * dword (`edx = [esi] + ebx`), so the four pixels of each
+                     * dword add carry into the next byte (0x58D20/0x58D2C
+                     * write the carried word/dword, 0x58D40 a dword). The
+                     * writer call starts at the window's first visible pixel
+                     * and the chain restarts every four. Record §W1. */
+                    u32 carry = 0;
+                    for (int c = lo; c < hi; c++) {
+                        if (((c - lo) & 3) == 0) carry = 0;
+                        u32 v = (u32)src[c - col] + (u32)bank + carry;
+                        carry = v >> 8;
+                        dst[c - src_l] = (u8)v;
+                    }
+                } else {
+                    /* TODO(verify): 0x57F80/0x57FFB use the same writers, so
+                     * the carry reaches a mirrored span too; its group and byte
+                     * order in the backward destination walk is not derived. */
+                    for (int c = lo; c < hi; c++)
+                        dst[vis - 1 - (c - src_l)] = (u8)(src[c - col] + bank);
                 }
             }
             src += b;              /* PORT: the run length, not the visible count */
         } else if (b < 0xC0) {
             n = b & 0x3F;
-            /* PORT: DS_00081314[n] == n*0x01010101; the byte-wise model is the
-             * low byte after the original's dword add, i.e. n + bank. The
-             * address is spelled literally because the table sits in a region
-             * Ghidra never decompiled, so gen_symbols.py does not emit it. */
-            u8 colour = (u8)(DSD(0x00081314u + (u32)(*src) * 4u) + (u32)bank);
+            /* PORT: the run colour is the dword COLOUR_TABLE[n] + the bank
+             * dword: the add carries between the four bytes, and the 0x81010
+             * writer writes one dword per full group of four pixels. Its tail
+             * is not uniform: for a run of 12 or more pixels a 2/3-byte tail
+             * starts with the carried word (0x586A4/0x58750: `mov word
+             * [edi+N], dx`, then `dl`), for a shorter run every tail byte is
+             * `dl` (0x5855C/0x58564/0x58580). Record §W1. The address is
+             * spelled literally because the table sits in a region Ghidra
+             * never decompiled, so gen_symbols.py does not emit it. */
+            u32 sum = DSD(0x00081314u + (u32)(*src) * 4u)
+                    + (u32)bank * 0x01010101u;
             src++;
             if (dst != NULL) {
                 lo = (col > src_l) ? col : src_l;
                 hi = (col + n < src_l + vis) ? col + n : src_l + vis;
+                int full = (hi - lo) & ~3;
+                int tail_word = (hi - lo) >= 12;
                 for (int c = lo; c < hi; c++) {
                     int d = c - src_l;
-                    if (mirror) d = vis - 1 - d;
-                    dst[d] = colour;
+                    int k = c - lo;
+                    u8 v;
+                    if (k < full) v = (u8)(sum >> (8 * (k & 3)));
+                    else if (k - full == 1) v = (u8)(sum >> (tail_word ? 8 : 0));
+                    else v = (u8)sum;
+                    /* TODO(verify): the mirrored writers' dword/byte order in
+                     * the backward destination walk is not derived; the low
+                     * byte is what the port modelled before §W1. */
+                    if (mirror) { d = vis - 1 - d; v = (u8)sum; }
+                    dst[d] = v;
                 }
             }
         } else {

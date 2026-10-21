@@ -1667,6 +1667,49 @@ static void check_bank_and_colour(void)
     CHECK_EQ_INT(out[4], 0x09);
     /* No overrun into the row padding. */
     CHECK_EQ_INT(out[5], 0xEE);
+
+    /* The bank is added as a dword (0x81010/0x81110 + 0x81310): a byte sum
+     * above 0xFF carries into the next pixel of the same four-pixel group. The
+     * run colour's dword is COLOUR_TABLE[n] + the bank dword, written as one
+     * dword per full group and as its low byte for a 1..3 tail (0x58578,
+     * 0x5859C, 0x585C0). Record §W1: 0xFE + 4 = 0x102, so a four-pixel fill
+     * is 02 03 03 03, a three-pixel fill 02 02 02 and a five-pixel one
+     * 02 03 03 03 02. The old byte-wise add gave 02 everywhere. */
+    static const u8 fill4[2] = { 0x84, 0xFE };
+    static const u8 fill3[2] = { 0x83, 0xFE };
+    static const u8 fill5[2] = { 0x85, 0xFE };
+    static const u8 fill14[2] = { 0x8E, 0xFE };
+    static const u8 fill15[2] = { 0x8F, 0xFE };
+    u8 f4[20]; memset(f4, 0xEE, sizeof f4);
+    CHECK_EQ_INT(sprite_render_rle(fill4, f4, 4, 1, 6, 4), 0);
+    CHECK_EQ_INT(f4[0], 0x02); CHECK_EQ_INT(f4[1], 0x03); CHECK_EQ_INT(f4[2], 0x03);
+    CHECK_EQ_INT(f4[3], 0x03); CHECK_EQ_INT(f4[4], 0xEE);
+    memset(f4, 0xEE, sizeof f4);
+    CHECK_EQ_INT(sprite_render_rle(fill3, f4, 3, 1, 6, 4), 0);
+    CHECK_EQ_INT(f4[0], 0x02); CHECK_EQ_INT(f4[1], 0x02); CHECK_EQ_INT(f4[2], 0x02);
+    memset(f4, 0xEE, sizeof f4);
+    CHECK_EQ_INT(sprite_render_rle(fill5, f4, 5, 1, 6, 4), 0);
+    CHECK_EQ_INT(f4[0], 0x02); CHECK_EQ_INT(f4[1], 0x03); CHECK_EQ_INT(f4[2], 0x03);
+    CHECK_EQ_INT(f4[3], 0x03); CHECK_EQ_INT(f4[4], 0x02); CHECK_EQ_INT(f4[5], 0xEE);
+    /* A run of 12 or more pixels writes a two-pixel tail as the carried word
+     * (0x81010's 0x586A4/0x58750: dwords then `mov word [edi+N], dx`), so a
+     * 14-pixel fill ends 02 03 and a 15-pixel one 02 03 02; a shorter run's
+     * tail is dl repeated (0x5855C/0x58564), e.g. the 5-pixel 02 above. */
+    memset(f4, 0xEE, sizeof f4);
+    CHECK_EQ_INT(sprite_render_rle(fill14, f4, 14, 1, 20, 4), 0);
+    for (int i = 0; i < 12; i++) CHECK_EQ_INT(f4[i], (i & 3) ? 0x03 : 0x02);
+    CHECK_EQ_INT(f4[12], 0x02); CHECK_EQ_INT(f4[13], 0x03); CHECK_EQ_INT(f4[14], 0xEE);
+    memset(f4, 0xEE, sizeof f4);
+    CHECK_EQ_INT(sprite_render_rle(fill15, f4, 15, 1, 20, 4), 0);
+    for (int i = 0; i < 12; i++) CHECK_EQ_INT(f4[i], (i & 3) ? 0x03 : 0x02);
+    CHECK_EQ_INT(f4[12], 0x02); CHECK_EQ_INT(f4[13], 0x03); CHECK_EQ_INT(f4[14], 0x02);
+    CHECK_EQ_INT(f4[15], 0xEE);
+    /* A literal run carries the same way: {FE,FF,01,02} + 4 is 02 04 06 06. */
+    static const u8 lit4[5] = { 0x04, 0xFE, 0xFF, 0x01, 0x02 };
+    u8 l4[4]; memset(l4, 0xEE, sizeof l4);
+    CHECK_EQ_INT(sprite_render_rle(lit4, l4, 4, 1, 4, 4), 0);
+    CHECK_EQ_INT(l4[0], 0x02); CHECK_EQ_INT(l4[1], 0x04);
+    CHECK_EQ_INT(l4[2], 0x06); CHECK_EQ_INT(l4[3], 0x06);
 }
 
 static void check_raw_copy(void)
@@ -1682,12 +1725,21 @@ static void check_raw_copy(void)
     /* The row gap is untouched. */
     for (int i = 4; i < 16; i++) CHECK_EQ_INT(dst[i], 0xEE);
 
-    /* Overflow wraps byte-wise, not into the next pixel. */
+    /* The bank is a dword add (0x81110's writers: `mov edx,[esi]; add edx,ebx;
+     * mov [edi],edx`): an overflowing sum carries into the next pixel of the
+     * same four-pixel group, so 0xFE,0xFF + 4 = 0x02,0x04, not 0x02,0x03. The
+     * old byte-wise assertion encoded the port's model; the raw wins (§W1). */
     const u8 hi[2] = { 0xFE, 0xFF };
     u8 d2[2] = { 0, 0 };
     CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4, 0,0,0), 0);
     CHECK_EQ_INT(d2[0], 0x02);
-    CHECK_EQ_INT(d2[1], 0x03);
+    CHECK_EQ_INT(d2[1], 0x04);
+    /* The carry chain runs inside one dword: 0xFE,0xFF,0xFE + 4 is
+     * 02 04 03 (count 3 is written from the same dword). */
+    const u8 hi3[3] = { 0xFE, 0xFF, 0xFE };
+    u8 d3[3] = { 0, 0, 0 };
+    CHECK_EQ_INT(sprite_render_raw(hi3, d3, 3, 1, 3, 4, 0,0,0), 0);
+    CHECK_EQ_INT(d3[0], 0x02); CHECK_EQ_INT(d3[1], 0x04); CHECK_EQ_INT(d3[2], 0x03);
 }
 
 /* Clipped raw (0x58CBD, type 0x12): clip_t whole source rows and clip_l source
