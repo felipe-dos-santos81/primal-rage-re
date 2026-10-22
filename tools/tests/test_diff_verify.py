@@ -31983,7 +31983,7 @@ class RealFunctionTests(unittest.TestCase):
             self.assertEqual(E.callee_clobbers(img, addr), ("edx",), hex(addr))
         self.assertEqual(E.callee_clobbers(img, 0x2AE14, {}), ("ebx", "ecx", "edx"))
 
-    def test_the_named_gap_is_0x1b890s_in(self):
+    def test_the_former_named_gap_is_a_full_row(self):
         # the old named gap (record E3 §E3.8) became a row in Host Input Truth §H3: the machine's
         # `in` answers 0x201 and all nine of the function's blocks are hit
         r = self.real["input_port_buttons_both"]
@@ -32853,13 +32853,15 @@ class H0DiffrunMachineTests(unittest.TestCase):
 
     def test_the_game_port_byte_reaches_the_port(self):
         # record §H3: `ins`/`in 0x201 NN` arms the host seam for the run, so the three readers'
-        # host port byte is the case's. Case c has no byte: the host's no-pad 0 (all four low).
+        # host port byte is the case's. Cases a/b are different bytes (1 and 8); case c has no
+        # byte, so its host answer is the no-pad 0 (all four low, 0x0F) -- a byte leaked from b
+        # would make it 8 and fail, which is what proves the seam is cleared per case.
         with tempfile.TemporaryDirectory() as d:
             out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"),
                              "case a\nfn input_port_buttons_both\nins\nin 0x201 0xEF\nend\n"
-                             "case b\nfn input_port_buttons_both\nins\nin 0x201 0x0F\nend\n"
+                             "case b\nfn input_port_buttons_both\nins\nin 0x201 0x7F\nend\n"
                              "case c\nfn input_port_buttons_both\nend\n")
-        self.assertEqual((out["a"].eax, out["b"].eax, out["c"].eax), (0x1, 0x0F, 0x0F))
+        self.assertEqual((out["a"].eax, out["b"].eax, out["c"].eax), (0x1, 0x8, 0x0F))
         self.assertEqual((out["a"].error, out["b"].error, out["c"].error), ("", "", ""))
 
     def test_an_in_line_for_another_port_or_without_ins_is_refused(self):

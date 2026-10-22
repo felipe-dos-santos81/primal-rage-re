@@ -530,13 +530,15 @@ GREEN: the three rows by name (`PR_DIFF_JOBS=1 ... --self-check`) print `VERIFIE
 `port/src/host.c`: `host_port_buttons()` is the PC game port's button byte (0x201's bits
 4..7), the host's answer to the three ported readers. A game port's inputs are active low, so
 the raw's readers set a game bit when the byte's bit is CLEAR. The pad model (Task 5,
-`host_pad_fill`) writes the pad's byte; **until then the answer is 0**, the brief's
-placeholder. That 0 is "all four buttons low" as a game-port byte, and it is sound only
-because a device word that selects a game-port arm is cleared when no pad answers
+`host_pad_fill`) writes the pad's byte (`g_port_buttons`); **until then the answer is 0**,
+the brief's placeholder. That 0 is "all four buttons low" as a game-port byte, and it is
+sound only because a device word that selects a game-port arm is cleared when no pad answers
 (`0x4FBBB`; Task 6), and because at this commit nothing in the windowed run calls the
 readers yet (Task 4 wires `input_sampler` into `game_loop`). The seam
-`host_set_port_buttons_override(u8 buttons, int on)` is the differential/unit-test pin:
-`host_port_buttons()` returns the seam's byte while it is armed, else 0. Off by default.
+`host_set_port_buttons_override(u8 buttons, int on)` keeps its own byte
+(`g_port_buttons_override`) apart from the pad's, so pinning one never loses the other:
+`host_port_buttons()` returns the seam's byte while it is armed, else `g_port_buttons` (0
+with no pad). Off by default.
 
 `port/src/platform/input.c`: the three readers call `host_port_buttons()` **once** and map
 the bits, mirroring the raw's single `in al,dx` + `mov ah,al`:
@@ -557,8 +559,9 @@ with the bit maps and the active-low rule.
 - the seam disarmed with the byte 0 (no pad): `host_port_buttons()` == 0 and the readers
   return `0x0F`/`0x05`/`0x05`.
 
-Each assertion was seen to fail under a mutation of a bit map, applied alone and reverted
-(the suite's only FAILs were these):
+Each assertion was seen to fail under at least one mutation, applied alone and reverted (the
+suite's only FAILs were these; the two `host_port_buttons()` checks `3379`/`3424` are the
+seam's wiring, not a bit map, so the last row is a wiring mutation):
 
 | mutation | failing checks |
 |---|---|
@@ -566,6 +569,16 @@ Each assertion was seen to fail under a mutation of a bit map, applied alone and
 | `0x1B8DC` bit-5 output `4` -> `2` | `3390: 3 != 5`, `3398: 2 != 4`, `3400: 3 != 5`, `3426: 3 != 5` |
 | `0x1B908` bit-6 test `0x40` -> `0x10` | `3406: 0 != 1`, `3410: 4 != 5`, `3412: 1 != 0` |
 | `0x1B890` bit-7 polarity `== 0u` -> `!= 0u` | `3380` x4, `3385: 8 != 0`, `3389: 7 != 15`, `3417: 8 != 0`, `3419: 6 != 14`, `3425: 7 != 15` |
+| `0x1B8DC` bit-4 polarity `== 0u` -> `!= 0u` | `3386: 1 != 0`, `3390: 4 != 5`, `3396: 0 != 1`, `3398: 5 != 4`, `3400: 4 != 5`, `3402: 1 != 0`, `3426: 4 != 5` |
+| `0x1B8DC` bit-4 mask `0x10` -> `0x40` | `3396: 0 != 1`, `3400: 4 != 5`, `3402: 1 != 0` |
+| `0x1B908` bit-7 polarity `== 0u` -> `!= 0u` | `3387: 4 != 0`, `3391: 1 != 5`, `3406: 5 != 1`, `3408: 0 != 4`, `3410: 1 != 5`, `3412: 4 != 0`, `3427: 1 != 5` |
+| `host_port_buttons()` byte `^ 0x40` (the seam's wiring) | 21 checks: `3379` x4 (`175 != 239`, `159 != 223`, `255 != 191`, `63 != 127`), `3380` x4, `3385`, `3387`, `3389`, `3391`, `3406`, `3408`, `3410`, `3412`, `3417`, `3419`, `3424: 64 != 0`, `3425`, `3427` |
+
+Coverage after these: every check line `3379..3427` appears in at least one row -- `3379`
+and `3424` only in the wiring row, `3386`/`3387`/`3391`/`3396`/`3402`/`3408`/`3427` in the
+three polarity/mask rows added for this review (they were green under the first four), and
+the rest in the earlier rows. The three new bit-map mutations are what make a P1 or P2
+polarity inversion fail the unit test, not only the differential row.
 
 Named limit: the test cannot exercise the SDL pad (Task 5) and does not; it pins the byte ->
 bit maps for the byte the host answers, which is the row's claim too.

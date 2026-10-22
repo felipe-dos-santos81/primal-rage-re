@@ -164,9 +164,10 @@ void host_set_key_bits_override(u16 bits, int on);
 u8 host_port_buttons(void);
 
 /* PORT: test seam, no raw counterpart. With `on` set, host_port_buttons()
- * answers `buttons` (and a pad fill, Task 5, must leave it alone); the
- * differential rows and the unit test pin the byte through it. Off by default
- * with the byte 0 (no pad); the test clears both again. */
+ * answers `buttons` instead of the pad's byte; the differential rows and the
+ * unit test pin the byte through it, and Task 5's fill keeps writing the pad's
+ * own byte (`g_port_buttons`) beside it. Off by default (the pad's byte is 0
+ * with no pad); the test disarms it again. */
 void host_set_port_buttons_override(u8 buttons, int on);
 
 #endif /* PR_HOST_H */
