@@ -1424,3 +1424,81 @@ the frame rule), `test_a_wall_end_stops_tail_frames_later`,
 `test_the_port_script_is_deferred_not_broken`, `test_a_wall_paced_capture_does_not_sample_the_selection`
 and the scenario's key/hold/end derivation. No capture was re-run and `data/` was not written;
 the next capture (2026-10-22, §H6.6) succeeded with those steps, which is the wall path's proof.
+
+## §H7 The closeout
+
+Task 7 re-measured every pin and moved the durable docs to the closed tree (2026-10-22). No port
+code changed: Tasks 1–6's commits are `a825da7b`/`0e13c615` (the movie audio), `6c9da727`/
+`e98c3daa`/`ca6aabbf` (the keyboard and game-port readers), `db8862f6`/`dc58c60a` (the axis readers,
+the sampler and the presence proofs), `17f74adb` (the pad), `954ddad3`/`05ec8586`/`f3bb373d`
+(presence, calibration, the boot probe and the device-2 scenario), `991fefa9`/`930619cf` (the
+capture and its screen proof); the closeout is docs only.
+
+**The counter.** `make diff-verify`, measured on this tree: **1019/1019 functions VERIFIED;
+14956/14956 mutants detected; 0 named gaps; 774/833 rows with callees closed (186 have none);
+768/833 closed on full rows; 8 ported functions with no row** (§H4.5's line exactly). The open rows
+are 59 of 833 (track G/J measured 58 of 832; Task 4's sampler row is the 59th, open on its four
+host-owned presence stubs). `tools/port_progress.py`:
+**`799 1203 66`** and **`759 759 100 (portable: excludes 53 host-owned/deferred and runtime >=
+5D000)`** — the raw figure rises 65% -> 66%, and the portable denominator is 759 of 759. The 12
+functions moved out of the host-owned/deferred set; 65 -> 53 host-owned, and the unported remainder
+is 404 = 53 + 351 runtime. Nothing else moved: the E2 triage table and `symbols.h` regenerate
+byte-identically (the gate's last step), and no ported function's row changed.
+
+**The classification (`tools/port_classification.txt`).** The 12 ported rows leave the file (the
+track S house rule: a ported function is not a classification row): `1B610`, `1B6A0`, `1B730`,
+`1B7C0`, `1B850`, `1B870` (§H2), `1B890`, `1B8DC`, `1B908` (§H3) and `4FF8F`, `4FFD8`, `1BBAC`
+(§H4), with a comment naming the record sections in their place. The six PIT/game-port routines
+(`4FDF5`, `4FBBB`, `4FC05`, `4FCFD`, `5004A`, `50021`) and the 60 Hz AIL callback `1BDF4` stay
+`host-owned`, and their evidence lines now say what the ported sampler does with them (`4FDF5`/
+`4FC05`/`4FCFD` are its stubs; `4FBBB` is `host_port_present`; `5004A`'s centre capture is
+`host_pad_center`, §H6.1/§H6.3). The file's header summary line drops "ISR key samplers" from the
+host-owned examples and names what is still host-owned on the input path. The diff harness's closure
+rule reads the same file: removing rows for functions that are VERIFIED by their own rows leaves
+`774/833` unchanged (an allow-mode callee that has a VERIFIED row is closed on that row, not on its
+class; the port-code guard never applied to them because they were never excused).
+
+**The gate.** `make verify` (the full gate, `PR_ORACLE_REQUIRED=1`): **exit 0, `all checks passed`** —
+the `--check` frame run, the oracle-required test suite, the dump drivers, the title, attract,
+Smacker, front-end, demo-fight and attract-cycle-2 oracles, the K11 walk and `menuesc`, save-reload,
+every `gp-*` oracle this tree has (`gp-u12`/`gp-u13`/`gp-u14`/`gp-u15`/`gp-u16` skip without their
+captures), `gp-u17`, the differential step (the counter above, its two unittest modules included),
+`entry-triage` (the committed table equals a fresh run: `579 candidates`, `targets 233 unported,
+262 ported`), the k11/gp tool suites (290 tests) and `symbols.h` byte-identically. Every existing
+oracle line is unchanged: the title, attract, Smacker, front-end (1325 frames in the window, 517
+clean / 801 splice / 3 transition, the two named unexplained frames 832/833), demo-fight,
+attract-cycle-2, K11 (walk + `menuesc`), save-reload, `gp-oracle`/`gp-charsel`/`gp-moves`/`gp-keys`/
+`gp-twop`/`gp-modes`/`gp-win`/`gp-ending` and every `GP_*` pin — no frame, trace, splice, count or
+sha256 moved, which is the default device-0/0 claim's evidence (§H4.3, §H5.4). `make gp-u17-oracle`
+runs green on `data/k11-captures/gp-u17-device2` (`GP_U17_CLEAR_FRAME` 761, the label band
+149/150 rows 40:46 with both sha256s, `GP_U17_CAPTURE_SHA256` `5c0a3b56…` and
+`GP_U17_CAPTURE_FRAMES` 155 — §H6.6's table); each pin was seen to fail when moved (§H6.6), and the
+oracle skips without the capture as the other `gp-*` ones do.
+
+**The named limits (unchanged by the closeout, and what they mean).**
+
+1. **`gp-u17-device2` is wall-paced and the replay cannot follow it.** The frame/trace ratchets
+   (`GP_U17_MIN_FIRST`, `TRACE_MIN_FIRST`, `MAX_START`, `MIN_REACH`) are **empty and unused**, and
+   `gp-u17-oracle` prints that (§H6.9). The oracle's claim is only what the capture itself carries:
+   the screen proof (KEYBOARD -> 4 BUTTON JOYSTICK at frames 149/150, band sha256s), the clear (the
+   first S record after the leaves with dev1 = 0, `f=0x2F9`), and the identity (the `poll.log`
+   sha256 and 155 frames). It does not claim the selection's write (no S record while a menu is
+   open), the pad's answer, or any game-port axis/button.
+2. **The SDL pad is a host layer with no headless proof.** `host_pad_open`/`host_pad_poll`/
+   `host_pad_close` never run in the suite (no `host_init`); `host_set_pad_override` drives the model
+   that is asserted. A windowed run with a real pad is the only path that opens one, and its failure
+   is a silent no-pad (§H5.4).
+3. **The six PIT/game-port routines and `0x1BDF4` stay host-owned** (their classification rows and
+   `tools/port_classification.txt`'s one evidence line each). The sampler's row is open on four of
+   them as recorded stubs — the honest statement §H4.2 makes — and it is one of the 59 open rows.
+4. **The axis scale is host policy**, not a raw constant (`HOST_PAD_AXIS_SCALE 64`, §H5.2); the
+   dead band and the unit are the raw's.
+5. **The movie audio is a zero-payload finding, not an implementation** (§H1): nothing covers a
+   hypothetical movie with a nonzero track dword, and the 13 deferred rows stay deferred.
+
+**The docs changed:** `README.md` (title 66%, the porting bullet 799/53/759, the differential bullet
+1019/1019 and 14956/14956 with 751 of 759 rowed), `AGENTS.md` (the `gp-u17-oracle` Commands line,
+the input and SDL-pad and movie-audio paragraphs, the re-pinned counter with the open-row census
+59 of 833, and the `799 1203 66`/`759 759 100` progress lines), `docs/PROGRESS.md` (the phase
+paragraph) and `tools/port_classification.txt`. The design's status line and its two capture-era
+statements (the sampler called host-owned; "DOSBox-X has no game port") are corrected in place.

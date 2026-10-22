@@ -1,4 +1,4 @@
-# Primal Rage (DOS, 1995) — Reverse Engineering 65%
+# Primal Rage (DOS, 1995) — Reverse Engineering 66%
 
 ![Primal Rage](docs/intro.jpg)
 
@@ -28,23 +28,25 @@ and covers the whole game — boot, title, attract cycles, front end, service
 menu, character select, one- and two-player matches, the win path, the ending,
 and the game-over/high-score flows. Two claims back that:
 
-- **Porting — 65% raw, 100% portable.** 787 of the original's 1203 real
+- **Porting — 66% raw, 100% portable.** 799 of the original's 1203 real
   functions have a ported, header-commented counterpart in `port/src/` (see
-  `AGENTS.md` for how that figure is computed). The 416 that are not are not
-  porting targets: 65 are host-owned or deferred (`tools/port_classification.txt`,
+  `AGENTS.md` for how that figure is computed). The 404 that are not are not
+  porting targets: 53 are host-owned or deferred (`tools/port_classification.txt`,
   each with its evidence) and 351 are WATCOM libc / DOS/4GW runtime code (at or
-  above `0x5D000`, served by the host libc). Excluding them, **100%** (747 of
-  747) of the portable functions are ported. The last 16 were the storage layer
-  (settings, high scores and audit counters kept in a save file) and the run
-  clock that times them (track S).
+  above `0x5D000`, served by the host libc). Excluding them, **100%** (759 of
+  759) of the portable functions are ported. The last 12 were the input sampler
+  and its keyboard/game-port readers (the host input truth phase); the 16 before
+  them the storage layer (settings, high scores and audit counters kept in a save
+  file) and the run clock that times them (track S).
 - **Verification — differential.** `make diff-verify` runs the original's own
   bytes in unicorn against the port's C functions from the same image,
   comparing every changed byte, the return register, the ordered calls (with
   the memory changed so far at each) and the block coverage:
-  **1007/1007 functions VERIFIED; 14900/14900 mutants detected**. C3g closed the
+  **1019/1019 functions VERIFIED; 14956/14956 mutants detected**. C3g closed the
   callee-row frontier at 322 rows; track D rowed every ported function the
-  callee scan never reached (739 of 747 have a row after its sixth wave and tracks
-  S, I, N, H, F and G — 727 a full one (`0x51ED8` with one declared difference), and
+  callee scan never reached (751 of 759 have a row after its sixth wave, tracks
+  S, I, N, H, F, G and the host input truth phase — 739 a full one (`0x51ED8`
+  with one declared difference), and
   12 a row that runs the original under code pokes, leaves reachable blocks out
   or declares a terminal difference: `0x2CADC`, `game_loop`, `0x1AFE8`,
   `0x1B084`, `0x1BE30`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,

@@ -31,6 +31,7 @@ make gp-win-oracle         # U9: the win path under pokes, data/k11-captures/gp-
 make gp-ending-oracle      # U10: the ending under pokes, data/k11-captures/gp-u10-ending (GP_ENDING_*); in make verify; skips without the capture
 make gp-twop-oracle        # two-human gameplay oracle: gp-twop must be a two-human match (tools/gp_twop.py), then frame + trace + moves ratchets (N 612, F 1506 and moves N 1506 = the port script's end, the poll.log sha256 pinned in the Makefile); in make verify; skips without the capture
 make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
+make gp-u17-oracle         # host input truth U17: gp-u17-device2 must reach MODIFY CONTROLS and select device 2 with no pad (tools/gp_u17.py check: the S-record clear, the label band's screen proof, the poll.log sha256 and frame count); in make verify; skips without the capture; the frame/trace ratchets are empty (the wall-paced walk has no replay, record §H6.9)
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -350,20 +351,41 @@ consolidation gate).
   TRACE and WIN pins rise 2364/3162 -> 3503 (MIN_FIRST 346 and MAX_START 100 unchanged and exact),
   and `0x29C78` P7: U10's set loses it (distinct=4) with every pin exact and unchanged — record
   2026-10-04-reverse-p7 §P7.8).
-- **The game logic has no joystick path; the original's joystick is host-owned input.** `0x2D2F0`
+- **The input sampler and its readers are ported; the game logic has no joystick path.** `0x2D2F0`
   (`input_joystick_device`) is `xor eax,eax; ret` (raw `31 c0 c3`; it has its own differential
   row), so `0x4F644` stores 0 in `0x1088D4`/`0x1088DC`; its gate at `0x4F68B`
   (`test byte [0x1088d4],2; je`) never opens and the merge at `0x4F694`/`0x4F699` never runs
   (the row's `unhit_named` `0x4F694` says the gate is always taken). The original's only gameplay
-  game-port sampling is the host-owned ISR sampler `0x1BBAC` (called at `0x1BE1C`; the key-config
+  game-port sampling is the ISR sampler `0x1BBAC` (called at `0x1BE1C`; the key-config
   device words `+0x2D4/+0x2D6` select keyboard 0 or joystick 2/4/6, and its arms write the same
-  key bitmap `+0x2D8/+0x2D9` that `0x500C4` reads), with the host-owned calibration `0x5004A`
-  (`0x50021`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`) and the sampler's host-owned axis readers
-  `0x4FF8F`/`0x4FFD8` (`tools/port_classification.txt` rows 34-44, 62-67, 70-71). The port's
-  host models only the sampler's device-0 (keyboard) arms (`host.c` `host_kb_bit`), so an
-  SDL-gamepad map is **additive** host input, not a reimplementation of a ported path; a
-  report-only Alt-J/boot probe is optional and is not a `gp-*` fixture (record
-  gameplay-truth-ii §J9).
+  key bitmap `+0x2D8/+0x2D9` that `0x500C4` reads). The host input truth phase ported it and its 12
+  pure readers — the six keyboard readers `0x1B610`/`0x1B6A0`/`0x1B730`/`0x1B7C0`/`0x1B850`/`0x1B870`,
+  the three game-port readers `0x1B890`/`0x1B8DC`/`0x1B908` and the two axis readers plus the
+  sampler `0x4FF8F`/`0x4FFD8`/`0x1BBAC` (`port/src/platform/input.c`, record
+  `2026-10-21-host-input-truth-derivations.md` §H2-§H4) — so the host fills the BIOS key-state
+  table and the four axis words and the sampler writes the bytes; `0x1B890` is the both-player
+  game-port row the pad's button map is judged by. The six PIT/game-port routines (`0x4FDF5`,
+  `0x4FC05`, `0x4FCFD`, `0x4FBBB`, `0x5004A`, `0x50021`) and the 60 Hz AIL callback `0x1BDF4` stay
+  host-owned (`tools/port_classification.txt`): `0x4FBBB`'s probe answer is `host_port_present()`,
+  `0x5004A`/`0x50021`'s centre capture is `host_pad_center()`, and with no pad the sampler's
+  presence block clears a joystick device word on its next tick (`0x1BCBF`'s P1-only arm;
+  `0x1BC6F` is the both-player one) — record §H6.1/§H6.3. `game_boot_ports` models
+  `0x20D0F..0x20DE3`'s boot clears (§H6.2).
+- **The SDL gamepad is additive host input, not a ported path** (record §H5). `host_pad_open`/
+  `host_pad_poll`/`host_pad_fill` (`host.c`) map the left stick to axes A, the right stick to axes B
+  and the four face buttons to the game's 1/2/4/8 (grounding port bits 4..7; active low), gated by
+  the device words — a pad connected while the config says keyboard (device 0) feeds nothing, and
+  `host_pad_fill` leaves a keyboard player's axis words at `host_input_fill_axes`' centres. The SDL
+  axis scale is **host policy** (`HOST_PAD_AXIS_SCALE 64`, declared, not fitted); the seam
+  `host_set_pad_override` drives the whole model in `test_platform.c` with no SDL. The default
+  device 0/0 path is byte-identical to the raw's bytes and no existing capture pin moved (§H4.5,
+  §H6.7). `gp-u17-device2` pins the no-pad clear and the device-2 selection's screen proof
+  (`make gp-u17-oracle`); its frame/trace ratchets are empty because the walk is wall-paced and
+  the frame-keyed replay cannot follow it (§H6.9's named gap).
+- **The movie audio needs no port.** Both shipped movies declare zero audio tracks, so no stream
+  opens and the 13 deferred movie-audio rows are a zero-payload finding, not an implementation gap;
+  `0x10678` is the ms reader (`[0x81E10]*4`, not a buffer size), record §H1. A report-only
+  Alt-J/boot probe is optional and is not a `gp-*` fixture (record gameplay-truth-ii §J9).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
@@ -405,10 +427,16 @@ consolidation gate).
    `0x2EA68` — which closed `config_image_store` on its callee; batch g3 (record §G3) then rowed ALL SIX named
    non-rows (the §C3g.7 reversal: `dpmi_clock_read` `0x500BB`, `res_resolve` `0x1B544`, `0x29D60`, the interrupt
    lock `0x2EA30`, `0x32BAC`, `0x2EA64` — the six together closed 77 callee rows, 639→716; each new row's claim
-   states exactly what it compares, the reversal's wording rule). Track G g4 and track J j1 re-pinned it:
-   `make diff-verify`'s counter is `1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps;
+   states exactly what it compares, the reversal's wording rule). Track G g4 and track J j1 pinned it at
+   `1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps;
    774/832 rows with callees closed (175 have none); 768/832 closed on full rows; 8 ported functions with no
-   row` (`0x24C5C` has ten rows). The two new clauses count the explicit frozensets `tools/diff_verify.py`
+   row` (`0x24C5C` has ten rows); host input truth re-pinned it at **`1019/1019 functions VERIFIED;
+   14956/14956 mutants detected; 0 named gaps; 774/833 rows with callees closed (186 have none);
+   768/833 closed on full rows; 8 ported functions with no row`** — +12 functions and +18 mutants (the six
+   keyboard readers, the three game-port readers, the two axis readers and the sampler), +1 row with callees
+   and +11 callee-less, and the named gap `host_1b890` (its `in al,dx` at `0x1B899`) became a row once track
+   H's `E.Machine.in` answered it (record `2026-10-21-host-input-truth-derivations.md` §H2.6, §H3, §H4.5).
+   The two new clauses count the explicit frozensets `tools/diff_verify.py`
    keeps: `WEAKER` (12 — the rowed functions whose row is not full: a code poke, a reachable block left out,
    or a declared terminal difference) and `UNROWED` (8 — the ported functions with no differential row at
    all, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
@@ -423,7 +451,7 @@ consolidation gate).
    `port/src/game/actors.c`, unrowed) keep `fighter_19020`, `fighter_35050`, `fighter_think_side`,
    `fighter_pass_a` and `fighter_pass_a_al` open — without it the rule would close them on a row that can exist
    (716→774, +58). The
-   counter does not tell a full row from a weaker one: 12 of the 739 rowed functions have a row that runs
+   counter does not tell a full row from a weaker one: 12 of the 751 rowed functions have a row that runs
    the original under code pokes, leaves reachable blocks out, or declares a terminal difference on some or
    all of its cases (which then compare nothing
    on the port's side, §G1's skip) (`0x2CADC`, whose pokes are runtime or omitted calls, and `game_loop`, whose
@@ -437,25 +465,28 @@ consolidation gate).
    port's documented omission; `0x2EA68`, every case declaring the terminal difference, so the row compares
    nothing on the port's side and carries no mutant, §G2; `0x1B544`, the resident arm only — its
    tail-jump-to-host slow arm named unhit (2 of 11 blocks); `0x2EA30`, the SET-lock clear `0x2EA49` named unhit
-   (7 of 8 blocks)): count 727 full rows, of which `0x51ED8`'s carries one declared difference (the
+   (7 of 8 blocks)): count 739 full rows, of which `0x51ED8`'s carries one declared difference (the
    renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
    callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
-   The still-open rows are measured, not asserted: after the closure rule 58 of the 832 rows stay open. Every
+   The still-open rows are measured, not asserted: after the closure rule 59 of the 833 rows stay open. Every
    one of them blocks on a recorded *stub* outside the portable set, on the recorded `real` mode (`0x5D812`,
    8 rows), or on a **port-code** implementation the decomp index never listed (`0x28D68` 6 rows, `0x3E484` 3,
-   `0x29D04` 2 and `0x3E4C4` 1 — allow-mode, `fn_register`ed, unrowed: rows of their own can exist, and the
+   `0x29D04` 4 and `0x3E4C4` 1 — allow-mode, `fn_register`ed, unrowed: rows of their own can exist, and the
    port-code check keeps them blocking). By blocker (a row may name more than one, so these row
-   counts sum above the 58): the stubs `0x65431` (11 rows), `0x5DD03` (10),
+   counts sum above the 59): the stubs `0x65431` (11 rows), `0x5DD03` (10),
    `0x40CB0` (8), `0x24568`/`0x5DEED` (7 each), `0x24804`/`0x5DCC5` (6 each), `0x5DECA` (5),
-   `0x5DC0F`/`0x5DC8B` (4 each), `0x5DEAF` (3), `0x29D04`/`0x2CB74`/`0x6C4CF` (2 each) and one each for
-   `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
-   `0x5DCA6`, `0x5DCE4`, `0x61A70` and `0x65546`; the 58 rows the rule closed had only allow-mode blockers
+   `0x5DC0F`/`0x5DC8B`/`0x29D04` (4 each), `0x5DEAF` (3), `0x2CB74`/`0x6C4CF` (2 each) and one each for
+   `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`,
+   `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
+   `0x5DCA6`, `0x5DCE4`, `0x61A70` and `0x65546` (the four presence stubs are the sampler's row alone,
+   a recorded stub; record §H4.2); the 58 rows the rule closed had only allow-mode blockers
    (49 runtime alone, 4 E2-field + runtime, 3 host-owned + runtime, 1 E2-field alone, 1 host-owned alone —
    §J1 has the per-row table). No row blocks on a ported function in the portable set by accident: the 8
    named-gap functions are callees of none, and a ported address blocks only when its own row can exist
    (`0x29D04`/`0x28D68`/`0x3E484`/`0x3E4C4` above; the runtime-region `0x65431`/`0x5DC0F`/`0x61A70`/
    `0x62003` family is stubbed). §G3's 116-row census was the pre-rule reading (96 ≥0x5D000, 17 E2-class, none
-   on the six); the rule now closes 58 of the 116 and the other 58 are the blockers above.
+   on the six); the rule now closes 58 of the 116 and the other 58 are the blockers above, plus the sampler's
+   row (added by host input truth, record §H4.5) = the 59 open rows.
    A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool
@@ -498,16 +529,17 @@ consolidation gate).
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure; the README title keeps the raw
-  percentage. As of 2026-10-13 (track S) the two lines read `787 1203 65` and
-  `747 747 100`:
-  - **Raw:** 787 ported of 1203 real functions (65%). The 416 unported functions
-    are not porting targets: 65 are host-owned or deferred (the rows of
+  percentage. As of 2026-10-22 (host input truth) the two lines read `799 1203 66` and
+  `759 759 100` (track S read `787 1203 65` / `747 747 100`; the 12 input functions left the
+  classification, 65 → 53 host-owned, record §H7):
+  - **Raw:** 799 ported of 1203 real functions (66%). The 404 unported functions
+    are not porting targets: 53 are host-owned or deferred (the rows of
     `tools/port_classification.txt` that are not ported, one evidence line each)
     and 351 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
     port serves from the host libc.
-  - **Portable:** 747 of 747 (100%). The denominator leaves out the 65
+  - **Portable:** 759 of 759 (100%). The denominator leaves out the 53
     host-owned/deferred functions and everything at or above 0x5D000; the
-    other 40 ported functions (787 - 747) sit in that runtime region, so they
+    other 40 ported functions (799 - 759) sit in that runtime region, so they
     count in the raw figure only.
   `--unported` lists what is left (addr, size, callers, callees), largest
   first; the `runtime` rows are not targets.
