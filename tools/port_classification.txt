@@ -3,16 +3,16 @@
 #   deferred    a declared no-op layer (Smacker movie audio; the EEPROM/config storage was ported by track S)
 # Every line needs the record section that proves it; seeded from the triage tables §50-C/D/E
 # tools/port_progress.py excludes these from the portable denominator
-10024 deferred record-§50-E
-10034 deferred record-§50-E
-100C4 deferred record-§50-E
-100DC deferred record-§50-E
-10510 deferred record-§50-E
-10570 deferred record-§50-E
-10604 deferred record-§50-E (the 250 Hz callback 0x10610 registers)
-10610 deferred record-§50-E
-10678 deferred record-§50-E
-10684 deferred record-§50-E
+10024 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
+10034 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
+100C4 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
+100DC deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
+10510 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
+10570 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
+10604 deferred record-§50-E (the 250 Hz callback 0x10610 registers); zero payload on the shipped data; no stream opens; §H1
+10610 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
+10678 deferred record-§50-E (ms reader: [0x81E10]*4 ms, not a buffer size); zero payload on the shipped data; no stream opens; §H1
+10684 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
 106E1 host-owned record-§50-E
 1071D host-owned record-§50-E
 1074B host-owned record-§50-E
@@ -53,9 +53,9 @@
 1E62C host-owned record-§50-D
 1E6D8 host-owned record-§50-D
 1E774 host-owned record-§50-D
-102B8 deferred record-§50-E (movie-audio pump, 49-W.2)
-1013C deferred record-§50-E (movie-audio unit)
-10A68 deferred record-§50-E (movie-audio unit; size query 0x109F4 host-owned)
+102B8 deferred record-§50-E (movie-audio pump, 49-W.2); zero payload on the shipped data; no stream opens; §H1
+1013C deferred record-§50-E (movie-audio unit); zero payload on the shipped data; no stream opens; §H1
+10A68 deferred record-§50-E (movie-audio unit; size query 0x109F4 host-owned); zero payload on the shipped data; no stream opens; §H1
 1C0F0 host-owned record-§49-V (DPMI extended-memory block list)
 1E30C host-owned record-§49-V (DPMI heap)
 1E458 host-owned record-§49-V (allocator core; res_alloc/flat bump)

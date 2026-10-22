@@ -743,7 +743,8 @@ What is verified statically:
 * `main` also calls `FUN_00010610`, which sets a **250 Hz** timer; its callback
   `LAB_00010604` is `mov eax,[0x81e10]; inc [0x81e10]; ret` — a free-running
   4 ms counter (`DAT_00081e10`) used as the **streaming-audio timeline**
-  (`FUN_000100dc`/`FUN_000102b8`/`FUN_00010678` multiply it by 4 µs).
+  (`FUN_000100dc`/`FUN_000102b8`/`FUN_00010678` read it as milliseconds by
+  multiplying by 4; `0x10678` is the ms reader, `[0x81E10]*4`).
   `verified (cmd: prage.c 0x10610; capstone @0x10604)`.
 * The XMIDI sequencer is advanced by AIL's **per-driver** timer: `FUN_00065b7b`
   (the engine's generic driver install) registers a timer with callback
@@ -1218,3 +1219,54 @@ governing C-vs-Python byte gate` and the suite still passes, so a green
 `./build/run_tests` there does **not** exercise the oracle. Run
 `PR_ORACLE_REQUIRED=1 ./build/run_tests` with the data present to make a missing
 asset fail and the gate run. `verified (cmd: run_tests SKIP line)`.
+
+## Movie audio — zero payload on the shipped data (§H1, 2026-10-21)
+
+**The Smacker movie path never opens an audio stream on the shipped data, so there is
+no movie-audio oracle to make.** Record:
+`../../docs/superpowers/plans/2026-10-21-host-input-truth-derivations.md` §H1.
+
+The chain (raw; each address is a capstone read of the fixed-up image):
+
+* `0x1C740` opens each movie through `0x6345C` with the flags `0xFE00`
+  (`0x1C76C push esi` the name, `0x1C76D push 0xFE00`, `0x1C772 push -1` the auto
+  buffer size, `0x1C774 call 0x6345C`). `0xFE00`'s bits 9..15 are one bit per audio
+  track: `0x6345C` tests that byte at `0x63987`/`0x63A2C` and loops the seven tracks
+  at `0x63992..0x63A2C`.
+* `0x63180` opens a track only when bit `0x40` of the track dword's high byte is set
+  (`0x63197 mov edx,[eax+0x48]; 0x6319A shr edx,0x18; 0x6319D test dl,0x40;
+  0x631A0 je 0x631AC` -> `0x631B3 xor al,al` returns 0). The low 24 bits are the rate.
+* Both shipped movies declare seven `(0, 0)` track descriptors and no audio frame
+  flags:
+
+  ```sh
+  $ python3 tools/smk_info.py data/game/C/TWI5.SMK
+  data/game/C/TWI5.SMK: 320x200 frames=121 pts_inc=4294960196
+    audio_descriptors=[(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)]  audio_frame_flags=[]
+  $ python3 tools/smk_info.py data/game/C/TWG.SMK
+  data/game/C/TWG.SMK: 320x200 frames=41 pts_inc=4294953096
+    audio_descriptors=[(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)]  audio_frame_flags=[]
+  ```
+
+  The raw track table at file offset `0x48..0x63` is 28 zero bytes in both files.
+* No stream opens: `[movie+0x728]` stays `-1` (set at `0x63970`), the only opener
+  `0x1013C` is never called, `DAT_00081E00` stays 0, and the pump `0x102B8` is never
+  entered (its movie callers `0x6279C`/`0x63E30`/`0x65240` are guarded by the open-stream
+  count `[0xEF954]`, `[movie+0x728]` and the stream arm).
+* `0x65240` therefore takes the no-audio time path: `0x65246 cmp [esi+0x728],-1;
+  je 0x652AC`, `0x652AC cmp [esi+0x700],0; je 0x652BC`, then `0x652BC..0x6532D`
+  advance the next-frame deadline `[movie+0x704]` by the frame duration
+  `[movie+0x708]` in 1/100 ms units and return 1 (keep waiting, `0x6532D`) or 0
+  (done, `0x65326`). No audio call is made on this path.
+
+Consequence for this spec and the port: the 13 deferred rows in
+`tools/port_classification.txt` (`10024 10034 100C4 100DC 10510 10570 10604 10610
+10678 10684 102B8 1013C 10A68`) stay deferred with this evidence — a positive finding,
+not a missing oracle; the port adds no movie-audio code (`movie.c` decodes, presents
+and paces by the header's frame delay, which is what the time path does on these
+files); the movie video oracles remain the movie-path proof.
+
+`0x10678` is the **millisecond reader** (`010678 mov eax,[0x81E10]; 01067D shl eax,2;
+010680 ret`), the 250 Hz callback `0x10604` counting 4 ms ticks — `[0x81E10]*4` ms,
+**not** a stream buffer size (the §50-E triage label corrected, §H1.6; the
+streaming-timeline note above reads it the same way).
