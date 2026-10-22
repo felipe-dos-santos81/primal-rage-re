@@ -565,40 +565,29 @@ seam's wiring, not a bit map, so the last row is a wiring mutation):
 
 | mutation | failing checks |
 |---|---|
-| `0x1B890` bit-4 test `0x10` -> `0x20` | `test_platform.c:3380: 0 != 1`, `3380: 3 != 2`, `3419: 15 != 14` |
-| `0x1B8DC` bit-5 output `4` -> `2` | `3390: 3 != 5`, `3398: 2 != 4`, `3400: 3 != 5`, `3426: 3 != 5` |
-| `0x1B908` bit-6 test `0x40` -> `0x10` | `3406: 0 != 1`, `3410: 4 != 5`, `3412: 1 != 0` |
-| `0x1B890` bit-7 polarity `== 0u` -> `!= 0u` | `3380` x4, `3385: 8 != 0`, `3389: 7 != 15`, `3417: 8 != 0`, `3419: 6 != 14`, `3425: 7 != 15` |
-| `0x1B8DC` bit-4 polarity `== 0u` -> `!= 0u` | `3386: 1 != 0`, `3390: 4 != 5`, `3396: 0 != 1`, `3398: 5 != 4`, `3400: 4 != 5`, `3402: 1 != 0`, `3426: 4 != 5` |
-| `0x1B8DC` bit-4 mask `0x10` -> `0x40` | `3396: 0 != 1`, `3400: 4 != 5`, `3402: 1 != 0` |
-| `0x1B908` bit-7 polarity `== 0u` -> `!= 0u` | `3387: 4 != 0`, `3391: 1 != 5`, `3406: 5 != 1`, `3408: 0 != 4`, `3410: 1 != 5`, `3412: 4 != 0`, `3427: 1 != 5` |
-| `host_port_buttons()` byte `^ 0x40` (the seam's wiring) | 21 checks: `3379` x4 (`175 != 239`, `159 != 223`, `255 != 191`, `63 != 127`), `3380` x4, `3385`, `3387`, `3389`, `3391`, `3406`, `3408`, `3410`, `3412`, `3417`, `3419`, `3424: 64 != 0`, `3425`, `3427` |
+| device-0 P1 arm drops the F1 OR | `3494: 0 != 1` (F1-only p1) |
+| device-0 P2 arm reads F1 for F2 | `3495: 1 != 0` x3 (F2-only p2) |
+| device-0 P1 arm ORs `input_axes_a()` | `3494: 144 != 0`, `3494: 96 != 32`, `3494: 16 != 0`, `3494: 17 != 1` x2 |
+| P2 device 2 reads axes B | `3495: 32 != 16`, `3495: 33 != 17`, `3495: 47 != 31` |
+| P1 device 6 reads the game-port buttons | `3494: 69 != 79` |
+| P1-only clear ignores `+0x2D6` | `3639: 0 != 4`, `3640: 1 != 0` |
+| a non-port device writes the keyboard byte | `3494: 0 != 165` x2 |
+| axes A threshold 0x1E -> 0x1D | `3669: 16 != 0` |
+| axes A Y+ bit 0x40 -> 0x80 | `3494: 143 != 79`, `3494: 128 != 64`, `3680: 128 != 64` |
+| axes B X center -> its Y center | eight B checks `3700..3717` (`32 != 0`, `32 != 16`, `96 != 64`, `160 != 128`) |
+| axes A X difference 32-bit | `3693: 32 != 0` (the wrap case) |
 
-Coverage after these: every check line `3379..3427` appears in at least one row -- `3379`
-and `3424` only in the wiring row, `3386`/`3387`/`3391`/`3396`/`3402`/`3408`/`3427` in the
-three polarity/mask rows added for this review (they were green under the first four), and
-the rest in the earlier rows. The three new bit-map mutations are what make a P1 or P2
-polarity inversion fail the unit test, not only the differential row.
+Line numbers are this commit's `test_platform.c`; `3494`/`3495` are `sampler_bytes`' p1/p2
+assertions, so a mutation names the call site's expectation, not a distinct line per case.
 
-Named limit: the test cannot exercise the SDL pad (Task 5) and does not; it pins the byte ->
-bit maps for the byte the host answers, which is the row's claim too.
+### §H4.5 Counters
 
-### §H3.5 Counters and the harness suite's name tables
-
-The differential step (`--self-check`) now reads **1016/1016 functions VERIFIED;
-14938/14938 mutants detected; 0 named gaps; 774/832 rows with callees closed (184 have
-none); 768/832 closed on full rows; 8 ported functions with no row.** Against §H2.6's 1013 /
-14926 / 1 / 181: +3 rows and +12 mutants from this batch, the named gap count 1 -> 0, and
-the callee-less count 181 -> 184; the closed pair is unchanged. `tools/port_progress.py`
-reads `796 1203 66`, `756 756 100` (README stays at 65% until Task 7's closeout).
-
-**A Task 2 omission repaired here.** Task 2's six rows were never added to
-`tools/tests/test_diff_verify.py`'s expected-name tables, so at this task's start the harness
-suite (`make diff-verify`'s unittest, AGENTS.md) failed with six unknown functions; the
-controller's Task 2 review did not catch it. This batch adds `H2_MASKS`/`H2_KINDS`/
-`H2_CASES` for those six rows and `H3_MASKS`/`H3_KINDS`/`H3_CASES` for the three here (all
-values measured), removes `host_1b890` from the name list and the EAX-mask dict, turns its
-named-gap test into a 9/9 full-row assertion, pins the new counter string, and adds two tests
-for the `ins`/`in 0x201` case line (the machine text and the runner's answer/refusals).
-`python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify`: 216 tests, OK.
-`PR_ORACLE_REQUIRED=1 ./build/run_tests` (repo root): `all checks passed`.
+The differential step (`--self-check`) now reads **1019/1019 functions VERIFIED; 14956/14956
+mutants detected; 0 named gaps; 774/833 rows with callees closed (186 have none); 768/833 closed on
+full rows; 8 ported functions with no row.** Against §H3.5's 1016 / 14938 / 0 / 774/832 / 184: +3
+functions (the two axis readers and the sampler), +18 mutants (12 axis + 6 sampler), +2 callee-less
+rows (the axis readers) and +1 row with callees (the sampler), which is open on its four presence
+stubs; the closed and full counts are unchanged. `tools/port_progress.py` reads `799 1203 66`,
+`759 759 100` (README stays at 65% until Task 7's closeout). `python3 -m unittest
+tools.tests.test_diff_verify`: 133 tests, OK; `tools.tests.test_diff_emu`: 83 tests, OK.
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: `all checks passed`.

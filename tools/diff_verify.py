@@ -11605,6 +11605,61 @@ H3_MUTANTS = ("@mask", "@bits", "@inv", "@all")
 def h3_port_case(cid, byte):
     return Case(cid, {}, machine=E.Machine(ins=((H0_GAME_PORT, (byte,)),)))
 
+# Host Input Truth §H4 (record 2026-10-21-host-input-truth-derivations.md): the two axis readers
+# 0x4FF8F/0x4FFD8 and the ISR input sampler 0x1BBAC. The axis words are 16-bit normalized values
+# (0xE1C1E/0xE1C20 P1 X/Y, 0xE1C26/0xE1C28 P2 X/Y) and the centers 0xE1C22/0xE1C24/0xE1C2A/0xE1C2C
+# are the rest values. The raw subtracts 16-bit (`sub cx,`), so a value below its center wraps, and
+# sets 0x10/0x20 (X) or 0x40/0x80 (Y) at >= +0x1E / <= -0x1E; +-0x1D is the dead band.
+H4_BIOS = 0x00109000            # in-image BSS: the key-config block the sampler reads
+H4_AX = 0x000E1C1E              # the four axis words, then their four centers
+H4_SLOTS = (0x48, 0x49, 0x4A, 0x4B, 0x40, 0x41, 0x42, 0x43,
+            0x4C, 0x4D, 0x4E, 0x4F, 0x44, 0x45, 0x46, 0x47)
+H4_AX_MUTANTS = ("@thr", "@xbit", "@ybit", "@or", "@wide", "@ctr")
+H4_SAMPLER_MUTANTS = ("@axesb", "@p1f1", "@p2f2", "@arm6", "@clear", "@nonport")
+# the sampler's call set: the six keyboard readers, the three game-port readers and the two axis
+# readers are ported and run on both sides (their own rows); the four presence routines are
+# host-owned (record §49-V) and stubbed, so 0x1BBAC's row stays open on them (record §H4).
+H4_READERS = tuple(E.Call(a, mode="real") for a in (
+    0x1B610, 0x1B6A0, 0x1B730, 0x1B7C0, 0x1B850, 0x1B870,
+    0x1B890, 0x1B8DC, 0x1B908, 0x4FF8F, 0x4FFD8))
+H4_PRESENCE = (E.Call(0x4FDF5, mode="stub"), E.Call(0x4FBBB, ("eax",), mode="stub"),
+               E.Call(0x4FC05, mode="stub"), E.Call(0x4FCFD, mode="stub"))
+
+
+def h4_axis_case(cid, ax, ay, cx=0, cy=0, player_a=True):
+    """0x4FF8F (player_a) / 0x4FFD8: one axis word pair and its center pair. A is
+    0xE1C1E/0xE1C20 against 0xE1C22/0xE1C24; B is 0xE1C26/0xE1C28 against 0xE1C2A/0xE1C2C."""
+    off = 0 if player_a else 8
+    return Case(cid, {}, {H4_AX + off: le16(ax) + le16(ay),
+                          H4_AX + 4 + off: le16(cx) + le16(cy)})
+
+
+def h4_sampler_case(cid, dev1, dev2, pressed=(), f1=0, f2=0, a=(0, 0), b=(0, 0), port=0xFF,
+                    poll=1, probe=1):
+    """0x1BBAC: the key-config block at H4_BIOS with its 16 slot scans, the device words
+    +0x2D4/+0x2D6, the table at +0x254 (all break, `pressed` make, F1/F2 at +0x28F/+0x290), the
+    four axis words (A/B, centers 0) and the +0x2D8/+0x2D9 sentinels 0xA5/0x5A (a device that is
+    not 0/2/4/6 must leave its byte alone). `port` is the game-port button byte the three readers
+    see; `poll`/`probe` are the four host-owned presence routines' answers (their stubs)."""
+    tbl = bytearray((s | 0x80) & 0xFF for s in range(0x80))
+    for s in pressed:
+        tbl[s] = s & 0x7F
+    tbl[0x3B] = 0x3B if f1 else 0xBB
+    tbl[0x3C] = 0x3C if f2 else 0xBC
+    p = {0x00101510: le32(0x10111213) + le32(H4_BIOS) + le32(0x18191A1B),
+         H4_BIOS + 0x2D4: le16(dev1) + le16(dev2),
+         H4_BIOS + 0x2DE: bytes(H4_SLOTS),
+         H4_BIOS + 0x2D8: b"\xa5\x5a",
+         H4_AX: le16(a[0]) + le16(a[1]) + le16(0) + le16(0)
+                 + le16(b[0]) + le16(b[1]) + le16(0) + le16(0)}
+    for off in range(0, 0x80, 0x40):                   # diffrun takes 64 bytes a poke at most
+        p[H4_BIOS + 0x254 + off] = bytes(tbl[off:off + 0x40])
+    # One game-port byte per reader: a device 2 or 4 arm reads port 0x201 once, and a 2/2 or 4/4
+    # case reads it twice (0x1B890 twice, or 0x1B8DC then 0x1B908), so the machine holds it twice.
+    return Case(cid, {}, p,
+                machine=E.Machine(ins=((H0_GAME_PORT, (port, port)),)),
+                stub_eax={0x4FDF5: poll, 0x4FBBB: probe, 0x4FC05: poll, 0x4FCFD: poll})
+
 D1I_SPECS = [
     # 0x13F68 name_filter_word: EAX = word, EDX = str. It calls itself at 0x1403E (allowed: the
     # port recurses in C). AL only: 0x13F2F `or ah,al`; the recursive site reloads EAX (0x14043).
@@ -11943,6 +11998,81 @@ D1I_SPECS = [
         h3_port_case("both", 0x3F),
         h3_port_case("p1", 0xCF),
     ], eax_mask=0xFF, mutants=H3_MUTANTS),
+    # ---- Host Input Truth §H4: the two axis readers 0x4FF8F/0x4FFD8. Each is a leaf over the four
+    # axis words and their centers: `mov cx,[axis]; sub cx,[center]` (16-bit), `js` to the negative
+    # arm, `cmp cx,0x1e; jl` / `cmp cx,-0x1e; jg`, `or al,0x10/0x20` (X) and `0x40/0x80` (Y). The
+    # cases pin +0x1E and -0x1E (the bit), +0x1D/-0x1D (the dead band), the two axes independently,
+    # both extremes, the 16-bit wrap (a12: axis 0x0005 against center 0xFFF0 is +0x15, not a huge
+    # positive) and a sign-bit value (a13: 0x8000 - 0 is -0x8000). eax_mask 0xFF: the raw returns
+    # through AL (0x4FFD6/0x5001F) and the sampler reads AL only (`mov dh,al`/`mov dl,al`).
+    Spec("input_axes_a", 0x4FF8F, [
+        h4_axis_case("a0", 0x0100, 0x0200, 0x0100, 0x0200),
+        h4_axis_case("a1", 0x011E, 0x0200, 0x0100, 0x0200),
+        h4_axis_case("a2", 0x00E2, 0x0200, 0x0100, 0x0200),
+        h4_axis_case("a3", 0x011D, 0x0200, 0x0100, 0x0200),
+        h4_axis_case("a4", 0x00E3, 0x0200, 0x0100, 0x0200),
+        h4_axis_case("a5", 0x0100, 0x021E, 0x0100, 0x0200),
+        h4_axis_case("a6", 0x0100, 0x01E2, 0x0100, 0x0200),
+        h4_axis_case("a7", 0x0100, 0x021D, 0x0100, 0x0200),
+        h4_axis_case("a8", 0x0100, 0x01E3, 0x0100, 0x0200),
+        h4_axis_case("a9", 0x011E, 0x01E2, 0x0100, 0x0200),
+        h4_axis_case("a10", 0x011E, 0x021E, 0x0100, 0x0200),
+        h4_axis_case("a11", 0x00E2, 0x01E2, 0x0100, 0x0200),
+        h4_axis_case("a12", 0x0005, 0x0000, 0xFFF0, 0x0000),
+        h4_axis_case("a13", 0x8000, 0x0000, 0x0000, 0x0000),
+    ], eax_mask=0xFF, mutants=H4_AX_MUTANTS),
+    Spec("input_axes_b", 0x4FFD8, [
+        h4_axis_case("b0", 0x0100, 0x0200, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b1", 0x011E, 0x0200, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b2", 0x00E2, 0x0200, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b3", 0x011D, 0x0200, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b4", 0x00E3, 0x0200, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b5", 0x0100, 0x021E, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b6", 0x0100, 0x01E2, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b7", 0x0100, 0x021D, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b8", 0x0100, 0x01E3, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b9", 0x011E, 0x01E2, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b10", 0x011E, 0x021E, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b11", 0x00E2, 0x01E2, 0x0100, 0x0200, player_a=False),
+        h4_axis_case("b12", 0x0005, 0x0000, 0xFFF0, 0x0000, player_a=False),
+        h4_axis_case("b13", 0x8000, 0x0000, 0x0000, 0x0000, player_a=False),
+    ], eax_mask=0xFF, mutants=H4_AX_MUTANTS),
+    # ---- Host Input Truth §H4: 0x1BBAC, the ISR input sampler. Each case seeds the device words and
+    # the readers' inputs; the six/three/two readers run real (their own rows) and the four
+    # host-owned presence routines are stubs whose EAX the case chooses. The arms: dev 0 keyboard,
+    # dev 2 axes A + both-player game-port bits, dev 4 P1 axes A + bits 4/5 and P2 axes B + bits 6/7,
+    # dev 6 axes A/B + the keyboard button scans; F1/F2 join bit 0 of P1/P2 (0x1BD53/0x1BDE0).
+    # k1/k2 are the device-0 keyboard path (the default), b2/b4/b6 the four (0,2,4,6) arms, o1/o2/o3
+    # the single-port presence arms, c1/c2/c3 the three clears (0x1BC6F/0x1BCB4/0x1BCBF/0x1BCE6),
+    # x1/x2 the non-port devices, which must leave the byte alone. eax_mask 0: the function is void.
+    Spec("input_sampler", 0x1BBAC, [
+        h4_sampler_case("k1", 0, 0, pressed=(0x48, 0x40, 0x4D, 0x47), f1=1, f2=1),
+        h4_sampler_case("k2", 0, 0, f1=0, f2=0),
+        h4_sampler_case("b2", 2, 2, a=(0x001E, 0x0000), b=(0x0000, 0x001E), port=0xFF,
+                        f1=1, f2=0),
+        h4_sampler_case("b2b", 2, 2, a=(0x0000, 0x001E), b=(0xFFE2, 0x0000), port=0x0F,
+                        f1=0, f2=1),
+        h4_sampler_case("b4", 4, 4, a=(0x001E, 0x0000), b=(0x0000, 0xFFE2), port=0x3F,
+                        f1=1, f2=1),
+        h4_sampler_case("b6", 6, 6, pressed=(0x40, 0x47), a=(0x0000, 0x001E), b=(0x001E, 0x0000),
+                        port=0xCF, f1=1, f2=1),
+        h4_sampler_case("o1", 4, 1, a=(0x001E, 0x0000), b=(0x0000, 0x001E), port=0xFF,
+                        f1=1, f2=0),
+        h4_sampler_case("o2", 0, 4, pressed=(0x48,), a=(0x001E, 0x0000), b=(0x0000, 0x001E),
+                        port=0xFF, f1=0, f2=1),
+        h4_sampler_case("o3", 0, 2, pressed=(0x4D, 0x47), a=(0x0000, 0x001E), b=(0x001E, 0x0000),
+                        port=0xFF, f1=0, f2=0),
+        h4_sampler_case("c1", 2, 2, pressed=(0x48, 0x40, 0x4D, 0x47), f1=1, f2=1,
+                        a=(0x001E, 0x0000), port=0xFF, poll=0, probe=0),
+        h4_sampler_case("c2", 4, 0, pressed=(0x48, 0x40), f1=1, f2=1, a=(0x001E, 0x0000),
+                        poll=0),
+        h4_sampler_case("c3", 4, 1, pressed=(0x4D, 0x47), f1=1, f2=1, a=(0x001E, 0x0000),
+                        poll=0),
+        h4_sampler_case("c4", 0, 4, pressed=(0x48,), f1=1, f2=1, b=(0x001E, 0x0000), poll=0),
+        h4_sampler_case("x1", 1, 1),
+        h4_sampler_case("x2", 7, 7),
+        h4_sampler_case("x3", 1, 7),
+    ], calls=H4_READERS + H4_PRESENCE, eax_mask=0, mutants=H4_SAMPLER_MUTANTS),
     # 0x51F72 gfx_fill_screen: EAX = addr, EDX = value; 0xFA00 bytes inside the image's data.
     Spec("gfx_fill_screen", 0x51F72, [
         Case("g0", {"eax": 0x000F1000, "edx": 0xA1B2C3D4, "ecx": 0x11223344}),

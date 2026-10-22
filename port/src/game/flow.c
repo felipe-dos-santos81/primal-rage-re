@@ -7112,13 +7112,15 @@ void game_loop(void)
      * here. */
     do {
         {
-            /* PORT: the host fills the key bitmap 0x500C4 samples; the binding
-             * is the original's default one (host.c host_kb_bit(), which
-             * host_key_bits() applies; record 2026-10-01-gameplay-u11 §K.13). */
-            u16 bits = host_key_bits();
-            u8 *k = mem + DSD(DS_00101514);
-            k[0x2d8] = (u8)(bits >> 8);
-            k[0x2d9] = (u8)bits;
+            /* PORT: the host fills the key-state table and the axis words the
+             * original's ISR sampler 0x1BBAC reads, then the sampler builds both
+             * players' key bytes (+0x2D8/+0x2D9) from the device words. On the
+             * default device 0/0 path the sampler's keyboard arms reproduce the
+             * direct write this replaced byte for byte (record 2026-10-21-host-
+             * input-truth §H4); the 0x4F644 update stays in game_frame (0x24C6E). */
+            host_input_fill_keyboard();
+            host_input_fill_axes();
+            input_sampler();                 /* 0x1BBAC (0x1BE1C) */
         }
         input_pump();                        /* 0x500C4 */
         /* 0x255F3: the per-bit scene tick runs unconditionally; the two

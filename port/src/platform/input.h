@@ -113,4 +113,35 @@ u8 input_port_buttons_p1(void);
 /* 0x1B908. P2: game-port bits 6/7 -> 1/4. */
 u8 input_port_buttons_p2(void);
 
+/* ---- the axis readers (record 2026-10-21-host-input-truth §H4) ------------
+ * 0x1BBAC's device 2/4/6 arms read the four normalized axis words and their
+ * calibrated centers: `(axis - center) >= 0x1E -> 0x10`, `<= -0x1E -> 0x20`
+ * for X and `0x40/0x80` for Y, a +-0x1D dead band around the center and both
+ * axes independent (8-way). The subtraction is 16-bit and wraps (the raw's
+ * `sub cx,`); the host's pad model fills the axis words (host_input_fill_axes,
+ * host_pad_fill). */
+
+/* 0x4FF8F. Player 1's axes: 0xE1C1E/0xE1C20 against 0xE1C22/0xE1C24. */
+u8 input_axes_a(void);
+
+/* 0x4FFD8. Player 2's axes: 0xE1C26/0xE1C28 against 0xE1C2A/0xE1C2C. */
+u8 input_axes_b(void);
+
+/* ---- the ISR input sampler (record 2026-10-21-host-input-truth §H4) -------
+ * 0x1BBAC, the original's 60 Hz interrupt sampler (called from 0x1BDF4 at
+ * 0x1BE1C). It reads the two device words +0x2D4/+0x2D6 from the key-config
+ * block, checks the game port's presence when either selects an arm (the
+ * host-owned 0x4FDF5/0x4FBBB/0x4FC05/0x4FCFD, including the device-word
+ * clears), then builds P1's byte +0x2D8 and P2's +0x2D9 from the selected arm:
+ *
+ *   dev | P1 (+0x2D4)                                  | P2 (+0x2D6)
+ *   0   | directions 0x1B610, buttons 0x1B730, F1        | 0x1B6A0/0x1B7C0, F2
+ *   2   | axes A 0x4FF8F, game-port 0x1B890, F1          | axes A, 0x1B890, F2
+ *   4   | axes A, game-port P1 0x1B8DC, F1               | axes B 0x4FFD8, 0x1B908, F2
+ *   6   | axes A, keyboard buttons 0x1B730, F1           | axes B, 0x1B7C0, F2
+ *
+ * Any other device leaves that player's byte untouched. F1/F2 are OR'd into
+ * bit 0 of their player's byte in every arm (0x1BD53/0x1BDE0). */
+void input_sampler(void);
+
 #endif /* PR_INPUT_H */

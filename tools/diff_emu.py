@@ -968,6 +968,11 @@ RESOLVED_JUMPS[0x20931] = (0x20924, 0x208E4, 5)
 # (0x4C678 `mov [esp],al`) and read back for the index: cmp al,6; ja; xor eax,eax; mov al,[esp]; shl eax,2;
 # jmp cs:[eax+0x4c5f0]
 RESOLVED_JUMPS[0x4C687] = (0x4C67B, 0x4C5F0, 7)
+# 0x1BBAC (Host Input Truth §H4, record 2026-10-21-host-input-truth-derivations.md): the ISR sampler's
+# P2 device switch. cmp ax,6; ja; xor edx,edx; mov dx,ax; jmp cs:[edx*4+0x1bb90] -- the `xor/mov`
+# pair stops switch_cases from seeing the guard, so it is named here; the P1 table (0x1BB74, the same
+# shape with `and eax,0xffff`) is found by the heuristic.
+RESOLVED_JUMPS[0x1BD7C] = (0x1BD6D, 0x1BB90, 7)
 
 
 def resolved_cases(image, entry):

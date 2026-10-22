@@ -275,6 +275,72 @@ u8 host_port_buttons(void)
     return g_port_buttons;
 }
 
+/* PORT: the four normalized axis words at rest (record 2026-10-21-host-input-
+ * truth §H4). The raw's game-port routines 0x4FDF5/0x4FC05/0x4FCFD normalize
+ * each timed axis and store it at 0xE1C1E/0xE1C20/0xE1C26/0xE1C28; the center
+ * capture 0x5004A stores the rest values at 0xE1C22/0xE1C24/0xE1C2A/0xE1C2C.
+ * With no pad every axis is at its center, so the ported readers 0x4FF8F/
+ * 0x4FFD8 read the dead band. Task 5's host_pad_fill() writes the pad's
+ * displacement over these words. */
+void host_input_fill_axes(void)
+{
+    DSW(DS_000E1C1E) = DSW(DS_000E1C22);          /* P1 X: at its center */
+    DSW(DS_000E1C20) = DSW(DS_000E1C24);          /* P1 Y */
+    DSW(DS_000E1C26) = DSW(DS_000E1C2A);          /* P2 X */
+    DSW(DS_000E1C28) = DSW(DS_000E1C2C);          /* P2 Y */
+}
+
+/* PORT: test seam, no raw counterpart (host.h): the four presence answers
+ * below return this while it is armed, so the unit test can exercise the
+ * sampler's device 2/4/6 arms with no pad attached. Off by default. */
+static int g_port_present_override;      /* the seam's answer, read only while armed */
+static int g_port_present_override_on;
+
+void host_set_port_present_override(int present, int on)
+{
+    g_port_present_override = present;
+    g_port_present_override_on = on;
+}
+
+/* PORT: the game port's presence (record §H4; the routines stay host-owned,
+ * record §49-V). 0x4FDF5 polls all four axes, 0x4FC05 P1's two and 0x4FCFD
+ * P2's; each returns nonzero when the port answered, and 0x4FBBB probes one
+ * button mask (3 = game port 0's two buttons, 0xC = game port 1's). The
+ * original times the PIT and reads port 0x201; the host owns that answer.
+ * Task 4 answers "no port" (0) -- the no-pad state -- so the sampler clears a
+ * joystick device word exactly as the original does when nothing answers; Task
+ * 6 models the pad's answer and the boot probe. Each opens with its seam so the
+ * sampler's differential row records the call (the case's stub answer is what
+ * the port's sampler sees there). */
+static int host_port_present(void)
+{
+    return g_port_present_override_on ? g_port_present_override : 0;   /* no pad: Task 6 */
+}
+
+int host_port_poll_both(void)
+{
+    PR_SEAM_RET0(0x4FDF5u);
+    return host_port_present();
+}
+
+int host_port_poll_p1(void)
+{
+    PR_SEAM_RET0(0x4FC05u);
+    return host_port_present();
+}
+
+int host_port_poll_p2(void)
+{
+    PR_SEAM_RET0(0x4FCFDu);
+    return host_port_present();
+}
+
+int host_port_probe(u32 mask)
+{
+    PR_SEAM_RET(0x4FBBBu, mask);
+    return host_port_present();
+}
+
 static u32 g_tick;
 static uint64_t g_tick_base_ns;
 static int g_tick_started;

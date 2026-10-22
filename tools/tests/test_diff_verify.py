@@ -5559,6 +5559,57 @@ for _k in (H2_KINDS, H3_KINDS):
 D1_CASES.extend(H2_CASES)
 D1_CASES.extend(H3_CASES)
 
+# Host Input Truth §H4 (record 2026-10-21-host-input-truth-derivations.md): the two axis readers
+# (rows added to D1I) and the ISR input sampler. The axis readers return through AL (mask 0xff) and
+# every axis mutant differs in EAX only. The sampler is void (mask 0); its mutants change which
+# reader an arm calls and the byte it writes, so the measured kinds are bytes and calls (a memory
+# difference at a later call included). The case sets are measured (record §H4).
+H4_MASKS = {
+    "input_axes_a": 0xff,
+    "input_axes_b": 0xff,
+    "input_sampler": 0x0,
+}
+H4_KINDS = {
+    "input_axes_a@thr": {'eax'}, "input_axes_a@xbit": {'eax'}, "input_axes_a@ybit": {'eax'},
+    "input_axes_a@or": {'eax'}, "input_axes_a@wide": {'eax'}, "input_axes_a@ctr": {'eax'},
+    "input_axes_b@thr": {'eax'}, "input_axes_b@xbit": {'eax'}, "input_axes_b@ybit": {'eax'},
+    "input_axes_b@or": {'eax'}, "input_axes_b@wide": {'eax'}, "input_axes_b@ctr": {'eax'},
+    "input_sampler@axesb": {'byte', 'call #4'},
+    "input_sampler@p1f1": {'byte', 'call #2', 'call #3', 'call #4 memory', 'call #5',
+                           'call #5 memory', 'call #6 memory'},
+    "input_sampler@p2f2": {'byte', 'call #5', 'call #6', 'call #8'},
+    "input_sampler@arm6": {'byte', 'call #2', 'call #4 memory', 'call #5 memory',
+                           'call #6 memory'},
+    "input_sampler@clear": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory',
+                            'call #3 memory', 'call #4', 'call #5', 'call #6'},
+    "input_sampler@nonport": {'byte', 'call #0', 'call #1', 'call #2'},
+}
+H4_CASES = [
+    ("input_axes_a@thr", ['a3', 'a4', 'a7', 'a8']),
+    ("input_axes_a@xbit", ['a1', 'a10', 'a11', 'a13', 'a2', 'a9']),
+    ("input_axes_a@ybit", ['a10', 'a11', 'a5', 'a6', 'a9']),
+    ("input_axes_a@or", ['a1', 'a10', 'a11', 'a13', 'a2', 'a9']),
+    ("input_axes_a@wide", ['a12', 'a13']),
+    ("input_axes_a@ctr", ['a0', 'a1', 'a10', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9']),
+    ("input_axes_b@thr", ['b3', 'b4', 'b7', 'b8']),
+    ("input_axes_b@xbit", ['b1', 'b10', 'b11', 'b13', 'b2', 'b9']),
+    ("input_axes_b@ybit", ['b10', 'b11', 'b5', 'b6', 'b9']),
+    ("input_axes_b@or", ['b1', 'b10', 'b11', 'b13', 'b2', 'b9']),
+    ("input_axes_b@wide", ['b12', 'b13']),
+    ("input_axes_b@ctr", ['b0', 'b1', 'b10', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']),
+    ("input_sampler@axesb", ['b2', 'b2b', 'o3']),
+    ("input_sampler@p1f1", ['b2', 'b2b', 'b4', 'b6', 'c1', 'c2', 'c3', 'c4', 'k1', 'k2',
+                            'o1', 'o2', 'o3']),
+    ("input_sampler@p2f2", ['b2', 'b2b', 'b4', 'b6', 'c1', 'c2', 'c3', 'c4', 'k1', 'k2',
+                            'o2', 'o3']),
+    ("input_sampler@arm6", ['b6']),
+    ("input_sampler@clear", ['c3']),
+    ("input_sampler@nonport", ['x1', 'x2', 'x3']),
+]
+D1_MASKS.update(H4_MASKS)
+D1_KINDS.update(H4_KINDS)
+D1_CASES.extend(H4_CASES)
+
 
 # ---- track D1 batch d1c (record 2026-10-11-reverse-d1c): measured, the C3G form ----
 D1C_MASKS = {
@@ -31777,6 +31828,9 @@ class RealFunctionTests(unittest.TestCase):
         # G2 (record 2026-10-14-reverse-g §G2): the flush stub the two exit-reaching rows share
         0x6C4CF: ("ecx", "edx", "ebp"),
         # G2 end
+        # Host Input Truth §H4 (record 2026-10-21-host-input-truth-derivations.md): the four
+        # host-owned presence routines 0x1BBAC's row stubs (record §49-V)
+        0x4FDF5: (), 0x4FBBB: (), 0x4FC05: (), 0x4FCFD: (),
         # S sb (record 2026-10-13-reverse-s §S.6): the stubs its rows add
         0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"), 0x2DAE4: ("edx",), 0x2E934: ("edx",), 0x32B94: ("edx",), 0x32BB0: ("edx",),
         # S sb end
@@ -31952,6 +32006,9 @@ class RealFunctionTests(unittest.TestCase):
         0x4507A: ["cmp dl, 4", "ja 0x450d6", "xor eax, eax", "mov al, dl", "jmp dword ptr cs:[eax*4 + 0x45048]"],
         0x20931: ["cmp dl, 4", "ja 0x20c00", "xor eax, eax", "mov al, dl", "jmp dword ptr cs:[eax*4 + 0x208e4]"],
         0x4C687: ["cmp al, 6", "ja 0x4c6b5", "xor eax, eax", "mov al, byte ptr [esp]", "shl eax, 2", "jmp dword ptr cs:[eax + 0x4c5f0]"],   # D5 d5d
+        # Host Input Truth §H4 (record 2026-10-21-host-input-truth-derivations.md): the ISR input
+        # sampler's P2 device switch
+        0x1BD7C: ["cmp ax, 6", "ja 0x1bdee", "xor edx, edx", "mov dx, ax", "jmp dword ptr cs:[edx*4 + 0x1bb90]"],
     }
 
     def test_each_resolved_jump_table_matches_the_bytes(self):
@@ -32111,8 +32168,12 @@ class RealFunctionTests(unittest.TestCase):
         # Host Input Truth §H2/§H3 added nine rows with no callees and no named gap left (the 0x1B890
         # gap became input_port_buttons_both), so 1007 -> 1016 functions, 14900 -> 14938 mutants,
         # 1 -> 0 named gaps and 175 -> 184 callee-less rows; the closed counts are unchanged.
-        self.assertIn("diff-verify: 1016/1016 functions VERIFIED; 14938/14938 mutants detected; 0 named gaps; "
-                      "774/832 rows with callees closed (184 have none); 768/832 closed on full rows; "
+        # Host Input Truth §H4 added three rows: the two axis readers (no callees: 184 -> 186) and
+        # the sampler, whose 48 blocks are all hit but whose four host-owned presence stubs are not
+        # allow-mode, so its row is open (rows with callees 832 -> 833, closed stays 774; full stays
+        # 768). Functions 1016 -> 1019, mutants 14938 -> 14956.
+        self.assertIn("diff-verify: 1019/1019 functions VERIFIED; 14956/14956 mutants detected; 0 named gaps; "
+                      "774/833 rows with callees closed (186 have none); 768/833 closed on full rows; "
                       "8 ported functions with no row. The closure rule (record J §J1): "
                       "an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred "
                       "in tools/port_classification.txt, or an address the decomp index never lists as a "

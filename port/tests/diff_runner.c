@@ -17856,6 +17856,158 @@ H3_MUTANTS_FOR(both, h3_both_core, 0x0Fu)
 H3_MUTANTS_FOR(p1, h3_p1_core, 0x05u)
 H3_MUTANTS_FOR(p2, h3_p2_core, 0x05u)
 
+/* Host Input Truth §H4 (record 2026-10-21-host-input-truth-derivations.md): the axis readers
+ * 0x4FF8F/0x4FFD8 and the ISR input sampler 0x1BBAC.
+ *
+ * An axis reader is `mov cx,[axis]; sub cx,[center]` (16-bit), then `cmp cx,0x1e; jl` /
+ * `cmp cx,-0x1e; jg` and `or al,0x10/0x20` (X, 0x40/0x80 for Y). The mutants restate it with one
+ * defect: @thr uses 0x1D as the threshold, @xbit/@ybit swap the sign bits, @or assigns the Y bits
+ * instead of OR-ing them, @wide subtracts 32-bit (no 16-bit wrap) and @ctr compares X against the
+ * Y center. */
+static u32 h4_axis_core(u32 x, u32 y, u32 cx, u32 cy, u32 mut)
+{
+    u32 al = 0u;
+    const u32 thr = (mut & 1u) ? 0x1Du : 0x1Eu;                             /* @thr */
+    const u32 xc = (mut & 0x20u) ? cy : cx;                                 /* @ctr */
+    s32 d = (mut & 0x10u) ? (s32)DSW(x) - (s32)DSW(xc)                      /* @wide */
+                          : (s16)(u16)(DSW(x) - DSW(xc));
+    if (d >= (s32)thr) al |= (mut & 2u) ? 0x20u : 0x10u;                    /* @xbit */
+    else if (d <= -(s32)thr) al |= (mut & 2u) ? 0x10u : 0x20u;
+    d = (mut & 0x10u) ? (s32)DSW(y) - (s32)DSW(cy) : (s16)(u16)(DSW(y) - DSW(cy));
+    u32 bit = 0u;
+    if (d >= (s32)thr) bit = (mut & 4u) ? 0x80u : 0x40u;                    /* @ybit */
+    else if (d <= -(s32)thr) bit = (mut & 4u) ? 0x40u : 0x80u;
+    al = (mut & 8u) ? bit : (u32)(al | bit);                                /* @or */
+    return al;
+}
+static void b_h4_axes_a(const u32 *r, u32 *eax)        { (void)r; *eax = input_axes_a(); }
+static void b_h4_axes_b(const u32 *r, u32 *eax)        { (void)r; *eax = input_axes_b(); }
+#define H4_AX_MUTANTS_FOR(name, x, y, cx, cy) \
+    static void m_h4_##name##_thr(const u32 *r, u32 *eax)  { (void)r; *eax = h4_axis_core(x, y, cx, cy, 1u); } \
+    static void m_h4_##name##_xbit(const u32 *r, u32 *eax) { (void)r; *eax = h4_axis_core(x, y, cx, cy, 2u); } \
+    static void m_h4_##name##_ybit(const u32 *r, u32 *eax) { (void)r; *eax = h4_axis_core(x, y, cx, cy, 4u); } \
+    static void m_h4_##name##_or(const u32 *r, u32 *eax)   { (void)r; *eax = h4_axis_core(x, y, cx, cy, 8u); } \
+    static void m_h4_##name##_wide(const u32 *r, u32 *eax) { (void)r; *eax = h4_axis_core(x, y, cx, cy, 0x10u); } \
+    static void m_h4_##name##_ctr(const u32 *r, u32 *eax)  { (void)r; *eax = h4_axis_core(x, y, cx, cy, 0x20u); }
+H4_AX_MUTANTS_FOR(axa, 0x000E1C1Eu, 0x000E1C20u, 0x000E1C22u, 0x000E1C24u)
+H4_AX_MUTANTS_FOR(axb, 0x000E1C26u, 0x000E1C28u, 0x000E1C2Au, 0x000E1C2Cu)
+
+/* 0x1BBAC the ISR input sampler: the device-word arms and the head's presence clears, restated with
+ * one defect per mutant. @axesb makes P2's device-2 arm read axes B (the raw reads axes A), @p1f1
+ * puts F2 in P1's byte, @p2f2 puts F1 in P2's, @arm6 makes P1's device 6 arm read the game-port
+ * buttons instead of the keyboard ones, @clear always clears P1 in the P1-only arm (ignoring the P2
+ * device word) and @nonport writes the keyboard byte for a device that is not 0/2/4/6. */
+static void h4_sampler_core(u32 mut)
+{
+    u32 base = DSD(0x00101514u);
+    const u16 dev1 = DSW(base + 0x2D4u);
+    int p1 = (dev1 == 2u || dev1 == 4u || dev1 == 6u);
+    const u16 dev2 = DSW(base + 0x2D6u);
+    int p2 = 0;
+    if (dev2 == 2u || dev2 == 4u || dev2 == 6u) {
+        if (p1 || dev2 != 2u) p2 = 1;
+        else { p1 = 1; p2 = 0; }
+    }
+    if (p1 && p2) {
+        if (host_port_poll_both() == 0) {
+            if (host_port_probe(3u) == 0) DSW(base + 0x2D4u) = 0u;
+            if (host_port_probe(0xCu) == 0) DSW(base + 0x2D6u) = 0u;
+        }
+    } else if (!p1 || p2) {
+        if (!p1 && p2) {
+            if (host_port_poll_p2() == 0) DSW(base + 0x2D6u) = 0u;
+        }
+    } else {
+        if (host_port_poll_p1() == 0) {
+            if ((mut & 0x10u) ? 1 : (DSW(base + 0x2D6u) == 0u))                 /* @clear */
+                DSW(base + 0x2D4u) = 0u;
+            else
+                DSW(base + 0x2D6u) = 0u;
+        }
+    }
+    base = DSD(0x00101514u);
+    switch (DSW(base + 0x2D4u)) {
+    case 0: {
+        const u8 d = input_dirs_p1();
+        const u8 b = input_buttons_p1();
+        const u8 f = (mut & 2u) ? input_f2() : input_f1();                      /* @p1f1 */
+        DSB(base + 0x2d8u) = (u8)(d | b | f);
+        break;
+    }
+    case 2: {
+        const u8 a = input_axes_a();
+        const u8 b = input_port_buttons_both();
+        const u8 f = (mut & 2u) ? input_f2() : input_f1();                      /* @p1f1 */
+        DSB(base + 0x2d8u) = (u8)(a | b | f);
+        break;
+    }
+    case 4: {
+        const u8 a = input_axes_a();
+        const u8 b = input_port_buttons_p1();
+        const u8 f = (mut & 2u) ? input_f2() : input_f1();                      /* @p1f1 */
+        DSB(base + 0x2d8u) = (u8)(a | b | f);
+        break;
+    }
+    case 6: {
+        const u8 a = input_axes_a();
+        const u8 b = (mut & 0x40u) ? input_port_buttons_p1() : input_buttons_p1(); /* @arm6 */
+        const u8 f = (mut & 2u) ? input_f2() : input_f1();                      /* @p1f1 */
+        DSB(base + 0x2d8u) = (u8)(a | b | f);
+        break;
+    }
+    default:
+        if (mut & 0x80u) {                                                      /* @nonport */
+            const u8 d = input_dirs_p1();
+            const u8 b = input_buttons_p1();
+            const u8 f = input_f1();
+            DSB(base + 0x2d8u) = (u8)(d | b | f);
+        }
+        break;
+    }
+    base = DSD(0x00101514u);
+    switch (DSW(base + 0x2D6u)) {
+    case 0: {
+        const u8 d = input_dirs_p2();
+        const u8 b = input_buttons_p2();
+        const u8 f = (mut & 4u) ? input_f1() : input_f2();                      /* @p2f2 */
+        DSB(base + 0x2d9u) = (u8)(d | b | f);
+        break;
+    }
+    case 2: {
+        const u8 a = (mut & 0x20u) ? input_axes_b() : input_axes_a();           /* @axesb */
+        const u8 b = input_port_buttons_both();
+        const u8 f = (mut & 4u) ? input_f1() : input_f2();                      /* @p2f2 */
+        DSB(base + 0x2d9u) = (u8)(a | b | f);
+        break;
+    }
+    case 4: {
+        const u8 a = input_axes_b();
+        const u8 b = input_port_buttons_p2();
+        const u8 f = (mut & 4u) ? input_f1() : input_f2();                      /* @p2f2 */
+        DSB(base + 0x2d9u) = (u8)(a | b | f);
+        break;
+    }
+    case 6: {
+        const u8 a = input_axes_b();
+        const u8 b = input_buttons_p2();
+        const u8 f = (mut & 4u) ? input_f1() : input_f2();                      /* @p2f2 */
+        DSB(base + 0x2d9u) = (u8)(a | b | f);
+        break;
+    }
+    default:
+        break;
+    }
+}
+static void b_h4_sampler(const u32 *r, u32 *eax)       { (void)r; *eax = 0u; input_sampler(); }
+#define H4_SAMPLER_MUTANTS_FOR(name, m) \
+    static void m_h4_sampler_##name(const u32 *r, u32 *eax) { (void)r; *eax = 0u; h4_sampler_core(m); }
+H4_SAMPLER_MUTANTS_FOR(axesb, 0x20u)
+H4_SAMPLER_MUTANTS_FOR(p1f1, 2u)
+H4_SAMPLER_MUTANTS_FOR(p2f2, 4u)
+H4_SAMPLER_MUTANTS_FOR(arm6, 0x40u)
+H4_SAMPLER_MUTANTS_FOR(clear, 0x10u)
+H4_SAMPLER_MUTANTS_FOR(nonport, 0x80u)
+
 
 /* 0x51F72 gfx_fill_screen: EAX = addr, EDX = value. The raw leaves EAX advanced by 0xFA00 (0x520F7,
  * 0xC8 passes); the port's function is void, so the binding states that value and the EAX
@@ -46298,6 +46450,27 @@ static const binding_t k_bindings[] = {
     { "input_port_buttons_p2@bits",          m_h3_p2_bits,       0x000000FFu },
     { "input_port_buttons_p2@inv",           m_h3_p2_inv,        0x000000FFu },
     { "input_port_buttons_p2@all",           m_h3_p2_all,        0x000000FFu },
+    { "input_axes_a",                        b_h4_axes_a,        0x000000FFu },
+    { "input_axes_a@thr",                    m_h4_axa_thr,       0x000000FFu },
+    { "input_axes_a@xbit",                   m_h4_axa_xbit,      0x000000FFu },
+    { "input_axes_a@ybit",                   m_h4_axa_ybit,      0x000000FFu },
+    { "input_axes_a@or",                     m_h4_axa_or,        0x000000FFu },
+    { "input_axes_a@wide",                   m_h4_axa_wide,      0x000000FFu },
+    { "input_axes_a@ctr",                    m_h4_axa_ctr,       0x000000FFu },
+    { "input_axes_b",                        b_h4_axes_b,        0x000000FFu },
+    { "input_axes_b@thr",                    m_h4_axb_thr,       0x000000FFu },
+    { "input_axes_b@xbit",                   m_h4_axb_xbit,      0x000000FFu },
+    { "input_axes_b@ybit",                   m_h4_axb_ybit,      0x000000FFu },
+    { "input_axes_b@or",                     m_h4_axb_or,        0x000000FFu },
+    { "input_axes_b@wide",                   m_h4_axb_wide,      0x000000FFu },
+    { "input_axes_b@ctr",                    m_h4_axb_ctr,       0x000000FFu },
+    { "input_sampler",                       b_h4_sampler,       0x00000000u },
+    { "input_sampler@axesb",                 m_h4_sampler_axesb, 0x00000000u },
+    { "input_sampler@p1f1",                  m_h4_sampler_p1f1,  0x00000000u },
+    { "input_sampler@p2f2",                  m_h4_sampler_p2f2,  0x00000000u },
+    { "input_sampler@arm6",                  m_h4_sampler_arm6,  0x00000000u },
+    { "input_sampler@clear",                 m_h4_sampler_clear, 0x00000000u },
+    { "input_sampler@nonport",               m_h4_sampler_nonport, 0x00000000u },
     { "gfx_fill_screen",                     b_d1i_51f72,        0xFFFFFFFFu },
     { "gfx_fill_screen@count",               m_d1i_fs_count,     0xFFFFFFFFu },
     { "gfx_fill_screen@row",                 m_d1i_fs_row,       0xFFFFFFFFu },

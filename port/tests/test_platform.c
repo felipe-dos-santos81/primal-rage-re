@@ -3429,6 +3429,297 @@ int test_input_port_buttons(void)
     return g_failures - before;
 }
 
+/* ---- test_input_sampler / test_input_axes: Host Input Truth §H4 ---- */
+
+/* The sampler's fixture: TEST_KEY_BASE is the key-config block, the 16 slots
+ * are the H2 set (all distinct), the device words are 0/0, the axis words and
+ * centers are 0, and +0x2D8/+0x2D9 start at sentinels no arm writes so a device
+ * that is not 0/2/4/6 is visible. */
+static const u8 sampler_slots[16] = { 0x48, 0x49, 0x4A, 0x4B, 0x40, 0x41, 0x42, 0x43,
+                                      0x4C, 0x4D, 0x4E, 0x4F, 0x44, 0x45, 0x46, 0x47 };
+
+static void sampler_fixture(void)
+{
+    mem_fill(TEST_KEY_BASE, 0, 0x400u);
+    DSD(DS_00101514) = TEST_KEY_BASE;
+    for (u32 i = 0; i < 16u; i++) DSB(TEST_KEY_BASE + 0x2DEu + i) = sampler_slots[i];
+    DSW(DS_000E1C1E) = 0u; DSW(DS_000E1C20) = 0u;
+    DSW(DS_000E1C26) = 0u; DSW(DS_000E1C28) = 0u;
+    DSW(DS_000E1C22) = 0u; DSW(DS_000E1C24) = 0u;
+    DSW(DS_000E1C2A) = 0u; DSW(DS_000E1C2C) = 0u;
+    DSB(TEST_KEY_BASE + 0x2d8u) = 0xA5u;
+    DSB(TEST_KEY_BASE + 0x2d9u) = 0x5Au;
+}
+
+/* The keyboard state the sampler's device-0 arms and device 6's button scans
+ * read: the seam's 16-bit word through host_input_fill_keyboard(). */
+static void sampler_keys(u16 word)
+{
+    host_set_key_bits_override(word, 1);
+    host_input_fill_keyboard();
+}
+
+static void sampler_devs(u16 dev1, u16 dev2)
+{
+    DSW(TEST_KEY_BASE + 0x2D4u) = dev1;
+    DSW(TEST_KEY_BASE + 0x2D6u) = dev2;
+}
+
+static void sampler_axes(s16 ax, s16 ay, s16 bx, s16 by)
+{
+    DSW(DS_000E1C1E) = (u16)ax; DSW(DS_000E1C20) = (u16)ay;
+    DSW(DS_000E1C26) = (u16)bx; DSW(DS_000E1C28) = (u16)by;
+}
+
+/* The eight axis words the sampler and the axes tests write (the four axes and
+ * their centers), saved and put back so no test leaks state into the next. */
+static void sampler_axes_save(u16 saved[8])
+{
+    saved[0] = DSW(DS_000E1C1E); saved[1] = DSW(DS_000E1C20);
+    saved[2] = DSW(DS_000E1C22); saved[3] = DSW(DS_000E1C24);
+    saved[4] = DSW(DS_000E1C26); saved[5] = DSW(DS_000E1C28);
+    saved[6] = DSW(DS_000E1C2A); saved[7] = DSW(DS_000E1C2C);
+}
+
+static void sampler_axes_restore(const u16 saved[8])
+{
+    DSW(DS_000E1C1E) = saved[0]; DSW(DS_000E1C20) = saved[1];
+    DSW(DS_000E1C22) = saved[2]; DSW(DS_000E1C24) = saved[3];
+    DSW(DS_000E1C26) = saved[4]; DSW(DS_000E1C28) = saved[5];
+    DSW(DS_000E1C2A) = saved[6]; DSW(DS_000E1C2C) = saved[7];
+}
+
+static void sampler_bytes(u8 p1, u8 p2)
+{
+    CHECK_EQ_INT((int)DSB(TEST_KEY_BASE + 0x2d8u), (int)p1);
+    CHECK_EQ_INT((int)DSB(TEST_KEY_BASE + 0x2d9u), (int)p2);
+}
+
+/* The default device 0/0 path: the sampler's keyboard arms must reproduce the
+ * direct write game_loop used to make (DSB(+0x2d8) = word >> 8,
+ * DSB(+0x2d9) = word) for every bit, the F1/F2 bits included. */
+int test_input_sampler_device0(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    static const u16 words[] = { 0x0000u, 0xFFFFu, 0x1234u, 0x0100u, 0x0001u,
+                                 0x8000u, 0x0080u, 0x8040u };
+    sampler_axes_save(saved_axes);
+    sampler_fixture();
+
+    for (size_t k = 0; k < sizeof words / sizeof words[0]; k++) {
+        const u16 w = words[k];
+        sampler_keys(w);
+        input_sampler();
+        sampler_bytes((u8)(w >> 8), (u8)(w & 0xFFu));      /* the old direct write's bytes */
+    }
+
+    /* F1/F2 are OR'd into bit 0 independently of the keyboard button scans: the
+     * fill writes a bound slot and the fixed +0x28F/+0x290 entries from the same
+     * captured bit, so release the slots' entries and leave the fixed ones make. */
+    sampler_fixture();
+    sampler_keys(0x0100u | 0x0001u);
+    DSB(TEST_KEY_BASE + 0x254u + 0x40u) = 0xC0u;        /* P1 button 1 released */
+    DSB(TEST_KEY_BASE + 0x254u + 0x44u) = 0xC4u;        /* P2 button 1 released */
+    input_sampler();
+    sampler_bytes(0x01u, 0x01u);                        /* F1/F2 alone set bit 0 */
+    DSB(TEST_KEY_BASE + 0x28Fu) = 0xBBu;                /* F1 released */
+    DSB(TEST_KEY_BASE + 0x290u) = 0xBCu;                /* F2 released */
+    input_sampler();
+    sampler_bytes(0x00u, 0x00u);
+
+    /* The axis words are not read by a device-0 arm, and the device words are
+     * not the sampler's to change. */
+    sampler_keys(0x0000u);
+    sampler_axes(0x1234, -0x2345, 0x3456, -0x4567);
+    sampler_devs(0u, 0u);
+    input_sampler();
+    sampler_bytes(0x00u, 0x00u);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+
+    host_set_key_bits_override(0, 0);
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* The device 2/4/6 arms with a port answering (the presence seam), and the
+ * no-pad clear (the presence answer 0): the arm tables' bit positions, axes A
+ * vs B (P2's device 2 reads A, its device 4/6 read B), F1/F2 in bit 0, and the
+ * keyboard button scans device 6 keeps. */
+int test_input_sampler_arms(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    sampler_axes_save(saved_axes);
+    sampler_fixture();
+    host_set_port_present_override(1, 1);                  /* a game port answers */
+
+    /* dev 2/2: BOTH arms read axes A; the game-port bits 4..7 are 1/2/4/8. */
+    sampler_devs(2u, 2u);
+    host_set_port_buttons_override(0xFFu, 1);              /* all four released */
+    sampler_axes(0x001E, 0x0000, (s16)0xFFE2, 0x0000);     /* A x+ -> 0x10, B x- unused */
+    sampler_keys(0x0100u);                                 /* F1 down, F2 up */
+    input_sampler();
+    sampler_bytes(0x10u | 0x01u, 0x10u);                   /* P2 dev 2 reads axes A, not B */
+    sampler_keys(0x0001u);                                 /* F1 up, F2 down */
+    input_sampler();
+    sampler_bytes(0x10u, 0x10u | 0x01u);
+    host_set_port_buttons_override(0x0Fu, 1);              /* all four pressed -> 0x0F */
+    sampler_keys(0x0000u);
+    input_sampler();
+    sampler_bytes(0x10u | 0x0Fu, 0x10u | 0x0Fu);
+
+    /* dev 4/4: P1 axes A + bits 4/5 -> 1/4, P2 axes B + bits 6/7 -> 1/4. */
+    sampler_devs(4u, 4u);
+    sampler_axes(0x001E, 0x0000, 0x0000, 0xFFE2);          /* A x+, B y- */
+    host_set_port_buttons_override(0x3Fu, 1);              /* 4/5 released, 6/7 low */
+    sampler_keys(0x0000u);
+    input_sampler();
+    sampler_bytes(0x10u, 0x80u | 0x04u | 0x01u);           /* P2: bit6 -> 1, bit7 -> 4 = 5 */
+    host_set_port_buttons_override(0xCFu, 1);              /* 4/5 low, 6/7 released */
+    input_sampler();
+    sampler_bytes(0x10u | 0x05u, 0x80u);                   /* P1: bit4 -> 1, bit5 -> 4 = 5 */
+
+    /* dev 6/6: axes A/B with the keyboard button scans (no game port). */
+    sampler_devs(6u, 6u);
+    sampler_axes(0x0000, 0x001E, 0x001E, 0x0000);          /* A y+, B x+ */
+    sampler_keys(0x0F00u | 0x000Fu);                       /* every P1 and P2 button */
+    input_sampler();
+    sampler_bytes(0x40u | 0x0Fu | 0x01u, 0x10u | 0x0Fu | 0x01u);
+
+    /* dev 0/4 and 4/0: one player's port arm beside the other's keyboard arm. */
+    sampler_devs(0u, 4u);
+    sampler_axes(0x0000, 0x001E, 0x0000, 0x001E);          /* A y+ (unused), B y+ */
+    host_set_port_buttons_override(0xFFu, 1);
+    sampler_keys(0x2000u);                                 /* P1 left (slot 0x4C) only */
+    input_sampler();
+    sampler_bytes(0x20u, 0x40u);                           /* P1 keyboard, P2 arm 4 */
+    sampler_devs(4u, 0u);
+    sampler_keys(0x0010u);                                 /* P2 right (slot 0x4F) only */
+    input_sampler();
+    sampler_bytes(0x40u, 0x10u);                           /* P1 arm 4, P2 keyboard */
+
+    /* dev 0/2: P2's device 2 also forces the both-port presence check, but
+     * P1's own arm is still the keyboard (its device word is 0). */
+    sampler_devs(0u, 2u);
+    sampler_axes(0x001E, 0x0000, 0x001E, 0x0000);
+    sampler_keys(0x0000u);
+    input_sampler();
+    sampler_bytes(0x00u, 0x10u);
+
+    /* A device that is not 0/2/4/6 leaves its byte alone (the sentinels). */
+    DSB(TEST_KEY_BASE + 0x2d8u) = 0xA5u;
+    DSB(TEST_KEY_BASE + 0x2d9u) = 0x5Au;
+    sampler_devs(1u, 1u);
+    input_sampler();
+    sampler_bytes(0xA5u, 0x5Au);
+    sampler_devs(7u, 7u);
+    input_sampler();
+    sampler_bytes(0xA5u, 0x5Au);
+
+    /* No pad answers: the sampler clears the device words (0x1BC6F/0x1BC9E/
+     * 0x1BCE6) and the arms fall back to the keyboard. */
+    host_set_port_present_override(0, 1);
+    sampler_devs(2u, 2u);
+    sampler_keys(0x0100u);
+    input_sampler();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+    sampler_bytes(0x01u, 0x00u);
+    sampler_devs(4u, 0u);                                  /* P1-only arm: clear P1 */
+    input_sampler();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    sampler_bytes(0x01u, 0x00u);
+    sampler_devs(4u, 1u);                                  /* P1-only arm, dev2 != 0: clear P2 */
+    input_sampler();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 4);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+    sampler_devs(0u, 4u);                                  /* P2-only arm: clear P2 */
+    input_sampler();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+    host_set_port_present_override(0, 0);
+
+    host_set_port_buttons_override(0, 0);
+    host_set_key_bits_override(0, 0);
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* The axis readers' dead band and 16-bit arithmetic: +0x1D/-0x1D no bit,
+ * +0x1E/-0x1E the bit, both axes independent, the four bits 0x10/0x20/0x40/0x80,
+ * and the raw's 16-bit subtraction (a value below its center wraps). */
+int test_input_axes_dead_band(void)
+{
+    int before = g_failures;
+    u16 saved[8];
+    sampler_axes_save(saved);
+    const u16 cx = 0x2000u, cy = 0x2400u;               /* distinct centers per axis */
+    const u16 bx = 0x1C00u, by = 0x2800u;
+
+    /* Reader A (0x4FF8F): X 0x10/0x20 against 0xE1C22, Y 0x40/0x80 against 0xE1C24. */
+    DSW(DS_000E1C22) = cx; DSW(DS_000E1C24) = cy;
+    DSW(DS_000E1C1E) = cx; DSW(DS_000E1C20) = cy;
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    DSW(DS_000E1C1E) = (u16)(cx + 0x1Du);                 /* +0x1D: dead band */
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    DSW(DS_000E1C1E) = (u16)(cx + 0x1Eu);                 /* +0x1E: right */
+    CHECK_EQ_INT((int)input_axes_a(), 0x10);
+    DSW(DS_000E1C1E) = (u16)(cx - 0x1Du);                 /* -0x1D: dead band */
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    DSW(DS_000E1C1E) = (u16)(cx - 0x1Eu);                 /* -0x1E: left */
+    CHECK_EQ_INT((int)input_axes_a(), 0x20);
+    DSW(DS_000E1C1E) = cx;
+    DSW(DS_000E1C20) = (u16)(cy + 0x1Du);
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    DSW(DS_000E1C20) = (u16)(cy + 0x1Eu);                 /* Y +0x1E: down */
+    CHECK_EQ_INT((int)input_axes_a(), 0x40);
+    DSW(DS_000E1C20) = (u16)(cy - 0x1Du);
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    DSW(DS_000E1C20) = (u16)(cy - 0x1Eu);                 /* Y -0x1E: up */
+    CHECK_EQ_INT((int)input_axes_a(), 0x80);
+    DSW(DS_000E1C1E) = (u16)(cx + 0x1Eu);                 /* both axes independent */
+    DSW(DS_000E1C20) = (u16)(cy - 0x1Eu);
+    CHECK_EQ_INT((int)input_axes_a(), 0x10u | 0x80u);
+
+    /* The 16-bit subtraction wraps: 0x0005 against 0xFFF0 is +0x15 (no bit),
+     * not a huge positive; 0x8000 against 0 is -0x8000 (up). */
+    DSW(DS_000E1C1E) = 0x0005u; DSW(DS_000E1C22) = 0xFFF0u;
+    DSW(DS_000E1C20) = 0x0000u; DSW(DS_000E1C24) = 0x0000u;
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    DSW(DS_000E1C1E) = 0x8000u;
+    CHECK_EQ_INT((int)input_axes_a(), 0x20);
+
+    /* Reader B (0x4FFD8) has the same shape against 0xE1C2A/0xE1C2C. */
+    DSW(DS_000E1C2A) = bx; DSW(DS_000E1C2C) = by;
+    DSW(DS_000E1C26) = bx; DSW(DS_000E1C28) = by;
+    CHECK_EQ_INT((int)input_axes_b(), 0);
+    DSW(DS_000E1C26) = (u16)(bx + 0x1Du);
+    CHECK_EQ_INT((int)input_axes_b(), 0);
+    DSW(DS_000E1C26) = (u16)(bx + 0x1Eu);
+    CHECK_EQ_INT((int)input_axes_b(), 0x10);
+    DSW(DS_000E1C26) = (u16)(bx - 0x1Du);
+    CHECK_EQ_INT((int)input_axes_b(), 0);
+    DSW(DS_000E1C26) = (u16)(bx - 0x1Eu);
+    CHECK_EQ_INT((int)input_axes_b(), 0x20);
+    DSW(DS_000E1C26) = bx;
+    DSW(DS_000E1C28) = (u16)(by + 0x1Du);
+    CHECK_EQ_INT((int)input_axes_b(), 0);
+    DSW(DS_000E1C28) = (u16)(by + 0x1Eu);
+    CHECK_EQ_INT((int)input_axes_b(), 0x40);
+    DSW(DS_000E1C28) = (u16)(by - 0x1Du);
+    CHECK_EQ_INT((int)input_axes_b(), 0);
+    DSW(DS_000E1C28) = (u16)(by - 0x1Eu);
+    CHECK_EQ_INT((int)input_axes_b(), 0x80);
+
+    sampler_axes_restore(saved);
+    return g_failures - before;
+}
+
 /* ---- test_rng.c ---- */
 
 int test_rng(void)

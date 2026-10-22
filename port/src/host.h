@@ -163,6 +163,30 @@ void host_set_key_bits_override(u16 bits, int on);
  * cleared when no pad answers, 0x4FBBB/Task 6). */
 u8 host_port_buttons(void);
 
+/* PORT: fills the four normalized axis words (0xE1C1E/0xE1C20/0xE1C26/0xE1C28)
+ * the ported axis readers 0x4FF8F/0x4FFD8 sample (record 2026-10-21-host-input-
+ * truth §H4). The no-pad state is each word at its calibrated center
+ * (0xE1C22/0xE1C24/0xE1C2A/0xE1C2C), so every axis reads its dead band. Task 5's
+ * host_pad_fill writes the pad's displacement over it. */
+void host_input_fill_axes(void);
+
+/* PORT: the host's answer to the ISR sampler's presence block (0x1BBAC's
+ * 0x4FDF5/0x4FC05/0x4FCFD polls and 0x4FBBB probe; the routines stay
+ * host-owned, record §49-V). 1 means the game port answered, 0 means it did NOT
+ * (the sampler then clears the device word, 0x1BC6F/0x1BCB4/0x1BCE6). Task 4
+ * answers 0 -- the no-pad state -- and Task 6 models the pad's answer and the
+ * boot probe. The seam pins each answer for the differential rows. */
+int host_port_poll_both(void);
+int host_port_poll_p1(void);
+int host_port_poll_p2(void);
+int host_port_probe(u32 mask);
+
+/* PORT: test seam, no raw counterpart. While armed, the four presence answers
+ * above return `present` instead of the pad's; the unit test uses it to
+ * exercise the sampler's device 2/4/6 arms with no pad attached. Off by
+ * default; nothing outside the tests sets it. */
+void host_set_port_present_override(int present, int on);
+
 /* PORT: test seam, no raw counterpart. With `on` set, host_port_buttons()
  * answers `buttons` instead of the pad's byte; the differential rows and the
  * unit test pin the byte through it, and Task 5's fill keeps writing the pad's
