@@ -220,17 +220,20 @@ void host_set_pad_override(const u8 *axes, const u8 *buttons, int present);
  * triggers them with `out 0x201,0` and waits again: a fan-out answers 1, a
  * quiet port 0. The host owns that answer, so 1 means the pad is attached and
  * 0 means no pad -- the state the sampler clears a joystick device word in
- * (0x1BC6F/0x1BCB4/0x1BCE6). The `probe` mask is the raw's argument: 3 is
+ * (0x1BC6F the both-player arm, 0x1BCB4/0x1BCBF the P1-only arm's two words,
+ * 0x1BCE6 the P2-only arm). The `probe` mask is the raw's argument: 3 is
  * P1's axis pair (port bits 0/1) and 0xC P2's (bits 2/3); one pad supplies
- * both sticks, so a present pad answers any axis mask. The raw's mask 0 tests
- * no bit at all and answers 1 whatever the hardware (0x4FBCD/0x4FBEE
- * `test bl,al` with BL = 0). host_set_port_present_override still wins. */
+ * both sticks, so a present pad answers any axis mask. The raw tests the mask
+ * through BL alone (`test bl,al`), so a mask whose low byte is 0 tests no bit
+ * at all and answers 1 whatever the hardware (0x4FBCD/0x4FBEE; 0x4FBBB(0x100)
+ * too). host_set_port_present_override still wins. */
 int host_port_present(int probe);
 
 /* PORT: the host's answer to the ISR sampler's presence block (0x1BBAC's
  * 0x4FDF5/0x4FC05/0x4FCFD polls and 0x4FBBB probe; the routines stay
  * host-owned, record §49-V). 1 means the game port answered, 0 means it did NOT
- * (the sampler then clears the device word, 0x1BC6F/0x1BCB4/0x1BCE6). Each
+ * (the sampler then clears the device word: 0x1BC6F the both-player arm,
+ * 0x1BCB4/0x1BCBF the P1-only arm's two words, 0x1BCE6 the P2-only arm). Each
  * answers through host_port_present() with the mask its raw routine reads
  * (0xF/3/0xC). The seam pins each answer for the differential rows. */
 int host_port_poll_both(void);

@@ -5,15 +5,31 @@
 
 The scenario gp-u17-device2 (gp_session) walks the K11 service menu to MODIFY
 CONTROLS (0x31F24), steps P1's device from KEYBOARD (0) to JOYSTICK 2 with one
-p1.down -- the 0x3206F/0x320ED arm adds 2 -- and leaves with Esc, whose
-0x32345 config_keys_apply writes the record's device into BIOS+0x2D4 (0x1AE3B).
-DOSBox-X has no game port, so the ISR sampler's presence block (0x1BC4F..
-0x1BCE6) probes 0x4FBBB(3) (P1's axes 0/1), gets 0 and clears the word on its
-next tick (0x1BC6F). The capture's S records carry dev1/dev2 (+0x2D4/+0x2D6
-behind DS_00101514, gp_session's POINTER_FIELDS), so the clear is observable:
-the word reads 2 (the selection) and is 0 in every record after the leave.
+p1.down and leaves with Esc, whose 0x32345 config_keys_apply writes the record's
+device into BIOS+0x2D4 (0x1AE3B). DOSBox-X has no game port, so the ISR
+sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3) (P1's axes 0/1),
+gets 0 and clears the word on its next tick: P1's device is the only one
+selected, so the P1-only arm runs and the clear is 0x1BCBF (dev2 == 0), not the
+both-player arm's 0x1BC6F. The capture's S records carry dev1/dev2
+(+0x2D4/+0x2D6 behind DS_00101514, gp_session's POINTER_FIELDS), so the clear is
+observable: the word reads 2 (the selection) and is 0 in every record after the
+leave.
 
-  gp_u17.py check --capture DIR [--clear-frame N]   the checks; exit 1 on a FAIL
+**One press is one step (+2).** MODIFY CONTROLS polls the *held* level every
+iteration (0x31FC4 `xor eax,eax` -> 0x2EDE0(0, 1) -> 0x50161(0) returns the
+level, 0x50161's own arm for mask 0), and its Down arm (0x320CF ->
+0x320ED `dev + 2`; 0x3206F is the Up arm, `dev - 2`) is gated by
+`until = [0x101500] + 0x0C` (0x320DB..0x320E5, masked at 0x31FE7): a second step
+needs 12 ISR ticks. One menu iteration is `0x2EA78(1)` = 3 ISR ticks (three
+waits on the frame word 0xEF6DE) and the harness holds the pad 5 capture frames
+= 5/70.09 s = 71 ms = 4.3 ISR ticks (60.05 Hz), so the hold spans at least one
+poll and fewer than the 12 ticks a second step needs: exactly one +2. The
+arrow-latch path (0x2EBF0) maps only the literal arrow scans 0x48/0x50/0x4B/0x4D
+through the config record; the pad's queued word carries its own scan (0x2D), so
+this scenario's step is the level's. --device names the expected value (default
+2, that derivation) for a capture whose measurement disagrees.
+
+  gp_u17.py check --capture DIR [--clear-frame N] [--device N]
   gp_u17.py path --capture DIR                      one line per dev1/dev2 change
 
 The clear frame is the first S record after the last injected key whose dev1 is
@@ -32,11 +48,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gp_session as gs
 
 SCENARIO = 'gp-u17-device2'
-DEVICE2 = 2                      # MODIFY CONTROLS' JOYSTICK 2 (0x3206F/0x320ED)
+DEVICE2 = 2                      # the derived one-step selection (see the module docstring)
 
 
-def check(lines, clear_frame=None, unseen_ok=False):
-    """[(label, ok, detail)] over a poll.log (record §H6)."""
+def check(lines, clear_frame=None, unseen_ok=False, device=DEVICE2):
+    """[(label, ok, detail)] over a poll.log (record §H6). `device` is the value
+    the one-step selection must read (2 unless a measurement says otherwise)."""
     recs = [r for r in (gs.parse(l) for l in lines) if r]
     snaps = gs.snapshots(lines)
     out = []
@@ -69,11 +86,12 @@ def check(lines, clear_frame=None, unseen_ok=False):
     out.append(('dev2 stays 0 (P2 never selects a device)', not dev2,
                 '' if not dev2 else 'first f=%X dev2=%X' % dev2[0]))
 
-    # The selection: dev1 reads 2 (KEYBOARD -> JOYSTICK 2), in one run.
+    # The selection: dev1 reads `device` (the derived one +2 step), in one run of
+    # that single value.
     sel = [(f, snaps[f]['dev1']) for f in fs if snaps[f]['dev1'] != 0]
-    sel_ok = bool(sel) and all(v == DEVICE2 for _, v in sel)
+    sel_ok = bool(sel) and all(v == device for _, v in sel)
     if not unseen_ok:
-        out.append(('the selection is seen: dev1 = 2 (one p1.down from KEYBOARD)', sel_ok,
+        out.append(('the selection is seen: dev1 = %d (one p1.down from KEYBOARD)' % device, sel_ok,
                     'frames %s' % (['%X' % f for f, _ in sel] or 'none: the poll never sampled it')))
     elif not sel_ok:
         out.append(('the selection was not sampled: the clear is pinned by the end state only', True,
@@ -97,7 +115,7 @@ def check(lines, clear_frame=None, unseen_ok=False):
     if sel_ok:
         last_sel = sel[-1][0]
         out.append(('the clear follows the selection', clear > last_sel,
-                    'last dev1 = 2 at f=%X, clear at f=%X' % (last_sel, clear)))
+                    'last dev1 = %d at f=%X, clear at f=%X' % (device, last_sel, clear)))
 
     # The pin.
     if clear_frame is not None:
@@ -127,9 +145,13 @@ def main():
     ap.add_argument('--capture', required=True)
     ap.add_argument('--clear-frame', default=None,
                     help='the pinned clear frame (decimal or 0x hex); exact')
+    ap.add_argument('--device', default=str(DEVICE2),
+                    help='the device value the one-step selection must read (default 2; the '
+                         'derivation is one +2 step, see the module docstring -- pass the '
+                         'measured value if a capture disagrees, and record why)')
     ap.add_argument('--unseen-selection-ok', action='store_true',
-                    help='accept a capture whose poll never sampled dev1 = 2 (a named gap: the '
-                         'clear is then pinned by the end state only)')
+                    help='accept a capture whose poll never sampled the selection (a named gap: '
+                         'the clear is then pinned by the end state only)')
     a = ap.parse_args()
     poll = os.path.join(a.capture, 'poll.log')
     if not os.path.isfile(poll):
@@ -142,7 +164,7 @@ def main():
             print(row)
         return 0
     pin = None if a.clear_frame in (None, '') else int(a.clear_frame, 0)
-    rows = check(lines, pin, a.unseen_selection_ok)
+    rows = check(lines, pin, a.unseen_selection_ok, int(a.device, 0))
     ok = all(r[1] for r in rows)
     print('check=%s %s' % ('ok' if ok else 'FAIL', SCENARIO))
     for label, good, detail in rows:

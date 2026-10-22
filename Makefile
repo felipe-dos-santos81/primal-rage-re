@@ -1394,13 +1394,16 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 
 # Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
 # gp_session.SCENARIOS['gp-u17-device2'], record §H6): the K11 service-menu walk to MODIFY
-# CONTROLS (0x31F24), one p1.down (P1's device KEYBOARD 0 -> JOYSTICK 2, the 0x3206F/0x320ED
-# arms) and Esc (0x32345 config_keys_apply writes 2 into BIOS+0x2D4, 0x1AE3B). DOSBox-X has no
-# game port, so the ISR sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and
-# clears the word on its next tick (0x1BC6F): the S record's dev1 reads 2 (the selection) and 0
-# from the clear on, which is what the capture pins. The claim is narrow: no game-port axis or
-# button is injected (the harness cannot), so the arms' evidence is the unit tests and the
-# differential rows; this capture pins the clear, not the pad's answer.
+# CONTROLS (0x31F24), one 5-frame p1.down (P1's device KEYBOARD 0 -> JOYSTICK 2; the Down arm
+# 0x320CF -> 0x320ED adds 2, and its 0x0C-ISR-tick repeat gate exceeds the hold, so exactly one
+# step -- gp_u17.py's --device names the expected value if a measurement disagrees) and Esc
+# (0x32345 config_keys_apply writes 2 into BIOS+0x2D4, 0x1AE3B). DOSBox-X has no game port, so the
+# ISR sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and clears it on its
+# next tick: P1 is the only selected side, so the P1-only arm's 0x1BCBF clears the word (dev2 == 0;
+# 0x1BC6F is the both-player arm's clear). The S record's dev1 reads 2 (the selection) and 0 from
+# the clear on, which is what the capture pins. The claim is narrow: no game-port axis or button is
+# injected (the harness cannot), so the arms' evidence is the unit tests and the differential rows;
+# this capture pins the clear, not the pad's answer.
 # tools/gp_u17.py check is the capture-side evidence (the selection, the clear, no sticky word,
 # the mode path, the scenario's own last two presses); `gp_compare --dev-words` adds dev1/dev2 to
 # the trace claim (only this scenario asserts them -- every older poll.log lacks the fields and
@@ -1525,6 +1528,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u15-oracle
 	@echo "== gameplay oracle: gp-u16-twop2 (an extended two-human match and the finishers; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u16-oracle
+	@echo "== host input truth U17: the device-2 selection and the no-pad clear; skips without its capture =="
 	@$(MAKE) --no-print-directory gp-u17-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle

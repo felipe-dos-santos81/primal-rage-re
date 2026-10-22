@@ -404,6 +404,29 @@ class TestCli(Dirs):
         self.assertEqual(rc, 1, out)
         self.assertIn('moves: FAIL: the capture records no move fields', out)
 
+    def test_the_device_pin_on_a_capture_without_the_fields_fails_cleanly(self):
+        # record §H6.4: --dev-words over an older poll.log prints the FAIL and returns
+        # 1 before the claim; comparing a field the capture lacks must not raise (the
+        # report mode goes on with the plain fields, its exit is 0 anyway)
+        self.dump()
+        pins = ('--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--min-reach', '1')
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--dev-words', *pins)
+        self.assertEqual(rc, 0, out)                    # the fields are in SNAP_FIELDS
+        with open(os.path.join(self.cap, 'poll.log'), 'w') as f:      # an older capture
+            f.write(''.join(' '.join(p for p in _S(k, t508=k - 1).split()
+                                     if p.split('=')[0] not in gs.DEV_FIELDS) + '\n'
+                            for k in range(10, 13)))
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--dev-words', *pins)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('trace: FAIL: the capture records no device-word fields', out)
+        self.assertNotIn('Traceback', out)              # not a KeyError
+        rc, out = self.cli('--report', '--scenario', 'gp-x', '--capture', self.cap,
+                           '--port', self.port, '--dev-words')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('FAIL: the capture records no device-word fields', out)
+
     def test_an_absent_capture_skips(self):
         rc, out = self.cli('--scenario', 'gp-x', '--capture', os.path.join(self.d, 'none'), '--port', self.port)
         self.assertEqual(rc, 0)

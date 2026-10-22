@@ -4109,7 +4109,8 @@ int test_host_port_present(void)
     CHECK_EQ_INT(host_port_present(3), 0);
     CHECK_EQ_INT(host_port_present(0xC), 0);
     CHECK_EQ_INT(host_port_present(0xF), 0);
-    CHECK_EQ_INT(host_port_present(0), 1);           /* the raw's mask-0 arm */
+    CHECK_EQ_INT(host_port_present(0), 1);           /* the raw's BL-only test */
+    CHECK_EQ_INT(host_port_present(0x100), 1);       /* BL = 0: the same arm */
 
     /* A pad is attached: every mask answers, through the seam too. */
     host_set_pad_override(axes, buttons, 1);
@@ -4153,11 +4154,12 @@ int test_boot_probe_clears(void)
     host_set_port_present_override(0, 0);
     host_set_pad_override(NULL, NULL, 0);
 
-    /* No pad: P1's device 2 is cleared by its probe (0x20DAC -> 0x20DB1). */
+    /* No pad: P1's device 2 is cleared by its probe (0x20DAC -> 0x20DB1). P2's
+     * word is seeded 0 by the case and not asserted: a 0 read cannot tell
+     * "left alone" from "written 0" (the 2/2 case's seeded 2 can). */
     sampler_devs(2u, 0u);
     game_boot_ports();
     CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
-    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
 
     /* Both players on device 4: both masks are probed, both words cleared. */
     sampler_devs(4u, 4u);
@@ -4172,11 +4174,10 @@ int test_boot_probe_clears(void)
     CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
     CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 2);
 
-    /* P1 on the keyboard and P2 on device 2: DL becomes 1, DH stays 0, and the
-     * empty P1 word is "cleared" -- P2's word stays (0x20D96..0x20D9A). */
+    /* P1 on the keyboard and P2 on device 2: DL becomes 1, DH stays 0, and P2's
+     * word stays (0x20D96..0x20D9A). P1's word is seeded 0 and not asserted. */
     sampler_devs(0u, 2u);
     game_boot_ports();
-    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
     CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 2);
 
     /* A pad that answers keeps the words: no clear. */
@@ -4210,6 +4211,7 @@ int test_host_pad_center(void)
 {
     int before = g_failures;
     u16 saved[8];
+    const u16 saved_period = DSW(DS_000E1C1C);
     static const u8 axes[4] = { 0, 0, 0, 0 };
     static const u8 buttons[4] = { 0, 0, 0, 0 };
     sampler_axes_save(saved);
@@ -4259,6 +4261,7 @@ int test_host_pad_center(void)
     host_set_pad_override(NULL, NULL, 0);
     host_set_port_present_override(0, 0);
     sampler_axes_restore(saved);
+    DSW(DS_000E1C1C) = saved_period;     /* sampler_axes_save covers the eight axis words */
     return g_failures - before;
 }
 

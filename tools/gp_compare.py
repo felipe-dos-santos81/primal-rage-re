@@ -839,14 +839,18 @@ def main():
     with open(os.path.join(a.port, 'trace.txt')) as f:
         pl = f.read().splitlines()
     # The device-word claim (record §H6): dev1/dev2 join the trace fields, and a
-    # capture without them is a FAIL rather than a silent narrower claim.
-    dev_ok = True
+    # capture without them is a FAIL rather than a silent narrower claim. The FAIL
+    # returns before the claim: comparing a field the capture does not record
+    # would raise KeyError, not report (§H6.4; tools/tests/test_gp_compare.py's CLI
+    # case). Report mode goes on with the plain trace fields, its exit is 0 anyway.
     trace_fields = gs.TRACE_FIELDS
     if a.dev_words:
-        trace_fields = gs.TRACE_FIELDS + gs.DEV_FIELDS
         if not has_dev_fields(cl):
             print('gp_compare: %s: trace: FAIL: the capture records no device-word fields (dev1/dev2)' % name)
-            dev_ok = False
+            if not a.report:
+                return 1
+        else:
+            trace_fields = gs.TRACE_FIELDS + gs.DEV_FIELDS
     rc2, _ = trace_claim(name, cl, pl, n_trace, print, a.report, trace_fields)
     rc3 = 0
     snaps = gs.snapshots(cl)
@@ -857,7 +861,7 @@ def main():
     elif a.moves_min_first is not None or (a.report and has_moves):
         rc3, _ = trace_claim(name, cl, pl, None if a.report else _int_or_none(a.moves_min_first),
                              print, a.report, gs.MOVE_FIELDS, 'moves')
-    return 0 if a.report else (1 if rc1 or rc2 or rc3 or rc4 or not dev_ok else 0)
+    return 0 if a.report else (1 if rc1 or rc2 or rc3 or rc4 else 0)
 
 
 if __name__ == '__main__':

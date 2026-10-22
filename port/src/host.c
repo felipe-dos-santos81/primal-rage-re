@@ -500,14 +500,16 @@ void host_set_port_present_override(int present, int on)
  * write of 0, and waits again: a fan-out of the bits answers 1. The host owns
  * that answer, so 1 means a pad is attached (each of SDL's gamepads supplies
  * both sticks, so any axis mask answers) and 0 means no pad -- the state the
- * sampler clears a joystick device word in. The mask 0 arm tests no bit at
- * all, so both loops fall through and the raw answers 1 whatever the
- * hardware. The seam wins while it is armed (the differential rows' per-case
- * answers). */
+ * sampler clears a joystick device word in (0x1BC6F the both-player arm,
+ * 0x1BCB4/0x1BCBF the P1-only arm's two words, 0x1BCE6 the P2-only arm). The
+ * mask is tested **through BL only** (`test bl,al`), so a mask whose low byte
+ * is 0 tests no bit at all: both waits fall through and the raw answers 1
+ * whatever the hardware (0x4FBCD/0x4FBEE), 0x4FBBB(0x100) included. The seam
+ * wins while it is armed (the differential rows' per-case answers). */
 int host_port_present(int probe)
 {
     if (g_port_present_override_on) return g_port_present_override;
-    if (probe == 0u) return 1;                  /* 0x4FBCD/0x4FBEE with BL = 0 */
+    if ((probe & 0xFF) == 0) return 1;          /* 0x4FBCD/0x4FBEE test BL alone */
     return pad_present() ? 1 : 0;
 }
 
@@ -536,12 +538,14 @@ int host_port_probe(u32 mask)
 }
 
 /* PORT: the PIT channel 0 period, 0x50021 (host-owned, record §49-V). The raw
- * latches the channel (out 0x43,0), reads the 16-bit counter twice per pass
- * and keeps the largest difference between successive reads, so 0x5004A can
- * store the wrap period the normalizer 0x4FDF5 adds when a reading falls below
- * the previous one. The port's normalized axis words are host values, not PIT
- * counts (host_pad_fill writes center + displacement), so the host has no
- * period to measure: its answer is 0, declared rather than fitted. */
+ * latches the channel (`out 0x43,0`), reads the 16-bit counter (two `in 0x40`
+ * reads), and loops: while each new reading is >= the running maximum it
+ * replaces it, and the first reading below it (the counter wrapped) returns
+ * that maximum -- the period the normalizer 0x4FDF5 adds when a reading falls
+ * below the previous one. There is no counter of iterations (0x50029..0x50041).
+ * The port's normalized axis words are host values, not PIT counts
+ * (host_pad_fill writes center + displacement), so the host has no period to
+ * measure: its answer is 0, declared rather than fitted. */
 static u16 host_port_pit_period(void)
 {
     return 0u;

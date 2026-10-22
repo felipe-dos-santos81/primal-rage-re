@@ -625,16 +625,30 @@ SCENARIOS['gp-u16-twop2'] = dict(time_limit=240, steps=(
 # K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first 24 keys -- the
 # mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the OPTIONS MENU, its
 # CONFIG OPTIONS editor, STATISTICS' five screens, SOUND, MUSIC and MODIFY
-# CONTROLS), then one p1.down -- P1's device KEYBOARD (0) -> JOYSTICK 2, the
-# 0x3206F/0x320ED arms' +2 -- and Esc, whose 0x32345 config_keys_apply writes the
-# record's device into BIOS+0x2D4 (0x1AE3B). DOSBox-X has no game port, so the ISR
-# sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and clears
-# the word on its next tick (0x1BC6F); the S record's dev1 shows the clear. The
-# keys are the walk's own (`enter`/`esc` as BIOS keys, the Downs as P1's bound Down
-# key, which is the same scan the walk used); the 150-frame gap into the MAIN MENU
-# is U4's, the 30-frame gaps and the 5-frame pad hold are U7's harness values (a
-# press reaches the pad level one iteration late, record §G.7.2). The scenario ends
-# 60 frames after the leave, before anything in the OPTIONS MENU could save.
+# CONTROLS), then one p1.down -- P1's device KEYBOARD (0) -> JOYSTICK 2 -- and Esc,
+# whose 0x32345 config_keys_apply writes the record's device into BIOS+0x2D4
+# (0x1AE3B). DOSBox-X has no game port, so the ISR sampler's presence block
+# (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and clears the P1-only arm's word
+# on its next tick (0x1BCBF, dev2 == 0); the S record's dev1 shows the clear.
+#
+# Why one press is one step (+2): MODIFY CONTROLS polls the *held* level each
+# iteration (0x31FC4 -> 0x2EDE0(0,1) -> 0x50161(0)), and its Down arm
+# (0x320CF -> 0x320ED `dev + 2`; 0x3206F is the Up arm) is gated by
+# `until = [0x101500] + 0x0C` (0x320DB, masked at 0x31FE7): a second step needs
+# 12 ISR ticks. One menu iteration is 0x2EA78(1) = 3 ISR ticks, and the 5-frame
+# hold below is 5/70.09 s = 71 ms = 4.3 ISR ticks (60.05 Hz): at least one poll
+# lands in the hold and fewer than 12 ticks pass, so exactly one +2. The
+# arrow-latch path (0x2EBF0) only maps the literal arrow scans 0x48/0x50/0x4B/0x4D
+# through the config record; this press's scan is P1's bound Down (0x2D, the same
+# 0x40004000 control bit the K11 walk's Down arrow reaches), so the step is the
+# level's. gp_u17.py's --device names the expected value (default 2, that
+# derivation) for a capture whose measurement disagrees.
+#
+# Harness values: U4's 150-frame gap into the MAIN MENU, 30-frame gaps between the
+# walk's keys, a 5-frame pad hold (a press reaches the pad level one iteration
+# late, record §G.7.2), a 90 s limit, and STOP_AT_END (nothing past the clear is
+# compared). The scenario ends 60 frames after the leave, before anything in the
+# OPTIONS MENU could save (that takes leaving it, 0x2CBAF's config_file_save).
 U17_WALK = ('p1.down', 'p1.down', 'esc', 'p1.down', 'enter', 'enter', 'esc',
             'p1.down', 'enter', 'esc', 'esc', 'esc', 'esc', 'esc',
             'p1.down', 'enter', 'esc', 'p1.down', 'enter', 'esc',

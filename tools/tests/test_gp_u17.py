@@ -77,6 +77,18 @@ class TestCheck(unittest.TestCase):
         rows = _rows(_log(dev1_at={0x120: 4}))
         self.assertFalse([r for r in rows if r[0].startswith('the selection is seen')][0][1])
 
+    def test_the_expected_device_is_a_parameter(self):
+        # one press is one +2 step by the 0x0C-tick repeat gate (module docstring); a
+        # measured capture that disagrees passes its value, and the label names it
+        rows = _rows(_log(dev1_at={0x120: 4}), device=4)
+        self.assertTrue(all(r[1] for r in rows), rows)
+        self.assertIn('the selection is seen: dev1 = 4 (one p1.down from KEYBOARD)',
+                      [r[0] for r in rows])
+        self.assertIn(('the clear follows the selection', True,
+                       'last dev1 = 4 at f=120, clear at f=121'), rows)
+        rows = _rows(_log(dev1_at={0x120: 2}), device=4)
+        self.assertFalse([r for r in rows if r[0].startswith('the selection is seen')][0][1])
+
     def test_an_old_capture_is_not_a_u17_capture(self):
         rows = _rows(_log(dev_fields=False))
         self.assertEqual(len(rows), 1)
