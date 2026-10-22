@@ -242,7 +242,8 @@ true original, and ported the divergence. Two pieces:
    across all 69 files) and byte-for-byte only for the four full-screen
    `S16TITLE` frames `{10,12,13,18}`; the per-sprite sub-palette/DAC base and
    the descriptor `x`/`y` anchor stay `likely`, not proven. See `../docs/FORMATS.md`.
-3. Name the hot core functions (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`).
+3. ~~Name the hot core functions~~ (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`) — done:
+   all four have `FN_` symbols in `symbols.h`, and the port calls them (`actors.c`, `menu.c`).
 4. Pin the tick **interrupt vector** (the rate is measured at 60.05 Hz; the
    framebuffer write path has since been resolved as a literal `0xA0000`).
 5. The SDL3 port lives in `port/`: engine core (sub-project 1), audio/AIL
@@ -259,7 +260,19 @@ true original, and ported the divergence. Two pieces:
    `../docs/superpowers/plans/2026-09-18-title-residuals-report.md`). Streamed
    Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5), the
    deferred attract subsystem (4d: `0x11000`, `0x38A38`, `0x389C4`, `0x292AC`,
-   `0x4F644`) and the `0x13xxx` effect **render** path remain. The AIL sound-id
+   `0x4F644`) and the `0x13xxx` effect **render** path were the open list; the
+   open work is the "Remaining work" list below. The AIL sound-id
    table `DAT_000BBDC8` is **static in the EXE** (stride 12; byte 0 = case,
    dword +4 = handle), so its id → resource mapping is extractable; it is not
    yet extracted.
+
+### Remaining work (2026-10-22)
+
+- The five held gameplay captures (`gp-u12-endurance`, `gp-u13-ending2`,
+  `gp-u14-win-live`, `gp-u15-join`, `gp-u16-twop2`). Their oracles exist
+  (`make gp-u12-oracle` … `gp-u16-oracle`) and skip until each capture is taken.
+- The differential audit: 59 of the 833 rows stay open, and 8 ported functions
+  have no differential row (the counter in `AGENTS.md`; `make diff-verify`).
+- Host and product work: audio audibility (no device-recording oracle), CI and
+  packaging, SDL pad hot-plug, and the save-path documentation.
+- The tick interrupt vector (item 4).

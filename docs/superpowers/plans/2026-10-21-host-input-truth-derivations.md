@@ -1521,6 +1521,6 @@ the input and SDL-pad and movie-audio paragraphs, the re-pinned counter with the
 paragraph) and `tools/port_classification.txt`. The design's status line, its portable/host-owned
 figures and its two capture-era statements (the sampler called host-owned; "DOSBox-X has no game
 port") are corrected in place, and its two "no SDL gamepad code" lines are scoped to 2026-10-21.
-The phase's mutant delta is **+56** (26 the six keyboard and two F readers, 12 the three game-port
-readers, 18 the two axis readers and the sampler); §H2.5/§H3.5/§H4.5 give the per-task splits (26,
+The phase's mutant delta is **+56** (26 (the six keyboard readers — two of them the F readers), 12 the three game-port
+readers, 18 the two axis readers and the sampler); §H2.3/§H2.6, §H3.5 and §H4.5 give the per-task splits (26,
 12, 18), and only the last is Task 4's.

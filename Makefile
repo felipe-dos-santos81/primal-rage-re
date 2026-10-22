@@ -97,6 +97,27 @@ deps: ## Check the toolchain and the (untracked) game assets
 		echo "warning: dosbox-x not found (only re-original needs it)"
 	@[ -f "$(GAME_DIR)/PRAGE.EXE" ] || \
 		echo "warning: $(GAME_DIR)/PRAGE.EXE missing — assets are deliberately untracked"
+	@if [ -f "$(PORT_DIR)/tests/ghidra_data.bin" ]; then \
+		echo "ok: $(PORT_DIR)/tests/ghidra_data.bin present"; \
+	else \
+		echo "warning: $(PORT_DIR)/tests/ghidra_data.bin missing — PR_ORACLE_REQUIRED runs need it; make re-oracle regenerates it"; \
+	fi
+	@if $(PYTHON) -c 'import unicorn' >/dev/null 2>&1; then \
+		echo "ok: python unicorn importable"; \
+	else \
+		echo "warning: python unicorn not importable — make diff-verify needs tools/requirements-diff.txt"; \
+	fi
+	@if $(PYTHON) -c 'import capstone' >/dev/null 2>&1; then \
+		echo "ok: python capstone importable"; \
+	else \
+		echo "warning: python capstone not importable — make diff-verify needs tools/requirements-diff.txt"; \
+	fi
+	@cmos="$(GAME_DIR)/CMOS"; \
+	if [ ! -e "$$cmos" ] || { [ "$$(wc -c < "$$cmos" | tr -d ' ')" = 2040 ] && [ "$$(tr -d '\000' < "$$cmos" | wc -c | tr -d ' ')" = 0 ]; }; then \
+		echo "ok: $$cmos absent or 2040 zero bytes"; \
+	else \
+		echo "warning: $$cmos must be absent or 2040 all-zero bytes — make verify requires it"; \
+	fi
 	@echo "ok"
 
 # ── Port · build and verify ──────────────────────────────────────────────────

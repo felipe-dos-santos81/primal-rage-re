@@ -159,6 +159,13 @@ ratchets (`DEMO_FIGHT_MIN_FIRST`, `ATTRACT2_MIN_FIRST`, the `gp_*` pins) hold
 the measured first unexplained frame and are raised as the port improves. Each
 pin's provenance is in the `Makefile`.
 
+Prerequisites for the full gate: `port/tests/ghidra_data.bin` (git-ignored;
+`make re-oracle` regenerates it), `unicorn` and `capstone` for the differential
+harness (`pip install -r tools/requirements-diff.txt`), and `data/game/C/CMOS`
+absent or 2040 zero bytes (the `make verify` precondition). `make deps` checks
+each one and warns when one is missing or wrong. The capture-based oracles skip without
+their git-ignored captures.
+
 To produce the title/attract captures yourself:
 
 ```bash

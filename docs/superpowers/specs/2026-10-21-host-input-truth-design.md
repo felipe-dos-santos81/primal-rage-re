@@ -68,7 +68,7 @@ The sampler checks the game port every tick: `0x4FDF5`/`0x4FC05`/`0x4FCFD` retur
 ### The port today
 
 - `host_kb_bit` (`host.c:93-136`) maps one set-1 scan to the configured 16-slot key table (`+0x2DE..+0x2ED`) or the default record; `host_key_bits` (`host.c:147-159`) ORs the SDL keyboard over the 26 letters + 10 pad keys only.
-- `game_loop` writes both bytes unconditionally each frame (`flow.c:7117-7121`). Nothing in the input path reads `+0x2D4/+0x2D6`; the service menu reads them only to draw the selection (`svcmenu.c:978-985`).
+- The sampler `input_sampler` (`0x1BBAC`) writes both players' key bytes `+0x2D8/+0x2D9` each frame, and `game_loop` runs the host fills and the pump (`flow.c:7156-7168`). The sampler reads the device words `+0x2D4/+0x2D6` (`input.c:315-317`); the service menu reads them only to draw the selection (`svcmenu.c:978-985`).
 - `input_joystick_device` (`input.c:64-69`) returns 0; `input_state_update` (`input.c:110-130`) stores 0 and its merge gate never opens.
 - `0x20D0F..0x20DE3` is omitted by name (`flow.c:6980-6985`, named gap B.11); `0x5004A` is a no-op on Alt-J (`flow.c:7385-7390`); `0x4FBBB` has no port counterpart.
 - No SDL gamepad code exists (as of 2026-10-21; Task 5 adds it, record §H5). A rebind to a scan outside the 26 letters + 10 pad scancodes is stored in the config but never sampled.

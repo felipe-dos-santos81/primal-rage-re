@@ -1,8 +1,8 @@
 # Gameplay truth II — the unexplained tail and the held captures (2026-10-20)
 
-Status: DRAFT — written from the 2026-10-14 next-phase recon, the track G/J/A
-records, and a 2026-10-20 re-read of the current pins and tools. Builder-checked
-2026-10-20: its three findings are folded in (W1 is a tail pass, not a single
+Status: implemented; capture Tasks 9–12 open (evidence closeout plan 2026-10-22).
+Written from the 2026-10-14 next-phase recon, the track G/J/A records, and a
+2026-10-20 re-read of the current pins and tools. Builder-checked 2026-10-20: its three findings are folded in (W1 is a tail pass, not a single
 frame; W8 is a raw verdict, not a capture; W5's death-animation test is
 shared-code, not same-stream). The open calls are the controller's, overturnable.
 

@@ -31,15 +31,20 @@ make gp-win-oracle         # U9: the win path under pokes, data/k11-captures/gp-
 make gp-ending-oracle      # U10: the ending under pokes, data/k11-captures/gp-u10-ending (GP_ENDING_*); in make verify; skips without the capture
 make gp-twop-oracle        # two-human gameplay oracle: gp-twop must be a two-human match (tools/gp_twop.py), then frame + trace + moves ratchets (N 612, F 1506 and moves N 1506 = the port script's end, the poll.log sha256 pinned in the Makefile); in make verify; skips without the capture
 make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
+make gp-u12-oracle         # Gameplay U12: gp-u12-endurance's team pass and fight; in make verify; skips without data/k11-captures/gp-u12-endurance
+make gp-u13-oracle         # Gameplay U13: gp-u13-ending2's non-character-0 ending; in make verify; skips without data/k11-captures/gp-u13-ending2
+make gp-u14-oracle         # Gameplay U14: gp-u14-win-live's fought win; in make verify; skips without data/k11-captures/gp-u14-win-live
+make gp-u15-oracle         # Gameplay U15: gp-u15-join's mid-round join; in make verify; skips without data/k11-captures/gp-u15-join
+make gp-u16-oracle         # Gameplay U16: gp-u16-twop2's extended two-human match and finishers; in make verify; skips without data/k11-captures/gp-u16-twop2
 make gp-u17-oracle         # host input truth U17: gp-u17-device2 must reach MODIFY CONTROLS and select device 2 with no pad (tools/gp_u17.py check: the S-record clear, the label band's screen proof, the poll.log sha256 and frame count); in make verify; skips without the capture; the frame/trace ratchets are empty (the wall-paced walk has no replay, record §H6.9)
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
 make entry-triage          # E2: triage of the non-Ghidra entry candidates; the committed table must equal a fresh run (in make verify; skips without capstone or PRAGE.EXE; fails under PR_ORACLE_REQUIRED=1)
 ```
-- **A fresh git worktree needs the git-ignored test fixtures copied in** (`port/tests/ghidra_data.bin`,
-  `port/tests/title_screen_ref.ppm`) before any `PR_ORACLE_REQUIRED=1` run or `make verify` — they live
-  in the main checkout and `git worktree add` does not bring them (track G lost three runs to this).
+- **A fresh git worktree needs the git-ignored test fixture copied in** (`port/tests/ghidra_data.bin`;
+  `make re-oracle` regenerates it) before any `PR_ORACLE_REQUIRED=1` run or `make verify` — it lives
+  in the main checkout and `git worktree add` does not bring it (track G lost three runs to this).
 
 - **Run the binaries from the repo root.** Several tests default to the relative
   `data/game/C` (`PR_GAME_DIR` overrides it), and CMake's `add_test` sets the
