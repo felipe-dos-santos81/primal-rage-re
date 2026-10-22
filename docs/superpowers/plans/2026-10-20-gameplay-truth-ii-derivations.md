@@ -783,6 +783,31 @@ Each failing-direction proof was run against the capture and replay dump with on
 
 **The narrow claim:** capture frames in the exhibited window below 4248 are explained (with the one byte-pinned loader overlay); the ending row proves `ad4=0,c0=1`, all 30 milestones and the script end at f=10013 are reached, and trace/win fields match through that end. The unexplained frame at 4248 is the pixel-claim limit; nothing at or after it is claimed correct. Port-frame order and complete interior coverage are not claimed.
 
+## §J6 The `gp-u14-win-live` live-win capture — named gap (evidence closeout Task 9, R1)
+
+The approved session had a two-attempt limit; nobody typed in the DOSBox-X window. The first `DISPLAY=:1 make gp-capture scenario=gp-u14-win-live` command was terminated by the shell tool's 200-second timeout before capture checks completed. The follow-up found no capture directory or files, and `python3 tools/gp_capture.py check-input data/k11-captures/gp-u14-win-live` failed with `no poll.log` (exit 2). This was a command timeout, not a completed scenario result.
+
+The authorized retry used a 700-second command timeout for the scenario's 200-second `time_limit`. It ran 9,761 snapshots (`f 4..265D`, 57 missed frames), but the capture's own checks failed:
+
+```
+CHECK base: ok
+CHECK steps fired 68/68: ok
+CHECK end frame reached: FAIL
+CHECK mode 0x27 after the Enter: ok
+CHECK snapshots kb == raw (0 differ): ok
+CHECK frames written 7287/7287: ok
+CHECK port script v2 (the scenario end (X record) was not reached): FAIL
+CHECK no unscripted input: ok
+CHECK pokes written 0/0, 0 raced: ok
+CHECK stopped at the end (SIGTERM at f=-, rc=0): FAIL
+```
+
+`gp_capture.py` reported 7,287 frames (raw 1386..14016), wall 200.9 s, and wrote the failed run to `data/k11-captures/gp-u14-win-live.failed` in the real checkout; it left the requested `gp-u14-win-live` directory as it was. The `check-input` command on that requested path again exited 2 with `no poll.log`. The failed artifact is preserved at `/tmp/pr_gp_failed/gp-u14-win-live-run2/`; the first timed-out attempt left no artifact. `data/k11-captures/gp-u14-win-live` is absent.
+
+With no capture, `make gp-u14-oracle` passes the 24 `tools.tests.test_gp_win` tests and reports `no capture ... (skipped)` (exit 0). All eight `GP_U14_*` assignments remain empty; the target already guards its capture-dependent check/replay/compare/path commands on the capture directory, so no Makefile change was needed. There is no replay, live-KO/`b0c` evidence, milestone evidence, or comparison from which to measure a pin. No U14 pin or capture claim is possible.
+
+**Named gap / narrow statement:** the U14 live win is not covered. Neither attempt completed the scenario's end checks; the retry's missing X record means it cannot establish a fought KO or the game's `b0c`. The U9/U10 poked-win oracles are not a substitute: their `DEATH_DONE` pokes do not prove a live U14 win, and no such claim is made for U14. No third attempt, weakened claim, or fitted pin is permitted under R1.
+
 ## §J7 The `gp-u15-join` capture (evidence closeout Task 5; measured on the closeout branch)
 
 `data/k11-captures/gp-u15-join` (git-ignored): P2 joins the gp-idle-loss fight mid-round with F2 (`gp_session.SCENARIOS['gp-u15-join']`, 75 s limit, 4 injected steps, end 60 frames into the join's mode 0x17). Captured with `DISPLAY=:1 make gp-capture scenario=gp-u15-join`, nobody typing in the window.
