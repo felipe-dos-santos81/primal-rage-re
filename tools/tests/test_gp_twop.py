@@ -64,12 +64,12 @@ class TestScenario(unittest.TestCase):
         self.assertTrue(all(a[2] >= 2 for a in acts))       # a 1-frame press never reaches the level
 
 
-def _join(new=0x100, before_mode=6, join_mode=0x17):
+def _join(new=0x100, before_mode=6, join_mode=0x17, held=0, before_held=0):
     """A mid-round join (0x28CC8/0x28DA4): `before_mode` with P1 only, then F2 at
     0x400 (new 0x100 = DS_0009ACBC[1]) takes b1f 1 -> 3 in the join's mode 0x17 and
     cred stays 4; X at 0x440, with no mode-6 record after the join."""
-    L = [_s(f, mode=before_mode, b1f=1) for f in range(0x3F0, 0x400)]
-    L += [_s(0x400, mode=join_mode, b1f=3, new=new)]
+    L = [_s(f, mode=before_mode, b1f=1, held=before_held) for f in range(0x3F0, 0x400)]
+    L += [_s(0x400, mode=join_mode, b1f=3, new=new, held=held)]
     L += [_s(f, mode=join_mode) for f in range(0x401, 0x440)]
     L += ['X ms=0 f=0440 step=9 end']
     return L
@@ -107,6 +107,19 @@ class TestMidRoundJoin(unittest.TestCase):
         # DS_0009ACBC[1] is F2's level bit (0x00000100, gp_keys.P1_B0_NEW's side-1 twin)
         r = gt.two_human(_join(new=0), join_only=True)
         self.assertIn('start mask', r['fail'][0])
+        self.assertEqual(gt.two_human(_join(), join_only=True)['start_edge'], 'new')
+
+    def test_the_held_edge_across_missed_frames_is_accepted(self):
+        # gp-u15-join: the harness missed f=0x832/0x833 where the bit rose, so the join
+        # record (0x834) holds F2 with new=0 and the record before it (0x831) did not
+        r = gt.two_human(_join(new=0, held=gt.START_MASK[1]), join_only=True)
+        self.assertEqual((r['fail'], r['start_edge']), ([], 'held'))
+
+    def test_a_start_held_before_the_join_is_not_newly_pressed(self):
+        r = gt.two_human(_join(new=0, held=gt.START_MASK[1], before_held=gt.START_MASK[1]), join_only=True)
+        self.assertEqual(len(r['fail']), 1)
+        self.assertIn('not newly pressed at f=400 (new 00000000, held 00000100; the record before it held 00000100)',
+                      r['fail'][0])
 
 
 class TestTwoHuman(unittest.TestCase):

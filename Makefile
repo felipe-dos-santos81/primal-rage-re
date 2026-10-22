@@ -1342,21 +1342,32 @@ gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips
 # pressed word, b1f 1 -> 3, no debit) instead of the two-human fight claim: no fight
 # frame follows the join, and the CPU command block still writes the joining side's
 # word in 0x17 (gp-keys-fight f=0x85A..0x85C: e2 = 0 while the pad holds 0x100). The
-# pins are EMPTY until data/k11-captures/gp-u15-join is captured and measured (Task 12):
-# the target skips on the absent capture directory (`[ ! -d ]`), and a present capture
-# with an empty pin fails first in gp_compare's sha check ("poll.log sha256 ... != the
-# pinned (unpinned)").
-# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture
-# frame, TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first
-# capture frame, MIN_REACH the replay's last exhibited port frame, and the capture
-# identity (poll.log sha256 and the frame_*.raw.gz count). Raise
-# MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH when they improve.
-GP_U15_MIN_FIRST =
-GP_U15_TRACE_MIN_FIRST =
-GP_U15_MAX_START =
-GP_U15_MIN_REACH =
-GP_U15_CAPTURE_SHA256 =
-GP_U15_CAPTURE_FRAMES =
+# pins below are measured on data/k11-captures/gp-u15-join (record gameplay-truth-ii §J7):
+# the target skips on the absent capture directory (`[ ! -d ]`), and a capture whose
+# poll.log sha256 differs fails in gp_compare's sha check. The capture missed game frames
+# 0x832/0x833 (harness, spec §3.7), where F2's start bit rose, so the join check reads the
+# press as the held edge across them (record §J7: the raw `new` bit was not sampled).
+# Measured report (gp_compare --report --max-unexplained 0, replay of the capture's script
+# to its X record f=0x86D): window from capture 90 (raw 1745), 707 classified (492 clean,
+# 214 splice, 1 transition, 0 unexplained, 8 all-black), "0 unexplained through 804";
+# trace/moves "0 differing through 2157". The replay has no first unexplained and no first
+# trace difference, so MIN_FIRST and TRACE_MIN_FIRST are the window bounds (gp_compare's
+# "exact pin": the end of the compared range, N unreachable above it), not a divergence:
+# MIN_FIRST = 805 (frames through 804 compared) and TRACE_MIN_FIRST = 2158 (traced f
+# through 2157 compared; the controller's 2157 passes too, and 2158 is gp_compare's
+# own "N = 2158 is the exact pin"). Their +1 fails as "N is unreachable"; the claim is
+# that the scripted end was reached with nothing unexplained inside the window.
+# MAX_START = 90 is
+# the window's first capture frame. MIN_REACH = 590 is the replay's last exhibited port
+# frame (the report's "up to port 590"; it is not the capture's 805: the port's frame
+# numbering differs and the window's interior and order are not claimed). The capture
+# identity is the poll.log sha256 and the 805 frame_*.raw.gz.
+GP_U15_MIN_FIRST = 805
+GP_U15_TRACE_MIN_FIRST = 2158
+GP_U15_MAX_START = 90
+GP_U15_MIN_REACH = 590
+GP_U15_CAPTURE_SHA256 = 5f7ab1d72c7893e6fd66e8db143b615e6d3b385122ae0a93b9037ad1ffe3664c
+GP_U15_CAPTURE_FRAMES = 805
 gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips without data/k11-captures/gp-u15-join)
 	@echo "== gameplay oracle: gp-u15-join (a mid-round join) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_twop

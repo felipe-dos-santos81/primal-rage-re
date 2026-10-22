@@ -617,3 +617,75 @@ It does not claim the port reproduces the original's game-port sampling, the ser
 selection, the `|diff| >= 0x1E` axis thresholds (a ±0x1D dead band) or the button bits. It adds no
 capture, no `gp-*` scenario, no pin and no `port/src` change; the `0x2D2F0` and `0x4F644` rows are
 unchanged and VERIFIED. The verdict is raw-only, measured at `f1f665c2`.
+
+## §J7 The `gp-u15-join` capture (evidence closeout Task 5; measured on the closeout branch)
+
+`data/k11-captures/gp-u15-join` (git-ignored): P2 joins the gp-idle-loss fight mid-round with F2 (`gp_session.SCENARIOS['gp-u15-join']`, 75 s limit, 4 injected steps, end 60 frames into the join's mode 0x17). Captured with `DISPLAY=:1 make gp-capture scenario=gp-u15-join`, nobody typing in the window.
+
+### The capture's checks
+
+```
+snapshots 2208, f 4..8A9, 6 frames missed (spec §3.7)
+CHECK base: ok                    CHECK steps fired 4/4: ok
+CHECK end frame reached: ok       CHECK mode 0x27 after the Enter: ok
+CHECK snapshots kb == raw (0 differ): ok     CHECK frames written 805/805: ok
+CHECK port script v2: ok          CHECK no unscripted input: ok
+CHECK pokes written 0/0, 0 raced: ok         CHECK stopped at the end (SIGTERM at f=08A9, rc=0): ok
+```
+`tools/gp_capture.py check-input data/k11-captures/gp-u15-join`: `check=ok no unscripted input`. `poll.log` sha256 `5f7ab1d72c7893e6fd66e8db143b615e6d3b385122ae0a93b9037ad1ffe3664c`, 805 frames (raw 1372..3920). The harness missed six game frames: `0x26E`, `0x270`, `0x652`, `0x653`, **`0x832`, `0x833`**.
+
+### The replay's miss set
+
+`make gp-replay scenario=gp-u15-join` first failed `4 != 2`; the unexpected rows were the two §G.24 wipe hooks, `0x29D60` (a bare `ret`) and `0x5D812` (the runtime stub), both from `frontend_mode_1b_step`, hits=1 each. They are the same pair as gp-u9-win and gp-u10-ending, not a target the replay must execute: `k_miss_gp_u15_join` in `port/tests/test_platform.c` pins them (with the base pair `0x5D812` actor_spawn 4396 hits and set_dead 4072: `distinct=4 dropped=0`), and its `k_gp_sets` row selects it by exact name. No new porting.
+
+### The join evidence, and the R6 held-edge fallback
+
+`python3 tools/gp_twop.py check --join --capture data/k11-captures/gp-u15-join`:
+```
+join f=834 (cred 4 -> 4); 58 S records from the join to X f=86D; side 0 [('pad', 58)], side 1 [('pad', 55), ('zero', 3)]; fight presses 0/0
+mid-round join: mode 6 -> 17, b1f 1 -> 3, start press seen as the held-edge across missed frames
+mid-round join: ok
+```
+The press rose in `0x832`/`0x833`, both unsampled, so the S records around it are:
+
+| f | mode | raw | new | held | b1f |
+|---|---|---|---|---|---|
+| 0x831 | 6 | 0100 | 0 | 0 | 1 |
+| 0x832, 0x833 | missed (the P record sees mode 0x17 at 0x833) | | | | |
+| 0x834 | 0x17 | 0100 | 0 | 0100 | 3 |
+
+`two_human(join_only=True)` first required `new & START_MASK[1]` at the join record (the first `b1f == 3`), which the missed frames hid (`new` is set for one game frame only). **Ruling R6** (the controller's amendment): when `new` has no bit, accept the joining side's start mask held in the join record **and** not held in the last S record before it (`start_edge == 'held'`); a mask already held before the join still fails ("not newly pressed at f=… (new …, held …; the record before it held …)"). The mode 6 → 0x17, `b1f` 1 → 3 and no-debit checks are unchanged. `tools/tests/test_gp_twop.py` covers the `new` pass (now also asserting `start_edge == 'new'`), the held-edge pass, the held-before failure and the no-bit failure; mutating away either clause of the held test fails a test.
+
+**The narrow claim:** the join's start press is inferred from the held edge across two unsampled frames; the raw `new` bit was not sampled. The credit/`b1f`/mode evidence is sampled directly (`0x831` before, `0x834` after). Nothing past the capture's end (60 frames into the 0x78-frame window) is claimed.
+
+### The measured report
+
+`python3 tools/gp_compare.py --report --scenario gp-u15-join --capture data/k11-captures/gp-u15-join --port /tmp/pr_gp_dump/gp-u15-join --max-unexplained 0`:
+```
+frames: window from capture 90 (raw 1745); 707 classified: 492 clean, 214 splice, 1 transition, 0 band-allowed, 0 scan3-allowed, 0 overlay-allowed, 0 unexplained, 8 all-black
+frames: coverage (reported, not ratcheted): 9 non-black port frame(s) up to port 590 not exhibited by any classified capture frame: [9, 11, 413, 414, 453, 454, 455, 456, 458]
+frames: 0 unexplained through 804
+trace: 1831 frames compared (f 141..), 6 without a capture snapshot; first tick difference f=141 (reported, not ratcheted)
+trace: normalised (reported, not ratcheted): ent 0 of 1831 differ; t508 1495 of 1831 differ (first f=281)
+trace: 0 differing through 2157
+moves: 1831 frames compared (f 141..) over c0 c1 r0 r1 s0_43, 6 without a capture snapshot
+moves: 0 differing through 2157
+```
+The replay has no first unexplained frame and no first trace/move difference: 805 is the end of the compared capture frames and the script's end was reached. This is the window bound, **not** a divergence ratchet, and not "how far the port got" short of the end.
+
+### The pins and their proofs (`make gp-u15-oracle`, PASS at the pinned values)
+
+| pin | value | provenance | proof |
+|---|---|---|---|
+| `GP_U15_MIN_FIRST` | 805 | `0 unexplained through 804`; gp_compare's exact pin | 806 → FAIL (`N 806 > end 805: N is unreachable`); 804 → passes (a lower bound is weaker, not wrong) |
+| `GP_U15_TRACE_MIN_FIRST` | 2158 | `0 differing through 2157`; gp_compare's `N = 2158 is the exact pin` | 2159 → FAIL (`N 2159 > end 2158: N is unreachable`); 2157 and 2156 pass. **Deviation from R7:** the ruling named 2157 (the last clean frame), whose +1 does not fail; 2158 is the tool's exact pin and its +1 does fail |
+| `GP_U15_MAX_START` | 90 | window from capture 90 | 89 → FAIL (`window starts at capture 90 > pinned start 89`) |
+| `GP_U15_MIN_REACH` | 590 | `up to port 590` | 591 → FAIL (`window reach port 590 < pinned reach 591`); 589 → passes with "improved: raise the pin". **Deviation from R7:** the ruling named 805 (a capture frame count); the report's reach is a port frame, 590, and 805 fails (`590 < 805`) |
+| `GP_U15_CAPTURE_FRAMES` | 805 | the harness's 805/805 frames written | 806 → FAIL (the identity line) |
+| `GP_U15_CAPTURE_SHA256` | `5f7ab1d7…e3664c` | `poll.log` | a different sha (`6f7a…`) → FAIL (the identity line) |
+
+Every FAIL was shown by `make gp-u15-oracle GP_U15_X=value` (the Makefile restored: the final default run exits 0). The full `make verify` was not run (the closeout runs the gate).
+
+### What this section does not claim
+
+It does not claim port-frame order or interior coverage inside the window (the nine unexhibited port frames above are reported, not ratcheted), the raw `new` start bit at the join (see the held-edge fallback), anything past the capture's end, or the join's mode-0x17 window beyond 60 frames; the capture does not move any existing pin.

@@ -87,7 +87,9 @@ def two_human(lines, join_only=False):
     gp-u15-join capture): the S record before the join is the fight (mode 6) with one
     side human, the join's own record is the join window mode 0x17 (0x28DA4 stores it,
     0x28E3A/0x28E66), the joining side's start mask DS_0009ACBC[side] is newly pressed
-    in DS_001088E4, and b1f stays 3 to the end; the credit check is shared (0x2CA93).
+    in DS_001088E4 (or, when the harness missed the frames where it rose, held in the
+    join's record after a record before it that did not hold it: start_edge 'held'),
+    and b1f stays 3 to the end; the credit check is shared (0x2CA93).
     The fight-press and command-word claims are skipped: the capture ends inside the
     join's 0x78-frame 0x17 window (0x28E75), where no fight frame runs and the CPU
     command block still writes the joining side's word (gp-keys-fight f=0x85A..0x85C:
@@ -98,7 +100,7 @@ def two_human(lines, join_only=False):
     fs = sorted(f for f in snap if end is None or f <= end)
     out = dict(join=None, end=end, frames=0, counts=[{}, {}], pressed=[0, 0],
                cred_before=None, cred_join=None, join_mode=None, before_mode=None,
-               b1f_before=None, b1f_join=None, fail=[])
+               b1f_before=None, b1f_join=None, start_edge=None, fail=[])
     join = next((f for f in fs if snap[f]['b1f'] == 3), None)
     if join is None:
         out['fail'].append('b1f never reaches 3 (no S record has both sides human)')
@@ -131,9 +133,15 @@ def two_human(lines, join_only=False):
             if side is None:
                 out['fail'].append('b1f %X -> %X at the join f=%X: not one side joining'
                                    % (out['b1f_before'], out['b1f_join'], join))
-            elif (snap[join]['new'] & START_MASK[side]) == 0:
-                out['fail'].append('the joining side %d start mask %08X is not newly pressed at f=%X (new %08X)'
-                                   % (side, START_MASK[side], join, snap[join]['new']))
+            elif snap[join]['new'] & START_MASK[side]:
+                out['start_edge'] = 'new'
+            elif (snap[join]['held'] & START_MASK[side]) and not (snap[before[-1]]['held'] & START_MASK[side]):
+                out['start_edge'] = 'held'
+            else:
+                out['fail'].append('the joining side %d start mask %08X is not newly pressed at f=%X '
+                                   '(new %08X, held %08X; the record before it held %08X)'
+                                   % (side, START_MASK[side], join, snap[join]['new'], snap[join]['held'],
+                                      snap[before[-1]]['held']))
     for f in fs:
         if f < join:
             continue
@@ -242,8 +250,10 @@ def main():
                  sorted(r['counts'][0].items()), sorted(r['counts'][1].items()),
                  r['pressed'][0], r['pressed'][1]))
         if a.join:
-            print('gp_twop: %s: mid-round join: mode %X -> %X, b1f %X -> %X'
-                  % (name, r['before_mode'], r['join_mode'], r['b1f_before'], r['b1f_join']))
+            print('gp_twop: %s: mid-round join: mode %X -> %X, b1f %X -> %X, start press seen as %s'
+                  % (name, r['before_mode'], r['join_mode'], r['b1f_before'], r['b1f_join'],
+                     {'new': 'the newly-pressed bit', 'held': 'the held-edge across missed frames',
+                      None: 'neither'}[r['start_edge']]))
     for x in r['fail']:
         print('gp_twop: %s: FAIL: %s' % (name, x))
     if r['fail']:
