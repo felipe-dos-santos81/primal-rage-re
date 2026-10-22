@@ -170,6 +170,39 @@ u8 host_port_buttons(void);
  * host_pad_fill writes the pad's displacement over it. */
 void host_input_fill_axes(void);
 
+/* ---- PORT: the SDL gamepad model (record 2026-10-21-host-input-truth §H5) ----
+ * The host owns the game port: the pad is not part of the raw's game logic
+ * (0x2D2F0 is `xor eax,eax; ret`), and the sampler's device 2/4/6 arms read
+ * the host's game-port byte and the four normalized axis words. The host keeps
+ * one SDL gamepad's state and, each sampler tick, writes the axis words for the
+ * players whose device word selects a joystick arm and the active-low button
+ * byte. Device 0 ignores the pad: its arm reads the keyboard table only. A
+ * joystick arm replaces that player's keyboard direction/button nibble (device
+ * 6 keeps only the keyboard *button* scans; the sampler's arms do the select).
+ *
+ * host_pad_open() opens the first SDL gamepad in host_init (a failure leaves
+ * the pad absent and never aborts); host_pad_close() is host_shutdown's
+ * teardown. host_pad_poll() samples the pad and input_sampler() calls it once
+ * per tick. host_pad_fill() writes the game's axis words and port byte from the
+ * sampled state: the four axes are X1 Y1 X2 Y2 (axes A = the first stick, axes
+ * B = the second), the four game buttons are 1/2/4/8, mapped from the face
+ * buttons south/east/west/north. The SDL int16 axis is scaled to the raw's
+ * normalized unit by HOST_PAD_AXIS_SCALE (a declared host policy, host.c): full
+ * deflection is 0x1FF, so the raw's ±0x1E dead band is about 6% of travel.
+ * With no pad the fill leaves the axis words at their centers and the game-port
+ * byte at 0 (Task 4's no-pad state; Task 6 models the presence answer). */
+void host_pad_open(void);
+void host_pad_close(void);
+void host_pad_poll(void);
+void host_pad_fill(void);
+
+/* PORT: test seam, no raw counterpart. While armed, host_pad_poll() does
+ * nothing and host_pad_fill() reads `axes` (four s8 normalized displacements,
+ * X1 Y1 X2 Y2) and `buttons` (four game buttons, nonzero = pressed) instead of
+ * the SDL pad; `present` is the pad's presence. (NULL, NULL, 0) disarms it.
+ * Off by default; nothing outside the tests sets it. */
+void host_set_pad_override(const u8 *axes, const u8 *buttons, int present);
+
 /* PORT: the host's answer to the ISR sampler's presence block (0x1BBAC's
  * 0x4FDF5/0x4FC05/0x4FCFD polls and 0x4FBBB probe; the routines stay
  * host-owned, record §49-V). 1 means the game port answered, 0 means it did NOT

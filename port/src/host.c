@@ -290,6 +290,176 @@ void host_input_fill_axes(void)
     DSW(DS_000E1C28) = DSW(DS_000E1C2C);          /* P2 Y */
 }
 
+/* ---- the SDL gamepad model (record 2026-10-21-host-input-truth §H5) -------
+ * The host owns the PC game port: the raw's game logic has no joystick path
+ * (0x2D2F0 is `xor eax,eax; ret`), and the sampler 0x1BBAC's device 2/4/6 arms
+ * read the host's game-port byte (0x1B890/0x1B8DC/0x1B908) and the four
+ * normalized axis words (0x4FF8F/0x4FFD8). The host samples one SDL gamepad
+ * and writes those words for the players whose device word selects a joystick
+ * arm; a device 0 arm reads the keyboard table only, so the pad never feeds a
+ * keyboard player. The arms themselves do the nibble replacement (a device 6
+ * arm reads axes + the keyboard button scans, not the game port). */
+
+/* PORT: host policy, not a raw value. SDL3 reports each axis as an int16
+ * (-32768..32767); the raw's normalized axis word is a PIT-tick difference
+ * >> 4, and the only number the raw fixes for the host is the ±0x1E dead band
+ * (0x4FF92..0x4FFD4), not the stick's numeric range. This divisor maps full
+ * SDL deflection to 0x1FF (32767 / 64), so the raw's ±0x1E threshold is about
+ * 6% of travel. It is declared host policy, not fitted to a capture (there is
+ * none for a game port; design "The SDL axis scale is host policy"). */
+#define HOST_PAD_AXIS_SCALE 64
+
+/* The four axes the arms read: A = the left stick's X/Y, B = the right
+ * stick's X/Y. They correspond to the raw's 0xE1C1E/0xE1C20 (P1 A) and
+ * 0xE1C26/0xE1C28 (P2 B); P2's device 2 arm reads A (0x1BD8B). */
+static const SDL_GamepadAxis k_pad_axis[4] = {
+    SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY,
+    SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY
+};
+
+/* The four game buttons (the raw's game bits 1/2/4/8, in order), mapped from
+ * the face buttons south/east/west/north. The port byte's bit 4+k is button
+ * k+1, active low (0x1B890's PC game-port convention). */
+static const SDL_GamepadButton k_pad_button[4] = {
+    SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST,
+    SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH
+};
+
+static SDL_Gamepad *g_pad;         /* the first pad, or NULL */
+static int g_pad_subsystem;        /* SDL_INIT_GAMEPAD is ours to quit */
+static s16 g_pad_axes[4];          /* normalized units, X1 Y1 X2 Y2 */
+static u8 g_pad_buttons[4];        /* game buttons 1..4, nonzero = pressed */
+static int g_pad_present;          /* the pad answered the last poll */
+
+static const u8 *g_pad_axis_override;    /* the seam's axes, read while armed */
+static const u8 *g_pad_button_override;  /* the seam's buttons */
+static int g_pad_override_on;
+static int g_pad_override_present;
+
+void host_set_pad_override(const u8 *axes, const u8 *buttons, int present)
+{
+    /* (NULL, NULL, 0) is the disarm form; anything else arms the seam. */
+    if (axes == NULL && buttons == NULL && present == 0) {
+        g_pad_override_on = 0;
+        return;
+    }
+    g_pad_axis_override = axes;
+    g_pad_button_override = buttons;
+    g_pad_override_present = present;
+    g_pad_override_on = 1;
+}
+
+/* PORT: opens the first SDL gamepad, if any. The gamepad subsystem is its own
+ * SDL subsystem (SDL_INIT_GAMEPAD); a host with no pad (or no gamepad driver)
+ * leaves the pad absent, so the sampler stays on the no-pad state and a
+ * joystick device word is cleared by the presence path. Never aborts. */
+void host_pad_open(void)
+{
+    if (g_pad != NULL) return;
+    if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) return;
+    g_pad_subsystem = 1;
+    int count = 0;
+    SDL_JoystickID *ids = SDL_GetGamepads(&count);
+    if (ids == NULL) return;
+    for (int i = 0; i < count; i++) {
+        g_pad = SDL_OpenGamepad(ids[i]);
+        if (g_pad != NULL) break;
+    }
+    SDL_free(ids);
+    g_pad_present = g_pad != NULL;
+    if (g_pad != NULL) host_pad_poll();
+}
+
+void host_pad_close(void)
+{
+    if (g_pad != NULL) { SDL_CloseGamepad(g_pad); g_pad = NULL; }
+    if (g_pad_subsystem) { SDL_QuitSubSystem(SDL_INIT_GAMEPAD); g_pad_subsystem = 0; }
+    g_pad_present = 0;
+    for (u32 i = 0u; i < 4u; i++) { g_pad_axes[i] = 0; g_pad_buttons[i] = 0u; }
+}
+
+/* PORT: samples the pad once per sampler tick (input_sampler calls this). The
+ * seam short-circuits SDL entirely; with no open pad there is nothing to poll,
+ * so every headless path is a no-op. SDL updates gamepads from its event pump;
+ * the explicit update also keeps a run that has not drained events current. */
+void host_pad_poll(void)
+{
+    if (g_pad_override_on || g_pad == NULL) return;
+    if (!SDL_GamepadConnected(g_pad)) { g_pad_present = 0; return; }
+    SDL_UpdateGamepads();
+    for (u32 i = 0u; i < 4u; i++) {
+        const Sint16 v = SDL_GetGamepadAxis(g_pad, k_pad_axis[i]);
+        g_pad_axes[i] = (s16)(v / HOST_PAD_AXIS_SCALE);
+        g_pad_buttons[i] =
+            SDL_GetGamepadButton(g_pad, k_pad_button[i]) ? 1u : 0u;
+    }
+    g_pad_present = 1;
+}
+
+/* The game-port byte: bits 4..7 active low, game button k grounding bit 4+k
+ * (0x1B890 reads all four; 0x1B8DC reads 4/5 as P1's 1/4 and 0x1B908 6/7 as
+ * P2's). Bits 0..3 are not button inputs and stay high. */
+static u8 pad_port_byte(const u8 buttons[4])
+{
+    u8 byte = 0xF0u;
+    for (u32 i = 0u; i < 4u; i++)
+        if (buttons[i] != 0u) byte &= (u8)~(0x10u << i);
+    return byte;
+}
+
+/* PORT: writes the pad's state into the game's input words (record §H5). The
+ * device words gate the arms: only the axis words a selected arm actually
+ * reads are written (axes A for P1's 2/4/6 and for P2's device-2 arm, which
+ * the raw's switch sends to 0x4FF8F -- the shared stick; axes B for P2's 4/6),
+ * and a keyboard player keeps the centers host_input_fill_axes() wrote. The
+ * pad's four buttons become the active-low game-port byte for every arm;
+ * device 6's arm does not read it (it reads the keyboard button scans). With
+ * no pad the axis words stay at their centers and the byte is Task 4's 0
+ * placeholder -- the sampler's presence clear makes a joystick word harmless
+ * until Task 6 answers the probe. */
+void host_pad_fill(void)
+{
+    s16 axes[4] = { 0, 0, 0, 0 };
+    u8 buttons[4] = { 0, 0, 0, 0 };
+    if (g_pad_override_on) {
+        for (u32 i = 0u; i < 4u; i++) {
+            if (g_pad_axis_override != NULL)
+                axes[i] = (s16)(s8)g_pad_axis_override[i];
+            if (g_pad_button_override != NULL)
+                buttons[i] = g_pad_button_override[i] != 0u ? 1u : 0u;
+        }
+    } else {
+        for (u32 i = 0u; i < 4u; i++) {
+            axes[i] = g_pad_axes[i];
+            buttons[i] = g_pad_buttons[i];
+        }
+    }
+    const int present = g_pad_override_on ? g_pad_override_present : g_pad_present;
+    if (!present) {
+        g_port_buttons = 0u;
+        return;
+    }
+    const u32 base = DSD(DS_00101514);
+    if (base == 0u || base > MEM_SIZE - 0x2EEu) return;
+    const u16 dev1 = DSW(base + 0x2D4u);
+    const u16 dev2 = DSW(base + 0x2D6u);
+    /* Axes A: P1's arms 2/4/6, and P2's device-2 arm, which the raw's switch
+     * sends to 0x4FF8F -- axes A, not B (0x1BD8B). The shared stick must be
+     * written even when P1 itself is on the keyboard (0/2), or P2's both-player
+     * arm would read the centers. Axes B: P2's arms 4/6 only. */
+    if (dev1 == 2u || dev1 == 4u || dev1 == 6u || dev2 == 2u) {
+        DSW(DS_000E1C1E) = (u16)(DSW(DS_000E1C22) + (u16)axes[0]);
+        DSW(DS_000E1C20) = (u16)(DSW(DS_000E1C24) + (u16)axes[1]);
+    }
+    /* Axes B feed P2's arms 4/6 only; device 2's arm reads A, so its own B
+     * words are not one of the selected arms' inputs and keep their centers. */
+    if (dev2 == 4u || dev2 == 6u) {
+        DSW(DS_000E1C26) = (u16)(DSW(DS_000E1C2A) + (u16)axes[2]);
+        DSW(DS_000E1C28) = (u16)(DSW(DS_000E1C2C) + (u16)axes[3]);
+    }
+    g_port_buttons = pad_port_byte(buttons);
+}
+
 /* PORT: test seam, no raw counterpart (host.h): the four presence answers
  * below return this while it is armed, so the unit test can exercise the
  * sampler's device 2/4/6 arms with no pad attached. Off by default. */
@@ -448,6 +618,9 @@ int host_init(const char *title, int w, int h)
     if (!g_scratch) { host_shutdown(); return 0; }
     g_w = w;
     g_h = h;
+    /* PORT: the pad is host input, opened with the window; a failure leaves it
+     * absent and the run on the keyboard (record §H5). */
+    host_pad_open();
     return 1;
 }
 
@@ -460,6 +633,7 @@ int host_has_window(void)
 
 void host_shutdown(void)
 {
+    host_pad_close();    /* before SDL_Quit(): the pad is host input (record §H5) */
     host_audio_close(); /* one authoritative teardown, before SDL_Quit() */
     if (g_scratch) { SDL_DestroySurface(g_scratch); g_scratch = NULL; }
     if (g_window) { SDL_DestroyWindow(g_window); g_window = NULL; }

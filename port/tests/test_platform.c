@@ -3762,6 +3762,335 @@ int test_input_axes_dead_band(void)
     return g_failures - before;
 }
 
+/* ---- test_host_pad_*: Host Input Truth §H5 (the SDL gamepad model) ---- */
+
+/* The pad fixture: the sampler's fixture with the two device words set and no
+ * keyboard bits, so only the pad's axes/buttons can set a game bit. The pad
+ * seam supplies four normalized axes (s8: X1 Y1 X2 Y2) and four game-button
+ * flags (game bits 1/2/4/8 in order); `present` 0 disarms it. The presence seam
+ * is armed by each test: a joystick device word is otherwise cleared on the
+ * same sample (the no-pad state of Task 4). */
+static void pad_fixture(u16 dev1, u16 dev2)
+{
+    sampler_fixture();
+    sampler_devs(dev1, dev2);
+    sampler_keys(0x0000u);
+}
+
+static void pad_override(const u8 *axes, const u8 *buttons, int present)
+{
+    host_set_pad_override(axes, buttons, present);
+    host_pad_fill();
+}
+
+static void pad_disarm(void)
+{
+    host_set_pad_override(NULL, NULL, 0);
+    host_set_port_present_override(0, 0);
+    host_set_key_bits_override(0, 0);
+}
+
+/* Device 0 reads the keyboard only. A pad that is present and fully deflected
+ * feeds neither byte, but the host still samples it: the game-port byte is the
+ * pad's (all four buttons grounded = 0x00, all released = 0xF0), and a
+ * keyboard player's axis words stay at their centers. */
+int test_host_pad_device0_ignores_pad(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    static const u8 axes[4] = { 0x7F, 0x7F, 0x7F, 0x7F };
+    static const u8 pressed[4] = { 1, 1, 1, 1 };
+    static const u8 released[4] = { 0, 0, 0, 0 };
+    sampler_axes_save(saved_axes);
+    host_set_port_present_override(1, 1);
+    pad_fixture(0u, 0u);
+    /* A non-zero P1-X center proves the device gate, not a zero-word fixture. */
+    DSW(DS_000E1C22) = 0x2000u;
+    DSW(DS_000E1C1E) = 0x2000u;
+
+    pad_override(axes, pressed, 1);
+    CHECK_EQ_INT((int)host_port_buttons(), 0x00);        /* the pad IS sampled */
+    CHECK_EQ_INT((int)DSW(DS_000E1C1E), 0x2000);         /* no axis arm: at center */
+    input_sampler();
+    sampler_bytes(0x00u, 0x00u);
+
+    pad_override(axes, released, 1);
+    CHECK_EQ_INT((int)host_port_buttons(), 0xF0);        /* active low, released */
+    input_sampler();
+    sampler_bytes(0x00u, 0x00u);
+
+    pad_disarm();
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* Device 2: both players read axes A, and the game-port bits 4..7 are the game
+ * buttons 1/2/4/8. */
+int test_host_pad_arm2(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    static const u8 axes[4] = { 0x1E, 0x1E, 0xE2, 0xE2 }; /* A X+/Y+; B unused */
+    static const u8 none[4] = { 0, 0, 0, 0 };
+    static const u8 one[4][4] = {
+        { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 }
+    };
+    static const u8 all[4] = { 1, 1, 1, 1 };
+    static const u8 out[4] = { 1, 2, 4, 8 };
+    sampler_axes_save(saved_axes);
+    host_set_port_present_override(1, 1);
+    pad_fixture(2u, 2u);
+
+    pad_override(axes, none, 1);
+    input_sampler();
+    sampler_bytes(0x50u, 0x50u);       /* both read axes A; released port = 0 */
+
+    for (u32 k = 0u; k < 4u; k++) {
+        pad_override(axes, one[k], 1);
+        CHECK_EQ_INT((int)input_port_buttons_both(), out[k]);
+        input_sampler();
+        sampler_bytes((u8)(0x50u | out[k]), (u8)(0x50u | out[k]));
+    }
+
+    pad_override(axes, all, 1);
+    input_sampler();
+    sampler_bytes(0x5Fu, 0x5Fu);       /* all four: 1|2|4|8 */
+
+    /* 0/2: P2's device-2 arm reads axes A -- the shared stick -- even though
+     * P1 is on the keyboard (the raw's 0x1BD8B calls 0x4FF8F). P1's byte stays
+     * the keyboard's. */
+    pad_fixture(0u, 2u);
+    pad_override(axes, none, 1);
+    input_sampler();
+    sampler_bytes(0x00u, 0x50u);
+    pad_override(axes, all, 1);
+    input_sampler();
+    sampler_bytes(0x00u, 0x5Fu);
+
+    /* The sampler is the per-frame hook: arming the seam and calling it alone
+     * (without an explicit host_pad_fill) is enough to sample the pad. */
+    pad_fixture(2u, 2u);
+    host_set_pad_override(axes, none, 1);
+    input_sampler();
+    sampler_bytes(0x50u, 0x50u);
+
+    pad_disarm();
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* Device 4: P1 reads axes A and game-port bits 4/5 -> 1/4; P2 reads axes B and
+ * bits 6/7 -> 1/4. The button positions are the arms', so P2's second button
+ * is nibble bit 2, not bit 1. */
+int test_host_pad_arm4(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    static const u8 axes[4] = { 0x1E, 0, 0, 0x1E };      /* P1 X+, P2 Y+ */
+    static const u8 b1[4] = { 1, 0, 0, 0 };
+    static const u8 b2[4] = { 0, 1, 0, 0 };
+    static const u8 b3[4] = { 0, 0, 1, 0 };
+    static const u8 b4[4] = { 0, 0, 0, 1 };
+    static const u8 all[4] = { 1, 1, 1, 1 };
+    sampler_axes_save(saved_axes);
+    host_set_port_present_override(1, 1);
+    pad_fixture(4u, 4u);
+
+    pad_override(axes, b1, 1);
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 1);
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 0);
+    input_sampler();
+    sampler_bytes(0x11u, 0x40u);
+
+    pad_override(axes, b2, 1);
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 4);
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 0);
+    input_sampler();
+    sampler_bytes(0x14u, 0x40u);
+
+    pad_override(axes, b3, 1);
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 0);
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 1);
+    input_sampler();
+    sampler_bytes(0x10u, 0x41u);
+
+    pad_override(axes, b4, 1);
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 0);
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 4);
+    input_sampler();
+    sampler_bytes(0x10u, 0x44u);
+
+    pad_override(axes, all, 1);
+    input_sampler();
+    sampler_bytes(0x15u, 0x45u);       /* both arms' two buttons */
+
+    pad_disarm();
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* Device 6: axes A/B with the keyboard button scans. The pad's own buttons
+ * must not reach the byte: the arm reads 0x1B730/0x1B7C0, not the game port. */
+int test_host_pad_arm6(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    static const u8 axes[4] = { 0, 0x1E, 0xE2, 0 };      /* A Y+, B X- */
+    static const u8 none[4] = { 0, 0, 0, 0 };
+    static const u8 all[4] = { 1, 1, 1, 1 };
+    sampler_axes_save(saved_axes);
+    host_set_port_present_override(1, 1);
+    pad_fixture(6u, 6u);
+
+    sampler_keys(0x0100u | 0x0001u);  /* both keyboard button 1s (and F1/F2) */
+    pad_override(axes, all, 1);       /* the pad's buttons are all pressed too */
+    input_sampler();
+    sampler_bytes(0x41u, 0x21u);      /* keyboard buttons, not 0x0F */
+
+    pad_override(axes, none, 1);
+    input_sampler();
+    sampler_bytes(0x41u, 0x21u);      /* the pad's buttons change nothing */
+
+    pad_disarm();
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* The pad's normalized displacement uses the raw's own unit: an axis at center
+ * ±0x1D is in the dead band, ±0x1E sets its bit. A keyboard player's words are
+ * untouched even when the pad's unused axes are deflected. */
+int test_host_pad_dead_band(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    static const u8 x1d[4] = { 0x1D, 0, 0x1E, 0x1E };
+    static const u8 x1e[4] = { 0x1E, 0, 0x1E, 0x1E };
+    static const u8 xm1d[4] = { 0xE3, 0, 0x1E, 0x1E };   /* -0x1D */
+    static const u8 xm1e[4] = { 0xE2, 0, 0x1E, 0x1E };   /* -0x1E */
+    static const u8 y1d[4] = { 0, 0x1D, 0x1E, 0x1E };
+    static const u8 y1e[4] = { 0, 0x1E, 0x1E, 0x1E };
+    static const u8 ym1d[4] = { 0, 0xE3, 0x1E, 0x1E };
+    static const u8 ym1e[4] = { 0, 0xE2, 0x1E, 0x1E };
+    static const u8 both[4] = { 0x1E, 0xE2, 0x1E, 0x1E };
+    static const u8 none[4] = { 0, 0, 0, 0 };
+    const u16 cx = 0x2000u, cy = 0x2400u;
+    sampler_axes_save(saved_axes);
+    host_set_port_present_override(1, 1);
+    pad_fixture(2u, 0u);               /* P1 axis arm A; P2 device 0 */
+    DSW(DS_000E1C22) = cx; DSW(DS_000E1C24) = cy;
+    DSW(DS_000E1C2A) = 0x3456u; DSW(DS_000E1C2C) = 0x4567u;
+    DSW(DS_000E1C26) = 0x3456u; DSW(DS_000E1C28) = 0x4567u;
+
+    pad_override(x1d, none, 1);
+    CHECK_EQ_INT((int)DSW(DS_000E1C1E), (int)(u16)(cx + 0x1Du));
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    pad_override(x1e, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0x10);
+    pad_override(xm1d, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    pad_override(xm1e, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0x20);
+
+    pad_override(y1d, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    pad_override(y1e, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0x40);
+    pad_override(ym1d, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    pad_override(ym1e, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0x80);
+
+    pad_override(both, none, 1);
+    CHECK_EQ_INT((int)input_axes_a(), 0x10u | 0x80u);
+    /* P2's device word is 0: its deflected axes (2/3) are never written. */
+    CHECK_EQ_INT((int)DSW(DS_000E1C26), 0x3456);
+    CHECK_EQ_INT((int)DSW(DS_000E1C28), 0x4567);
+
+    pad_disarm();
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* F1/F2 are bit 0 of their player's byte in every arm, never a pad button (the
+ * pad's port bits are 4..7, which become game bits 1/2/4/8). The whole byte is
+ * asserted per arm so an arm that reads the wrong source is caught. */
+int test_host_pad_f1f2(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    u16 saved_axes[8];
+    static const u16 devs[4][2] = { { 0, 0 }, { 2, 2 }, { 4, 4 }, { 6, 6 } };
+    static const u8 axes[4] = { 0x1E, 0x1E, 0x1E, 0x1E };
+    static const u8 none[4] = { 0, 0, 0, 0 };
+    static const u8 all[4] = { 1, 1, 1, 1 };
+    sampler_axes_save(saved_axes);
+    host_set_port_present_override(1, 1);
+
+    for (u32 k = 0u; k < 4u; k++) {
+        const u16 d1 = devs[k][0], d2 = devs[k][1];
+        const u8 base_p1 = d1 == 0u ? 0u : 0x50u;    /* axes A (0x10|0x40) */
+        const u8 base_p2 = d2 == 0u ? 0u : 0x50u;    /* axes A or B */
+        const u8 press_p1 = d1 == 2u ? 0x0Fu : (d1 == 4u ? 0x05u : 0u);
+        const u8 press_p2 = d2 == 2u ? 0x0Fu : (d2 == 4u ? 0x05u : 0u);
+        pad_fixture(d1, d2);
+
+        pad_override(axes, none, 1);
+        sampler_keys(0x0000u);
+        input_sampler();
+        sampler_bytes(base_p1, base_p2);
+
+        /* F1/F2 share the packed word's bit with keyboard button 1 (0x0100 /
+         * 0x0001). Release that slot's table entry after the fill so bit 0 can
+         * only come from the fixed F1/F2 entries (0x1B850/0x1B870). */
+        sampler_keys(0x0100u);                       /* F1 (and P1 button 1) */
+        DSB(TEST_KEY_BASE + 0x254u + 0x40u) = 0xC0u;
+        DSB(TEST_KEY_BASE + 0x254u + 0x44u) = 0xC4u;
+        input_sampler();
+        sampler_bytes((u8)(base_p1 | 0x01u), base_p2);
+        sampler_keys(0x0001u);                       /* F2 (and P2 button 1) */
+        DSB(TEST_KEY_BASE + 0x254u + 0x40u) = 0xC0u;
+        DSB(TEST_KEY_BASE + 0x254u + 0x44u) = 0xC4u;
+        input_sampler();
+        sampler_bytes(base_p1, (u8)(base_p2 | 0x01u));
+        sampler_keys(0x0101u);                       /* both */
+        DSB(TEST_KEY_BASE + 0x254u + 0x40u) = 0xC0u;
+        DSB(TEST_KEY_BASE + 0x254u + 0x44u) = 0xC4u;
+        input_sampler();
+        sampler_bytes((u8)(base_p1 | 0x01u), (u8)(base_p2 | 0x01u));
+        sampler_keys(0x0000u);                       /* neither */
+        input_sampler();
+        sampler_bytes(base_p1, base_p2);
+
+        /* The pad's buttons are the game-port arms' own game bits; device 6
+         * ignores them. F1/F2 stay bit 0. */
+        pad_override(axes, all, 1);
+        sampler_keys(0x0101u);
+        DSB(TEST_KEY_BASE + 0x254u + 0x40u) = 0xC0u;
+        DSB(TEST_KEY_BASE + 0x254u + 0x44u) = 0xC4u;
+        input_sampler();
+        sampler_bytes((u8)(base_p1 | press_p1 | 0x01u),
+                      (u8)(base_p2 | press_p2 | 0x01u));
+        sampler_keys(0x0000u);
+        input_sampler();
+        sampler_bytes((u8)(base_p1 | press_p1), (u8)(base_p2 | press_p2));
+    }
+
+    pad_disarm();
+    sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
 /* ---- test_rng.c ---- */
 
 int test_rng(void)

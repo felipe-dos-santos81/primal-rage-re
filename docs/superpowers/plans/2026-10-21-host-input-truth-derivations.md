@@ -850,3 +850,145 @@ stubs; the closed and full counts are unchanged. `tools/port_progress.py` reads 
 `759 759 100` (README stays at 65% until Task 7's closeout). `python3 -m unittest
 tools.tests.test_diff_verify`: 133 tests, OK; `tools.tests.test_diff_emu`: 83 tests, OK.
 `PR_ORACLE_REQUIRED=1 ./build/run_tests`: `all checks passed`.
+
+## §H5 The SDL gamepad model
+
+Task 5 gives the host the SDL gamepad the raw never had (the platform's joystick is the
+host-owned ISR sampler `0x1BBAC`; the game logic's `0x2D2F0` is `xor eax,eax; ret`). The raw-side
+maps are §H3/§H4; this section records the host mapping the design left to the builder: the SDL
+axes and buttons, the device-word gating, the axis-scale policy, and the tests. The plan's file
+list omits `host.h` and `test.h`; both changed (the declarations and the one-line registrations).
+
+### §H5.1 The pad state, the fill and the device-arm table
+
+`port/src/host.c`:
+
+- `host_pad_open()` initialises `SDL_INIT_GAMEPAD` and opens the first pad from
+  `SDL_GetGamepads()`/`SDL_OpenGamepad()`; a host with no pad, no driver or no display leaves the
+  pad absent and never aborts. `host_init` calls it after the window and surface exist;
+  `host_shutdown` calls `host_pad_close()` before `SDL_Quit()` (`SDL_CloseGamepad`, then
+  `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` only when the subsystem was ours).
+- `host_pad_poll()` samples the left/right sticks and the four face buttons into
+  `g_pad_axes[4]`/`g_pad_buttons[4]` (`SDL_UpdateGamepads` + `SDL_GetGamepadAxis`/`Button`). The
+  seam short-circuits SDL; with no open pad it is a no-op, so every headless path is untouched.
+- `host_pad_fill()` writes the two kinds of game input the arms read: the four normalized axis
+  words (`0xE1C1E/0xE1C20/0xE1C26/0xE1C28` = their calibrated centers + the pad's displacement)
+  and the active-low game-port byte (`g_port_buttons`). It is gated by the device words: it writes
+  only the axis words the selected arms actually read, and leaves a keyboard player's words at the
+  centers `host_input_fill_axes()` wrote. With no pad it writes no axes and the byte stays Task 4's
+  0 placeholder.
+- **The hook.** `input_sampler()` (Task 4's per-frame input entry, called from `game_loop`) calls
+  `host_pad_poll(); host_pad_fill();` after its block guard. The sampler is the once-per-iteration
+  input point, so `flow.c` needs no change (the brief's "input.c only if the host fill needs a
+  hook"). With no pad both calls are no-ops: the sampler's differential row and the default
+  device-0 path compare exactly the raw's bytes (§H5.4).
+
+The fill's writes, by the two device words (the raw's arm readers are the §H4 table):
+
+| dev1 (`+0x2D4`) | dev2 (`+0x2D6`) | axis words the fill writes | the sampler's arms read |
+|---|---|---|---|
+| 0 | 0 | none (centers) | keyboard dirs/buttons + F1/F2 (device 0) |
+| 2, 4, 6 | 0, 1, 3, 5, 7+ | A: `0xE1C1E/20` = center + left stick | P1 device 2/4/6 arm (`0x4FF8F`) |
+| any | 2 | A: `0xE1C1E/20` (the shared stick) | P2's device-2 arm also calls `0x4FF8F`, not `0x4FFD8` (`0x1BD8B`) |
+| any | 4, 6 | B: `0xE1C26/28` = center + right stick | P2's device 4/6 arm (`0x4FFD8`) |
+
+The port byte is composed from all four game buttons whenever the pad is present (bits 4..7
+active low); device 0 and device 6 never read it (their arms read the keyboard), so its value is
+irrelevant there, and a device 2/4 arm reads it exactly as `0x1B890`/`0x1B8DC`/`0x1B908` do.
+
+**Two corrections the mutation pass forced (raw wins over the first draft).** The first cut wrote
+axes A only when P1's word selected a joystick, and mirrored A into P2's B words on device 2:
+
+1. P2's device-2 arm reads **axes A**, the same physical stick as P1's (`0x1BD8B` calls
+   `0x4FF8F`), so axes A must be written for a `0/2` selection too — otherwise P2's both-player arm
+   reads the centers. The fill's A condition is `dev1 in 2/4/6 || dev2 == 2`.
+2. Device 2's arm never reads P2's B words, so writing them there was dead state that also masked
+   the A-vs-B distinction in the sampler (the first mutated `@axesb` run passed because the fill had
+   copied A into B). The fill writes B only for `dev2 in 4/6`.
+
+### §H5.2 The SDL mapping and the axis-scale policy
+
+- **Axes:** the left stick X/Y is axes A (`0xE1C1E`/`0xE1C20`), the right stick X/Y axes B
+  (`0xE1C26`/`0xE1C28`), matching the raw's P1/P2 game-port axes.
+- **Buttons:** the face buttons south/east/west/north are the game's buttons 1/2/4/8, grounding port
+  bits 4/5/6/7 under the PC game port's active-low convention (a pressed button grounds its bit; the
+  released byte is `0xF0`, all four pressed `0x00`). Device 2's both-player arm maps all four to
+  1/2/4/8; P1's device-4 arm reads bits 4/5 as 1/4 and P2's reads 6/7 as 1/4. With one pad and
+  `4/4`, P1 therefore gets the pad's first two face buttons and P2 the last two — the arm table's
+  positions, which is the only mapping the raw's two-stick port leaves to the host.
+- **The scale is host policy.** `HOST_PAD_AXIS_SCALE 64` (`host.c`) divides SDL's int16 range:
+  full deflection is `32767 / 64 = 0x1FF`, so the raw's ±0x1E dead band (`0x4FF92..0x4FFD4`) is
+  about 6% of travel. The raw fixes the normalized unit (a PIT-tick difference `>> 4`) and the dead
+  band, not the SDL stick's range; there is no game-port capture to fit, and the design's
+  "The SDL axis scale is host policy" is the authority. This is declared, not fitted.
+- **The seam.** `host_set_pad_override(const u8 *axes, const u8 *buttons, int present)` supplies
+  four signed 8-bit normalized displacements (X1 Y1 X2 Y2) and four button flags; `(NULL, NULL, 0)`
+  disarms it. It lets the unit tests drive the whole model with no SDL and no physical pad; nothing
+  outside `port/tests` sets it.
+
+### §H5.3 The unit tests and the mutation proofs
+
+`port/tests/test_platform.c`, six tests registered once in `test.h` after
+`test_input_axes_dead_band` (each arms `host_set_port_present_override(1, 1)`, because Task 4's
+production presence answer is still "no port" and would otherwise clear a joystick device word on
+the same sample):
+
+- `test_host_pad_device0_ignores_pad`: a present, fully deflected pad with all buttons pressed
+  leaves a device-0 player's bytes 0 and its axis words at a seeded nonzero center; the host still
+  samples the pad (the byte is `0x00` pressed / `0xF0` released).
+- `test_host_pad_arm2`: 2/2 reads axes A for both players and maps the port bits 4..7 to 1/2/4/8
+  one at a time and all at once; the `0/2` case pins that P2's device-2 arm reads the shared A stick
+  while P1 stays on the keyboard.
+- `test_host_pad_arm4`: 4/4 reads P1 axes A + bits 4/5 -> 1/4 and P2 axes B + bits 6/7 -> 1/4, each
+  button alone and all together.
+- `test_host_pad_arm6`: 6/6 reads axes A/B with the keyboard button scans: the pad's own buttons are
+  all pressed and the bytes keep the keyboard's `0x01` (a port-reading arm would give `0x0F`).
+- `test_host_pad_dead_band`: the fill composes center + displacement; an axis at the seeded center
+  ±0x1D is in the dead band and ±0x1E sets the bit, on both axes, negative displacements included;
+  a device-0 player's words are never written.
+- `test_host_pad_f1f2`: F1/F2 are bit 0 of their player's byte in every arm (0/0, 2/2, 4/4, 6/6),
+  with the pad's buttons pressed and released. Because the game-port reader's first bit is also
+  byte bit 0 (game bit 1), the test releases keyboard button 1's table slot (`k_cfg_bit` 0x0100 /
+  0x0001 is shared with F1/F2 in the seam's packed word) so bit 0 can only come from the fixed
+  `0x1B850`/`0x1B870` entries; and one check calls the sampler with the seam armed but no explicit
+  `host_pad_fill()`, pinning the per-frame hook.
+
+Each assertion was seen to fail under a mutation, applied alone, rebuilt and reverted (the suite's
+only FAILs were the listed ones; `3495`/`3496` are `sampler_bytes`' p1/p2 assertions, so a mutation
+names the call site's expectation):
+
+| mutation | first FAILs |
+|---|---|
+| the fill's axes-A device gate removed (always write) | `3814: 8319 != 8192` (the device-0 center) |
+| P2's device-2 arm reads axes B (`input_sampler`) | `3496: 0 != 80`, `1 != 81`, `2 != 82`, ... (the `0/2` and 2/2 cases), 19 total |
+| the port byte's game-bit order reversed | `3853: 8 != 1`, `4 != 2`, `2 != 4`, `1 != 8` (arm 2), 28 total |
+| P2's two port bits swapped (3/4 -> bits 7/6) | `3853: 8 != 4`, `4 != 8`; `3918: 4 != 1`, `3924: 1 != 4` (arm 4), 10 total |
+| the device-6 arm reads the game-port buttons | `3495: 85 != 81`, `85 != 80` (arm 6, `0x55` vs `0x51`), 4 total |
+| the fill drops the axis center | `3994: 29 != 8221`, then the whole dead-band set, 9 total |
+| the F1/F2 readers return 0 | 27 total, ending `3495/3496: 80 != 81` (the f1f2 arm cases) |
+| the port byte active high instead of active low | `3813: 240 != 0`, `3819: 0 != 240` (device 0), 68 total |
+| the seam's axes read unsigned (`(u8)`) | `3999: 16 != 0`, `4001: 16 != 32` (the negative dead-band cases), 7 total |
+| P2's 4/6 arms write axes A instead of B | `3496: 16 != 64`, `17 != 65` (arm 4's P2 `0x40`), 7 total |
+| the sampler's `host_pad_poll/fill` hook removed | `3495: 15 != 80`, `3496: 15 != 80` (the hook-only check), 2 total |
+
+### §H5.4 The default path, the presence dependency and counters
+
+- **No pad / device 0.** `host_pad_fill()` writes no axis words and `g_port_buttons = 0`; the
+  `host_input_fill_axes()` call that precedes the sampler in `game_loop` still writes the centers.
+  The sampler's device-0 output is byte-identical to §H4's, and the differential row is unchanged
+  because the two new host calls are no-ops with no pad. `make diff-verify`: **1019/1019 functions
+  VERIFIED; 14956/14956 mutants detected; 0 named gaps; 774/833 rows with callees closed (186 have
+  none); 768/833 closed on full rows; 8 ported functions with no row** — the §H4.5 counter
+  exactly. `PR_ORACLE_REQUIRED=1 ./build/run_tests`: `all checks passed`.
+- **The presence dependency (Task 6's).** `host_port_present()` still answers 0 (the no-pad state),
+  so the sampler's presence block clears a joystick device word on the first sample. A windowed run
+  with a pad and a config that selects device 2/4/6 therefore still falls back to the keyboard until
+  Task 6 models the pad's probe answer; the pad model is exercised through
+  `host_set_port_present_override` in the tests. This is the plan's split, not a regression, and is
+  the task's main named limit.
+- **Untested headless: the SDL open.** The suite never calls `host_init`, so `host_pad_open`,
+  `host_pad_poll`'s SDL path and `host_pad_close` are unexercised here; they are a thin host layer
+  over SDL3's gamepad API, and the seam covers the model. A windowed run is the only path that
+  opens a real pad, and `host_pad_open`'s failure is a silent no-pad, never an abort.
+- No new ported function: the host pad functions carry no `/* 0xADDR` header and no `fn_register`,
+  so `tools/port_progress.py` and the E2 triage table are unchanged.

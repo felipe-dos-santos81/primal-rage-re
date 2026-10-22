@@ -305,6 +305,13 @@ void input_sampler(void)
      * (0x1BF4C/0x1BF6D); the port's game_loop folds the ISR in, so it must not
      * read mem[0x254..] through a zero base. */
     if (base == 0u || base > MEM_SIZE - 0x2EEu) return;
+    /* PORT: the host owns the pad (record 2026-10-21-host-input-truth §H5).
+     * Poll it once per sampler tick and let it write the normalized axis words
+     * and the game-port byte the arms read. With no pad (and outside the unit
+     * tests' seam) both are no-ops, so this differential row and the default
+     * device-0 path compare exactly the raw's bytes. */
+    host_pad_poll();
+    host_pad_fill();
     u16 dev1 = DSW(base + 0x2D4u);                          /* 0x1BBB6 */
     int p1 = (dev1 == 2u || dev1 == 4u || dev1 == 6u);      /* 0x1BBC5..0x1BBD4 */
     const u16 dev2 = DSW(base + 0x2D6u);                    /* 0x1BBDC */

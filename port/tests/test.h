@@ -45,6 +45,12 @@ extern int g_failures;
     X(test_input_sampler_device0) \
     X(test_input_sampler_arms) \
     X(test_input_axes_dead_band) \
+    X(test_host_pad_device0_ignores_pad) \
+    X(test_host_pad_arm2) \
+    X(test_host_pad_arm4) \
+    X(test_host_pad_arm6) \
+    X(test_host_pad_dead_band) \
+    X(test_host_pad_f1f2) \
     X(test_host)        \
     X(test_flow)        \
     X(test_opl)         \
