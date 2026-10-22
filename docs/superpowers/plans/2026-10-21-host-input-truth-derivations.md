@@ -1495,10 +1495,20 @@ oracle skips without the capture as the other `gp-*` ones do.
    dead band and the unit are the raw's.
 5. **The movie audio is a zero-payload finding, not an implementation** (§H1): nothing covers a
    hypothetical movie with a nonzero track dword, and the 13 deferred rows stay deferred.
+6. **`port/spec/game_flow.md`'s input paragraph is stale** (`:929-932`): it still says `game_loop`
+   fills the key bitmap from `host_key_bits()`/`host_kb_bit` immediately before `input_pump`. The
+   pipeline is `host_input_fill_keyboard()` -> `host_input_fill_axes()` -> `input_sampler()` ->
+   `input_pump()` (`port/src/game/flow.c:7164-7168`), and the sampler, not the host, writes
+   `+0x2D8/+0x2D9`. The spec is outside this phase's commit set, so it is named here for the next
+   doc pass (AGENTS carries the same pointer in its input paragraph).
 
 **The docs changed:** `README.md` (title 66%, the porting bullet 799/53/759, the differential bullet
 1019/1019 and 14956/14956 with 751 of 759 rowed), `AGENTS.md` (the `gp-u17-oracle` Commands line,
 the input and SDL-pad and movie-audio paragraphs, the re-pinned counter with the open-row census
 59 of 833, and the `799 1203 66`/`759 759 100` progress lines), `docs/PROGRESS.md` (the phase
-paragraph) and `tools/port_classification.txt`. The design's status line and its two capture-era
-statements (the sampler called host-owned; "DOSBox-X has no game port") are corrected in place.
+paragraph) and `tools/port_classification.txt`. The design's status line, its portable/host-owned
+figures and its two capture-era statements (the sampler called host-owned; "DOSBox-X has no game
+port") are corrected in place, and its two "no SDL gamepad code" lines are scoped to 2026-10-21.
+The phase's mutant delta is **+56** (26 the six keyboard and two F readers, 12 the three game-port
+readers, 18 the two axis readers and the sampler); §H2.5/§H3.5/§H4.5 give the per-task splits (26,
+12, 18), and only the last is Task 4's.

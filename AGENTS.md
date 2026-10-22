@@ -363,7 +363,8 @@ consolidation gate).
   the three game-port readers `0x1B890`/`0x1B8DC`/`0x1B908` and the two axis readers plus the
   sampler `0x4FF8F`/`0x4FFD8`/`0x1BBAC` (`port/src/platform/input.c`, record
   `2026-10-21-host-input-truth-derivations.md` §H2-§H4) — so the host fills the BIOS key-state
-  table and the four axis words and the sampler writes the bytes; `0x1B890` is the both-player
+  table and the four axis words and the sampler writes the bytes (`port/spec/game_flow.md`'s input
+  paragraph still describes the pre-phase direct fill; record §H7 limit 6); `0x1B890` is the both-player
   game-port row the pad's button map is judged by. The six PIT/game-port routines (`0x4FDF5`,
   `0x4FC05`, `0x4FCFD`, `0x4FBBB`, `0x5004A`, `0x50021`) and the 60 Hz AIL callback `0x1BDF4` stay
   host-owned (`tools/port_classification.txt`): `0x4FBBB`'s probe answer is `host_port_present()`,
@@ -432,10 +433,11 @@ consolidation gate).
    774/832 rows with callees closed (175 have none); 768/832 closed on full rows; 8 ported functions with no
    row` (`0x24C5C` has ten rows); host input truth re-pinned it at **`1019/1019 functions VERIFIED;
    14956/14956 mutants detected; 0 named gaps; 774/833 rows with callees closed (186 have none);
-   768/833 closed on full rows; 8 ported functions with no row`** — +12 functions and +18 mutants (the six
-   keyboard readers, the three game-port readers, the two axis readers and the sampler), +1 row with callees
-   and +11 callee-less, and the named gap `host_1b890` (its `in al,dx` at `0x1B899`) became a row once track
-   H's `E.Machine.in` answered it (record `2026-10-21-host-input-truth-derivations.md` §H2.6, §H3, §H4.5).
+   768/833 closed on full rows; 8 ported functions with no row`** — +12 functions and +56 mutants (26 the
+   six keyboard readers and the two F readers, 12 the three game-port readers, 18 the two axis readers and
+   the sampler), +1 row with callees and +11 callee-less, and the named gap `host_1b890` (its `in al,dx` at
+   `0x1B899`) became a row once track H's `E.Machine.in` answered it (record
+   `2026-10-21-host-input-truth-derivations.md` §H2.6, §H3, §H4.5).
    The two new clauses count the explicit frozensets `tools/diff_verify.py`
    keeps: `WEAKER` (12 — the rowed functions whose row is not full: a code poke, a reachable block left out,
    or a declared terminal difference) and `UNROWED` (8 — the ported functions with no differential row at

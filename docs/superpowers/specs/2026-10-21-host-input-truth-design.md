@@ -7,10 +7,10 @@ counters, the pins and the named limits are record `2026-10-21-host-input-truth-
 
 ## Why this phase
 
-The portable game logic is 100% ported (747/747 at writing; **759/759** and **53** host-owned after this phase, record §H7). The remaining RE is the 65 host-owned/deferred functions and the 351 runtime functions. The last host-owned subsystem whose observable interface is modelled only approximately is **input**:
+The portable game logic is 100% ported (747/747 at writing; **759/759** portable and **53** host-owned/deferred after this phase — 65 before it, record §H7). The remaining RE is those 53 host-owned/deferred functions and the 351 runtime functions. The last host-owned subsystem whose observable interface is modelled only approximately is **input**:
 
 - The original's joystick is the host-owned ISR sampler `0x1BBAC` (ported by this phase, record §H4). The game logic has no joystick path: `0x2D2F0` is `xor eax,eax; ret`, and `0x4F644`'s `0x4F68B` gate never opens (`AGENTS.md:353-368`, record §J9). The sampler reads the keyboard or a game port through the device words `+0x2D4/+0x2D6` and writes the same key bitmap `+0x2D8/+0x2D9` the game reads.
-- The port's host models only the sampler's **device-0 (keyboard)** arms (`host_kb_bit`, `host.c:93-136`; `host_key_bits`, `host.c:147-159`). There is no SDL gamepad code. The service menu stores the joystick device choice with no host effect. A rebind to a scan outside the 26 letters + 10 pad scancodes is stored in the config but never sampled.
+- The port's host models only the sampler's **device-0 (keyboard)** arms (`host_kb_bit`, `host.c:93-136`; `host_key_bits`, `host.c:147-159`). There is no SDL gamepad code (as of 2026-10-21; Task 5 adds it, record §H5). The service menu stores the joystick device choice with no host effect. A rebind to a scan outside the 26 letters + 10 pad scancodes is stored in the config but never sampled.
 - The movie-audio question is still open in the records. The 13 deferred movie-audio functions and the four AIL streaming stubs are inert, and `movie_play` never opens audio. The raw shows why: both shipped movies declare zero audio tracks, so no stream opens and the no-audio time path runs. That is a zero-payload finding, not an implementation gap.
 
 This phase makes the host-owned input layer faithful to the sampler, adds the SDL gamepad map, presence/calibration/boot probe, and records the movie-audio zero-payload finding. It uses the 12 pure sampler functions as ported RE (with differential rows) and leaves the six PIT/game-port routines and the 60 Hz AIL callback host-owned.
@@ -71,7 +71,7 @@ The sampler checks the game port every tick: `0x4FDF5`/`0x4FC05`/`0x4FCFD` retur
 - `game_loop` writes both bytes unconditionally each frame (`flow.c:7117-7121`). Nothing in the input path reads `+0x2D4/+0x2D6`; the service menu reads them only to draw the selection (`svcmenu.c:978-985`).
 - `input_joystick_device` (`input.c:64-69`) returns 0; `input_state_update` (`input.c:110-130`) stores 0 and its merge gate never opens.
 - `0x20D0F..0x20DE3` is omitted by name (`flow.c:6980-6985`, named gap B.11); `0x5004A` is a no-op on Alt-J (`flow.c:7385-7390`); `0x4FBBB` has no port counterpart.
-- No SDL gamepad code exists. A rebind to a scan outside the 26 letters + 10 pad scancodes is stored in the config but never sampled.
+- No SDL gamepad code exists (as of 2026-10-21; Task 5 adds it, record §H5). A rebind to a scan outside the 26 letters + 10 pad scancodes is stored in the config but never sampled.
 
 ## Decisions
 
