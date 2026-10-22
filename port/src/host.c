@@ -252,12 +252,13 @@ void host_input_fill_keyboard(void)
 /* PORT: the game port's button byte (record §H3). The PC game port reads its
  * four button inputs in bits 4..7 of port 0x201, active low: a pressed button
  * grounds its bit. The host owns the port, so g_port_buttons is the host's
- * answer: host_pad_fill() (Task 5) writes the pad's byte each frame. The seam's
+ * answer: host_pad_fill() writes the pad's byte each frame. The seam's
  * byte is kept apart, so pinning one never loses the pad's own (a fill writes
  * g_port_buttons and leaves the seam alone). With no pad the byte is 0 -- the
- * readers then see all four buttons low, consistent only with the device word
- * being cleared when no pad answers (0x4FBBB, Task 6). */
-static u8 g_port_buttons;            /* the pad's byte (0 until Task 5's fill) */
+ * readers would then see all four buttons low, which no game-port arm can
+ * observe because the presence answer clears the device word first (record
+ * §H6: host_port_present). */
+static u8 g_port_buttons;            /* the pad's byte (0 with no pad) */
 static u8 g_port_buttons_override;   /* the seam's byte, read only while armed */
 static int g_port_buttons_override_on;
 
@@ -269,8 +270,7 @@ void host_set_port_buttons_override(u8 buttons, int on)
 
 u8 host_port_buttons(void)
 {
-    /* PORT: a pinned byte wins; else the pad's (0 with no pad, until Task 5's
-     * host_pad_fill writes it). */
+    /* PORT: a pinned byte wins; else the pad's (0 with no pad). */
     if (g_port_buttons_override_on) return g_port_buttons_override;
     return g_port_buttons;
 }
@@ -349,6 +349,14 @@ void host_set_pad_override(const u8 *axes, const u8 *buttons, int present)
     g_pad_override_on = 1;
 }
 
+/* The pad's presence: the seam's answer while it is armed, else the last
+ * poll's (a pad opened by host_pad_open and still connected). The game port's
+ * presence answer and the host_pad_fill gate both read it. */
+static int pad_present(void)
+{
+    return g_pad_override_on ? g_pad_override_present : g_pad_present;
+}
+
 /* PORT: opens the first SDL gamepad, if any. The gamepad subsystem is its own
  * SDL subsystem (SDL_INIT_GAMEPAD); a host with no pad (or no gamepad driver)
  * leaves the pad absent, so the sampler stays on the no-pad state and a
@@ -367,7 +375,14 @@ void host_pad_open(void)
     }
     SDL_free(ids);
     g_pad_present = g_pad != NULL;
-    if (g_pad != NULL) host_pad_poll();
+    if (g_pad != NULL) {
+        host_pad_poll();
+        /* The centre capture at pad connect (0x5004A; record §H6). The axis
+         * words are 0 here (game_init's image load and host_input_fill_axes
+         * come later), so the host's rest reading is 0: the raw's "the pad is
+         * at its center" state, not a measured offset. */
+        host_pad_center();
+    }
 }
 
 void host_pad_close(void)
@@ -414,9 +429,9 @@ static u8 pad_port_byte(const u8 buttons[4])
  * and a keyboard player keeps the centers host_input_fill_axes() wrote. The
  * pad's four buttons become the active-low game-port byte for every arm;
  * device 6's arm does not read it (it reads the keyboard button scans). With
- * no pad the axis words stay at their centers and the byte is Task 4's 0
- * placeholder -- the sampler's presence clear makes a joystick word harmless
- * until Task 6 answers the probe. */
+ * no pad the axis words stay at their centers and the byte is 0: the presence
+ * answer is 0 too, so the sampler's presence block clears a joystick device
+ * word before any arm reads that byte (record §H6). */
 void host_pad_fill(void)
 {
     s16 axes[4] = { 0, 0, 0, 0 };
@@ -434,7 +449,7 @@ void host_pad_fill(void)
             buttons[i] = g_pad_buttons[i];
         }
     }
-    const int present = g_pad_override_on ? g_pad_override_present : g_pad_present;
+    const int present = pad_present();
     if (!present) {
         g_port_buttons = 0u;
         return;
@@ -460,9 +475,9 @@ void host_pad_fill(void)
     g_port_buttons = pad_port_byte(buttons);
 }
 
-/* PORT: test seam, no raw counterpart (host.h): the four presence answers
- * below return this while it is armed, so the unit test can exercise the
- * sampler's device 2/4/6 arms with no pad attached. Off by default. */
+/* PORT: test seam, no raw counterpart (host.h): the presence answers below
+ * return this while it is armed, so the unit test can exercise the sampler's
+ * device 2/4/6 arms with no pad attached. Off by default. */
 static int g_port_present_override;      /* the seam's answer, read only while armed */
 static int g_port_present_override_on;
 
@@ -472,45 +487,90 @@ void host_set_port_present_override(int present, int on)
     g_port_present_override_on = on;
 }
 
-/* PORT: the game port's presence (record §H4; the routines stay host-owned,
- * record §49-V). 0x4FDF5 polls all four axes, 0x4FC05 P1's two and 0x4FCFD
- * P2's; each returns nonzero when the port answered. 0x4FBBB waits for a mask
- * of the game port's axis one-shot bits (port 0x201 bits 0..3), triggers the
- * port (`out 0x201,0`) and waits again, so a fan-out of the bits is its
- * answer; the sampler probes 3 (P1's axes 0/1) and 0xC (P2's axes 2/3). The
- * original times the PIT and reads port 0x201; the host owns that answer.
- * Task 4 answers "no port" (0) -- the no-pad state -- so the sampler clears a
- * joystick device word exactly as the original does when nothing answers; Task
- * 6 models the pad's answer and the boot probe. Each opens with its seam so the
- * sampler's differential row records the call (the case's stub answer is what
- * the port's sampler sees there). */
-static int host_port_present(void)
+/* PORT: the game port's presence (record 2026-10-21-host-input-truth §H6; the
+ * routines stay host-owned, record §49-V). The raw's 0x4FBBB(mask):
+ *
+ *   4FBBB  mov ebx,eax / mov edx,0x201 / mov ecx,0x2FFFF
+ *   4FBCA  in al,dx / test bl,al / je 0x4FBD5 / loop 0x4FBCA / xor eax,eax (0)
+ *   4FBD5  xor eax,eax / out dx,al / in al,dx / test bl,al / je 0x4FBFA
+ *          / loop ... / xor eax,eax (0)
+ *   4FBFA  mov eax,1
+ *
+ * It waits for the port's axis one-shot bits to clear, triggers them with a
+ * write of 0, and waits again: a fan-out of the bits answers 1. The host owns
+ * that answer, so 1 means a pad is attached (each of SDL's gamepads supplies
+ * both sticks, so any axis mask answers) and 0 means no pad -- the state the
+ * sampler clears a joystick device word in. The mask 0 arm tests no bit at
+ * all, so both loops fall through and the raw answers 1 whatever the
+ * hardware. The seam wins while it is armed (the differential rows' per-case
+ * answers). */
+int host_port_present(int probe)
 {
-    return g_port_present_override_on ? g_port_present_override : 0;   /* no pad: Task 6 */
+    if (g_port_present_override_on) return g_port_present_override;
+    if (probe == 0u) return 1;                  /* 0x4FBCD/0x4FBEE with BL = 0 */
+    return pad_present() ? 1 : 0;
 }
 
 int host_port_poll_both(void)
 {
     PR_SEAM_RET0(0x4FDF5u);
-    return host_port_present();
+    return host_port_present(0xFu);             /* the raw's 0x4FDF5 polls the four axes */
 }
 
 int host_port_poll_p1(void)
 {
     PR_SEAM_RET0(0x4FC05u);
-    return host_port_present();
+    return host_port_present(3u);               /* axes 0/1: port bits 0/1 */
 }
 
 int host_port_poll_p2(void)
 {
     PR_SEAM_RET0(0x4FCFDu);
-    return host_port_present();
+    return host_port_present(0xCu);             /* axes 2/3: port bits 2/3 */
 }
 
 int host_port_probe(u32 mask)
 {
     PR_SEAM_RET(0x4FBBBu, mask);
-    return host_port_present();
+    return host_port_present((int)mask);
+}
+
+/* PORT: the PIT channel 0 period, 0x50021 (host-owned, record §49-V). The raw
+ * latches the channel (out 0x43,0), reads the 16-bit counter twice per pass
+ * and keeps the largest difference between successive reads, so 0x5004A can
+ * store the wrap period the normalizer 0x4FDF5 adds when a reading falls below
+ * the previous one. The port's normalized axis words are host values, not PIT
+ * counts (host_pad_fill writes center + displacement), so the host has no
+ * period to measure: its answer is 0, declared rather than fitted. */
+static u16 host_port_pit_period(void)
+{
+    return 0u;
+}
+
+/* PORT: 0x5004A, the centre capture (host-owned, record §H6). The raw's first
+ * lines store 0x50021's period in 0xE1C1C once (`test word [0xE1C1C],-1;
+ * jne`), then, for P1's pair (0x50060 0x4FC05) and P2's (0x5008D 0x4FCFD):
+ * a poll answer of 0 skips that player's two axes; else each axis's current
+ * reading is copied into its center and the wait repeats while the reading is
+ * below +0x1E (`cmp ax,0x1E; jl`), i.e. until the stick has been pushed
+ * positive. The host has no such wait: its axis word at rest IS the center
+ * (host_pad_fill writes center + displacement, so a rest reading is the center
+ * itself), and the plan's "the rest values become the centers" is that
+ * capture. A pad at rest therefore leaves the words where the fill had them;
+ * a capture with a deflected stick copies the deflected reading, exactly as the
+ * raw's first store does. With no pad neither poll answers and nothing moves. */
+void host_pad_center(void)
+{
+    if (DSW(DS_000E1C1C) == 0u)                 /* PORT: 0x5004A's first lines */
+        DSW(DS_000E1C1C) = host_port_pit_period();
+    if (host_port_poll_p1() != 0) {             /* 0x50060..0x50067 (0x4FC05) */
+        DSW(DS_000E1C22) = DSW(DS_000E1C1E);    /* 0x50069/0x5006F */
+        DSW(DS_000E1C24) = DSW(DS_000E1C20);    /* 0x5007B/0x50081 */
+    }
+    if (host_port_poll_p2() != 0) {             /* 0x5008D..0x50094 (0x4FCFD) */
+        DSW(DS_000E1C2A) = DSW(DS_000E1C26);    /* 0x50096/0x5009C */
+        DSW(DS_000E1C2C) = DSW(DS_000E1C28);    /* 0x500A8/0x500AE */
+    }
 }
 
 static u32 g_tick;

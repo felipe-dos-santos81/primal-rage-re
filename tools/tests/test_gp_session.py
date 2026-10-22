@@ -37,12 +37,47 @@ class TestTables(unittest.TestCase):
 
     def test_the_u6_fields_are_appended(self):
         # plan gameplay-u6b, record gameplay-u6 §U6.11: after every U1 field, so older
-        # poll.log lines are a prefix of the new format
-        self.assertEqual(gs.SNAP_FIELDS[-5:], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
-                                                ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
-                                                ('s0_43', 0x1077F3, 1)))
+        # poll.log lines are a prefix of the new format (U17's device words follow them)
+        self.assertEqual(gs.SNAP_FIELDS[-7:-2], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
+                                                 ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
+                                                 ('s0_43', 0x1077F3, 1)))
         self.assertEqual(gs.MOVE_FIELDS, ('c0', 'c1', 'r0', 'r1', 's0_43'))
         self.assertFalse(set(gs.MOVE_FIELDS) & set(gs.TRACE_FIELDS))
+
+    def test_the_device_fields_are_appended_and_pointer_relative(self):
+        # host input truth U17, record §H6: dev1/dev2 close SNAP_FIELDS (older S lines
+        # lack them) and live behind the key-config pointer DS_00101514, not at a
+        # fixed DS address (their offsets are below DATA_BASE_VA)
+        self.assertEqual(gs.SNAP_FIELDS[-2:], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
+        self.assertEqual((gs.KB_DEV1, gs.KB_DEV2), (0x2D4, 0x2D6))
+        self.assertEqual(gs.DEV_FIELDS, ('dev1', 'dev2'))
+        self.assertEqual(set(gs.DEV_FIELDS), set(gs.POINTER_FIELDS))
+        self.assertLess(gs.KB_DEV1, gs.DATA_BASE_VA)        # not a DS address
+        # Opt-in: only gp-u17-device2 asserts them (gp_compare --dev-words)
+        self.assertFalse(set(gs.DEV_FIELDS) & set(gs.TRACE_FIELDS))
+        self.assertFalse(set(gs.DEV_FIELDS) & set(gs.MOVE_FIELDS))
+        old = [(n, d, s) for n, d, s in gs.SNAP_FIELDS if n not in gs.DEV_FIELDS]
+        body = ' '.join('%s=%0*X' % (n, 2 * s, 3) for n, _, s in old)
+        snaps = gs.snapshots(['S ms=1 %s kb=0000 head=001E tail=001E' % body])
+        self.assertNotIn('dev1', snaps[3])                  # absent, not zero
+        self.assertEqual(snaps[3]['rng'], 3)
+
+    def test_the_u17_scenario_walks_to_modify_controls(self):
+        # record §H6: the K11 walk's first 24 keys (k11_session.WALK[2:24] after the
+        # boot Enter and the START MENU Enter), then one p1.down (device 0 -> 2) and
+        # Esc (the leave), and the end 60 frames later
+        import k11_session as ks
+        sc = gs.SCENARIOS['gp-u17-device2']
+        self.assertIn('gp-u17-device2', gs.STOP_AT_END)
+        steps = sc['steps']
+        self.assertEqual(steps[0], ('boot', gs.ENTER_WAIT, ('key', 'enter')))
+        self.assertEqual(steps[1], ('after_mode', 0x27, 150, ('key', 'enter')))
+        want = [('pad', ('p1.down',), 5) if k == 'down' else ('key', k) for k in ks.WALK[2:24]]
+        self.assertEqual([s[-1] for s in steps[2:24]], want)
+        self.assertEqual(steps[24], ('after', 30, ('pad', ('p1.down',), 5)))    # KEYBOARD -> 2
+        self.assertEqual(steps[25], ('after', 30, ('key', 'esc')))              # 0x32345
+        self.assertEqual(steps[26], ('after', 60, ('end',)))
+        self.assertEqual(len(steps), 27)
 
     def test_the_port_t_line_writes_every_snap_field_in_order(self):
         # port/tests/test_game.c gp_trace_line: the capture's S names and order (spec §4.2).

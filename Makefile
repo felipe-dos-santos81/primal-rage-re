@@ -68,6 +68,7 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
+        gp-u17-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1391,6 +1392,49 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 			--capture-sha256 "$(GP_U16_CAPTURE_SHA256)" --capture-frames "$(GP_U16_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u16-twop2; exit $$rc; fi
 
+# Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
+# gp_session.SCENARIOS['gp-u17-device2'], record §H6): the K11 service-menu walk to MODIFY
+# CONTROLS (0x31F24), one p1.down (P1's device KEYBOARD 0 -> JOYSTICK 2, the 0x3206F/0x320ED
+# arms) and Esc (0x32345 config_keys_apply writes 2 into BIOS+0x2D4, 0x1AE3B). DOSBox-X has no
+# game port, so the ISR sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and
+# clears the word on its next tick (0x1BC6F): the S record's dev1 reads 2 (the selection) and 0
+# from the clear on, which is what the capture pins. The claim is narrow: no game-port axis or
+# button is injected (the harness cannot), so the arms' evidence is the unit tests and the
+# differential rows; this capture pins the clear, not the pad's answer.
+# tools/gp_u17.py check is the capture-side evidence (the selection, the clear, no sticky word,
+# the mode path, the scenario's own last two presses); `gp_compare --dev-words` adds dev1/dev2 to
+# the trace claim (only this scenario asserts them -- every older poll.log lacks the fields and
+# its pins stay).
+# The pins are EMPTY until data/k11-captures/gp-u17-device2 is captured and measured (the
+# user-gated capture half): the target skips on the absent capture directory (`[ ! -d ]`), and a
+# present capture with an empty pin fails first in gp_compare ("the ratchet N is not pinned" /
+# "the capture identity (poll.log sha256) is not pinned").
+# Provenance goes here with the measured values: CLEAR_FRAME the first S record after the leave
+# whose dev1 is 0 (gp_u17.py's `clear frame`), MIN_FIRST the first unexplained capture frame,
+# TRACE_MIN_FIRST the first differing traced f (dev1/dev2 included), MAX_START the window's
+# first capture frame, MIN_REACH the replay's last exhibited port frame, and the capture
+# identity (poll.log sha256 and the frame_*.raw.gz count). Raise MIN_FIRST/TRACE_MIN_FIRST/
+# MIN_REACH when they improve; a re-capture invalidates every pin (record §G.24).
+GP_U17_CLEAR_FRAME =
+GP_U17_MIN_FIRST =
+GP_U17_TRACE_MIN_FIRST =
+GP_U17_MAX_START =
+GP_U17_MIN_REACH =
+GP_U17_CAPTURE_SHA256 =
+GP_U17_CAPTURE_FRAMES =
+gp-u17-oracle: build ## Host input truth U17 oracle: the device-2 selection's no-pad clear and the ratchets on gp-u17-device2 (skips without it)
+	@echo "== gameplay oracle: gp-u17-device2 (the device-2 selection and the no-pad clear) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_u17
+	@if [ ! -d $(K11_CAPTURES)/gp-u17-device2 ]; then echo "gp-u17-oracle: no capture at $(K11_CAPTURES)/gp-u17-device2 (skipped)"; else \
+		$(PYTHON) tools/gp_u17.py check --capture $(K11_CAPTURES)/gp-u17-device2 --clear-frame "$(GP_U17_CLEAR_FRAME)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u17-device2 GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u17-device2 --capture $(K11_CAPTURES)/gp-u17-device2 \
+			--port $(GP_DUMP)/gp-u17-device2 --dev-words --min-first "$(GP_U17_MIN_FIRST)" \
+			--trace-min-first "$(GP_U17_TRACE_MIN_FIRST)" --max-start "$(GP_U17_MAX_START)" \
+			--min-reach "$(GP_U17_MIN_REACH)" \
+			--capture-sha256 "$(GP_U17_CAPTURE_SHA256)" --capture-frames "$(GP_U17_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u17-device2; exit $$rc; fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario) --max-unexplained "$(GP_REPORT_MAX)"
@@ -1481,12 +1525,13 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u15-oracle
 	@echo "== gameplay oracle: gp-u16-twop2 (an extended two-human match and the finishers; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u16-oracle
+	@$(MAKE) --no-print-directory gp-u17-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_title_pin
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

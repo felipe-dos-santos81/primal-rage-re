@@ -885,7 +885,9 @@ static void cfg_swap_buffers(void)
  * waits), pumps the key bitmap (0x500C4) and drains the BIOS queue
  * (0x2EB11..0x2EB6C): each key stores DS_00105F28 = the key word and
  * DS_00105F2C = 0x500BB, and DS_00105F30 = the ascii byte, or the scan code
- * when the ascii byte is 0 (0x2EB5C..0x2EB66); the last key wins. Callers:
+ * when the ascii byte is 0 (0x2EB5C..0x2EB66); the last key wins, and the
+ * Alt-J word 0x2400 runs the joystick calibration (0x2EB45's 0x5004A,
+ * host_pad_center, record 2026-10-21-host-input-truth §H6). Callers:
  * 0x24C5C (0x24E4B), 0x249F0 (0x24A3C) with EAX = -1, 0x2CADC (0x2CB5F,
  * EAX = 0xB4), 0x1A38C and 0x31FBF. */
 void config_screen_wait(s32 n)
@@ -935,9 +937,10 @@ void config_screen_wait(s32 n)
             if (key == 0u) break;                           /* 0x2EB27 */
             key = (u32)input_get_key();                     /* 0x2EB29..0x2EB3A */
             DSD(CFG_KEY_WORD) = key;                        /* 0x2EB3F */
-            /* PORT: 0x2EB45 key word 0x2400 calls 0x5004A (the joystick
-             * calibration); the port reads the keyboard only, as game_init's
-             * 0x5004A call is left out in flow.c. */
+            /* 0x2EB45: the key word 0x2400 (Alt-J) calls 0x5004A, the joystick
+             * calibration -- the host's centre capture (host_pad_center,
+             * record 2026-10-21-host-input-truth §H6). */
+            if (key == 0x2400u) host_pad_center();          /* 0x2EB45/0x2EB4D */
             DSD(CFG_KEY_TIME) = DSD(CFG_TICK_ISR);          /* 0x2EB52/0x2EB57 */
             u32 latch = key;
             if ((latch & 0xFFu) == 0u) latch >>= 8;         /* 0x2EB5C..0x2EB61 */

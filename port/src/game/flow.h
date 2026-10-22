@@ -46,6 +46,13 @@ void game_master_init(void);
  * game_loop's restart point. */
 void game_init_resume(void);
 
+/* PORT: 0x20D0F..0x20DE3, the boot controller checks inside 0x20C10's tail
+ * (record 2026-10-21-host-input-truth §H6; the block has no function boundary
+ * of its own). A device word 2/4/6 selects a game port; each selected side is
+ * probed with 0x4FBBB and its word cleared when nothing answers. A test enters
+ * it directly. */
+void game_boot_ports(void);
+
 /* 0x65431 — record named-gaps-b §B.1. WATCOM longjmp(0x1044F4, 1): the soft
  * restart. Lands at the armed restart point (game_loop's; 0x20C1F's setjmp in
  * the raw); never returns. */
@@ -94,8 +101,9 @@ void game_frame(void);
  * byte goes to 0x20860; otherwise Enter in mode 3 stores mode 0x27, ESC opens
  * the quit prompt 0x249F0 (AL = 0 in mode 3, none in mode 0x27, else AL = 1),
  * space pauses (not in modes 3/0x27, nor in 0x17 under the hook 0x10E80), and
- * the extended keys 0x10/0x1F/0x24/0x32 run 0x249F0(0)/0x1D220/0x5004A (not
- * ported)/0x1D1B0. The prompt and the pause block on input_get_key. */
+ * the extended keys 0x10/0x1F/0x24/0x32 run 0x249F0(0)/0x1D220/host_pad_center
+ * (0x5004A, the joystick calibration)/0x1D1B0. The prompt and the pause block
+ * on input_get_key. */
 void game_key_loop(void);
 
 /* 0x11D04: switch(DS_000F0A64). States 0/1/2 and the front-end states 3/4/5 are

@@ -51,6 +51,9 @@ extern int g_failures;
     X(test_host_pad_arm6) \
     X(test_host_pad_dead_band) \
     X(test_host_pad_f1f2) \
+    X(test_host_port_present) \
+    X(test_boot_probe_clears) \
+    X(test_host_pad_center) \
     X(test_host)        \
     X(test_flow)        \
     X(test_opl)         \

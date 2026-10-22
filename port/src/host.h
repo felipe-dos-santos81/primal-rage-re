@@ -158,9 +158,9 @@ void host_set_key_bits_override(u16 bits, int on);
  * 2026-10-21-host-input-truth §H3). A game port's button inputs are active low:
  * a pressed button grounds its bit, and the readers set their game bit when the
  * port bit is CLEAR. The pad model fills it in host_pad_fill(); with no pad it
- * answers 0 (the brief's placeholder -- the readers then see all four buttons
- * low, which is sound only because the device word selecting a game-port arm is
- * cleared when no pad answers, 0x4FBBB/Task 6). */
+ * answers 0. That 0 would read as all four buttons held, so no game-port arm
+ * may sample it: the device word that selects one is cleared when no pad
+ * answers (0x4FBBB, host_port_present, §H6) before the sampler's arms run. */
 u8 host_port_buttons(void);
 
 /* PORT: fills the four normalized axis words (0xE1C1E/0xE1C20/0xE1C26/0xE1C28)
@@ -190,11 +190,23 @@ void host_input_fill_axes(void);
  * normalized unit by HOST_PAD_AXIS_SCALE (a declared host policy, host.c): full
  * deflection is 0x1FF, so the raw's ±0x1E dead band is about 6% of travel.
  * With no pad the fill leaves the axis words at their centers and the game-port
- * byte at 0 (Task 4's no-pad state; Task 6 models the presence answer). */
+ * byte at 0; a joystick device word is cleared on the next tick by the
+ * sampler's presence block (host_port_present, §H6), so that 0 is never read by
+ * an arm. */
 void host_pad_open(void);
 void host_pad_close(void);
 void host_pad_poll(void);
 void host_pad_fill(void);
+
+/* PORT: the centre capture, 0x5004A (record 2026-10-21-host-input-truth §H6).
+ * The raw waits until each axis reads >= +0x1E and stores the reading as that
+ * axis's center (0xE1C1E.. -> 0xE1C22..), skipping a player's pair whose poll
+ * (0x4FC05/0x4FCFD) answers 0; its 0x50021 PIT-period word 0xE1C1C is stored
+ * once, only while it is 0. The host's reading is the axis word itself, whose
+ * rest value is the center (a pad at rest is its own center), so a capture
+ * with no pad moves nothing. Called at pad connect (host_pad_open), from
+ * game_init's 0x1C0AC, and on Alt-J (0x24DD3's and 0x2EB4D's 0x5004A). */
+void host_pad_center(void);
 
 /* PORT: test seam, no raw counterpart. While armed, host_pad_poll() does
  * nothing and host_pad_fill() reads `axes` (four s8 normalized displacements,
@@ -203,12 +215,24 @@ void host_pad_fill(void);
  * Off by default; nothing outside the tests sets it. */
 void host_set_pad_override(const u8 *axes, const u8 *buttons, int present);
 
+/* PORT: the game port's presence (record 2026-10-21-host-input-truth §H6). The
+ * raw's 0x4FBBB(probe) waits for the game port's axis one-shot bits to clear,
+ * triggers them with `out 0x201,0` and waits again: a fan-out answers 1, a
+ * quiet port 0. The host owns that answer, so 1 means the pad is attached and
+ * 0 means no pad -- the state the sampler clears a joystick device word in
+ * (0x1BC6F/0x1BCB4/0x1BCE6). The `probe` mask is the raw's argument: 3 is
+ * P1's axis pair (port bits 0/1) and 0xC P2's (bits 2/3); one pad supplies
+ * both sticks, so a present pad answers any axis mask. The raw's mask 0 tests
+ * no bit at all and answers 1 whatever the hardware (0x4FBCD/0x4FBEE
+ * `test bl,al` with BL = 0). host_set_port_present_override still wins. */
+int host_port_present(int probe);
+
 /* PORT: the host's answer to the ISR sampler's presence block (0x1BBAC's
  * 0x4FDF5/0x4FC05/0x4FCFD polls and 0x4FBBB probe; the routines stay
  * host-owned, record §49-V). 1 means the game port answered, 0 means it did NOT
- * (the sampler then clears the device word, 0x1BC6F/0x1BCB4/0x1BCE6). Task 4
- * answers 0 -- the no-pad state -- and Task 6 models the pad's answer and the
- * boot probe. The seam pins each answer for the differential rows. */
+ * (the sampler then clears the device word, 0x1BC6F/0x1BCB4/0x1BCE6). Each
+ * answers through host_port_present() with the mask its raw routine reads
+ * (0xF/3/0xC). The seam pins each answer for the differential rows. */
 int host_port_poll_both(void);
 int host_port_poll_p1(void);
 int host_port_poll_p2(void);

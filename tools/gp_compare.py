@@ -29,7 +29,11 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
   trace   the capture's S records (poll.log) against the port's T records
           (trace.txt) by the frame counter f, over gp_session.TRACE_FIELDS;
           the first differing f must be >= --trace-min-first F. tick is
-          reported apart (host-timed, spec §7 Q6).
+          reported apart (host-timed, spec §7 Q6). --dev-words adds
+          gp_session.DEV_FIELDS (dev1/dev2, the joystick device words behind
+          DS_00101514, record §H6) to the same claim -- gp-u17-device2's only:
+          every older capture's poll.log lacks the fields, so the flag is what
+          makes them part of a claim, and a capture without them fails it.
 
 The search for a frame's explanation tries the port frames [p - BACK, p +
 AHEAD) around the last explained index p first, then the whole dump, so the
@@ -759,6 +763,14 @@ def capture_identity(name, cap_dir, n_frames, sha, frames, out):
     return True
 
 
+def has_dev_fields(cap_lines):
+    """The capture records gp_session.DEV_FIELDS (record §H6): --dev-words'
+    precondition. An older poll.log's S lines lack dev1/dev2, so a claim over them
+    would compare nothing; the flag's run FAILs instead."""
+    snaps = gs.snapshots(cap_lines)
+    return bool(snaps) and all(n in next(iter(snaps.values())) for n in gs.DEV_FIELDS)
+
+
 def _int_or_none(s):
     return None if s in (None, '') else int(s, 0)
 
@@ -781,6 +793,11 @@ def main():
     ap.add_argument('--moves-min-first', default=None,
                     help='the moves claim over gp_session.MOVE_FIELDS (record gameplay-u6 §U6.11); '
                          'report mode runs it whenever the capture records those fields')
+    ap.add_argument('--dev-words', action='store_true',
+                    help='add gp_session.DEV_FIELDS (dev1/dev2, the joystick device words; record §H6) '
+                         'to the trace claim. Only gp-u17-device2 passes this: every older capture\'s '
+                         'poll.log lacks the fields, and their pins stay (the parser treats an absent '
+                         'field as absent)')
     ap.add_argument('--report', action='store_true')
     ap.add_argument('--max-unexplained', type=int, default=REPORT_MAX,
                     help='report mode: stop after this many unexplained frames (0 = no cap; default 5)')
@@ -821,7 +838,16 @@ def main():
         cl = f.read().splitlines()
     with open(os.path.join(a.port, 'trace.txt')) as f:
         pl = f.read().splitlines()
-    rc2, _ = trace_claim(name, cl, pl, n_trace, print, a.report)
+    # The device-word claim (record §H6): dev1/dev2 join the trace fields, and a
+    # capture without them is a FAIL rather than a silent narrower claim.
+    dev_ok = True
+    trace_fields = gs.TRACE_FIELDS
+    if a.dev_words:
+        trace_fields = gs.TRACE_FIELDS + gs.DEV_FIELDS
+        if not has_dev_fields(cl):
+            print('gp_compare: %s: trace: FAIL: the capture records no device-word fields (dev1/dev2)' % name)
+            dev_ok = False
+    rc2, _ = trace_claim(name, cl, pl, n_trace, print, a.report, trace_fields)
     rc3 = 0
     snaps = gs.snapshots(cl)
     has_moves = bool(snaps) and all(n in next(iter(snaps.values())) for n in gs.MOVE_FIELDS)
@@ -831,7 +857,7 @@ def main():
     elif a.moves_min_first is not None or (a.report and has_moves):
         rc3, _ = trace_claim(name, cl, pl, None if a.report else _int_or_none(a.moves_min_first),
                              print, a.report, gs.MOVE_FIELDS, 'moves')
-    return 0 if a.report else (1 if rc1 or rc2 or rc3 or rc4 else 0)
+    return 0 if a.report else (1 if rc1 or rc2 or rc3 or rc4 or not dev_ok else 0)
 
 
 if __name__ == '__main__':

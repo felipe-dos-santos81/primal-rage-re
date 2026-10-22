@@ -32,9 +32,17 @@ import smk_capture as sc
 import title_capture as tcap
 
 
-def read_snap(mm, base, fields=gs.SNAP_FIELDS):
+def read_snap(mm, base, fields=gs.SNAP_FIELDS, ptr=None):
+    """One consistent snapshot. A POINTER_FIELDS entry (dev1/dev2, record §H6)
+    lives in the key-config block at [DS_00101514] + its offset, not at a fixed
+    DS address: without the block pointer (the pre-block and consistency reads)
+    there is no address to read and the value is 0; an S record is only written
+    with the pointer, which the poller has by then."""
     out = {}
     for name, ds, size in fields:
+        if name in gs.POINTER_FIELDS:
+            out[name] = 0 if ptr is None else int.from_bytes(mm[ptr + ds:ptr + ds + size], 'little')
+            continue
         o = base + ds - gs.DATA_BASE_VA
         out[name] = int.from_bytes(mm[o:o + size], 'little')
     return out
@@ -396,7 +404,7 @@ class Poller(threading.Thread):
                     inj = Injector(mm, ptr, log, self.pad_bios)
                 h = kc.u16(mm, gs.BDA_HEAD)
                 if head is not None and h != head:
-                    f_after = read_snap(mm, base)['f']
+                    f_after = read_snap(mm, base, ptr=ptr)['f']
                     start, end = kc.u16(mm, kc.BDA_START) or 0x1E, kc.u16(mm, kc.BDA_END) or 0x3E
                     for step_head in ring_steps(head, h, start, end):
                         log.write('H ms=%d f=%04X head=%04X\n' % (ms, f_after, step_head))
@@ -410,10 +418,10 @@ class Poller(threading.Thread):
                     for name, scan, word, hold in gs.expand(act):
                         inj.press(step, v['f'], name, scan, word, hold, 0, ms)
                 if spinning(v) and v['f'] != last_f:
-                    v2 = read_snap(mm, base, self.fields)
+                    v2 = read_snap(mm, base, self.fields, ptr)
                     kb = mm[ptr + 0x2D8] << 8 | mm[ptr + 0x2D9]
                     bh, bt = kc.u16(mm, gs.BDA_HEAD), kc.u16(mm, gs.BDA_TAIL)
-                    v3 = read_snap(mm, base)
+                    v3 = read_snap(mm, base, ptr=ptr)
                     if accept(v, v2, v3):
                         log.write(gs.format_s(ms, v2, kb, bh, bt, self.fields) + '\n')
                         f = v2['f']

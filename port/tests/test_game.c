@@ -13401,6 +13401,7 @@ static void gp_trace_line(void)
             "e0=%04X e2=%04X rng=%08X cred=%08X fp=%02X b1d=%02X b1f=%02X b25=%02X w10d=%02X cnt=%02X "
             "s0_52=%02X s0_54=%02X s0_5a=%02X s1_52=%02X s1_54=%02X s1_5a=%02X ent=%08X "
             "r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X "
+            "dev1=%04X dev2=%04X "
             "lat=%08X spz=%02X mpz=%02X "
             "afc=%04X ad4=%08X w2=%02X w3=%02X b1e=%02X b21=%02X b14=%02X b0c=%02X t104=%04X "
             "m106=%08X m10a=%08X sc0=%08X c82=%02X\n",
@@ -13417,6 +13418,11 @@ static void gp_trace_line(void)
             (unsigned)DSB(DS_001088A8), (unsigned)DSB(DS_001088A8 + 1u),
             (unsigned)DSB(DS_0010782A), (unsigned)DSB(DS_001078BE),
             (unsigned)DSB(DS_001077B0 + 0x43u),
+            /* Host input truth U17 (record §H6): the two joystick device words,
+             * behind the key-config block pointer DS_00101514 (+0x2D4/+0x2D6),
+             * gp_session's POINTER_FIELDS. */
+            (unsigned)DSW(DSD(DS_00101514) + 0x2D4u),
+            (unsigned)DSW(DSD(DS_00101514) + 0x2D6u),
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */

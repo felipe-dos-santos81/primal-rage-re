@@ -31,6 +31,24 @@ class TestSnapshot(unittest.TestCase):
         v = gc.read_snap(m, BASE)
         self.assertEqual((v['f'], v['rng']), (0x1234, 0xDEADBEEF))
 
+    def test_the_device_words_are_read_through_the_block_pointer(self):
+        # record §H6: dev1/dev2 are [DS_00101514] + 0x2D4/0x2D6, so read_snap needs the
+        # block pointer; without it there is no address to read and the value is 0
+        m = _mem()
+        ptr = 0xFE20
+        m[ptr + 0x2D4:ptr + 0x2D6] = (2).to_bytes(2, 'little')
+        m[ptr + 0x2D6:ptr + 0x2D8] = (6).to_bytes(2, 'little')
+        # a decoy at the offset a fixed-DS read would use, so that path is distinguishable
+        _put(m, 0x2D4, 2, 0xEEEE)
+        v = gc.read_snap(m, BASE, ptr=ptr)
+        self.assertEqual((v['dev1'], v['dev2']), (2, 6))
+        # without the pointer (the pre-block and consistency reads): 0, never the decoy
+        self.assertEqual(gc.read_snap(m, BASE)['dev1'], 0)
+        self.assertEqual(gc.read_snap(m, BASE)['dev2'], 0)
+        # and the S record written with the pointer carries them
+        rec = gs.parse(gs.format_s(0, dict(v, f=7), 0, 0x1E, 0x1E))
+        self.assertEqual((rec['dev1'], rec['dev2']), (2, 6))
+
     def test_spinning_is_the_0x256C6_predicate_with_wrap(self):
         self.assertTrue(gc.spinning({'t50c': 2, 't508': 1}))
         self.assertFalse(gc.spinning({'t50c': 2, 't508': 2}))
@@ -397,6 +415,7 @@ class TestStopAtEnd(unittest.TestCase):
         for name in ('gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                      'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap', 'gp-u8-attract-start'):
             self.assertIn(name, gs.STOP_AT_END)             # U8 rows and the attract start: N and F sit at the replay's end (record §U8.12, §U8.14)
+        self.assertIn('gp-u17-device2', gs.STOP_AT_END)      # U17: nothing past the clear is compared
         for name in ('gp-pads', 'gp-idle-loss', 'gp-idle-loss-run2', 'gp-u5-charsel', 'gp-keys-fight'):
             self.assertNotIn(name, gs.STOP_AT_END)
         for name in gs.STOP_AT_END & set(gs.SCENARIOS):    # a stop needs an end frame

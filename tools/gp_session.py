@@ -24,6 +24,8 @@ import sys
 DATA_BASE_VA = 0x80000
 KB_PTR_DS = 0x101514        # DS_00101514 -> the key block (+0x254 key state, +0x2D8/+0x2D9 bitmap)
 KEYTAB_OFF = 0x254          # IRQ1 key-state table, bit 7 = released (demo-pose §50-C.3)
+KB_DEV1 = 0x2D4             # +0x2D4 P1's joystick device word (behind the pointer; §H6)
+KB_DEV2 = 0x2D6             # +0x2D6 P2's (0/2/4/6 select a game-port arm)
 ENTER_WAIT = 25.0           # s, harness: the K11 boot wait (k11_session.ENTER_WAIT)
 HOLD_FRAMES = 3             # harness: AUTOTYPE's 3-tick press (record named-gaps-a §A.9)
 BDA_HEAD, BDA_TAIL = 0x41A, 0x41C
@@ -44,7 +46,18 @@ SNAP_FIELDS = (
     # slot 0's +0x43 (0x1A6AC's block bits 0x20/0x10).
     ('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1), ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
     ('s0_43', 0x1077F3, 1),
+    # Plan 2026-10-21-host-input-truth Task 6 (record §H6): the two joystick
+    # device words, read through the key-config block pointer DS_00101514 (a
+    # POINTER_FIELDS entry: gp_capture.read_snap resolves it at ptr + offset).
+    # Appended like the u6 fields, so every older poll.log's S lines lack them;
+    # only gp-u17-device2 asserts them (gp_compare --dev-words).
+    ('dev1', KB_DEV1, 2), ('dev2', KB_DEV2, 2),
 )
+# The S fields read through the key-config block pointer rather than a fixed DS
+# address (record §H6): a boot or a restart may move the block, so the address
+# is [DS_00101514] + the field's offset.
+POINTER_FIELDS = frozenset(('dev1', 'dev2'))
+DEV_FIELDS = ('dev1', 'dev2')                   # the device-word claim's fields
 TRACE_FIELDS = ('mode', 'st', 'raw', 'pad', 'e0', 'e2', 'rng', 'cred', 's0_5a', 's1_5a')
 MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (record gameplay-u6 §U6.11)
 
@@ -608,6 +621,40 @@ SCENARIOS['gp-u16-twop2'] = dict(time_limit=240, steps=(
 ))
 
 
+# Host input truth U17 (plan 2026-10-21-host-input-truth Task 6; record §H6): the
+# K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first 24 keys -- the
+# mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the OPTIONS MENU, its
+# CONFIG OPTIONS editor, STATISTICS' five screens, SOUND, MUSIC and MODIFY
+# CONTROLS), then one p1.down -- P1's device KEYBOARD (0) -> JOYSTICK 2, the
+# 0x3206F/0x320ED arms' +2 -- and Esc, whose 0x32345 config_keys_apply writes the
+# record's device into BIOS+0x2D4 (0x1AE3B). DOSBox-X has no game port, so the ISR
+# sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and clears
+# the word on its next tick (0x1BC6F); the S record's dev1 shows the clear. The
+# keys are the walk's own (`enter`/`esc` as BIOS keys, the Downs as P1's bound Down
+# key, which is the same scan the walk used); the 150-frame gap into the MAIN MENU
+# is U4's, the 30-frame gaps and the 5-frame pad hold are U7's harness values (a
+# press reaches the pad level one iteration late, record §G.7.2). The scenario ends
+# 60 frames after the leave, before anything in the OPTIONS MENU could save.
+U17_WALK = ('p1.down', 'p1.down', 'esc', 'p1.down', 'enter', 'enter', 'esc',
+            'p1.down', 'enter', 'esc', 'esc', 'esc', 'esc', 'esc',
+            'p1.down', 'enter', 'esc', 'p1.down', 'enter', 'esc',
+            'p1.down', 'enter',                   # MODIFY CONTROLS
+            'p1.down', 'esc')                     # device 2, then leave (applied)
+
+
+def _u17_step(item):
+    """One walk item: a pad press (P1's bound key) or a BIOS key."""
+    return ('pad', (item,), 5) if item.startswith('p1.') else ('key', item)
+
+
+SCENARIOS['gp-u17-device2'] = dict(time_limit=90, steps=(
+    ('boot', ENTER_WAIT, ('key', 'enter')),           # mode 3 -> 0x27 (the walk's key 1)
+    ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU (the walk's key 2)
+) + tuple(('after', 30, _u17_step(k)) for k in U17_WALK) + (
+    ('after', 60, ('end',)),                          # 60 frames after the leave
+))
+
+
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
     if action[0] == 'key':
@@ -732,12 +779,14 @@ class Schedule:
 # screen (mode 0x12, the mode-0x17 hook 0x4142C's store) after the match-result
 # screen's finisher attempts, and nothing past it is compared; without the stop the
 # 240 s limit would run on through mode 0x12.
+# gp-u17-device2 (host input truth U17) stops too: it ends 60 frames after the
+# MODIFY CONTROLS leave, and nothing past the clear is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
                          'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
                          'gp-u13-ending2', 'gp-u12-endurance', 'gp-u14-win-live',
-                         'gp-u15-join', 'gp-u16-twop2'})
+                         'gp-u15-join', 'gp-u16-twop2', 'gp-u17-device2'})
 
 
 class ScriptError(Exception):

@@ -30615,8 +30615,9 @@ def d5h_gf_muts(row):
 H1_GF_UNHIT = {
     0x24D39: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24D37 always jumps)",
     0x24E5F: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24E5D always jumps)",
-    0x24DD3: "the scan code 0x24 (Alt-J): 0x5004A, the joystick calibration (the PIT and the game port 0x201), "
-             "which the port leaves out (game_key_loop, PORT); a named gap (record 2026-10-14-reverse-h section H.2)",
+    0x24DD3: "the scan code 0x24 (Alt-J): 0x5004A, the joystick calibration, which no case's key queue "
+             "carries; the port runs its host-owned centre capture there (host_pad_center, record "
+             "2026-10-21-host-input-truth section H6), so the block is unhit, not a port omission",
 }
 H1_GF_PROMPT = E.Call(0x249F0, ("eax",), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
 H1_GF_NAME = E.Call(0x20860, ("eax",))
@@ -32681,8 +32682,9 @@ D6A_WAIT_UNHIT = {
              "eax,0xffff` 0x2EB22 on a non-zero word (ZF = 0), which the BIOS read returns unchanged; either "
              "way it joins 0x2EB3A with AX kept (record 2026-10-14-reverse-h section H.2)",
     0x2EB38: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x2EB36 always jumps)",
-    0x2EB4D: "the key word 0x2400 (Alt-J): 0x5004A, the joystick calibration (the PIT and the game port "
-             "0x201), which the port leaves out (config.c, PORT); a named gap (record section H.2)"}
+    0x2EB4D: "the key word 0x2400 (Alt-J): 0x5004A, the joystick calibration, which no case's key queue "
+             "carries; the port runs its host-owned centre capture there (host_pad_center, record "
+             "2026-10-21-host-input-truth section H6), so the block is unhit, not a port omission"}
 
 
 def d6a_wait(cid, n, flag=0, word=0x1111, latch=0x5A5A5A5A, regs=None, keys=()):

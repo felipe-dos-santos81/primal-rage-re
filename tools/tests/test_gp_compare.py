@@ -316,6 +316,31 @@ class TestTrace(unittest.TestCase):
         self.assertFalse(any('ratchet N' in l or 'FAIL' in l for l in out), out)
         self.assertTrue(any('first difference f=2' in l for l in out), out)
 
+    def test_the_device_claim_is_opt_in_and_catches_a_sticky_word(self):
+        # record §H6: dev1 reads 2 at f=5 (the selection) and 0 from f=6. The default
+        # trace claim never looks at it; --dev-words (DEV_FIELDS added to the fields)
+        # catches a port that leaves the word set -- the no-pad presence regression.
+        cap = [_S(f, dev1=2 if f == 5 else 0) for f in range(10)]
+        port = [_t(f, dev1=2 if f >= 5 else 0) for f in range(10)]
+        out = []
+        self.assertEqual(gc.trace_claim('t', cap, port, 9, out.append)[:2], (0, None), out)
+        out = []
+        rc, first = gc.trace_claim('t', cap, port, 9, out.append, False,
+                                   gs.TRACE_FIELDS + gs.DEV_FIELDS)
+        self.assertEqual((rc, first), (1, 6), out)     # the clear is the first difference
+        self.assertTrue(any('first difference f=6 (6) in dev1' in l for l in out), out)
+
+    def test_the_device_fields_must_be_in_the_capture(self):
+        # an older capture has no dev1/dev2: the flag's claim FAILs instead of
+        # comparing nothing (the existing captures' pins stay where they were)
+        cap = [_S(f, dev1=0, dev2=0) for f in range(3)]
+        self.assertTrue(gc.has_dev_fields(cap))
+        old = [(n, d, s) for n, d, s in gs.SNAP_FIELDS if n not in gs.DEV_FIELDS]
+        stripped = ['S ms=1 %s kb=0000 head=001E tail=001E'
+                    % ' '.join('%s=%0*X' % (n, 2 * s, 1) for n, _, s in old)]
+        self.assertFalse(gc.has_dev_fields(stripped))
+        self.assertFalse(gc.has_dev_fields([]))
+
     def test_the_moves_claim_compares_the_move_fields_only(self):
         # record gameplay-u6 §U6.11: rng differs at f=2 (the trace's business), r0 at f=5
         port = [_t(f, rng=f, r0=0xFF if f < 5 else 0x20) for f in range(10)]

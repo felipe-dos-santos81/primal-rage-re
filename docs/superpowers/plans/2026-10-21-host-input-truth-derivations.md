@@ -992,3 +992,234 @@ names the call site's expectation):
   opens a real pad, and `host_pad_open`'s failure is a silent no-pad, never an abort.
 - No new ported function: the host pad functions carry no `/* 0xADDR` header and no `fn_register`,
   so `tools/port_progress.py` and the E2 triage table are unchanged.
+
+## §H6 The presence, the boot probe, the calibration and the device-2 scenario
+
+Task 6 (the code half) closes §H5.4's presence dependency: `host_port_present()` answered 0, so a
+windowed run with a pad and a config selecting device 2/4/6 fell back to the keyboard on the first
+sample. It models `0x4FBBB`, wires the boot block `0x20D0F..0x20DE3`, implements `0x5004A`/
+`0x50021`'s centre capture at pad connect, in `game_init` and on both Alt-J sites, and adds the
+`dev1`/`dev2` poll fields and the `gp-u17-device2` scenario. Sources: capstone over the fixed-up
+image (image offset = address − `0x10000`) for every instruction below, and the Ghidra listing
+(`port/decomp/prage.c:7521-7525`, `11404-11520`) which agrees. The capture half (the measured pins)
+is user-gated and is not in this commit.
+
+### §H6.1 The presence model: `0x4FBBB` -> `host_port_present(int probe)`
+
+`0x4FBBB` takes the mask in EAX and returns through AL:
+
+```
+4FBBB  push ebx/ecx/edx / mov ebx,eax / mov edx,0x201 / mov ecx,0x2FFFF
+4FBCA  in al,dx / test bl,al / je 0x4FBD5 / loop 0x4FBCA     ; wait for the masked bits to CLEAR
+4FBD3  jmp 0x4FBF4                                            ; the wait expired -> 0
+4FBD5  xor eax,eax / mov ecx,0x2FFFF / out dx,al              ; TRIGGER: write 0 to the port
+4FBE7  in al,dx / test bl,al / je 0x4FBFA / loop 0x4FBE7      ; wait for the fan-out (bits clear)
+4FBF4  xor eax,eax -> 0        (the second wait expired)
+4FBFA  mov eax,1 -> 1          (the fan-out arrived)
+```
+
+So the answer is "the port's axis one-shot bits cleared after the trigger": 1 with a game port
+attached, 0 with nothing there (the one-shots never fan out and the second wait expires). The masks
+are the port's four axis bits: 3 is P1's axes 0/1 (`0x1BC61`, `0x20DAC`) and 0xC P2's 2/3
+(`0x1BC7D`, `0x20DD1`); `0x4FDF5`/`0x4FC05`/`0x4FCFD` are the timed poll equivalents over all
+four, P1's two and P2's two.
+
+**Mask 0 is a raw quirk**: `test bl,al` with BL = 0 always sets ZF, so both `je` arms are taken and
+the function answers 1 whatever the hardware (`0x4FBCD`/`0x4FBEE`). The host keeps that arm
+(`if (probe == 0u) return 1;`) rather than pretending a port is attached.
+
+The host owns the answer (`port/src/host.c`): `host_port_present(int probe)` returns 1 when a pad
+is attached (`pad_present()`: the Task 5 seam's answer while armed, else the last poll's) and 0
+when none is. One SDL gamepad supplies both sticks (left = axes A = P1's pair, right = axes B =
+P2's), so every axis mask answers alike; a future two-pad host would split the masks here. The four
+Task 4 routines now answer through it with their raw masks — `host_port_poll_both` 0xF,
+`host_port_poll_p1` 3, `host_port_poll_p2` 0xC, `host_port_probe(mask)` the mask — and keep their
+`PR_SEAM` lines, so the sampler's differential row is unchanged (its four presence stubs are still
+stubs: the routines stay host-owned, `tools/port_classification.txt` rows 62-67).
+`host_set_port_present_override` still wins while armed (the Task 4/5 unit tests).
+
+**The no-pad game-port byte.** `host_port_buttons()` answers 0 with no pad, which the active-low
+readers would read as all four buttons held (§H3.1). That state is **unreachable**: the sampler's
+presence block runs before its arms (`port/src/platform/input.c`, `0x1BC4F..0x1BCE6` precedes the
+switches at `0x1BCF4`/`0x1BD66`) and clears a joystick device word on the same tick when the answer
+is 0, so a device 2/4 arm never reads the byte. §H3.4's "sound only because Task 6 answers the
+probe" is now a property of the code, not a plan. The byte's *value* is unchanged (0), so the
+existing §H3.4 test's assertion (`host_port_buttons() == 0` with no pad) stays as it was.
+
+### §H6.2 The boot clears: `0x20D0F..0x20DE3` (`game_boot_ports`)
+
+`0x20C10`'s tail runs the controller checks after the key-config record round trip (`0x1AEE0`/
+`0x1AF64`, `0x20CF2`/`0x20CF9`) and the handicap copy (`0x20D05`/`0x20D0A`). The flags are DL
+(P1's port flag) and DH (P2's): `0x20C29 xor dl,dl` and `0x20C30 xor dh,dh` leave both 0 at
+`0x20D0F`, which is what makes the block well-defined. The reconstruction:
+
+```
+20D0F  eax=[0x101514]; ax=[eax+0x2d4]; if (ax==2||4||6) dl=1        ; 0x20D2F
+20D31  eax=[0x101514]; ax=[eax+0x2d6]; if (ax!=2&&4&&6) goto 20D9E
+20D51  if (dl==1) { if ([+0x2d6]==2) { [+0x2d4]=0; dh=0; goto 20D9E } }   ; 0x20D6F
+20D7C  else if (dl==0 && [+0x2d6]==2) { dl=1; dh=0; goto 20D9E }          ; 0x20D96
+20D9C  else dh=1
+20D9E  if (dl==1) { if (0x4FBBB(3)==0)  [+0x2d4]=0 }                      ; 0x20DAC/0x20DB5
+20DC3  if (dh==1) { if (0x4FBBB(0xC)==0) [+0x2d6]=0 }                     ; 0x20DD1/0x20DDA
+```
+
+Both clears re-read `[0x101514]` after the probe (`0x20DB5`, `0x20DDA`; `0x20D5A` before the
+`0x20D6F` clear). The `dev2 == 2` arms are the reason a P2 device-2 selection probes P1's side: a
+device-2 P2 arm reads the same both-player axis pair as P1's (`0x1BD8B` calls `0x4FF8F`), so the
+block probes mask 3 and leaves DH 0 — P2's word survives this block (the sampler's presence block
+clears it on the first tick; `test_input_sampler_arms`'s 2/2 case pins that). No other word is
+touched, and a device that is not 0/2/4/6 is never probed.
+
+The port's `game_boot_ports()` (`port/src/game/flow.c`, declared in `flow.h`, called at the end of
+`game_init_resume`) is that block line for line. It replaces the named gap at the old
+`flow.c:6980-6985` (record named-gaps-b §B.11), and `0x20C10` is an unrowed function
+(`tools/diff_verify.py` `UNROWED`), so no differential row sees the new calls. With the shipped
+all-zero CMOS both words are 0, so the block takes no branch and writes nothing: the default path
+is unchanged (the front-end oracle below).
+
+### §H6.3 The calibration: `0x5004A` and `0x50021` (`host_pad_center`)
+
+```
+5004A  test word [0xe1c1c],0xffff / jne 0x50060        ; the period word, stored once
+50055  call 0x50021 / mov [0xe1c1c],ax                  ; the PIT channel-0 period
+50060  call 0x4fc05 / test eax,eax / je 0x5008d         ; P1's poll: 0 -> skip P1's pair
+50069  ax=[0xe1c1e]; [0xe1c22]=ax; cmp ax,0x1e; jl 0x50060   ; the reading -> the centre, then wait
+5007B  ax=[0xe1c20]; [0xe1c24]=ax; cmp ax,0x1e; jl 0x50060
+5008D  call 0x4fcfd ... 0x50096..0x500B8                ; P2's pair, the same shape
+```
+
+`0x50021` latches PIT channel 0 (`out 0x43,0`, two `in 0x40` reads) eight times and returns the
+largest difference between successive 16-bit readings — the wrap period `0x4FDF5` adds when a new
+normalized reading falls below the previous one. The centre store happens **before** the `cmp`,
+so the centre ends up as the first reading that is >= +0x1E: the raw waits until the stick has been
+pushed positive and then calls that reading the rest position (holding the stick at a position and
+pressing Alt-J centres it there).
+
+The host's model (`host_pad_center`, `port/src/host.c`; called at pad connect
+(`host_pad_open`), from `game_init`'s `0x1C0AC` call, and on both Alt-J sites — `0x24DD3` in
+`game_key_loop` and `0x2EB4D` in `config_screen_wait`):
+
+- The axis word at rest **is** the centre: `host_pad_fill` writes `centre + displacement`, so a rest
+  reading equals the centre and the copy is the plan's "the rest values become the centres". The
+  deflected-stick case copies the deflected reading, exactly as the raw's first store does.
+- A player's pair is captured only when its poll answers (`host_port_poll_p1`/`_p2`, masks 3/0xC):
+  with no pad neither answers and nothing moves.
+- `0x50021`'s period is **declared 0**, not fitted: the port's normalized axis words are host
+  values (`centre + displacement`), not PIT counts, so there is no period to measure
+  (`host_port_pit_period`, a static helper). `0x5004A` stores it once, only while `0xE1C1C` is 0;
+  a non-zero word is left as found.
+- What is not claimed: the PIT timing itself, the `>= +0x1E` wait loop (a host rest capture has
+  nothing to wait for), and any measured stick offset at connect (the axis words are 0 there:
+  `game_init`'s image load and `host_input_fill_axes` come after `host_init`'s pad open).
+
+The `0x5004A`-caller evidence: `0x1C0AC` (the init chain, between `0x336C0` and `0x1D0BC`),
+`0x24DD3` (the match key loop's Alt-J arm) and `0x2EB4D` (the BIOS key wait's Alt-J arm) — found by
+scanning the image for `call` displacements to `0x5004A`, not from the callers column alone. The
+two differential rows whose named-unhit blocks are those arms (`game_frame_keys`' `0x24DD3`,
+`0x2EA78`'s `0x2EB4D`) now say the block is unhit because no case queues the Alt-J word, not
+because the port leaves it out; no counter moves (§H6.7).
+
+### §H6.4 The `dev1`/`dev2` fields and the existing captures
+
+`gp_session.SNAP_FIELDS` gains `('dev1', 0x2D4, 2)` and `('dev2', 0x2D6, 2)` **appended** after the
+u6 fields, so every older poll.log's S lines are still a prefix of the format and parse as they did
+(the parser is key/value; an absent field is absent, and `test_gp_session`'s strip test asserts it).
+The two words live in the key-config block behind `DS_00101514`, so they cannot be read at a fixed
+DS address like every other S field:
+
+- `gp_session.POINTER_FIELDS` names them, and `gp_capture.read_snap` reads such a field at
+  `[DS_00101514] + its offset` (the poller's `ptr`, the same value it already uses for the key-state
+  table and the bitmap). Without the pointer — the pre-block state read and the consistency reads —
+  there is no address to read and the value is 0; an S record is only written with the pointer.
+- The port trace's T line appends `dev1`/`dev2` at the same position (SNAP_FIELDS then the
+  scenarios' extra fields), read as `DSW(DSD(DS_00101514) + 0x2D4/0x2D6)`; the
+  `test_gp_session` order/width test pins the format against the C source.
+- `gp_compare --dev-words` adds `gp_session.DEV_FIELDS` to the trace claim, and a capture whose S
+  records lack them FAILs ("the capture records no device-word fields") rather than comparing
+  nothing. Only `gp-u17-oracle` passes the flag: every existing capture's poll.log lacks the
+  fields, and adding them to the default claim would change what those oracles mean (§H5's
+  anti-goal). Their pins do not move: the pinned N, F, window start, reach and poll.log sha256 are
+  computed from the same capture bytes and the same `TRACE_FIELDS`.
+
+### §H6.5 The unit tests and their mutation proofs
+
+`port/tests/test_platform.c`, three tests registered once in `test.h` after `test_host_pad_f1f2`:
+
+- `test_host_port_present`: no pad -> 0 for the three axis masks, 1 for mask 0 (the raw's quirk);
+  a pad -> 1 for all three and through the four routines; the pad gone -> the four answer 0; the
+  Task 4 seam still wins while armed.
+- `test_boot_probe_clears`: no pad -> device 2/0 clears P1 (`0x20DAC`); 4/4 clears both; 2/2 clears
+  P1 at `0x20D6F` and leaves P2 at 2 (the sampler's tick clears it); 0/2 leaves P2 at 2; a pad ->
+  2/0 and 4/6 are kept; 1/3 (not a port) is never written.
+- `test_host_pad_center`: no pad -> no centre moves and a non-zero PIT period word is kept; a pad ->
+  each axis's rest reading becomes its centre (distinct values, so a swapped pair fails); a second
+  capture takes the new reading; the at-rest readers see their dead band; and the match key loop's
+  Alt-J word (`input_push(0x24, 0)`, `game_key_loop`) reaches the capture.
+
+Each assertion was seen to fail under at least one mutation, applied alone, rebuilt and reverted
+(the suite's only FAILs were these):
+
+| mutation | failing checks |
+|---|---|
+| `host_port_present` always answers 1 (the no-pad answer removed) | `4109/4110/4111: 1 != 0`, `4126..4129`, `4159: 2 != 0` (the boot clear), plus `3671: 2 != 0` and `3495: 17 != 1` (the sampler's production-answer block) |
+| the mask-0 arm dropped | `4112: 0 != 1` |
+| `game_boot_ports` never probes DH's side | `4166: 4 != 0` (the 4/4 case) |
+| `0x20D6F`'s clear writes `+0x2D6` instead | `4173: 0 != 2` (the 2/2 case) |
+| `host_pad_center` captures P1's pair with no poll gate | `4228: 4369 != 0`, `4229: 8738 != 0` |
+| P1 Y's centre read from X's word | `4238: 4369 != 8738`, `4257: 21845 != 26214` |
+| the Alt-J call dropped from `game_key_loop` | `4257: 8738 != 26214` |
+
+Named limit: `host_pad_open`'s connect-time capture, `host_pad_poll`'s SDL path and the
+`config_screen_wait` Alt-J site are not exercised headless (the suite never calls `host_init`, and
+driving `config_screen_wait` presents a frame); they are thin wiring over the tested function, and
+the flow.c site is tested. The SDL pad's own answer is the windowed run's (§H5.4).
+
+### §H6.6 The `gp-u17-device2` scenario (capture pending)
+
+`gp_session.SCENARIOS['gp-u17-device2']`: the K11 walk's first 24 keys
+(`k11_session.WALK[2:24]`, after the boot Enter and the START MENU Enter) take the service menu
+through GAME OPTIONS and the OPTIONS MENU's CONFIG OPTIONS editor, STATISTICS' five screens, SOUND,
+MUSIC and into MODIFY CONTROLS (`0x31F24`); then one `p1.down` steps P1's device KEYBOARD (0) ->
+JOYSTICK 2 (`0x3206F`/`0x320ED` add 2) and `esc` leaves, whose `0x32345 config_keys_apply` writes
+the record's device into BIOS+0x2D4 (`0x1AE3B`). DOSBox-X has no game port, so the ISR sampler's
+presence block probes `0x4FBBB(3)`, gets 0 and clears the word on its next tick (`0x1BC6F`). The
+scenario ends 60 frames after the leave (before anything in the OPTIONS MENU could save). Harness
+values: U4's 150-frame gap into the MAIN MENU, 30-frame gaps between the walk's keys, a 5-frame pad
+hold (a press reaches the pad level one iteration late, record §G.7.2), a 90 s limit, and
+`STOP_AT_END` (nothing past the clear is compared).
+
+`tools/gp_u17.py check` is the capture-side evidence (record §H6.6's claim): the S records carry
+dev1/dev2; the scenario's own last two injected presses are the device step and the leave; the mode
+stays 0x27 from the menu Enter on; dev2 stays 0; the selection is seen as dev1 = 2; the clear is the
+first S record after the leave with dev1 = 0 and no later record holds a word. The selection's
+visibility is a timing race (the word is 2 for one game tick); if a capture's poll misses it, the
+tool refuses to date the clear unless `--unseen-selection-ok` is passed, which records a named gap
+and pins only the end state. The unit tests (`tools/tests/test_gp_u17.py`, 14) cover each row's
+pass and fail on synthetic logs, the pin, the CLI exit codes and the scenario's steps.
+
+The pins are **empty** in `Makefile`'s `GP_U17_*` block until the capture is taken (user-gated):
+`GP_U17_CLEAR_FRAME` (the tool's measured clear frame), `MIN_FIRST`, `TRACE_MIN_FIRST` (over
+`TRACE_FIELDS + DEV_FIELDS`), `MAX_START`, `MIN_REACH`, `GP_U17_CAPTURE_SHA256` and
+`GP_U17_CAPTURE_FRAMES`. `gp-u17-oracle` runs the tool's unit tests always, then skips without the
+capture directory; with the capture present, an empty pin fails first in `gp_compare` ("the ratchet
+N is not pinned" / "the capture identity ... is not pinned"). The claim is narrow: no game-port
+axis or button is injected (the harness cannot), so the arms' evidence is the unit tests and the
+differential rows; the capture pins the **clear**, not the pad's answer.
+
+### §H6.7 Counters and gates run (the code half)
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests` (repo root): `all checks passed`.
+- `make diff-verify`: **1019/1019 functions VERIFIED; 14956/14956 mutants detected; 0 named gaps;
+  774/833 rows with callees closed (186 have none); 768/833 closed on full rows; 8 ported functions
+  with no row** — §H4.5's counter exactly (the two updated unhit reason strings move no row).
+- `tools/port_progress.py`: `799 1203 66`, `759 759 100` — unchanged (the new host functions carry
+  no `/* 0xADDR` header and no `fn_register`; two inline comments that would have read as such were
+  reworded).
+- `make frontend-oracle`: 1325 frames in window, 517 clean / 801 splice / 3 transition, the two
+  named unexplained frames (832, 833), endpoints OK — the boot path (`game_boot_ports`,
+  `host_pad_center` in `game_init`) moves no frame.
+- `make gp-report scenario=gp-pads`: the replay's T line carries `dev1=0000 dev2=0000` and the
+  trace compares `0 differing through 1041` (the new fields parse and the default claim ignores
+  them).
+- `make entry-triage`: the committed table equals a fresh run.
+- `make gp-u17-oracle`: the tool tests run, the capture is absent -> `(skipped)`.

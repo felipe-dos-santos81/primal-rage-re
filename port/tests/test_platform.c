@@ -4091,6 +4091,177 @@ int test_host_pad_f1f2(void)
     return g_failures - before;
 }
 
+/* The game port's presence (0x4FBBB, host_port_present): a pad answers the
+ * probe, no pad does not. The masks are the port's axis one-shot bits -- 3 is
+ * P1's axes 0/1 and 0xC P2's 2/3 -- and one pad supplies both sticks, so a
+ * present pad answers every axis mask. The raw's mask 0 tests no bit at all,
+ * so both of its wait loops fall through and it answers 1 whatever the
+ * hardware (0x4FBCD/0x4FBEE `test bl,al` with BL = 0). The four host-owned
+ * poll/probe routines answer through it. */
+int test_host_port_present(void)
+{
+    int before = g_failures;
+    static const u8 axes[4] = { 0, 0, 0, 0 };
+    static const u8 buttons[4] = { 0, 0, 0, 0 };
+
+    host_set_port_present_override(0, 0);
+    /* No pad (the production answer): no axis mask answers. */
+    CHECK_EQ_INT(host_port_present(3), 0);
+    CHECK_EQ_INT(host_port_present(0xC), 0);
+    CHECK_EQ_INT(host_port_present(0xF), 0);
+    CHECK_EQ_INT(host_port_present(0), 1);           /* the raw's mask-0 arm */
+
+    /* A pad is attached: every mask answers, through the seam too. */
+    host_set_pad_override(axes, buttons, 1);
+    CHECK_EQ_INT(host_port_present(3), 1);
+    CHECK_EQ_INT(host_port_present(0xC), 1);
+    CHECK_EQ_INT(host_port_present(0xF), 1);
+    CHECK_EQ_INT(host_port_poll_both(), 1);          /* 0x4FDF5 */
+    CHECK_EQ_INT(host_port_poll_p1(), 1);            /* 0x4FC05 */
+    CHECK_EQ_INT(host_port_poll_p2(), 1);            /* 0x4FCFD */
+    CHECK_EQ_INT(host_port_probe(0xCu), 1);          /* 0x4FBBB(0xC) */
+
+    /* The pad is gone: the four answer 0, which is the sampler's clear. */
+    host_set_pad_override(axes, buttons, 0);
+    CHECK_EQ_INT(host_port_poll_both(), 0);
+    CHECK_EQ_INT(host_port_poll_p1(), 0);
+    CHECK_EQ_INT(host_port_poll_p2(), 0);
+    CHECK_EQ_INT(host_port_probe(3u), 0);
+
+    /* Task 4's own seam still wins while it is armed. */
+    host_set_port_present_override(1, 1);
+    CHECK_EQ_INT(host_port_present(3), 1);
+    host_set_port_present_override(0, 0);
+    host_set_pad_override(NULL, NULL, 0);
+    return g_failures - before;
+}
+
+/* 0x20D0F..0x20DE3, the boot controller checks (game_boot_ports): a device word
+ * 2/4/6 is probed with 0x4FBBB(3)/0x4FBBB(0xC) and cleared when nothing
+ * answers, and a pad that answers keeps it. The raw's flags: DL is P1's
+ * port flag (0x20C29 zeroes DL), DH P2's (0x20C30 zeroes DH); when P2 selects
+ * device 2 the block treats P1 as the probed side instead (0x20D6F clears
+ * P1's word and DH stays 0), so P2's word survives this block and the
+ * sampler's own presence block clears it on the first tick. */
+int test_boot_probe_clears(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    static const u8 axes[4] = { 0, 0, 0, 0 };
+    static const u8 buttons[4] = { 0, 0, 0, 0 };
+    sampler_fixture();                                /* TEST_KEY_BASE, words zeroed */
+    host_set_port_present_override(0, 0);
+    host_set_pad_override(NULL, NULL, 0);
+
+    /* No pad: P1's device 2 is cleared by its probe (0x20DAC -> 0x20DB1). */
+    sampler_devs(2u, 0u);
+    game_boot_ports();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+
+    /* Both players on device 4: both masks are probed, both words cleared. */
+    sampler_devs(4u, 4u);
+    game_boot_ports();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+
+    /* Both on device 2: the raw clears P1's word at 0x20D6F and leaves DH 0,
+     * so P2's word is still 2 after this block (the sampler clears it). */
+    sampler_devs(2u, 2u);
+    game_boot_ports();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 2);
+
+    /* P1 on the keyboard and P2 on device 2: DL becomes 1, DH stays 0, and the
+     * empty P1 word is "cleared" -- P2's word stays (0x20D96..0x20D9A). */
+    sampler_devs(0u, 2u);
+    game_boot_ports();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 2);
+
+    /* A pad that answers keeps the words: no clear. */
+    host_set_pad_override(axes, buttons, 1);
+    sampler_devs(2u, 0u);
+    game_boot_ports();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 2);
+    sampler_devs(4u, 6u);
+    game_boot_ports();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 4);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 6);
+    host_set_pad_override(NULL, NULL, 0);
+
+    /* A device that is not 0/2/4/6 is not a port: neither word is written. */
+    sampler_devs(1u, 3u);
+    game_boot_ports();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 1);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 3);
+
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* 0x5004A's center capture (host_pad_center): the rest reading of each axis
+ * becomes its center, and only for the axes whose poll answers (0x4FC05 for
+ * P1's pair, 0x4FCFD for P2's). The PIT period word 0xE1C1C is the raw's
+ * 0x50021 answer stored once, only while it is 0: the host has no PIT, so the
+ * host's period is 0 and a non-zero word is left as the capture found it. The
+ * match key loop's Alt-J arm (0x24DD3) calls it. */
+int test_host_pad_center(void)
+{
+    int before = g_failures;
+    u16 saved[8];
+    static const u8 axes[4] = { 0, 0, 0, 0 };
+    static const u8 buttons[4] = { 0, 0, 0, 0 };
+    sampler_axes_save(saved);
+    host_set_port_present_override(0, 0);
+    host_set_pad_override(NULL, NULL, 0);
+
+    /* A rest reading per axis, distinct so a swapped pair is caught. */
+    DSW(DS_000E1C1E) = 0x1111u; DSW(DS_000E1C20) = 0x2222u;
+    DSW(DS_000E1C26) = 0x3333u; DSW(DS_000E1C28) = 0x4444u;
+    DSW(DS_000E1C22) = 0u; DSW(DS_000E1C24) = 0u;
+    DSW(DS_000E1C2A) = 0u; DSW(DS_000E1C2C) = 0u;
+    DSW(DS_000E1C1C) = 0xABCDu;                       /* the PIT period word */
+
+    /* No pad: no poll answers, so no center moves and the period is kept. */
+    host_pad_center();
+    CHECK_EQ_INT((int)DSW(DS_000E1C22), 0);
+    CHECK_EQ_INT((int)DSW(DS_000E1C24), 0);
+    CHECK_EQ_INT((int)DSW(DS_000E1C2A), 0);
+    CHECK_EQ_INT((int)DSW(DS_000E1C2C), 0);
+    CHECK_EQ_INT((int)DSW(DS_000E1C1C), 0xABCD);
+
+    /* A pad: each axis's rest reading becomes its center. */
+    host_set_pad_override(axes, buttons, 1);
+    host_pad_center();
+    CHECK_EQ_INT((int)DSW(DS_000E1C22), 0x1111);
+    CHECK_EQ_INT((int)DSW(DS_000E1C24), 0x2222);
+    CHECK_EQ_INT((int)DSW(DS_000E1C2A), 0x3333);
+    CHECK_EQ_INT((int)DSW(DS_000E1C2C), 0x4444);
+    CHECK_EQ_INT((int)DSW(DS_000E1C1C), 0xABCD);      /* already non-zero: kept */
+
+    /* A second capture takes the reading of that moment. */
+    DSW(DS_000E1C1E) = 0x5555u;
+    host_pad_center();
+    CHECK_EQ_INT((int)DSW(DS_000E1C22), 0x5555);
+
+    /* The pad at rest reads its center: the readers' dead band. */
+    host_input_fill_axes();
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+
+    /* Alt-J in the match key loop (0x24DD3) reaches the capture: the queued
+     * extended key 0x2400 moves P1 X's center to its current reading. */
+    DSW(DS_000E1C20) = 0x6666u;
+    input_push(0x24u, 0x00u);
+    game_key_loop();
+    CHECK_EQ_INT((int)DSW(DS_000E1C24), 0x6666);
+
+    host_set_pad_override(NULL, NULL, 0);
+    host_set_port_present_override(0, 0);
+    sampler_axes_restore(saved);
+    return g_failures - before;
+}
+
 /* ---- test_rng.c ---- */
 
 int test_rng(void)

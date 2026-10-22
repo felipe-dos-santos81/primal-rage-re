@@ -6889,8 +6889,8 @@ void game_init(void)
     }
     surface_setup();        /* 0x51F45 */
     palette_list_init();    /* 0x336C0 */
+    host_pad_center();      /* 0x1C0AC 0x5004A: the centre capture (record §H6) */
     render_list_init();     /* 0x1C350 */
-    /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     (void)sound_buffers_alloc();  /* 0x1C0B1 0x1D0BC (record k7-k12 §0.7.1) */
     /* 0x1C0B6 xor eax,eax; 0x1C0B8 0x47370(0): the string table, before
      * 0x1C0BD 0x20C10, so the loader screen of the master init's entry-7
@@ -6977,11 +6977,54 @@ void game_init_resume(void)
         DSD(DS_00107468) = h;                        /* 0x20D05 */
         DSD(DS_0010746C) = h;                        /* 0x20D0A */
     }
-    /* PORT: 0x20D0F..0x20DE3, the controller checks, are left out: a
-     * named gap (record named-gaps-b §B.11). A device word 2/4/6 at
-     * BIOS+0x2D4/+0x2D6 is probed with 0x4FBBB(3)/0x4FBBB(0xC), a timed read of the
-     * game port 0x201 whose answer depends on the hardware, which the port
-     * does not have and no capture pins. */
+    /* PORT: 0x20D0F..0x20DE3, the boot controller checks (record
+     * 2026-10-21-host-input-truth §H6). A device word 2/4/6 is probed with
+     * 0x4FBBB(3)/0x4FBBB(0xC), a timed read of the game port 0x201 whose
+     * answer is the host's (host_port_present): with no pad the word is
+     * cleared here, exactly as the original clears it when nothing answers. */
+    game_boot_ports();
+}
+
+/* PORT: 0x20D0F..0x20DE3 — the boot controller checks (record §H6). DL is
+ * P1's port flag and DH P2's: the raw zeroes DL at 0x20C29 and DH at 0x20C30,
+ * and nothing between them and 0x20D0F writes either, so both are 0 on entry.
+ * Each device word 2/4/6 then sets its flag (0x20D2F, 0x20D9C). When P2
+ * selects device 2 the block treats P1 as the probed side instead -- 0x20D6F
+ * clears P1's word when both are 2, and 0x20D96 sets DL with DH 0 when P1 is
+ * on the keyboard -- because P2's device-2 arm reads the same both-player
+ * game-port axes (0x1BD8B). Each flagged side is then probed: 3 is P1's axes
+ * 0/1 (0x20DAC) and 0xC P2's 2/3 (0x20DD1), and a 0 answer clears that word
+ * (0x20DB5/0x20DDA re-read the block after the probe). Nothing here writes a
+ * word that is not 2/4/6. */
+void game_boot_ports(void)
+{
+    u32 base = DSD(DS_00101514);                    /* 0x20D0F */
+    u32 dl = 0u;                                    /* 0x20C29 xor dl,dl */
+    u32 dh = 0u;                                    /* 0x20C30 xor dh,dh */
+    u16 dev = DSW(base + 0x2D4u);                   /* 0x20D14..0x20D20 */
+    if (dev == 2u || dev == 4u || dev == 6u) dl = 1u;    /* 0x20D2F */
+    dev = DSW(base + 0x2D6u);                       /* 0x20D36..0x20D42 */
+    if (dev == 2u || dev == 4u || dev == 6u) {      /* 0x20D51 */
+        if (dl == 1u && dev == 2u) {                /* 0x20D5A..0x20D6B */
+            base = DSD(DS_00101514);                /* 0x20D5A */
+            DSW(base + 0x2D4u) = 0u;                /* 0x20D6F */
+            dl = 1u;                                /* 0x20D6D */
+            dh = 0u;                                /* 0x20D78 */
+        } else if (dl == 0u && dev == 2u) {         /* 0x20D7C..0x20D94 */
+            dl = 1u;                                /* 0x20D96 */
+            dh = 0u;                                /* 0x20D9A */
+        } else {
+            dh = 1u;                                /* 0x20D9C */
+        }
+    }
+    if (dl == 1u && host_port_probe(3u) == 0) {     /* 0x20D9E..0x20DAC */
+        base = DSD(DS_00101514);                    /* 0x20DB5 */
+        DSW(base + 0x2D4u) = 0u;                    /* 0x20DBA */
+    }
+    if (dh == 1u && host_port_probe(0xCu) == 0) {   /* 0x20DC3..0x20DD1 */
+        base = DSD(DS_00101514);                    /* 0x20DDA */
+        DSW(base + 0x2D6u) = 0u;                    /* 0x20DDF */
+    }
 }
 
 /* 0x1D018 — record 2026-10-13-reverse-i §I.5. Nothing unless the sound flag
@@ -7384,11 +7427,10 @@ void game_key_loop(void)
                 sound_sample_pause_toggle();               /* 0x24DC9 0x1D220 */
                 break;
             case 0x24u:                                    /* 0x24DA0/0x24DA9 Alt-J */
-                /* PORT: 0x24DD3 calls 0x5004A, the joystick calibration: it
-                 * times the PIT (0x50021) and the game port 0x201 (0x4FC05/
-                 * 0x4FCFD) into DS_000E1C1C..DS_000E1C2C, which only the
-                 * host-owned ISR sampler 0x1BBAC's readers use. Host-owned
-                 * (record §55-A); the port has no game port. */
+                /* 0x24DD3 calls 0x5004A, the joystick calibration: the centre
+                 * capture (host_pad_center, record §H6). The host owns the PIT
+                 * 0x50021 and the game port 0x201 the raw reads there. */
+                host_pad_center();
                 break;
             case 0x32u:                                    /* 0x24DAB/0x24DAE Alt-M */
                 sound_music_pause_toggle();                /* 0x24DBF 0x1D1B0 */
