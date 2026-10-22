@@ -72,9 +72,10 @@ class Injector:
     """Writes key presses into the IRQ1 key-state table (bit 7 clear = down)
     and, for a key or (pad_bios) a pad, queues its BIOS word once."""
 
-    def __init__(self, mm, ptr, log, pad_bios=True):
+    def __init__(self, mm, ptr, log, pad_bios=True, wall=False):
         self.mm, self.ptr, self.log, self.pad_bios = mm, ptr, log, pad_bios
-        self.held = []            # [(release_at_f, lin, old, name, step)]
+        self.wall = wall          # a wall-paced scenario (record §H6.9)
+        self.held = []            # [(release_at_f, release_at_ms|None, lin, old, name, step)]
 
     def press(self, step, f, name, scan, word, hold, late, ms):
         lin = self.ptr + gs.KEYTAB_OFF + scan
@@ -82,7 +83,12 @@ class Injector:
         self.mm[lin] = old & 0x7F
         # Pressed in the spin of F - 1 = f; iterations F .. F + hold - 1 sample it,
         # so it is released in the spin of F - 1 + hold (spec §4.1; record §G.7).
-        self.held.append((f + hold, lin, old, name, step))
+        # PORT (record §H6.9): a wall-paced scenario's frame counter can freeze
+        # (the service menu), so there the hold also carries a wall deadline,
+        # `hold` frames at the game's rate; release_due() honours either. The
+        # frame-keyed scenarios keep the frame rule alone.
+        deadline = ms + hold * gs.FRAME_MS if self.wall else None
+        self.held.append((f + hold, deadline, lin, old, name, step))
         bios = word if (name in gs.KEYS or self.pad_bios) else None
         ring = kc.bios_insert(self.mm, word) if bios is not None else None
         self.log.write('I ms=%d f=%04X step=%d press=%s scan=%02X lin=%08X old=%02X bios=%s ring=%s late=%d\n'
@@ -90,10 +96,13 @@ class Injector:
                           '-' if ring is None else int(ring), late))
 
     def release_due(self, f, ms):
-        for h in [h for h in self.held if f >= h[0]]:
-            self.mm[h[1]] = h[2] | 0x80
+        """Releases a held key when its frame or (wall-paced scenarios) its wall
+        deadline passes: the frame rule alone never releases inside a frozen
+        master loop."""
+        for h in [h for h in self.held if f >= h[0] or (h[1] is not None and ms >= h[1])]:
+            self.mm[h[2]] = h[3] | 0x80
             self.held.remove(h)
-            self.log.write('I ms=%d f=%04X step=%d release=%s lin=%08X\n' % (ms, f, h[4], h[3], h[1]))
+            self.log.write('I ms=%d f=%04X step=%d release=%s lin=%08X\n' % (ms, f, h[5], h[4], h[2]))
 
 
 def apply_poke(mm, base, log, step, f, writes, late, ms, ref, reread):
@@ -197,11 +206,17 @@ def publish(stage, out, ok):
 def run_checks(name, lines, sched, n_frames, n_want):
     """The capture's CHECKs, [(label, ok)] (record §G.5.2, review 1)."""
     recs = [gs.parse(l) for l in lines if l.strip()]
-    try:
-        gs.port_script(name, lines)
-        script_ok, why = True, ''
-    except gs.ScriptError as e:
-        script_ok, why = False, ' (%s)' % e
+    if gs.SCENARIOS.get(name, {}).get('wall'):
+        # A wall-paced scenario's steps fire on the wall clock (the service menu
+        # freezes the frame counter), so the frame-keyed port script cannot follow
+        # them yet: reported, not failed (named gap, record §H6.9).
+        script_ok, why = True, ' (deferred: wall-paced steps; the frame-keyed replay cannot follow them)'
+    else:
+        try:
+            gs.port_script(name, lines)
+            script_ok, why = True, ''
+        except gs.ScriptError as e:
+            script_ok, why = False, ' (%s)' % e
     if gs.SCENARIOS.get(name, {}).get('arm', 'enter') == 'pad':      # record gameplay-u8 §U8.3
         arm_label = 'mode left 3 after the pad arm'
         enter = next((i for i, x in enumerate(recs) if x['kind'] == 'I' and 'press' in x), None)
@@ -353,9 +368,11 @@ def dosbox_cmd(root, game, iso, time_limit, stop_at_end=False, memsize=None):
 
 
 class Poller(threading.Thread):
-    def __init__(self, mem_path, log_path, steps, stop, pad_bios=True, fields=gs.SNAP_FIELDS):
+    def __init__(self, mem_path, log_path, steps, stop, pad_bios=True, fields=gs.SNAP_FIELDS,
+                 wall=False):
         super().__init__(daemon=True)
         self.fields = fields          # SNAP_FIELDS plus a scenario's `extra` (U11 record §K.3)
+        self.wall = wall              # a wall-paced scenario (record §H6.9)
         self.mem_path, self.log_path, self.stop, self.pad_bios = mem_path, log_path, stop, pad_bios
         self.sched = gs.Schedule(steps)
         self.end_seen = False
@@ -364,10 +381,16 @@ class Poller(threading.Thread):
     proc = None             # the DOSBox-X Popen
     signal_f = signal_t = None
 
-    def stop_if_due(self, f):
-        """SIGTERM DOSBox-X once S(F + stop_tail) is logged, F the end frame."""
-        if (self.stop_tail is None or self.proc is None or self.signal_f is not None
-                or not self.sched.ended(f) or f < self.sched.end_frame + self.stop_tail):
+    def stop_if_due(self, f, now):
+        """SIGTERM DOSBox-X once stop_tail more is logged past the scenario's end:
+        stop_tail frames after the end frame F for a frame-keyed end, stop_tail
+        frames' worth of wall time after end_wall for a wall one (record §H6.9)."""
+        if self.stop_tail is None or self.proc is None or self.signal_f is not None:
+            return False
+        if self.sched.end_wall is not None:
+            if now < self.sched.end_wall + self.stop_tail * gs.FRAME_MS / 1000.0:
+                return False
+        elif not (self.sched.ended(f) and f >= self.sched.end_frame + self.stop_tail):
             return False
         self.proc.send_signal(signal.SIGTERM)
         self.signal_f, self.signal_t = f, time.monotonic()
@@ -401,7 +424,7 @@ class Poller(threading.Thread):
                         time.sleep(0.005)
                         continue
                     log.write('B ms=%d base=%08X ptr=%08X\n' % (ms, base, ptr))
-                    inj = Injector(mm, ptr, log, self.pad_bios)
+                    inj = Injector(mm, ptr, log, self.pad_bios, self.wall)
                 h = kc.u16(mm, gs.BDA_HEAD)
                 if head is not None and h != head:
                     f_after = read_snap(mm, base, ptr=ptr)['f']
@@ -414,9 +437,17 @@ class Poller(threading.Thread):
                               % (ms, v['f'], v['mode'], v['st'], v['tick']))
                     self.sched.on_mode(v['f'], v['mode'])
                     last_ms = (v['mode'], v['st'])
-                for step, act in self.sched.due_boot(now):
+                for step, act in self.sched.due_boot(now) + self.sched.due_wall(now):
                     for name, scan, word, hold in gs.expand(act):
                         inj.press(step, v['f'], name, scan, word, hold, 0, ms)
+                # A wall-paced step's key is released on its wall deadline even
+                # with no S record (the frame rule alone would hold it, §H6.9).
+                inj.release_due(v['f'], ms)
+                if not self.end_seen and self.sched.ended_wall(now):
+                    log.write('X ms=%d f=%04X step=%d end\n'
+                              % (ms, v['f'] if last_f is None else last_f, self.sched.i))
+                    self.end_seen = True
+                self.stop_if_due(v['f'], now)
                 if spinning(v) and v['f'] != last_f:
                     v2 = read_snap(mm, base, self.fields, ptr)
                     kb = mm[ptr + 0x2D8] << 8 | mm[ptr + 0x2D9]
@@ -437,7 +468,6 @@ class Poller(threading.Thread):
                         if not self.end_seen and self.sched.ended(f):
                             log.write('X ms=%d f=%04X step=%d end\n' % (ms, f, self.sched.i))
                             self.end_seen = True
-                        self.stop_if_due(f)
                         last_f = f
                 time.sleep(0.0003)
             log.write('E ms=%d reason=%s rc=%d\n' % (int((time.monotonic() - t0) * 1000),
@@ -513,7 +543,8 @@ def main():
         stop = threading.Event()
         poll = Poller(os.path.join(root, 'guest.mem'), os.path.join(root, 'poll.log'),
                       scn['steps'], stop, pad_bios=not a.no_pad_bios,
-                      fields=gs.SNAP_FIELDS + scn.get('extra', ()))
+                      fields=gs.SNAP_FIELDS + scn.get('extra', ()),
+                      wall=scn.get('wall', False))
         poll.start()
         t = time.monotonic()
         proc = subprocess.Popen(cmd)

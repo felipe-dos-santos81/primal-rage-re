@@ -63,21 +63,30 @@ class TestTables(unittest.TestCase):
         self.assertEqual(snaps[3]['rng'], 3)
 
     def test_the_u17_scenario_walks_to_modify_controls(self):
-        # record §H6: the K11 walk's first 24 keys (k11_session.WALK[2:24] after the
-        # boot Enter and the START MENU Enter), then one p1.down (device 0 -> 2) and
-        # Esc (the leave), and the end 60 frames later
+        # record §H6.6/§H6.9: the K11 walk's own keys (k11_session.WALK[2:24] after
+        # the boot Enter and the START MENU Enter) to MODIFY CONTROLS, then one Down
+        # (device 0 -> 2), the MODIFY CONTROLS leave, the OPTIONS MENU leave (the
+        # master loop resumes so the cleared word is in an S record), and a wall end
         import k11_session as ks
         sc = gs.SCENARIOS['gp-u17-device2']
+        self.assertTrue(sc.get('wall'))                  # wall-paced: the menu freezes f
         self.assertIn('gp-u17-device2', gs.STOP_AT_END)
         steps = sc['steps']
         self.assertEqual(steps[0], ('boot', gs.ENTER_WAIT, ('key', 'enter')))
         self.assertEqual(steps[1], ('after_mode', 0x27, 150, ('key', 'enter')))
-        want = [('pad', ('p1.down',), 5) if k == 'down' else ('key', k) for k in ks.WALK[2:24]]
-        self.assertEqual([s[-1] for s in steps[2:24]], want)
-        self.assertEqual(steps[24], ('after', 30, ('pad', ('p1.down',), 5)))    # KEYBOARD -> 2
-        self.assertEqual(steps[25], ('after', 30, ('key', 'esc')))              # 0x32345
-        self.assertEqual(steps[26], ('after', 60, ('end',)))
-        self.assertEqual(len(steps), 27)
+        want = list(ks.WALK[2:24]) + ['down', 'esc', 'esc']
+        self.assertEqual([s[-1][1] for s in steps[2:-1]], want)
+        self.assertTrue(all(s[0] == 'after_wall' and s[1] == gs.U17_GAP for s in steps[2:-1]))
+        self.assertTrue(all(s[-1][0] == 'key' and s[-1][2] == gs.U17_HOLD for s in steps[2:-1]))
+        self.assertEqual(steps[-1], ('after_wall', 1.5, ('end',)))
+        self.assertEqual(len(steps), 2 + 25 + 1)
+        # the walk's own Down arrow, not P1's bound key (the K11 walk's scan)
+        self.assertEqual(gs.KEYS['down'], (0x50, 0x5000))
+        self.assertEqual(gs.KEYS['down'][0], ks.KEYS['down'][0])
+        # the hold is under MODIFY CONTROLS' 0x0C-tick repeat gate (200 ms) and over
+        # one menu poll (0x2EA78(1) = 3 ticks = 50 ms): the one-step derivation
+        self.assertLess(gs.U17_HOLD * gs.FRAME_MS, 12 * gs.FRAME_MS)
+        self.assertGreaterEqual(gs.U17_HOLD * gs.FRAME_MS, 3 * gs.FRAME_MS)
 
     def test_the_port_t_line_writes_every_snap_field_in_order(self):
         # port/tests/test_game.c gp_trace_line: the capture's S names and order (spec §4.2).
@@ -181,6 +190,38 @@ class TestSchedule(unittest.TestCase):
         s.on_mode(0x120, 0x27)
         self.assertEqual(s.due(0x120 + 160), [(1, ('key', 'enter'))])
         self.assertEqual(s.due(0x120 + 161), [])
+
+    def test_after_wall_fires_on_the_poller_clock(self):
+        # record §H6.9: the service menu's sub-loops freeze f, so its steps are
+        # wall-paced; the end is a wall moment too (end_wall, not end_frame)
+        s = gs.Schedule((('boot', 25.0, ('key', 'enter')),
+                         ('after_mode', 0x27, 10, ('key', 'enter')),
+                         ('after_wall', 1.0, ('key', 'down')),
+                         ('after_wall', 1.0, ('key', 'esc')),
+                         ('after_wall', 1.5, ('end',))))
+        self.assertEqual(s.due_boot(25.0), [(0, ('key', 'enter'))])
+        s.due_wall(26.4)                                # the poller's clock, every pass
+        s.on_mode(0x100, 0x27)
+        self.assertEqual(s.due(0x100 + 8), [])
+        self.assertEqual(s.due(0x100 + 9), [(1, ('key', 'enter'))])   # last_wall = 26.4
+        self.assertEqual(s.due_wall(27.3), [])                        # 26.4 + 1.0 = 27.4
+        self.assertEqual(s.due_wall(27.4), [(2, ('key', 'down'))])
+        self.assertEqual(s.due_wall(28.0), [])
+        self.assertEqual(s.due_wall(28.4), [(3, ('key', 'esc'))])
+        self.assertEqual(s.due_wall(29.8), [])                        # the end at 29.9
+        self.assertFalse(s.ended_wall(29.8))
+        self.assertEqual(s.due_wall(29.9), [])
+        self.assertTrue(s.ended_wall(29.9))
+        self.assertEqual(s.fired, 4)                    # the end is not an action
+        self.assertIsNone(s.end_frame)                   # and it names no frame
+
+    def test_a_wall_step_never_fires_due_from_a_spin(self):
+        # due(f) stops at an after_wall step: only the wall clock reaches it
+        s = gs.Schedule((('boot', 1.0, ('key', 'enter')),
+                         ('after_wall', 1.0, ('key', 'down'))))
+        s.due_boot(1.0)
+        self.assertEqual(s.due(0xFFFFFFFF), [])
+        self.assertEqual(s.due_wall(2.0), [(1, ('key', 'down'))])
 
     def test_until_mode_counts_only_after_the_last_action(self):
         s = gs.Schedule(self.STEPS)

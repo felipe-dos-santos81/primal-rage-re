@@ -39,8 +39,16 @@ no-pad clear alone is also what a capture that never entered MODIFY CONTROLS
 would show. A capture whose poll timing missed the 2 (one game tick wide) has
 no dated selection; --unseen-selection-ok accepts it and then pins only the end
 state, a named gap to record.
+
+The scenario is WALL-paced (record §H6.9): a service-menu sub-loop presents
+frames without the master loop's spin, so the poll has no S record between the
+device write and the OPTIONS MENU leave and the selection's write cannot be
+observed. The tool says so and pins the end state; the frame/trace replay and
+its ratchets wait for a tick-keyed driver path, so the capture identity
+(--capture-sha256, --capture-frames) is pinned here instead.
 Stdlib only."""
 import argparse
+import hashlib
 import os
 import sys
 
@@ -64,13 +72,15 @@ def check(lines, clear_frame=None, unseen_ok=False, device=DEVICE2):
     if not has:
         return out
 
-    # The scenario's own last two actions: the device step, then the leave.
+    # The scenario's own last three actions: the device step, the MODIFY CONTROLS
+    # leave and the OPTIONS MENU leave (which resumes the master loop, so the
+    # cleared word is in an S record).
     steps = [s for s in gs.SCENARIOS[SCENARIO]['steps']
              if s[0] != 'until_mode' and s[-1] != ('end',)]
-    want = [gs.expand(s[-1])[0][0] for s in steps[-2:]]
+    want = [gs.expand(s[-1])[0][0] for s in steps[-3:]]
     presses = [r for r in recs if r['kind'] == 'I' and 'press' in r]
-    got = [r['press'] for r in presses[-2:]]
-    out.append(('the scenario ends with the device step and the leave (0x32345)', got == want,
+    got = [r['press'] for r in presses[-3:]]
+    out.append(('the scenario ends with the device step and the two leaves', got == want,
                 'want %s, got %s' % (want, got)))
 
     # The service menu keeps mode 0x27 from the Enter to the end (the walk's own
@@ -87,11 +97,17 @@ def check(lines, clear_frame=None, unseen_ok=False, device=DEVICE2):
                 '' if not dev2 else 'first f=%X dev2=%X' % dev2[0]))
 
     # The selection: dev1 reads `device` (the derived one +2 step), in one run of
-    # that single value.
+    # that single value. A wall-paced scenario cannot show it: the service menu's
+    # sub-loops run without the master loop's spin, so no S record exists between
+    # the device write and the OPTIONS MENU leave -- the word is pinned by its end
+    # state and (later) the frame ratchet instead, a named gap (record §H6.9).
     sel = [(f, snaps[f]['dev1']) for f in fs if snaps[f]['dev1'] != 0]
     sel_ok = bool(sel) and all(v == device for _, v in sel)
-    if not unseen_ok:
-        out.append(('the selection is seen: dev1 = %d (one p1.down from KEYBOARD)' % device, sel_ok,
+    if gs.SCENARIOS[SCENARIO].get('wall') and not sel:
+        out.append(('the selection is not sampled (wall-paced menu: no S record while one is open)',
+                    True, 'pinned by the end state; the write is unobservable in the poll'))
+    elif not unseen_ok:
+        out.append(('the selection is seen: dev1 = %d (one Down from KEYBOARD)' % device, sel_ok,
                     'frames %s' % (['%X' % f for f, _ in sel] or 'none: the poll never sampled it')))
     elif not sel_ok:
         out.append(('the selection was not sampled: the clear is pinned by the end state only', True,
@@ -152,6 +168,12 @@ def main():
     ap.add_argument('--unseen-selection-ok', action='store_true',
                     help='accept a capture whose poll never sampled the selection (a named gap: '
                          'the clear is then pinned by the end state only)')
+    ap.add_argument('--capture-sha256', default=None,
+                    help="the pinned sha256 of the capture's poll.log; with it a different capture "
+                         'fails (this scenario has no frame/trace replay yet, so the identity is '
+                         'pinned here, record §H6.9)')
+    ap.add_argument('--capture-frames', default=None,
+                    help='the pinned number of frame_*.raw.gz in the capture')
     a = ap.parse_args()
     poll = os.path.join(a.capture, 'poll.log')
     if not os.path.isfile(poll):
@@ -166,6 +188,18 @@ def main():
     pin = None if a.clear_frame in (None, '') else int(a.clear_frame, 0)
     rows = check(lines, pin, a.unseen_selection_ok, int(a.device, 0))
     ok = all(r[1] for r in rows)
+    # The capture identity (record §H6.9): this scenario has no frame/trace replay
+    # yet, so the pinned sha256 and frame count live here instead of gp_compare's.
+    if a.capture_sha256 not in (None, ''):
+        got = hashlib.sha256(open(poll, 'rb').read()).hexdigest()
+        rows.append(('the capture identity matches the pin', got == a.capture_sha256,
+                     'poll.log sha256 %s..%s, pinned %s' % (got[:8], got[-6:], a.capture_sha256[:8] + '..')))
+        ok = ok and rows[-1][1]
+    if a.capture_frames not in (None, ''):
+        n = len([p for p in os.listdir(a.capture) if p.startswith('frame_') and p.endswith('.raw.gz')])
+        want = int(a.capture_frames, 0)
+        rows.append(('the frame count matches the pin', n == want, '%d frames, pinned %d' % (n, want)))
+        ok = ok and rows[-1][1]
     print('check=%s %s' % ('ok' if ok else 'FAIL', SCENARIO))
     for label, good, detail in rows:
         print('  %-4s %s%s' % ('ok' if good else 'FAIL', label, '' if not detail else ': ' + detail))

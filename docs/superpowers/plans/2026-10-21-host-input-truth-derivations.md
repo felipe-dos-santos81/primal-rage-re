@@ -1201,51 +1201,61 @@ the flow.c site is tested. The SDL pad's own answer is the windowed run's (§H5.
 
 ### §H6.6 The `gp-u17-device2` scenario (capture pending)
 
-`gp_session.SCENARIOS['gp-u17-device2']`: the K11 walk's first 24 keys
-(`k11_session.WALK[2:24]`, after the boot Enter and the START MENU Enter) take the service menu
-through GAME OPTIONS and the OPTIONS MENU's CONFIG OPTIONS editor, STATISTICS' five screens, SOUND,
-MUSIC and into MODIFY CONTROLS (`0x31F24`); then one 5-frame `p1.down` steps P1's device KEYBOARD
-(0) -> JOYSTICK 2 and `esc` leaves, whose `0x32345 config_keys_apply` writes the record's device
-into BIOS+0x2D4 (`0x1AE3B`). The step is the **Down** arm (`0x320CF test edx,0x40004000` ->
+`gp_session.SCENARIOS['gp-u17-device2']` (rewritten after the failed run, §H6.9): the K11 walk's
+own keys (`k11_session.WALK[2:24]`, after the boot Enter and the START MENU Enter — scans `0x50`
+Down, `0x1C` Enter, `0x01` Esc) take the service menu through GAME OPTIONS and the OPTIONS MENU's
+CONFIG OPTIONS editor, STATISTICS' five screens, SOUND, MUSIC and into MODIFY CONTROLS
+(`0x31F24`); then one 5-frame Down steps P1's device KEYBOARD (0) -> JOYSTICK 2, `esc` leaves
+MODIFY CONTROLS and a second `esc` leaves the OPTIONS MENU, whose `0x32345 config_keys_apply`
+writes the record's device into BIOS+0x2D4 (`0x1AE3B`) and whose return resumes the master loop
+(so the poll sees the cleared word). The step is the **Down** arm (`0x320CF test edx,0x40004000` ->
 `0x320ED dev + 2`); `0x3206F` is the Up arm's `dev - 2`. DOSBox-X has no game port, so the ISR
-sampler's presence block probes `0x4FBBB(3)`, gets 0, and the **P1-only** arm clears the word on
-its next tick: `0x1BCBF`, the `+0x2D6 == 0` branch (`0x1BC6F` is the both-player arm's clear and
-needs both words selected). The scenario ends 60 frames after the leave (before anything in the
-OPTIONS MENU could save). Harness values: U4's 150-frame gap into the MAIN MENU, 30-frame gaps
-between the walk's keys, the 5-frame pad hold (a press reaches the pad level one iteration late,
-record §G.7.2), a 90 s limit, and `STOP_AT_END` (nothing past the clear is compared).
+sampler's presence block probes `0x4FBBB(3)`, gets 0, and the **P1-only** arm clears the word on its
+next tick: `0x1BCBF`, the `+0x2D6 == 0` branch (`0x1BC6F` is the both-player arm's clear and needs
+both words selected).
+
+**The steps are wall-paced (`after_wall`), and that is why the first capture failed.** A
+service-menu sub-loop (`menu_run` -> `0x2EA78`'s present loop) runs inside one `game_frame` with no
+master-loop spin, so `DS_000EF6DC` and the S records freeze while one is open. The 2026-10-22 run
+(`data/k11-captures/gp-u17-device2.failed`, 838 frames) shows the OPTIONS MENU holding `f` at
+`0x25B` for 34 s of wall time: the frame-keyed schedule fired 12 of its 26 steps, the 20 s idle
+timeout (`0x2EB80`, `0x4B0` ticks) restarted to the attract, and the X record never came. §H6.9
+adds the wall clock; the K11 harness's AUTOTYPE is wall-paced for the same reason.
 
 **One press is one +2 step, derived rather than assumed.** MODIFY CONTROLS polls the *held* level
 every iteration (`0x31FC4 xor eax,eax` -> `0x2EDE0(0, 1)` -> `0x50161(0)`, which returns the level
 for mask 0), so a held Down key can step again — but the arm sets `until = [0x101500] + 0x0C`
 (`0x320DB`, masked at `0x31FE7`), and 12 ISR ticks must pass before a second step. One menu
-iteration is `0x2EA78(1)`: three waits on the frame word `0xEF6DE` = 3 ISR ticks. The harness holds
-the pad 5 capture frames = 5 / 70.09 s = 71 ms = 4.3 ISR ticks at 60.05 Hz, so at least one poll
-lands inside the hold and fewer than 12 ticks pass: exactly one step, 0 -> 2. The arrow-latch path
-(`0x2EBF0`) maps only the literal arrow scans `0x48/0x50/0x4B/0x4D` through the config record, and
-this press's queued word carries P1's bound Down scan `0x2D`, so this step is the level's — the same
-`0x40004000` control bit the K11 walk's Down arrow (`0x50`) reaches through the latch.
+iteration is `0x2EA78(1)`: three waits on the frame word `0xEF6DE` = 3 ISR ticks = 50 ms; the
+harness holds the key 5 frames = 83 ms (above one poll, below the 200 ms gate), so exactly one
+step, 0 -> 2. The Down is the K11 walk's own arrow (scan `0x50`, word `0x5000` as the K11 port
+script pushes it), which `0x2EBF0` maps through the config record to `0x40004000`; its level bit is
+the default record's P2-Down slot (`0x0040`), which `menu_run`'s `0x40004000` mask also accepts.
 `gp_u17.py check --device N` names the expected value (default 2, that derivation) so a capture
 whose measurement disagrees passes its own value with the record updated, instead of failing the
 oracle.
 
 `tools/gp_u17.py check` is the capture-side evidence: the S records carry dev1/dev2; the scenario's
-own last two injected presses are the device step and the leave; the mode stays 0x27 from the menu
-Enter on; dev2 stays 0; the selection is seen as a single run of `--device`; the clear is the first
-S record after the leave with dev1 = 0 and no later record holds a word. The selection's visibility
-is a timing race (the word is 2 for one game tick); if a capture's poll misses it, the tool refuses
-to date the clear unless `--unseen-selection-ok` is passed, which records a named gap and pins only
-the end state. The unit tests (`tools/tests/test_gp_u17.py`, 15) cover each row's pass and fail on
-synthetic logs, the `--device` parameter, the pin, the CLI exit codes and the scenario's steps.
+own last three injected presses are the device step, the MODIFY CONTROLS leave and the OPTIONS MENU
+leave; the mode stays 0x27 from the menu Enter on; dev2 stays 0; the clear is the first S record
+after the leaves with dev1 = 0, and no later record holds a word. **The selection's write is not
+observable in the poll** (no spin/S record between the device write and the OPTIONS MENU leave): the
+tool says so rather than pretending, and the word is pinned by its end state — a port whose
+presence answer kept the word would show dev1 = 2 there. `--device` and `--unseen-selection-ok`
+remain for a frame-paced capture. The unit tests (`tools/tests/test_gp_u17.py`, 16) cover each row's
+pass and fail on synthetic logs, the `--device` parameter, the wall-scenario row, the pin, the
+identity pins, the CLI exit codes and the scenario's steps.
 
 The pins are **empty** in `Makefile`'s `GP_U17_*` block until the capture is taken (user-gated):
-`GP_U17_CLEAR_FRAME` (the tool's measured clear frame), `MIN_FIRST`, `TRACE_MIN_FIRST` (over
-`TRACE_FIELDS + DEV_FIELDS`), `MAX_START`, `MIN_REACH`, `GP_U17_CAPTURE_SHA256` and
-`GP_U17_CAPTURE_FRAMES`. `gp-u17-oracle` runs the tool's unit tests always, then skips without the
-capture directory; with the capture present, an empty pin fails first in `gp_compare` ("the ratchet
-N is not pinned" / "the capture identity ... is not pinned"). The claim is narrow: no game-port
-axis or button is injected (the harness cannot), so the arms' evidence is the unit tests and the
-differential rows; the capture pins the **clear**, not the pad's answer.
+`GP_U17_CLEAR_FRAME` (the tool's measured clear frame) and the capture identity
+(`GP_U17_CAPTURE_SHA256`, `GP_U17_CAPTURE_FRAMES`, checked by `gp_u17.py`), because the frame-keyed
+replay cannot follow a wall-paced walk yet (§H6.9): `MIN_FIRST`, `TRACE_MIN_FIRST`, `MAX_START` and
+`MIN_REACH` stay empty and unused until the driver has the tick-based path (its actions applied
+from a pump hook, the K11 driver's model) — a named gap, not a passing claim. `gp-u17-oracle` runs
+the tool's unit tests always, then skips without the capture directory, and with the capture present
+runs the evidence and the identity pins. The claim is narrow: no game-port axis or button is
+injected (the harness cannot), so the arms' evidence is the unit tests and the differential rows;
+the capture pins the **clear**, not the pad's answer.
 
 ### §H6.7 Counters and gates run (the code half)
 
@@ -1303,3 +1313,67 @@ gp tool test modules -> 164 tests OK including the new `--dev-words` CLI case an
 (`test_gp_u17` now 15); the fresh mutation sweep's line numbers are the table's above;
 `make gp-oracle` (N 7559, trace 8320) and `make frontend-oracle` (1325 frames, 2 named) keep their
 pins; `make gp-u17-oracle` still skips on the absent capture.
+
+### §H6.9 The wall-clock path (the failed capture and the fix)
+
+The first `gp-u17-device2` capture (2026-10-22, `DISPLAY=:1`) failed at
+`data/k11-captures/gp-u17-device2.failed`: 838 frames, raw 1387..6303, wall 90.9 s,
+`check=FAIL steps fired 12/26`, `check=FAIL end frame reached`, `check=FAIL port script v2 (the
+scenario end (X record) was not reached)`, `check=FAIL stopped at the end`; the harness itself was
+clean (`check=ok no unscripted input`). The cause is **not** the one-step device derivation (the walk
+never reached MODIFY CONTROLS): the poll log's P records show mode `0x27` -> `3` -> `0x27` -> `3` at
+`f=0x25D/0x27C/0x29B/0x2F3`, the OPTIONS MENU holding `f=0x25B` for 34 s of wall time while its
+tick `DS_00101500` ran 1510 ticks, and the 20 s idle timeout (`0x2EB80`, `0x4B0` ticks) restarting
+to the attract.
+
+**Why:** `menu_run` (`0x2FA40`, `port/src/game/menu.c:164`) is a blocking loop — once the MAIN
+MENU's `enter` opens GAME OPTIONS, the service menu's sub-loops present frames through `0x2EA78`
+(`0x2EA78` waits on the ISR frame word `0xEF6DE` and drains the BIOS queue) *inside one
+`game_frame`*, so the master loop's spin (`0x256C5`) does not run: `DS_000EF6DC` freezes and the
+poller writes no S record. The gp scheduler's steps are keyed on `f` (and its key releases on the
+next S record), so after the OPTIONS MENU opened, step 12 never came due; the menu idled out, the
+attract's loop spun again, `f` jumped, and the remaining keys landed in the attract. The K11 walk
+survives the same screens because AUTOTYPE is wall-paced, and (as the capture's K bitmaps show) it
+is the **level** that acts on the menu, not the arrow latch: the capture's BIOS words are `0x50E0`
+and the service-menu drain latches `0xE0` (`0x2EB5C` tests the ASCII byte), which `0x2EBF0` does not
+map; the level's P2-Down bit `0x0040` is what `menu_run`'s `0x40004000` mask sees. So the walk's
+scan is not the failure, but the fix uses the K11 walk's own `down` (`0x50`) anyway: the capture then
+reproduces the K11 walk key for key.
+
+**The change (`tools/gp_session.py`, `tools/gp_capture.py`):**
+
+- `Schedule` gains `('after_wall', seconds, act)`: it fires `seconds` after the previous step fired
+  on the poller's monotonic clock (`due_wall`, called every poll pass beside `due_boot`), and a wall
+  `('end',)` sets `end_wall` instead of `end_frame`. `last_wall` is stamped whenever a step fires —
+  a frame-keyed one uses the latest poll time (`Schedule.now`) — so a wall chain can follow a
+  frame-keyed step. `due(f)` stops at an `after_wall` step, so only the clock reaches it.
+- `Injector` holds also carry a wall deadline (`hold` frames at `GAME_HZ` 60.05, `FRAME_MS`), and
+  the poller calls `release_due(f, ms)` every pass, so a key pressed inside the menu is not held
+  until the next S record. The deadline is armed only for a scenario with `wall=True`, so every
+  frame-keyed scenario's release stays the frame rule (no existing capture's semantics change).
+- The X record and the `STOP_AT_END` SIGTERM follow the wall end: `ended_wall(now)` writes the X,
+  `stop_if_due(f, now)` waits `STOP_TAIL` frames' worth of wall time after `end_wall`.
+- `KEYS['down'] = (0x50, 0x5000)` is the K11 walk's Down; `('key', name, hold)` names a key's hold.
+- `gp-u17-device2` is `wall=True`: the boot Enter and the MODE-0x27 Enter stay frame-keyed (the MAIN
+  MENU runs in the master loop), and the 25 walk keys plus the wall end are 1 s apart
+  (`k11_session.PACE`), each held 5 frames (`U17_HOLD`). The walk: `WALK[2:24]` (the K11 keys to
+  MODIFY CONTROLS) + `down` (device 0 -> 2) + `esc` (leave it) + `esc` (leave the OPTIONS MENU), then
+  `('after_wall', 1.5, ('end',))`; `time_limit` stays 90 s (the walk ends near 57 s: boot 25 s + the
+  mode-0x27 wait 2.5 s + 25 keys at 1 s + 1.5 s).
+- **The frame-keyed port script cannot follow a wall-paced walk.** Its actions are keyed on `f`, and
+  the port's `menu_run` blocks inside one `game_loop_step`, so `gp-replay` would stall in the menu.
+  `port_script` therefore refuses a wall scenario with a clear `ScriptError`, the capture's
+  `port script v2` CHECK reports it deferred (not failed), and `make gp-u17-oracle` runs the
+  capture-side evidence and the identity pins only. The frame/trace ratchets (`MIN_FIRST`,
+  `TRACE_MIN_FIRST`, `MAX_START`, `MIN_REACH`) wait for a driver path that applies tick-keyed
+  actions from a pump hook (the K11 driver's `k11_hook` model, `port/tests/test_game.c:13092`) and a
+  tick-keyed script — a named gap for the controller, not a claim.
+
+**Tests after the fix:** `python3 -m unittest tools.tests.test_gp_session tools.tests.test_gp_u17`
+(69 tests) and the rest of the tool suite (242 in the capture/compare/k11 set) pass; the new cases
+are `test_after_wall_fires_on_the_poller_clock`, `test_a_wall_step_never_fires_due_from_a_spin`,
+`test_the_wall_deadline_releases_a_key_with_no_frame_change` (and that a frame-keyed injector keeps
+the frame rule), `test_a_wall_end_stops_tail_frames_later`,
+`test_the_port_script_is_deferred_not_broken`, `test_a_wall_paced_capture_does_not_sample_the_selection`
+and the scenario's key/hold/end derivation; `make gp-u17-oracle` still skips (no
+`data/k11-captures/gp-u17-device2`). No capture was re-run and `data/` was not written.

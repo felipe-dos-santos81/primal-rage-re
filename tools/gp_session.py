@@ -28,6 +28,8 @@ KB_DEV1 = 0x2D4             # +0x2D4 P1's joystick device word (behind the point
 KB_DEV2 = 0x2D6             # +0x2D6 P2's (0/2/4/6 select a game-port arm)
 ENTER_WAIT = 25.0           # s, harness: the K11 boot wait (k11_session.ENTER_WAIT)
 HOLD_FRAMES = 3             # harness: AUTOTYPE's 3-tick press (record named-gaps-a §A.9)
+GAME_HZ = 60.05             # the game's ISR/iteration rate (AGENTS.md): a hold's wall length
+FRAME_MS = 1000.0 / GAME_HZ
 BDA_HEAD, BDA_TAIL = 0x41A, 0x41C
 
 SNAP_FIELDS = (
@@ -63,6 +65,12 @@ MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (
 
 # BIOS keys: (scan, the BIOS word a press queues; record named-gaps-a §A.9).
 KEYS = {'enter': (0x1C, 0x1C0D), 'esc': (0x01, 0x011B)}
+# The service menu's Down arrow: scan 0x50, the word the K11 walk's own `down`
+# reaches the port as (k11_session.KEYS['down'] = (0x50, 0x00) -> 0x5000,
+# normalised from DOSBox-X's 0x50E0 buffer word). Plan 2026-10-21-host-input-truth
+# Task 6: gp-u17-device2 walks the service menu with it, because that is the key
+# the K11 walk uses (record §H6.9).
+KEYS['down'] = (0x50, 0x5000)
 # Pads (spec §3.2): (scan, BIOS word, kb bit). Letters and P2's keys use the
 # config words at 0x122C62 (record §A.1.5); arrows the E0 form AUTOTYPE left
 # (record §A.9); F1/F2 the standard make words. Spec §7 Q4 (ruled YES, record
@@ -621,59 +629,78 @@ SCENARIOS['gp-u16-twop2'] = dict(time_limit=240, steps=(
 ))
 
 
-# Host input truth U17 (plan 2026-10-21-host-input-truth Task 6; record §H6): the
-# K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first 24 keys -- the
-# mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the OPTIONS MENU, its
-# CONFIG OPTIONS editor, STATISTICS' five screens, SOUND, MUSIC and MODIFY
-# CONTROLS), then one p1.down -- P1's device KEYBOARD (0) -> JOYSTICK 2 -- and Esc,
-# whose 0x32345 config_keys_apply writes the record's device into BIOS+0x2D4
-# (0x1AE3B). DOSBox-X has no game port, so the ISR sampler's presence block
-# (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and clears the P1-only arm's word
-# on its next tick (0x1BCBF, dev2 == 0); the S record's dev1 shows the clear.
+# Host input truth U17 (plan 2026-10-21-host-input-truth Task 6; record §H6.6,
+# §H6.9): the K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first
+# 24 keys -- the mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the
+# OPTIONS MENU, its CONFIG OPTIONS editor, STATISTICS' five screens, SOUND,
+# MUSIC and MODIFY CONTROLS), then one Down (P1's device KEYBOARD 0 -> JOYSTICK 2),
+# Esc (leave MODIFY CONTROLS) and Esc (leave the OPTIONS MENU: 0x2CBAF's
+# config_file_save, which on the capture's read-only mount writes nothing, and the
+# master loop's spin resumes so the poll sees the cleared word). Esc on the way
+# out is what makes the clear observable: the service menu's sub-loops present
+# frames through 0x2EA78 without the master loop's spin, so no S record exists
+# while one is open.
 #
-# Why one press is one step (+2): MODIFY CONTROLS polls the *held* level each
-# iteration (0x31FC4 -> 0x2EDE0(0,1) -> 0x50161(0)), and its Down arm
+# Why the steps are wall-paced ('after_wall'), not frame-keyed: a service-menu
+# sub-loop (menu_run -> 0x2EA78's present loop) runs inside one game_frame, so
+# the master frame counter DS_000EF6DC and the spin predicate freeze; the failed
+# capture data/k11-captures/gp-u17-device2.failed (2026-10-22) shows the OPTIONS
+# MENU holding f at 0x25B for 34 s of wall time, the frame-keyed schedule stalling
+# at step 12 and the 20 s idle timeout (0x2EB80, 0x4B0 ticks) restarting to the
+# attract. The wall clock is the only pace that reaches those screens -- the K11
+# harness's AUTOTYPE is wall-paced for the same reason -- and the held releases
+# are wall-deadlined too (gp_capture.Injector), so a key in the menu is not held
+# until the next S record. 1 s between keys is k11_session.PACE; a 5-frame hold is
+# 83 ms, past at least one menu poll (a menu iteration is 0x2EA78(1) = 3 ISR
+# ticks = 50 ms) and under the menu repeat gates (MODIFY CONTROLS' 0x0C-tick
+# gate = 200 ms; the option menus' first repeat 0x1E frames).
+#
+# The walk's key is the K11 walk's own Down arrow (scan 0x50, KEYS['down']): the
+# service menu's arrow handling names 0x48/0x50/0x4B/0x4D in 0x2EBF0's jump table
+# and the default record binds 0x50 to P2's Down slot, so the level path sets
+# 0x40004000 exactly as the walk's AUTOTYPE did.
+#
+# Why one Down is one step (+2): MODIFY CONTROLS polls the held level each
+# iteration (0x31FC4 -> 0x2EDE0(0,1) -> 0x50161(0)) and its Down arm
 # (0x320CF -> 0x320ED `dev + 2`; 0x3206F is the Up arm) is gated by
 # `until = [0x101500] + 0x0C` (0x320DB, masked at 0x31FE7): a second step needs
-# 12 ISR ticks. One menu iteration is 0x2EA78(1) = 3 ISR ticks, and the 5-frame
-# hold below is 5/70.09 s = 71 ms = 4.3 ISR ticks (60.05 Hz): at least one poll
-# lands in the hold and fewer than 12 ticks pass, so exactly one +2. The
-# arrow-latch path (0x2EBF0) only maps the literal arrow scans 0x48/0x50/0x4B/0x4D
-# through the config record; this press's scan is P1's bound Down (0x2D, the same
-# 0x40004000 control bit the K11 walk's Down arrow reaches), so the step is the
-# level's. gp_u17.py's --device names the expected value (default 2, that
-# derivation) for a capture whose measurement disagrees.
+# 12 ISR ticks = 200 ms, and the 83 ms hold is under it. gp_u17.py's --device
+# names the expected value (default 2, that derivation) for a capture whose
+# measurement disagrees.
 #
-# Harness values: U4's 150-frame gap into the MAIN MENU, 30-frame gaps between the
-# walk's keys, a 5-frame pad hold (a press reaches the pad level one iteration
-# late, record §G.7.2), a 90 s limit, and STOP_AT_END (nothing past the clear is
-# compared). The scenario ends 60 frames after the leave, before anything in the
-# OPTIONS MENU could save (that takes leaving it, 0x2CBAF's config_file_save).
-U17_WALK = ('p1.down', 'p1.down', 'esc', 'p1.down', 'enter', 'enter', 'esc',
-            'p1.down', 'enter', 'esc', 'esc', 'esc', 'esc', 'esc',
-            'p1.down', 'enter', 'esc', 'p1.down', 'enter', 'esc',
-            'p1.down', 'enter',                   # MODIFY CONTROLS
-            'p1.down', 'esc')                     # device 2, then leave (applied)
+# Harness values: U4's 150-frame gap into the MAIN MENU (mode 0x27 runs in the
+# master loop, so it is frame-keyed), 1 s between the walk's keys, a 5-frame hold,
+# a 1.5 s wall end, and a 90 s limit (the walk ends near 57 s). STOP_AT_END: the
+# wall end stops the capture, nothing past the clear is compared.
+U17_WALK = ('down', 'down', 'esc', 'down', 'enter', 'enter', 'esc', 'down', 'enter',
+            'esc', 'esc', 'esc', 'esc', 'esc', 'down', 'enter', 'esc',
+            'down', 'enter', 'esc', 'down', 'enter',          # MODIFY CONTROLS
+            'down', 'esc',                                     # device 0 -> 2, leave it
+            'esc')                                             # leave the OPTIONS MENU
+U17_HOLD = 5             # frames; 83 ms at 60.05 Hz (the one-step derivation above)
+U17_GAP = 1.0            # s, k11_session.PACE
 
 
-def _u17_step(item):
-    """One walk item: a pad press (P1's bound key) or a BIOS key."""
-    return ('pad', (item,), 5) if item.startswith('p1.') else ('key', item)
+def _u17_step(k):
+    """One walk key: a BIOS key held U17_HOLD frames (expand's optional hold)."""
+    return ('key', k, U17_HOLD)
 
 
-SCENARIOS['gp-u17-device2'] = dict(time_limit=90, steps=(
+SCENARIOS['gp-u17-device2'] = dict(time_limit=90, wall=True, steps=(
     ('boot', ENTER_WAIT, ('key', 'enter')),           # mode 3 -> 0x27 (the walk's key 1)
     ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU (the walk's key 2)
-) + tuple(('after', 30, _u17_step(k)) for k in U17_WALK) + (
-    ('after', 60, ('end',)),                          # 60 frames after the leave
+) + tuple(('after_wall', U17_GAP, _u17_step(k)) for k in U17_WALK) + (
+    ('after_wall', 1.5, ('end',)),                    # the wall end, 1.5 s after the leave
 ))
 
 
 def expand(action):
-    """An action -> [(name, scan, bios_word, hold_frames)]."""
+    """An action -> [(name, scan, bios_word, hold_frames)]. A key action may name
+    its own hold: ('key', name, hold) (gp-u17-device2's 5-frame walk keys)."""
     if action[0] == 'key':
         scan, word = KEYS[action[1]]
-        return [(action[1], scan, word, HOLD_FRAMES)]
+        hold = action[2] if len(action) > 2 else HOLD_FRAMES
+        return [(action[1], scan, word, hold)]
     if action[0] == 'pad':
         return [(n, PAD[n][0], PAD[n][1], action[2]) for n in action[1]]
     return []
@@ -681,11 +708,19 @@ def expand(action):
 
 class Schedule:
     """Steps: ('boot', s, act) | ('after_mode', mode, n, act) | ('after', n, act)
-    | ('after_entry', mode, k, n, act) | ('until_mode', mode, n); an ('end',) action
-    ends the scenario at its frame. after_entry: F = the frame of the k-th entry
-    into `mode` (on_snap) + n.
+    | ('after_entry', mode, k, n, act) | ('after_wall', seconds, act)
+    | ('until_mode', mode, n); an ('end',) action ends the scenario -- at its frame
+    for the frame-keyed steps, at its moment (end_wall) for a wall one. after_entry:
+    F = the frame of the k-th entry into `mode` (on_snap) + n.
     An action for frame F fires at the first spin snapshot with f >= F - 1, so
-    iteration F samples it (spec §3.1)."""
+    iteration F samples it (spec §3.1).
+
+    after_wall is the wall clock: `seconds` after the previous step fired, on the
+    poller's monotonic time. The service menu's sub-loops (menu_run -> 0x2EA78)
+    run inside one game_frame with no master-loop spin, so DS_000EF6DC and the S
+    records freeze while one is open and a frame-keyed step never comes due; only
+    wall time reaches those screens (the K11 harness's AUTOTYPE is wall-paced for
+    the same reason). The poller calls due_wall() every pass (record §H6.9)."""
 
     def __init__(self, steps):
         self.steps = list(steps)
@@ -697,6 +732,9 @@ class Schedule:
         self.entry_count = {}
         self.entry_frame = {}       # (mode, k) -> the first S frame of the k-th entry
         self.end_frame = None
+        self.end_wall = None        # set by a wall ('end',): the moment it is due
+        self.last_wall = None       # the wall time the last fired step was due
+        self.now = 0.0              # the poller's latest wall time
         self.fired = 0
         self.total = sum(1 for st in self.steps if st[0] != 'until_mode' and st[-1] != ('end',))
 
@@ -734,17 +772,38 @@ class Schedule:
         self.entry_frame[(mode, k)] = f
 
     def due_boot(self, now_s):
+        self.now = now_s
         if self.i < len(self.steps) and self.steps[self.i][0] == 'boot' and now_s >= self.steps[self.i][1]:
             self.i += 1
             self.fired += 1
+            self.last_wall = now_s
             return [(self.i - 1, self.steps[self.i - 1][2])]
         return []
+
+    def due_wall(self, now_s):
+        """The wall-clock steps: ('after_wall', seconds, act) fires `seconds` after
+        the previous step fired; a wall ('end',) sets end_wall (the poller writes the
+        X record and stops STOP_TAIL frames later, record §H6.9)."""
+        self.now = now_s
+        out = []
+        while self.i < len(self.steps) and self.steps[self.i][0] == 'after_wall':
+            st = self.steps[self.i]
+            if self.last_wall is None or now_s < self.last_wall + st[1]:
+                break
+            self.last_wall = self.last_wall + st[1]
+            self.i += 1
+            if st[-1] == ('end',):
+                self.end_wall = self.last_wall
+                break
+            self.fired += 1
+            out.append((self.i - 1, st[-1]))
+        return out
 
     def due(self, f):
         out = []
         while self.i < len(self.steps):
             st = self.steps[self.i]
-            if st[0] in ('boot', 'until_mode'):
+            if st[0] in ('boot', 'until_mode', 'after_wall'):
                 break
             F = self._target(st)
             if F is None or f < F - 1:
@@ -752,6 +811,7 @@ class Schedule:
             self.prev_frame = F
             self.frame_of[self.i] = F
             self.i += 1
+            self.last_wall = self.now
             if st[-1] == ('end',):
                 self.end_frame = F
                 break
@@ -761,6 +821,9 @@ class Schedule:
 
     def ended(self, f):
         return self.end_frame is not None and f >= self.end_frame
+
+    def ended_wall(self, now_s):
+        return self.end_wall is not None and now_s >= self.end_wall
 
 
 # The scenarios whose capture stops at the script's end (gp_capture.STOP_TAIL
@@ -837,7 +900,16 @@ def port_script(name, lines, end=None):
     the old head); bits at each change of S.raw, pinned by S(f-1). The key loop
     0x24D08..0x24EE7 drains every queued word in one iteration, so the poller
     writes one H record per consumed word and S(f) must show the head of the
-    last H record of frame f (record §G.4)."""
+    last H record of frame f (record §G.4).
+
+    A wall-paced scenario (`wall=True`, such as gp-u17-device2's service-menu
+    walk) has no port script yet: its steps fire on the poller's wall clock
+    because the menu's sub-loops freeze the frame counter, and this script's
+    actions are keyed on f. The frame-keyed replay cannot follow it; raising here
+    keeps a broken script from being written (named gap, record §H6.9)."""
+    if SCENARIOS.get(name, {}).get('wall'):
+        raise ScriptError('wall-paced steps (the service menu\'s sub-loops freeze the frame '
+                          'counter): the frame-keyed port script cannot follow them')
     recs = [r for r in (parse(l) for l in lines) if r]
     snap = snapshots(lines)
     presses = [r for r in recs if r['kind'] == 'I' and 'press' in r and r.get('bios') is not None]

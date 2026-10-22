@@ -86,6 +86,33 @@ class TestInjector(unittest.TestCase):
         self.assertEqual([r.get('press') or r.get('release') for r in recs], ['p1.up', 'p1.up'])
         self.assertEqual(recs[0]['bios'], 0x1F73)
 
+    def test_the_wall_deadline_releases_a_key_with_no_frame_change(self):
+        # record §H6.9: inside the service menu the frame counter freezes, so a
+        # hold is also wall-deadlined (`hold` frames at the game's rate) and the
+        # poller's per-pass release_due ends it; the I record carries the frame it
+        # still read (unchanged) and the wall release's ms
+        m, log = _mem(), io.StringIO()
+        ptr = 0xFE20
+        m[ptr + gs.KEYTAB_OFF + 0x50] = 0xFF
+        inj = gc.Injector(m, ptr, log, wall=True)
+        inj.press(2, 0x25B, 'down', 0x50, 0x5000, 5, 0, 1000)
+        self.assertEqual(m[ptr + gs.KEYTAB_OFF + 0x50], 0x7F)
+        deadline = 1000 + 5 * gs.FRAME_MS
+        inj.release_due(0x25B, int(deadline) - 1)      # the frame never moves
+        self.assertEqual(m[ptr + gs.KEYTAB_OFF + 0x50], 0x7F)       # not yet
+        inj.release_due(0x25B, int(deadline) + 1)
+        self.assertEqual(m[ptr + gs.KEYTAB_OFF + 0x50], 0xFF)       # the wall deadline
+        recs = [gs.parse(l) for l in log.getvalue().splitlines()]
+        self.assertEqual((recs[0]['f'], recs[1]['f']), (0x25B, 0x25B))
+        self.assertEqual(recs[1]['release'], 'down')
+        # a frame-keyed scenario keeps the frame rule alone (no wall release)
+        m2 = _mem()
+        m2[ptr + gs.KEYTAB_OFF + 0x50] = 0xFF
+        inj2 = gc.Injector(m2, ptr, io.StringIO())
+        inj2.press(2, 0x25B, 'down', 0x50, 0x5000, 5, 0, 1000)
+        inj2.release_due(0x25B, int(deadline) + 1)
+        self.assertEqual(m2[ptr + gs.KEYTAB_OFF + 0x50], 0x7F)      # still held
+
     def test_pad_bios_off_queues_nothing(self):
         m, log = _mem(), io.StringIO()
         inj = gc.Injector(m, 0xFE20, log, pad_bios=False)
@@ -373,32 +400,45 @@ class TestStopAtEnd(unittest.TestCase):
 
     def test_sigterm_comes_tail_frames_after_the_end(self):
         p = self.poller(gc.STOP_TAIL)
-        self.assertFalse(p.stop_if_due(0x10A + gc.STOP_TAIL - 1))
+        self.assertFalse(p.stop_if_due(0x10A + gc.STOP_TAIL - 1, 0.0))
         self.assertEqual(p.proc.sent, [])
-        self.assertTrue(p.stop_if_due(0x10A + gc.STOP_TAIL))
+        self.assertTrue(p.stop_if_due(0x10A + gc.STOP_TAIL, 0.0))
         self.assertEqual((p.proc.sent, p.signal_f), ([gc.signal.SIGTERM], 0x10A + gc.STOP_TAIL))
-        self.assertFalse(p.stop_if_due(0x10A + gc.STOP_TAIL + 1))      # once
+        self.assertFalse(p.stop_if_due(0x10A + gc.STOP_TAIL + 1, 0.0))      # once
         self.assertEqual(len(p.proc.sent), 1)
 
     def test_no_tail_runs_to_the_time_limit(self):
         p = self.poller(None)
-        self.assertFalse(p.stop_if_due(0x2000))
+        self.assertFalse(p.stop_if_due(0x2000, 0.0))
         self.assertEqual(p.proc.sent, [])
         p = self.poller(gc.STOP_TAIL)
         p.sched.end_frame = None            # the end never came
-        self.assertFalse(p.stop_if_due(0x2000))
+        self.assertFalse(p.stop_if_due(0x2000, 0.0))
 
     def test_wait_kills_a_dosbox_that_ignores_the_sigterm(self):
         p = self.poller(0)
         p.proc = self.Proc(exits_on_term=False)
-        p.stop_if_due(0x10A)
+        p.stop_if_due(0x10A, 0.0)
         p.signal_t -= 10
         self.assertEqual(gc.wait_dosbox(p.proc, p, grace=5), -9)
         self.assertTrue(p.proc.killed)
         p = self.poller(0)
-        p.stop_if_due(0x10A)
+        p.stop_if_due(0x10A, 0.0)
         self.assertEqual(gc.wait_dosbox(p.proc, p, grace=5), 0)
         self.assertFalse(p.proc.killed)
+
+    def test_a_wall_end_stops_tail_frames_later(self):
+        # record §H6.9: a wall-scenario end names a moment (end_wall), not a frame
+        p = gc.Poller('/nonexistent', '/nonexistent', (('after_wall', 1.0, ('end',)),), None)
+        p.sched.last_wall = 1.0
+        p.sched.due_wall(2.0)                          # end_wall = 2.0
+        self.assertIsNotNone(p.sched.end_wall)
+        p.stop_tail, p.proc = gc.STOP_TAIL, self.Proc()
+        tail_s = gc.STOP_TAIL * gs.FRAME_MS / 1000.0
+        self.assertFalse(p.stop_if_due(0x10, 2.0 + tail_s - 0.01))
+        self.assertEqual(p.proc.sent, [])
+        self.assertTrue(p.stop_if_due(0x10, 2.0 + tail_s))
+        self.assertEqual(p.proc.sent, [gc.signal.SIGTERM])
 
     def test_quit_warning_only_when_stopping(self):
         stop, base = gc.dosbox_cmd('/r', '/g', '/i', 10, True), gc.dosbox_cmd('/r', '/g', '/i', 10)
@@ -469,6 +509,25 @@ class TestMemsize(unittest.TestCase):
             seen += 1
         if not seen:
             self.skipTest('no gp-u9-win / gp-u10-ending capture')
+
+
+class TestWallScenario(unittest.TestCase):
+    """record §H6.9: gp-u17-device2's steps are wall-paced because the service
+    menu's sub-loops freeze the master frame counter; the frame-keyed port script
+    cannot follow them yet, so the capture's port-script CHECK reports it deferred
+    instead of failing, and port_script refuses to write a broken script."""
+
+    def test_the_port_script_is_deferred_not_broken(self):
+        with self.assertRaises(gs.ScriptError) as e:
+            gs.port_script('gp-u17-device2', [])
+        self.assertIn('wall-paced steps', str(e.exception))
+        sched = gs.Schedule(gs.SCENARIOS['gp-u17-device2']['steps'])
+        rows = gc.run_checks('gp-u17-device2',
+                             ['B ms=0 base=00266000 ptr=0000FE20'], sched, 0, 0)
+        ps = [r for r in rows if r[0].startswith('port script v2')]
+        self.assertEqual(len(ps), 1)
+        self.assertTrue(ps[0][1], ps)
+        self.assertIn('deferred: wall-paced steps', ps[0][0])
 
 
 class TestFire(unittest.TestCase):
