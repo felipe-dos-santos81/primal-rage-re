@@ -854,3 +854,83 @@ Every FAIL was shown by `make gp-u15-oracle GP_U15_X=value` (the Makefile restor
 ### What this section does not claim
 
 It does not claim port-frame order or interior coverage inside the window (the nine unexhibited port frames above are reported, not ratcheted), the raw `new` start bit at the join (see the held-edge fallback), anything past the capture's end, or the join's mode-0x17 window beyond 60 frames; the capture does not move any existing pin.
+
+## §J8 The `gp-u16-twop2` extended two-human capture (evidence closeout Task 8; measured on the closeout branch)
+
+`data/k11-captures/gp-u16-twop2` (git-ignored) runs the U7 two-human start through the fight and the mode-0x09 result, attempts TALON's three finisher entries on the defeated P2, and ends at mode 0x12. The session was approved; nobody typed in the DOSBox-X window. Captured with `DISPLAY=:1 make gp-capture scenario=gp-u16-twop2` (240 s limit). The recorder printed ffmpeg broken-pipe shutdown messages, but DOSBox-X returned 0 and every capture check passed:
+
+```
+snapshots 8677, f 5..21F8, 15 frames missed (spec §3.7)
+CHECK base: ok                    CHECK steps fired 96/96: ok
+CHECK end frame reached: ok       CHECK mode 0x27 after the Enter: ok
+CHECK snapshots kb == raw (0 differ): ok     CHECK frames written 8091/8091: ok
+CHECK port script v2: ok          CHECK no unscripted input: ok
+CHECK pokes written 0/0, 0 raced: ok         CHECK stopped at the end (SIGTERM at f=21F8, rc=0): ok
+```
+
+`python3 tools/gp_capture.py check-input data/k11-captures/gp-u16-twop2` prints `check=ok no unscripted input`. The capture spans raw video frames 1379..11618, has 8091 `frame_*.raw.gz` files and pins `poll.log` sha256 `5d38ca1fc3a52bcd02d91df3d7f0ae94a0275f9531f8bd81ffacee5343d31513`.
+
+### The replay's miss set
+
+The first replay attempt exceeded the command's 120 s tool limit; it was rerun with a 600 s limit and completed. `make gp-replay scenario=gp-u16-twop2` first rejected the new scenario with `4 != 2`. The full replay's exact log is:
+
+```
+fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=3796
+fn-miss PR_GP_DUMP 0x5D812 set_dead hits=3422
+fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP 0x5D812 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+```
+
+The scenario adds only `0x29D60` (`frontend_mode_1b_step`, the bare `ret`) and `0x5D812` (`frontend_mode_1b_step`, the runtime stub), the already-classified §G.24 wipe hooks; these are not unported targets the replay must execute. `k_miss_gp_u16_twop2` and the exact-name `k_gp_sets` row in `port/tests/test_platform.c` pin exactly those two pairs. The base `actor_spawn`/`set_dead` rows remain the known runtime stub pair. The rebuild and full replay then pass (`0 restarts`, `distinct=4 dropped=0`). No new porting was needed.
+
+### Two-human evidence and the finisher gap (R2)
+
+`python3 tools/gp_twop.py check --finisher --capture data/k11-captures/gp-u16-twop2`:
+
+```
+gp_twop: gp-u16-twop2: join f=2CA (cred 4 -> 4); 7911 S records from the join to X f=21BC; side 0 [('pad', 7911)], side 1 [('pad', 7911)]; fight presses 368/40
+gp_twop: gp-u16-twop2: two-human match: ok
+gp_twop: gp-u16-twop2: finisher: FAIL; mode 0x09 reached, mode 0x12 reached, reactions []
+gp_twop: gp-u16-twop2: FAIL: no finisher reaction 0x32..0x34 in any S record
+```
+
+The capture proves two pad-controlled sides through the replay end, including the no-debit join (`cred 4 -> 4`); both required modes are reached. Although the three finisher entry sequences were attempted, no sampled `r0`/`r1` value is in `0x32..0x34`. No narrower retry was made and no finisher pin was fabricated. **R2: finisher application remains a named gap.** Consequently `gp-u16-oracle` calls the ordinary `gp_twop.py check` (two-human claim only), not `--finisher`; its enforced claims are the two-human evidence and the narrow frame/trace/moves ratchets below.
+
+### The measured pixel allowances and report
+
+The first `gp_compare --report` exposed capture 4089 (raw 6792), 24 unexplained frames, and the loader strip at 8066. These were not silently moved past: each was checked against the byte recipes already implemented by the judge, and each now has a scenario-specific, independently measured entry in `tools/gp_compare.py`.
+
+* **`SCAN3_ALLOWED['gp-u16-twop2']`:** capture 4089 (raw 6792), recipe `(4089, 1, 66, 8eeaad13ee80ed904df9a8d600d3972f34959d6d5a0692cdbd319003b80376f6)`. The capture's row 0 hash is pinned; the unique adjacent pair is port frames 3424/3425, binding rows 1..65 and 66..199 respectively. Row 0 has 314 earlier port holders, so the exact named limitation is that its holder is not unique; no more of that old-screen state is asserted. The scan-out recipe's port bindings and capture hash are mutation-tested by `Scan3Allowance.test_a_mutated_bound_pair_frame_unexplains_it_again` and `test_different_top_bytes_are_not_the_named_frame`; `test_the_table_names_the_measured_scanouts` pins the U16 table entry.
+* **`OVERLAY_ALLOWED['gp-u16-twop2']`:** capture 8066 (raw 11502), recipe `(8066, 6815, 6814, 6816, de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced)`. The 166 glyph pixels (rows 192..197, x 0..85) come from port 6815; port 6814 supplies the mask, and every off-mask pixel is bound to port 6816. The whole capture frame passes `overlay_explain`. Its screen, overlay pixels, and mask-source mutations are covered by `OverlayAllowance.test_a_mutated_screen_frame_unexplains_it_again`, `test_a_mutated_overlay_frame_unexplains_it_again` and `test_a_mutated_mask_source_unexplains_it_again`; `test_the_table_names_the_measured_overlays` pins the U16 entry. No general class or other allowance was added.
+
+The final report command is `python3 tools/gp_compare.py --report --scenario gp-u16-twop2 --capture data/k11-captures/gp-u16-twop2 --port /tmp/pr_gp_dump/gp-u16-twop2 --max-unexplained 0` (report-only, exit 0). Its measured lines:
+
+```
+frames: window from capture 100 (raw 1743); 7958 classified: 5128 clean, 2823 splice, 4 transition, 0 band-allowed, 1 scan3-allowed, 1 overlay-allowed, 1 unexplained, 12 all-black
+frames: FIRST UNEXPLAINED capture 8069 (raw 11594): nearest port 6816, rows 73..173, x 56..255 (6391 px)
+frames: coverage (reported, not ratcheted): 27 non-black port frame(s) up to port 6817 not exhibited by any classified capture frame: [9, 11, 176, 217, 218, 219, 221, 222, 3334, 3423, 3713, 5420, 5447, 5454, 5458, 5845, 5858, 5928, 5953, 5962] ...
+trace: 8308 frames compared (f 13A..), 15 without a capture snapshot; first tick difference f=13B (reported, not ratcheted)
+trace: normalised (reported, not ratcheted): ent 0 of 8308 differ; t508 4267 of 8308 differ (first f=27B)
+trace: 0 differing through 8636
+moves: 8308 frames compared (f 13A..) over c0 c1 r0 r1 s0_43, 15 without a capture snapshot
+moves: 0 differing through 8636
+```
+
+The capture's S records carry all five move fields `c0 c1 r0 r1 s0_43`; the report compares them and finds no differences through f=8636, so `GP_U16_MOVES_MIN_FIRST` is pinned to the compared end + 1 (8637), as is `GP_U16_TRACE_MIN_FIRST`. The tick difference at f=13B is reported separately by `gp_compare`, not part of the trace ratchet. The first unexplained pixel frame is 8069, after both measured allowances; its 6391-pixel mismatch and the subsequent 8070..8090 tail are not byte-pinned and receive no allowance. The claim stops before 8069. The replay reaches its X record at f=21BC; its dump's highest frame exhibited before that first unexplained capture frame is port 6817.
+
+### Pins and failing-direction proofs (`make gp-u16-oracle`, PASS)
+
+`make gp-u16-oracle GP_WIN_KEEP=1` passes the 25 `gp_twop` tests, two-human check, replay, capture identity, frame/trace/moves ratchets. `GP_WIN_KEEP=1` only preserves the `/tmp` dump for pin proofs; the default target removes it. The values and actual failing-direction checks (each run used the retained port dump with the other pins at their defaults):
+
+| Pin | Value | Provenance | Failing direction, observed output |
+|---|---:|---|---|
+| `GP_U16_MIN_FIRST` | 8069 | First unexplained capture frame after allowances | 8070 → FAIL: `first unexplained 8069 < ratchet N 8070` |
+| `GP_U16_TRACE_MIN_FIRST` | 8637 | `0 differing through 8636`; compared end + 1 | 8638 → FAIL: `N 8638 > end 8637: N is unreachable` |
+| `GP_U16_MOVES_MIN_FIRST` | 8637 | `moves: 0 differing through 8636`; compared end + 1 | 8638 → FAIL: `N 8638 > end 8637: N is unreachable` |
+| `GP_U16_MAX_START` | 100 | Report window begins at capture 100 | 99 → FAIL: `window starts at capture 100 (raw 1743) > pinned start 99` |
+| `GP_U16_MIN_REACH` | 6817 | Highest port frame exhibited before capture 8069 | 6818 → FAIL: `window reach port 6817 < pinned reach 6818` |
+| `GP_U16_CAPTURE_FRAMES` | 8091 | Count of `frame_*.raw.gz` files | 8092 → FAIL: capture identity reports 8091 frames != pinned 8092 |
+| `GP_U16_CAPTURE_SHA256` | `5d38ca1f…d31513` | `poll.log` sha256 | all-zero sha → FAIL: actual hash != pinned hash |
+
+The pin proofs were direct `gp_compare.py` invocations against the retained, measured replay, not assumed failures; the exit status was 1 for each modified pin. Makefile values were not changed for those checks. The final claim is narrow: the two-human evidence is sampled, no content-bearing capture frame in the exhibited window below 8069 is unexplained (including only the two individually byte-pinned allowances), and the replay reaches the scripted end. Frame order and complete interior coverage are not claimed; the 27 reported unexhibited port frames are not ratcheted. The mode-0x09/0x12 states are evidenced, but the finisher reactions and all pixel content from capture 8069 onward are not claimed. Full `make verify` was not run per the task brief.

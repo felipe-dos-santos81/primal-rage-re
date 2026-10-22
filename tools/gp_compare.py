@@ -141,6 +141,13 @@ SCAN3_ALLOWED = {
         # was never blitted.
         (331, 2, 64, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
     ),
+    'gp-u16-twop2': (
+        # Capture 4089 (raw 6792): row 0 is byte-pinned by the hash and is held
+        # by 314 earlier port frames; rows 1..65 are port 3424's, and rows
+        # 66..199 are port 3425's. (3424, 3425) is the unique adjacent-pair
+        # binding. The one-row top's non-unique holder is the named limit (§J8).
+        (4089, 1, 66, '8eeaad13ee80ed904df9a8d600d3972f34959d6d5a0692cdbd319003b80376f6'),
+    ),
 }
 
 
@@ -207,6 +214,13 @@ OVERLAY_ALLOWED = {
         # the same loader string, but the capture and all three port frames are
         # independently measured for U13.
         (2188, 1799, 1798, 1800,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
+    'gp-u16-twop2': (
+        # Capture 8066 (raw 11502): port 6815's 166 loader glyph pixels over
+        # port 6816's screen; port 6814 is the mask source. Independently
+        # measured for U16, with the same glyph-byte fingerprint (§J8).
+        (8066, 6815, 6814, 6816,
          'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
     ),
 }

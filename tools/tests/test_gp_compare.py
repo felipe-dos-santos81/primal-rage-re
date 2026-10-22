@@ -753,6 +753,9 @@ class Scan3Allowance(Dirs):
         self.assertEqual(gc.SCAN3_ALLOWED['gp-u10-ending'],
                          ((331, 2, 64,
                            '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),))
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u16-twop2'],
+                         ((4089, 1, 66,
+                           '8eeaad13ee80ed904df9a8d600d3972f34959d6d5a0692cdbd319003b80376f6'),))
 
 
 class OverlayAllowance(Dirs):
@@ -936,6 +939,9 @@ class OverlayAllowance(Dirs):
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
         self.assertEqual(gc.OVERLAY_ALLOWED['gp-u10-ending'],
                          ((2062, 1685, 1684, 1686,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u16-twop2'],
+                         ((8066, 6815, 6814, 6816,
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
 
 

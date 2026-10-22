@@ -1401,28 +1401,32 @@ gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips
 # sets both (`word [slot+0x42] |= 0x820`, 0x36FD4) for the side the match result
 # DS_00104AD4 beat (0x36F71..0x36F9A), reached from the health sync 0x34BE8 and its
 # position gate 0x36E2C, and DS_00105B3A (the config word's bit 8, 0x20C9F) is 0 on the
-# all-zero CMOS. The presses are tools/gp_moves.py's and UNMEASURED (Task 12 measures which
-# land). gp_twop.py check is the two-human claim (both sides press in mode 6, b1f 3, no debit
-# at the join); gp_compare's frame, trace and window ratchets are the rest. The moves claim
-# (gp_compare's --moves-min-first) is not pinned here: the scenario's S records carry the
-# move fields, so a report run shows it, and a pin can be added once measured.
-# The pins are EMPTY until data/k11-captures/gp-u16-twop2 is captured and measured
-# (Task 12): the target skips on the absent capture directory (`[ ! -d ]`), and a present
-# capture with an empty pin fails first in gp_compare's capture_identity ("the capture
-# identity (poll.log sha256) is not pinned").
-# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture
-# frame, TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture
-# frame, MIN_REACH the replay's last exhibited port frame, and the capture identity (poll.log
-# sha256 and the frame_*.raw.gz count). Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH when they
-# improve.
-GP_U16_MIN_FIRST =
-GP_U16_TRACE_MIN_FIRST =
-GP_U16_MAX_START =
-GP_U16_MIN_REACH =
-GP_U16_CAPTURE_SHA256 =
-GP_U16_CAPTURE_FRAMES =
-gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human match and finishers (skips without data/k11-captures/gp-u16-twop2)
-	@echo "== gameplay oracle: gp-u16-twop2 (an extended two-human match and the finishers) =="
+# all-zero CMOS. The capture reaches modes 0x09 and 0x12, but `gp_twop.py check --finisher`
+# found no 0x32..0x34 reaction after the three attempted TALON entries. R2: the finisher
+# effect is a named gap; this target therefore enforces only the two-human match and frame/
+# state evidence, not a finisher claim. The S records carry c0/c1/r0/r1/s0_43 and all five
+# fields agree through the replay end, so pin the moves claim too.
+# Provenance (Task 8, record gameplay-truth-ii §J8):
+#   MIN_FIRST 8069: after the byte-pinned scan-out at capture 4089 and loader overlay at
+#     8066, the first unexplained frame is 8069 (raw 11594), nearest port 6816. The capture
+#     tail from this point is not claimed; this is the first frame outside the reproduced
+#     window, not a claim that its screen is correct.
+#   TRACE_MIN_FIRST / MOVES_MIN_FIRST 8637: 0 differences through f=8636; 8637 is the
+#     compared end + 1 and an exact reach pin.
+#   MAX_START 100: the report's window starts at capture 100 (raw 1743).
+#   MIN_REACH 6817: highest port frame exhibited before the first unexplained capture frame.
+#   CAPTURE_SHA256 / CAPTURE_FRAMES: this capture's poll.log and 8091 raw.gz frame files.
+# Raising either N pin, the reach or frame count by one, lowering MAX_START by one, or
+# changing the sha must fail; remeasure all values for a replacement capture.
+GP_U16_MIN_FIRST = 8069
+GP_U16_TRACE_MIN_FIRST = 8637
+GP_U16_MOVES_MIN_FIRST = 8637
+GP_U16_MAX_START = 100
+GP_U16_MIN_REACH = 6817
+GP_U16_CAPTURE_SHA256 = 5d38ca1fc3a52bcd02d91df3d7f0ae94a0275f9531f8bd81ffacee5343d31513
+GP_U16_CAPTURE_FRAMES = 8091
+gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human match and frame evidence (finisher gap; skips without data/k11-captures/gp-u16-twop2)
+	@echo "== gameplay oracle: gp-u16-twop2 (extended two-human match and frame evidence; finisher gap) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_twop
 	@if [ ! -d $(K11_CAPTURES)/gp-u16-twop2 ]; then echo "gp-u16-oracle: no capture at $(K11_CAPTURES)/gp-u16-twop2 (skipped)"; else \
 		$(PYTHON) tools/gp_twop.py check --capture $(K11_CAPTURES)/gp-u16-twop2 && \
@@ -1430,6 +1434,7 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 		$(PYTHON) tools/gp_compare.py --scenario gp-u16-twop2 --capture $(K11_CAPTURES)/gp-u16-twop2 \
 			--port $(GP_DUMP)/gp-u16-twop2 --min-first "$(GP_U16_MIN_FIRST)" \
 			--trace-min-first "$(GP_U16_TRACE_MIN_FIRST)" --max-start "$(GP_U16_MAX_START)" \
+			--moves-min-first "$(GP_U16_MOVES_MIN_FIRST)" \
 			--min-reach "$(GP_U16_MIN_REACH)" \
 			--capture-sha256 "$(GP_U16_CAPTURE_SHA256)" --capture-frames "$(GP_U16_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u16-twop2; exit $$rc; fi
@@ -1594,7 +1599,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u14-oracle
 	@echo "== gameplay oracle: gp-u15-join (a mid-round join; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u15-oracle
-	@echo "== gameplay oracle: gp-u16-twop2 (an extended two-human match and the finishers; skips without its capture) =="
+	@echo "== gameplay oracle: gp-u16-twop2 (extended two-human match and frame evidence; finisher gap; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u16-oracle
 	@echo "== host input truth U17: the device-2 selection and the no-pad clear; skips without its capture =="
 	@$(MAKE) --no-print-directory gp-u17-oracle
