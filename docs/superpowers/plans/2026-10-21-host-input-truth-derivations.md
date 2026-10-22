@@ -405,3 +405,187 @@ No existing pin is expected to move: the default device-0/0 path samples the sam
 produces the same kb word, and the build's `--check` frames, the oracle-required tests, the
 restart driver and the smk/title/front-end oracles passed with the change before the
 controller stopped the full gate (the whole gate is Task 7's closeout check).
+
+## §H3 The game-port button readers and the `0x1B890` row
+
+§H2.6's `1 named gap` was `host_1b890`: a one-case spec whose `in al,dx` at `0x1B899` the
+emulator could not model. Track H's `E.Machine.in` answers it, so the gap became a row. This
+section ports the three game-port button readers, gives the host the byte they read, extends
+the differential harness's machine model with the port's side of the same `in`, and records
+the bit maps and the plan-vs-raw correction.
+
+### §H3.1 The three functions and the active-low button byte
+
+The sampler `0x1BBAC`'s device 2/4/6 arms call these (disassembly of the fixed-up image; the
+Ghidra listing agrees):
+
+```
+1B890  push ebx / push edx
+1B892  mov edx,0x201            ; the PC game port
+1B897  sub eax,eax
+1B899  in al,dx                 ; the button byte
+1B89A  mov ah,al                ; kept while the bits are tested
+1B89C  xor edx,edx / and al,0x10 / mov dl,al / xor bl,bl
+1B8A4  test edx,edx / jne 0x1b8aa / mov bl,1     ; bit 4 clear -> 1
+1B8AA  mov al,ah / ... and al,0x20 ... / or bl,2 ; bit 5 clear -> 2
+1B8B9  mov al,ah / ... and al,0x40 ... / or bl,4 ; bit 6 clear -> 4
+1B8C8  mov al,ah / and al,0x80 / and eax,0xff / jne / or bl,8  ; bit 7 clear -> 8
+1B8D6  mov al,bl / pop edx / pop ebx / ret
+```
+
+`0x1B8DC` (P1) is the same shape for bits 4/5: `mov edx,0x201` `0x1B8DE`, `in al,dx`
+`0x1B8E5`, `mov dl,al` `0x1B8E8`, bit 4 clear -> `mov bl,1` `0x1B8F3`, bit 5 clear ->
+`or bl,4` `0x1B900`, `mov al,bl` `0x1B903`. `0x1B908` (P2) does bits 6/7: `in al,dx`
+`0x1B911`, `mov dl,al` `0x1B914`, bit 6 clear -> `mov bl,1` `0x1B91F`, bit 7 clear ->
+`or bl,4` `0x1B92C`, `mov al,bl` `0x1B92F`.
+
+The maps:
+
+| function | game-port bits | game-bit values | raw return |
+|---|---|---|---|
+| `0x1B890` `input_port_buttons_both` | 4, 5, 6, 7 | 1, 2, 4, 8 | AL (EAX upper bits cleared by `and eax,0xff` at `0x1B8CC`) |
+| `0x1B8DC` `input_port_buttons_p1` | 4, 5 | 1, 4 | AL (`and eax,0xff` at `0x1B8EC`/`0x1B8F9`) |
+| `0x1B908` `input_port_buttons_p2` | 6, 7 | 1, 4 | AL (`and eax,0xff` at `0x1B918`/`0x1B925`) |
+
+**A correction to the plan's table.** The plan's Task 3 table reads "game-port byte: bits
+4..7 set -> `1`/`2`/`4`/`8`". The raw tests each bit with `test`/`and` and sets the game bit
+when the bit is **clear** (`0x1B8A4 jne` skips `mov bl,1`; `0x1B8D1 jne` skips `or bl,8`),
+i.e. the byte's bits are ACTIVE LOW, the PC game port's own electrical convention (a pressed
+button grounds the line). The design's line 52/82 wording -- "game-port bits 4..7 -> 1,2,4,8"
+-- is the bit map, not a polarity. The raw wins, and the row's cases are the raw's: a byte
+with bit 4 clear returns 1, and `0xFF` (all four released) returns 0. Every case below is
+derived from the bytes above.
+
+### §H3.2 The `in` model: the original's machine, the port's host seam
+
+The original's side is track H's `E.Machine.ins=((0x201, (byte,)),)`: `in al,dx` returns the
+case's byte. The port has no `in`, so its three readers call `host_port_buttons()`, and the
+differential harness now carries the same case byte to that host answer:
+
+- `tools/diff_verify.py`'s `h0_machine_text` emits `ins` then `in 0x201 0xNN` for a case
+  whose machine's `ins` lists the game port (`H0_GAME_PORT = 0x201`). It is the **only** port
+  the port side answers; a case's other `in`s (the `0x3DA` retrace reads of the d6a rows)
+  stay the emulator's alone, as before. A case with two different 0x201 bytes is refused
+  (`ValueError`): the host holds one game-port byte, and the raw reads the same physical port
+  once per reader.
+- `port/tests/diff_runner.c` parses `ins`/`in <port> <byte>` (`case_t.ins/game_port_set/
+  game_port`), refuses any port other than 0x201, a byte above 0xFF, a second `in` line, or
+  an `in` without `ins`; `h0_start` arms `host_set_port_buttons_override(byte, 1)` before the
+  binding and `h0_end` clears it, so no case's byte leaks into the next.
+- The port's side of each reader is the binding: `input_port_buttons_both()` ->
+  `host_port_buttons()` -> the seam's byte. Nothing else about the harness's `in` handling
+  changed; `compare()` still does not compare `in`s (the port has none to compare).
+
+### §H3.3 The rows (`tools/diff_verify.py`) and their mutants
+
+The three rows replace `host_1b890` (`tools/diff_verify.py`, the E3 group; the new rows sit
+with the §H2 rows in the D1I group). Fixture `h3_port_case(cid, byte)` = a case with no
+registers, no pokes, and `machine=E.Machine(ins=((0x201, (byte,)),))`, `eax_mask=0xFF`:
+
+| row | case (byte -> AL) |
+|---|---|
+| `input_port_buttons_both` | none `0xFF`->0, b1 `0xEF`->1, b2 `0xDF`->2, b3 `0xBF`->4, b4 `0x7F`->8, b1b4 `0x6F`->9, all `0x0F`->15, low `0x10`->14 |
+| `input_port_buttons_p1` | none `0xFF`->0, b1 `0xEF`->1, b2 `0xDF`->4, both `0xCF`->5, p2 `0x3F`->0 |
+| `input_port_buttons_p2` | none `0xFF`->0, b1 `0xBF`->1, b2 `0x7F`->4, both `0x3F`->5, p1 `0xCF`->0 |
+
+`low` (`0x10`: bits 0..3 clear, bit 4 high) is the case that pins that the low nibble is never
+read (it returns `2|4|8`, not `0x1F`); the P1/P2 cross cases (`0x3F`/`0xCF`) pin that each
+reader ignores the other player's two bits. `all` and `b1b4` pin the OR of the arms.
+
+The 9 blocks of `0x1B890` are all hit: the entry, the two arms of each of the four bit tests
+(`0x1B8A8`/`0x1B8AA`, `0x1B8B6`/`0x1B8B9`, `0x1B8C5`/`0x1B8C8`, `0x1B8D3`/`0x1B8D6`). The
+`0x1B8C8` block is both the bit-6 test's not-taken fall-through and the bit-7 test's entry;
+the 9 are covered by b1..b4 (each arm taken once) plus `none` (every arm not taken).
+
+Mutants (`port/tests/diff_runner.c`, `h3_both_core`/`h3_p1_core`/`h3_p2_core` with the
+`H3_MUTANTS_FOR` wrappers; bindings after `input_f2@inv`): `@mask` tests the wrong input bit
+(0x08 for 0x10, 0x40 for 0x10, 0x10 for 0x40), `@bits` swaps the output order (1/2/4/8 ->
+8/4/2/1; 4 <-> 2; 4 <-> 8), `@inv` inverts the polarity (`al ^ 0x0F` / `al ^ 0x05`), `@all`
+returns every bit (`0x0F` / `0x05`). All twelve are detected. The measured case sets (the
+harness suite's `H3_CASES`, §H3.5):
+
+| mutant | cases that catch it |
+|---|---|
+| `both@mask` | all, b1, b1b4, low |
+| `both@bits` | b1, b2, b3, b4, low |
+| `both@inv` | all, b1, b1b4, b2, b3, b4, low, none |
+| `both@all` | b1, b1b4, b2, b3, b4, low, none |
+| `p1@mask` | b1, both, p2 |
+| `p1@bits` | b2, both |
+| `p1@inv` | b1, b2, both, none, p2 |
+| `p1@all` | b1, b2, none, p2 |
+| `p2@mask` | b1, both, p1 |
+| `p2@bits` | b2, both |
+| `p2@inv` | b1, b2, both, none, p1 |
+| `p2@all` | b1, b2, none, p1 |
+
+RED before the port side existed: `python3 tools/diff_verify.py --function
+input_port_buttons_both` on the pre-batch `diffrun` printed `diff-verify: error: diffrun
+failed (1): diffrun: cannot parse 'ins'` -- neither the case line nor the binding existed.
+GREEN: the three rows by name (`PR_DIFF_JOBS=1 ... --self-check`) print `VERIFIED` at
+9/9 (`0x1B890`), 5/5 (`0x1B8DC`) and 5/5 (`0x1B908`) blocks with 4/4 mutants detected each.
+
+### §H3.4 The host byte, the reader and the unit test
+
+`port/src/host.c`: `host_port_buttons()` is the PC game port's button byte (0x201's bits
+4..7), the host's answer to the three ported readers. A game port's inputs are active low, so
+the raw's readers set a game bit when the byte's bit is CLEAR. The pad model (Task 5,
+`host_pad_fill`) writes the pad's byte; **until then the answer is 0**, the brief's
+placeholder. That 0 is "all four buttons low" as a game-port byte, and it is sound only
+because a device word that selects a game-port arm is cleared when no pad answers
+(`0x4FBBB`; Task 6), and because at this commit nothing in the windowed run calls the
+readers yet (Task 4 wires `input_sampler` into `game_loop`). The seam
+`host_set_port_buttons_override(u8 buttons, int on)` is the differential/unit-test pin:
+`host_port_buttons()` returns the seam's byte while it is armed, else 0. Off by default.
+
+`port/src/platform/input.c`: the three readers call `host_port_buttons()` **once** and map
+the bits, mirroring the raw's single `in al,dx` + `mov ah,al`:
+`0x1B890` tests 0x10/0x20/0x40/0x80 -> 1/2/4/8; `0x1B8DC` tests 0x10/0x20 -> 1/4;
+`0x1B908` tests 0x40/0x80 -> 1/4. Each opens with `PR_SEAM_RET0` at its address so the
+sampler's row (Task 4) can record the call. `port/src/platform/input.h` declares all four
+with the bit maps and the active-low rule.
+
+`port/tests/test_platform.c`, `test_input_port_buttons` (registered once in `test.h` after
+`test_input_keyboard_readers`): it asserts, with the seam armed:
+
+- each game-port bit alone of `0x1B890` in the raw's order (4 assertions), and that
+  `host_port_buttons()` returns the seeded byte;
+- released `0xFF` -> 0 for all three; all-low `0x00` -> `0x0F`, `0x05`, `0x05`;
+- P1's bits 4/5 -> 1/4, both -> 5, and `0x3F` (only 6/7 low) -> 0;
+- P2's bits 6/7 -> 1/4, both -> 5, and `0xCF` (only 4/5 low) -> 0;
+- the low nibble is not read (`0xF0` -> 0; `0x10` -> 14);
+- the seam disarmed with the byte 0 (no pad): `host_port_buttons()` == 0 and the readers
+  return `0x0F`/`0x05`/`0x05`.
+
+Each assertion was seen to fail under a mutation of a bit map, applied alone and reverted
+(the suite's only FAILs were these):
+
+| mutation | failing checks |
+|---|---|
+| `0x1B890` bit-4 test `0x10` -> `0x20` | `test_platform.c:3380: 0 != 1`, `3380: 3 != 2`, `3419: 15 != 14` |
+| `0x1B8DC` bit-5 output `4` -> `2` | `3390: 3 != 5`, `3398: 2 != 4`, `3400: 3 != 5`, `3426: 3 != 5` |
+| `0x1B908` bit-6 test `0x40` -> `0x10` | `3406: 0 != 1`, `3410: 4 != 5`, `3412: 1 != 0` |
+| `0x1B890` bit-7 polarity `== 0u` -> `!= 0u` | `3380` x4, `3385: 8 != 0`, `3389: 7 != 15`, `3417: 8 != 0`, `3419: 6 != 14`, `3425: 7 != 15` |
+
+Named limit: the test cannot exercise the SDL pad (Task 5) and does not; it pins the byte ->
+bit maps for the byte the host answers, which is the row's claim too.
+
+### §H3.5 Counters and the harness suite's name tables
+
+The differential step (`--self-check`) now reads **1016/1016 functions VERIFIED;
+14938/14938 mutants detected; 0 named gaps; 774/832 rows with callees closed (184 have
+none); 768/832 closed on full rows; 8 ported functions with no row.** Against §H2.6's 1013 /
+14926 / 1 / 181: +3 rows and +12 mutants from this batch, the named gap count 1 -> 0, and
+the callee-less count 181 -> 184; the closed pair is unchanged. `tools/port_progress.py`
+reads `796 1203 66`, `756 756 100` (README stays at 65% until Task 7's closeout).
+
+**A Task 2 omission repaired here.** Task 2's six rows were never added to
+`tools/tests/test_diff_verify.py`'s expected-name tables, so at this task's start the harness
+suite (`make diff-verify`'s unittest, AGENTS.md) failed with six unknown functions; the
+controller's Task 2 review did not catch it. This batch adds `H2_MASKS`/`H2_KINDS`/
+`H2_CASES` for those six rows and `H3_MASKS`/`H3_KINDS`/`H3_CASES` for the three here (all
+values measured), removes `host_1b890` from the name list and the EAX-mask dict, turns its
+named-gap test into a 9/9 full-row assertion, pins the new counter string, and adds two tests
+for the `ins`/`in 0x201` case line (the machine text and the runner's answer/refusals).
+`python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify`: 216 tests, OK.
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` (repo root): `all checks passed`.

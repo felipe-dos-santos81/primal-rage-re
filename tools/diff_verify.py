@@ -182,16 +182,27 @@ def parse_port_output(text):
 
 # ---- track H batch h0 (record 2026-10-14-reverse-h §H.1): the machine model's text, lines and comparison ----
 H0_DIFFS = ("out #", "keys ", "aperture ")      # compare()'s strings for a machine difference: they detect a mutant
+H0_GAME_PORT = 0x201                            # the PC game port: the host answers it (§H3)
 
 
 def h0_machine_text(m):
     """The case-file lines of a Machine's port side: `kbd` and a `key` per word (the port's input FIFO),
     `outs` (record PR_OUT), `aperture` (seed and report gfx_aperture()). The `in` values are the
-    emulator's alone: the port has no `in` to answer."""
+    emulator's alone, with one exception: the PC game port 0x201, which the host answers for the port's
+    three ported readers (0x1B890/0x1B8DC/0x1B908, record 2026-10-21-host-input-truth §H3), so its
+    byte goes to the port side as `ins`/`in 0x201 0xNN`. The raw reads the port once per reader, so a
+    case declares one byte (a second, different one is refused: the host holds one game-port byte)."""
     if m is None:
         return []
     out = [] if m.keys is None else ["kbd"] + ["key 0x%X" % k for k in m.keys]
-    return out + (["outs"] if m.outs else []) + (["aperture"] if m.aperture else [])
+    out += (["outs"] if m.outs else []) + (["aperture"] if m.aperture else [])
+    gp = [v for port, vals in m.ins if port == H0_GAME_PORT for v in vals]
+    if gp:
+        if len(set(gp)) != 1:
+            raise ValueError("machine: one case gives the game port 0x%X bytes %r; the host holds one"
+                             % (H0_GAME_PORT, gp))
+        out += ["ins", "in 0x%X 0x%02X" % (H0_GAME_PORT, gp[0])]
+    return out
 
 
 def h0_parse_line(cur, t, got):
@@ -584,7 +595,6 @@ E3_SPECS = [
         # 0x2BC30, everything else -> 0x3C480 is pinned value by value, not only its two blocks
         for st, side in [(s, s & 1) for s in range(0x100)]
     ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, HIT_A), eax_mask=0, mutants=("@mutant", "@set")),
-    Spec("host_1b890", 0x1B890, [Case("g0", {})], mutants=(), gap="in at 0x1B899"),
 ]
 
 # ---- track P batch 1: the finisher entries and their +0x0C callbacks (record 2026-10-02-reverse-p1) --
@@ -11585,6 +11595,16 @@ def h2_key_case(pressed=(), raw=None):
         p[H2_BIOS + 0x254 + off] = bytes(tbl[off:off + 0x40])
     return p
 
+
+# Host Input Truth §H3: the game-port byte the `in al,dx` answers. The original's side is the
+# machine's `ins` list; the port side gets the same byte through the `ins`/`in 0x201 NN` case lines
+# (record §H3), where the host holds it for the three ported readers.
+H3_MUTANTS = ("@mask", "@bits", "@inv", "@all")
+
+
+def h3_port_case(cid, byte):
+    return Case(cid, {}, machine=E.Machine(ins=((H0_GAME_PORT, (byte,)),)))
+
 D1I_SPECS = [
     # 0x13F68 name_filter_word: EAX = word, EDX = str. It calls itself at 0x1403E (allowed: the
     # port recurses in C). AL only: 0x13F2F `or ah,al`; the recursive site reloads EAX (0x14043).
@@ -11886,6 +11906,43 @@ D1I_SPECS = [
         Case("f2u", {}, h2_key_case()),
         Case("f2x", {}, h2_key_case(raw={0x3C: 0x7F})),
     ], eax_mask=0xFF, mutants=("@mask", "@off", "@inv")),
+    # ---- Host Input Truth §H3 (record 2026-10-21-host-input-truth-derivations.md): the three game-port
+    # button readers 0x1BBAC's device 2/4/6 arms call. Port 0x201's bits 4..7 are the PC game port's
+    # four button inputs, ACTIVE LOW: a pressed button grounds its bit, so a reader sets its game bit
+    # when the port bit is CLEAR. 0x1B890 (both players) maps bits 4..7 -> 1/2/4/8 (0x1B89E/0x1B8A8,
+    # 0x1B8AE/0x1B8B6, 0x1B8BD/0x1B8C5, 0x1B8CA/0x1B8D3); 0x1B8DC (P1) maps bits 4/5 -> 1/4
+    # (0x1B8EA/0x1B8F3, 0x1B8F7/0x1B900); 0x1B908 (P2) maps bits 6/7 -> 1/4 (0x1B916/0x1B91F,
+    # 0x1B923/0x1B92C). Each reader reads the port once (`in al,dx` at 0x1B899/0x1B8E5/0x1B911) and
+    # keeps the byte (0x1B89A `mov ah,al`) while it tests the bits. The cases are the byte the `in`
+    # answers: the emulator's model on the original's side, and `ins`/`in 0x201 NN` on the host's
+    # (h0_machine_text), so a case pins the byte-to-bit map, not a real game port. `none`/`all` are
+    # the two ends; `low` (0x10, bits 0..3 clear) pins that the readers never look at the low nibble,
+    # and the P1/P2 rows' cross cases pin that each reader ignores the other player's bits.
+    # eax_mask 0xFF: the raw returns through AL (0x1B8D6/0x1B903/0x1B92F `mov al,bl`).
+    Spec("input_port_buttons_both", 0x1B890, [
+        h3_port_case("none", 0xFF),
+        h3_port_case("b1", 0xEF),
+        h3_port_case("b2", 0xDF),
+        h3_port_case("b3", 0xBF),
+        h3_port_case("b4", 0x7F),
+        h3_port_case("b1b4", 0x6F),
+        h3_port_case("all", 0x0F),
+        h3_port_case("low", 0x10),
+    ], eax_mask=0xFF, mutants=H3_MUTANTS),
+    Spec("input_port_buttons_p1", 0x1B8DC, [
+        h3_port_case("none", 0xFF),
+        h3_port_case("b1", 0xEF),
+        h3_port_case("b2", 0xDF),
+        h3_port_case("both", 0xCF),
+        h3_port_case("p2", 0x3F),
+    ], eax_mask=0xFF, mutants=H3_MUTANTS),
+    Spec("input_port_buttons_p2", 0x1B908, [
+        h3_port_case("none", 0xFF),
+        h3_port_case("b1", 0xBF),
+        h3_port_case("b2", 0x7F),
+        h3_port_case("both", 0x3F),
+        h3_port_case("p1", 0xCF),
+    ], eax_mask=0xFF, mutants=H3_MUTANTS),
     # 0x51F72 gfx_fill_screen: EAX = addr, EDX = value; 0xFA00 bytes inside the image's data.
     Spec("gfx_fill_screen", 0x51F72, [
         Case("g0", {"eax": 0x000F1000, "edx": 0xA1B2C3D4, "ecx": 0x11223344}),

@@ -17806,6 +17806,56 @@ static void m_h2_f2_mask(const u32 *r, u32 *eax)        { (void)r; *eax = h2_f_c
 static void m_h2_f2_off(const u32 *r, u32 *eax)         { (void)r; *eax = h2_f_core(0x290u, 0x28Fu, 2u); }
 static void m_h2_f2_inv(const u32 *r, u32 *eax)         { (void)r; *eax = h2_f_core(0x290u, 0x28Fu, 4u); }
 
+/* Host Input Truth §H3 (record 2026-10-21-host-input-truth-derivations.md): the three game-port
+ * button readers. 0x1B890 maps 0x201 bits 4..7 -> 1/2/4/8, 0x1B8DC bits 4/5 -> 1/4 (P1),
+ * 0x1B908 bits 6/7 -> 1/4 (P2). A game port's button inputs are active low, so an input bit CLEAR
+ * sets its game bit. The byte is the host's host_port_buttons(), which the case's `in 0x201 NN`
+ * line pins. The mutants restate the map with one defect each: @mask tests the wrong input bit,
+ * @bits swaps the output bit order (4 <-> 2, or 4 <-> 8), @inv inverts the polarity, @all returns
+ * every bit. */
+#include "host.h"
+
+static u32 h3_both_core(u32 mut, u32 all)
+{
+    const u8 p = host_port_buttons();
+    u8 al = 0u;
+    if ((p & ((mut & 1u) ? 0x08u : 0x10u)) == 0u) al |= (mut & 2u) ? 8u : 1u;   /* @mask @bits */
+    if ((p & 0x20u) == 0u) al |= (mut & 2u) ? 4u : 2u;                           /* @bits */
+    if ((p & 0x40u) == 0u) al |= (mut & 2u) ? 2u : 4u;                           /* @bits */
+    if ((p & 0x80u) == 0u) al |= (mut & 2u) ? 1u : 8u;                           /* @bits */
+    if (mut & 4u) al ^= 0x0Fu;                                                   /* @inv */
+    return (mut & 8u) ? all : al;                                                /* @all */
+}
+static u32 h3_p1_core(u32 mut, u32 all)
+{
+    const u8 p = host_port_buttons();
+    u8 al = 0u;
+    if ((p & ((mut & 1u) ? 0x40u : 0x10u)) == 0u) al |= 1u;                      /* @mask */
+    if ((p & 0x20u) == 0u) al |= (mut & 2u) ? 2u : 4u;                           /* @bits */
+    if (mut & 4u) al ^= 0x05u;                                                   /* @inv */
+    return (mut & 8u) ? all : al;                                                /* @all */
+}
+static u32 h3_p2_core(u32 mut, u32 all)
+{
+    const u8 p = host_port_buttons();
+    u8 al = 0u;
+    if ((p & ((mut & 1u) ? 0x10u : 0x40u)) == 0u) al |= 1u;                      /* @mask */
+    if ((p & 0x80u) == 0u) al |= (mut & 2u) ? 8u : 4u;                           /* @bits */
+    if (mut & 4u) al ^= 0x05u;                                                   /* @inv */
+    return (mut & 8u) ? all : al;                                                /* @all */
+}
+static void b_h3_btns_both(const u32 *r, u32 *eax)      { (void)r; *eax = input_port_buttons_both(); }
+static void b_h3_btns_p1(const u32 *r, u32 *eax)        { (void)r; *eax = input_port_buttons_p1(); }
+static void b_h3_btns_p2(const u32 *r, u32 *eax)        { (void)r; *eax = input_port_buttons_p2(); }
+#define H3_MUTANTS_FOR(name, core, all) \
+    static void m_h3_##name##_mask(const u32 *r, u32 *eax) { (void)r; *eax = core(1u, all); } \
+    static void m_h3_##name##_bits(const u32 *r, u32 *eax) { (void)r; *eax = core(2u, all); } \
+    static void m_h3_##name##_inv(const u32 *r, u32 *eax)  { (void)r; *eax = core(4u, all); } \
+    static void m_h3_##name##_all(const u32 *r, u32 *eax)  { (void)r; *eax = core(8u, all); }
+H3_MUTANTS_FOR(both, h3_both_core, 0x0Fu)
+H3_MUTANTS_FOR(p1, h3_p1_core, 0x05u)
+H3_MUTANTS_FOR(p2, h3_p2_core, 0x05u)
+
 
 /* 0x51F72 gfx_fill_screen: EAX = addr, EDX = value. The raw leaves EAX advanced by 0xFA00 (0x520F7,
  * 0xC8 passes); the port's function is void, so the binding states that value and the EAX
@@ -46233,6 +46283,21 @@ static const binding_t k_bindings[] = {
     { "input_f2@mask",                       m_h2_f2_mask,       0x000000FFu },
     { "input_f2@off",                        m_h2_f2_off,        0x000000FFu },
     { "input_f2@inv",                        m_h2_f2_inv,        0x000000FFu },
+    { "input_port_buttons_both",             b_h3_btns_both,     0x000000FFu },
+    { "input_port_buttons_both@mask",        m_h3_both_mask,     0x000000FFu },
+    { "input_port_buttons_both@bits",        m_h3_both_bits,     0x000000FFu },
+    { "input_port_buttons_both@inv",         m_h3_both_inv,      0x000000FFu },
+    { "input_port_buttons_both@all",         m_h3_both_all,      0x000000FFu },
+    { "input_port_buttons_p1",               b_h3_btns_p1,       0x000000FFu },
+    { "input_port_buttons_p1@mask",          m_h3_p1_mask,       0x000000FFu },
+    { "input_port_buttons_p1@bits",          m_h3_p1_bits,       0x000000FFu },
+    { "input_port_buttons_p1@inv",           m_h3_p1_inv,        0x000000FFu },
+    { "input_port_buttons_p1@all",           m_h3_p1_all,        0x000000FFu },
+    { "input_port_buttons_p2",               b_h3_btns_p2,       0x000000FFu },
+    { "input_port_buttons_p2@mask",          m_h3_p2_mask,       0x000000FFu },
+    { "input_port_buttons_p2@bits",          m_h3_p2_bits,       0x000000FFu },
+    { "input_port_buttons_p2@inv",           m_h3_p2_inv,        0x000000FFu },
+    { "input_port_buttons_p2@all",           m_h3_p2_all,        0x000000FFu },
     { "gfx_fill_screen",                     b_d1i_51f72,        0xFFFFFFFFu },
     { "gfx_fill_screen@count",               m_d1i_fs_count,     0xFFFFFFFFu },
     { "gfx_fill_screen@row",                 m_d1i_fs_row,       0xFFFFFFFFu },
@@ -58741,6 +58806,8 @@ typedef struct {
     int nstub;
     int kbd, nkey, outs, aperture;    /* the machine model (track H h0, record §H.1): opt-in per case */
     u32 key[16];
+    int ins, game_port_set;           /* the game-port answer (track H's `in`, record §H3) */
+    u8 game_port;
 } case_t;
 
 static const case_t *g_case;          /* the case running, for the seam hook */
@@ -58958,10 +59025,14 @@ static void h0_start(const case_t *c)
         memcpy(h0_seed, mem + H0_SCREEN, sizeof h0_seed);
         memcpy(gfx_aperture(), h0_seed, sizeof h0_seed);
     }
+    /* the game port (record 2026-10-21-host-input-truth §H3): the case's `in 0x201 NN` byte is the
+     * answer the port's three readers get from host_port_buttons(). */
+    if (c->game_port_set) host_set_port_buttons_override(c->game_port, 1);
 }
 static void h0_end(const case_t *c)
 {
     pr_out = NULL;
+    if (c->game_port_set) host_set_port_buttons_override(0, 0);
     if (c->kbd) {
         u32 left = 0;
         for (; input_has_key(); left++) (void)input_get_key();
@@ -59072,6 +59143,19 @@ static int run_cases(const char *path)
             c.nkey++;
         } else if (strcmp(t[0], "outs") == 0 && n == 1) {
             c.outs = 1;
+        } else if (strcmp(t[0], "ins") == 0 && n == 1) {
+            c.ins = 1;
+        } else if (strcmp(t[0], "in") == 0 && n == 3 && c.ins) {
+            /* in <port> <byte>: only the PC game port has a host-side answer (record §H3) */
+            u32 port = 0, val = 0;
+            if (!parse_hex(t[1], &port) || !parse_hex(t[2], &val) || port != 0x201u || val > 0xFFu
+                    || c.game_port_set) {
+                fprintf(stderr, "diffrun: bad in line (one game-port byte per case)\n");
+                fclose(f);
+                return 0;
+            }
+            c.game_port = (u8)val;
+            c.game_port_set = 1;
         } else if (strcmp(t[0], "aperture") == 0 && n == 1) {
             c.aperture = 1;
         } else if (strcmp(t[0], "files") == 0 && n == 1) {

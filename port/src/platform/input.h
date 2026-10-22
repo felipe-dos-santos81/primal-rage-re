@@ -96,4 +96,21 @@ u8 input_f1(void);
 /* 0x1B870. F2's fixed table entry +0x290 (= +0x254+0x3C) -> bit 0. */
 u8 input_f2(void);
 
+/* ---- the game-port button readers (record 2026-10-21-host-input-truth §H3)
+ * The three functions 0x1BBAC's device 2/4/6 arms call. They read the PC game
+ * port's button byte (port 0x201, bits 4..7), whose inputs are ACTIVE LOW: a
+ * pressed button grounds its bit, so a reader sets its game bit when the port
+ * bit is CLEAR. 0x1B890 maps bits 4..7 -> 1/2/4/8 (both players); 0x1B8DC maps
+ * bits 4/5 -> 1/4 (P1); 0x1B908 maps bits 6/7 -> 1/4 (P2). The host supplies
+ * the byte through host_port_buttons(). */
+
+/* 0x1B890. Both players: game-port bits 4..7 -> 1/2/4/8. */
+u8 input_port_buttons_both(void);
+
+/* 0x1B8DC. P1: game-port bits 4/5 -> 1/4. */
+u8 input_port_buttons_p1(void);
+
+/* 0x1B908. P2: game-port bits 6/7 -> 1/4. */
+u8 input_port_buttons_p2(void);
+
 #endif /* PR_INPUT_H */

@@ -153,4 +153,20 @@ void host_input_fill_keyboard(void);
  * Off by default; nothing outside the tests sets it. */
 void host_set_key_bits_override(u16 bits, int on);
 
+/* PORT: the PC game port's button byte, port 0x201's bits 4..7, the host's
+ * answer to the three ported readers 0x1B890/0x1B8DC/0x1B908 (record
+ * 2026-10-21-host-input-truth §H3). A game port's button inputs are active low:
+ * a pressed button grounds its bit, and the readers set their game bit when the
+ * port bit is CLEAR. The pad model fills it in host_pad_fill(); with no pad it
+ * answers 0 (the brief's placeholder -- the readers then see all four buttons
+ * low, which is sound only because the device word selecting a game-port arm is
+ * cleared when no pad answers, 0x4FBBB/Task 6). */
+u8 host_port_buttons(void);
+
+/* PORT: test seam, no raw counterpart. With `on` set, host_port_buttons()
+ * answers `buttons` (and a pad fill, Task 5, must leave it alone); the
+ * differential rows and the unit test pin the byte through it. Off by default
+ * with the byte 0 (no pad); the test clears both again. */
+void host_set_port_buttons_override(u8 buttons, int on);
+
 #endif /* PR_HOST_H */

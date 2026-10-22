@@ -3359,6 +3359,76 @@ int test_input_keyboard_readers(void)
     return g_failures - before;
 }
 
+/* ---- test_input_port_buttons: Host Input Truth §H3 ---- */
+
+/* The three game-port button readers 0x1BBAC's device 2/4/6 arms call. Port
+ * 0x201's bits 4..7 are the PC game port's four button inputs, ACTIVE LOW: a
+ * pressed button grounds its bit, so a reader sets its game bit when the port
+ * bit is CLEAR. 0x1B890 maps bits 4..7 -> 1/2/4/8; 0x1B8DC bits 4/5 -> 1/4
+ * (P1); 0x1B908 bits 6/7 -> 1/4 (P2). host_port_buttons() answers the byte and
+ * the seam pins it, so every map is checked bit by bit. */
+int test_input_port_buttons(void)
+{
+    int before = g_failures;
+    static const u8 bit[4] = { 0x10, 0x20, 0x40, 0x80 };
+    static const u8 out[4] = { 1, 2, 4, 8 };
+
+    /* 0x1B890: each game-port bit alone, in the raw's bit order. */
+    for (u32 k = 0; k < 4u; k++) {
+        host_set_port_buttons_override((u8)~bit[k], 1);
+        CHECK_EQ_INT((int)host_port_buttons(), (int)(u8)~bit[k]);
+        CHECK_EQ_INT((int)input_port_buttons_both(), out[k]);
+    }
+
+    /* Released (bits 4..7 high) is no button; all four low is every button. */
+    host_set_port_buttons_override(0xFFu, 1);
+    CHECK_EQ_INT((int)input_port_buttons_both(), 0);
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 0);
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 0);
+    host_set_port_buttons_override(0x00u, 1);
+    CHECK_EQ_INT((int)input_port_buttons_both(), 0x0F);
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 0x05);
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 0x05);
+
+    /* P1 (0x1B8DC) reads bits 4/5 as 1/4 and ignores 6/7: 0x3F leaves only
+     * 6/7 low and 0xCF leaves only 4/5 low. */
+    host_set_port_buttons_override(0xEFu, 1);           /* bit 4 low */
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 1);
+    host_set_port_buttons_override(0xDFu, 1);           /* bit 5 low */
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 4);
+    host_set_port_buttons_override(0xCFu, 1);           /* bits 4/5 low */
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 5);
+    host_set_port_buttons_override(0x3Fu, 1);           /* only 6/7 low */
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 0);
+
+    /* P2 (0x1B908) reads bits 6/7 as 1/4 and ignores 4/5. */
+    host_set_port_buttons_override(0xBFu, 1);           /* bit 6 low */
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 1);
+    host_set_port_buttons_override(0x7Fu, 1);           /* bit 7 low */
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 4);
+    host_set_port_buttons_override(0x3Fu, 1);           /* bits 6/7 low */
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 5);
+    host_set_port_buttons_override(0xCFu, 1);           /* only 4/5 low */
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 0);
+
+    /* The low nibble is never read: a clear low nibble with 4..7 released reads
+     * like 0xFF, and 0x10 (only bit 4 high) is the other three buttons. */
+    host_set_port_buttons_override(0xF0u, 1);
+    CHECK_EQ_INT((int)input_port_buttons_both(), 0);
+    host_set_port_buttons_override(0x10u, 1);
+    CHECK_EQ_INT((int)input_port_buttons_both(), 0x02 | 0x04 | 0x08);
+
+    /* No pad: the host answers 0 and the readers see all four buttons low (the
+     * placeholder Task 5's pad model replaces; record §H3). */
+    host_set_port_buttons_override(0, 0);
+    CHECK_EQ_INT((int)host_port_buttons(), 0);
+    CHECK_EQ_INT((int)input_port_buttons_both(), 0x0F);
+    CHECK_EQ_INT((int)input_port_buttons_p1(), 0x05);
+    CHECK_EQ_INT((int)input_port_buttons_p2(), 0x05);
+
+    return g_failures - before;
+}
+
 /* ---- test_rng.c ---- */
 
 int test_rng(void)

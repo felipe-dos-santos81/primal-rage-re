@@ -5473,6 +5473,92 @@ D1_MASKS.update(D1I_MASKS)
 D1_KINDS.update(D1I_KINDS)
 D1_CASES.extend(D1I_CASES)
 
+# Host Input Truth (record 2026-10-21-host-input-truth §H2, §H3): the six keyboard readers and the
+# three game-port button readers, rows added to the D1I group. All nine return through AL (mask
+# 0xff) and every mutant differs in EAX only, so each KINDS set is {'eax'}; the case sets are
+# measured (record §H2.6/§H3.4). The port rows' cases carry the game-port byte as a machine `in`.
+H2_MASKS = {
+    "input_dirs_p1": 0xff,
+    "input_dirs_p2": 0xff,
+    "input_buttons_p1": 0xff,
+    "input_buttons_p2": 0xff,
+    "input_f1": 0xff,
+    "input_f2": 0xff,
+}
+H2_KINDS = {
+    "input_dirs_p1@mask": {'eax'}, "input_dirs_p1@bits": {'eax'}, "input_dirs_p1@slot": {'eax'},
+    "input_dirs_p1@table": {'eax'}, "input_dirs_p1@all": {'eax'},
+    "input_dirs_p2@mask": {'eax'}, "input_dirs_p2@bits": {'eax'}, "input_dirs_p2@slot": {'eax'},
+    "input_dirs_p2@table": {'eax'}, "input_dirs_p2@all": {'eax'},
+    "input_buttons_p1@mask": {'eax'}, "input_buttons_p1@bits": {'eax'}, "input_buttons_p1@slot": {'eax'},
+    "input_buttons_p1@table": {'eax'}, "input_buttons_p1@all": {'eax'},
+    "input_buttons_p2@mask": {'eax'}, "input_buttons_p2@bits": {'eax'}, "input_buttons_p2@slot": {'eax'},
+    "input_buttons_p2@table": {'eax'}, "input_buttons_p2@all": {'eax'},
+    "input_f1@mask": {'eax'}, "input_f1@off": {'eax'}, "input_f1@inv": {'eax'},
+    "input_f2@mask": {'eax'}, "input_f2@off": {'eax'}, "input_f2@inv": {'eax'},
+}
+H2_CASES = [
+    ("input_dirs_p1@mask", ['both', 'down', 'left', 'right', 'up']),
+    ("input_dirs_p1@bits", ['down', 'left', 'right', 'up']),
+    ("input_dirs_p1@slot", ['both', 'down', 'left', 'right', 'up']),
+    ("input_dirs_p1@table", ['both', 'down', 'left', 'right', 'up']),
+    ("input_dirs_p1@all", ['both', 'down', 'left', 'right', 'up']),
+    ("input_dirs_p2@mask", ['both', 'down', 'left', 'right', 'up']),
+    ("input_dirs_p2@bits", ['down', 'left', 'right', 'up']),
+    ("input_dirs_p2@slot", ['both', 'down', 'left', 'right', 'up']),
+    ("input_dirs_p2@table", ['both', 'down', 'left', 'right', 'up']),
+    ("input_dirs_p2@all", ['both', 'down', 'left', 'right', 'up']),
+    ("input_buttons_p1@mask", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_buttons_p1@bits", ['b1', 'b2', 'b3', 'b4']),
+    ("input_buttons_p1@slot", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_buttons_p1@table", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_buttons_p1@all", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_buttons_p2@mask", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_buttons_p2@bits", ['b1', 'b2', 'b3', 'b4']),
+    ("input_buttons_p2@slot", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_buttons_p2@table", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_buttons_p2@all", ['b1', 'b1b4', 'b2', 'b3', 'b4']),
+    ("input_f1@mask", ['f1d', 'f1x']),
+    ("input_f1@off", ['f1d', 'f1x']),
+    ("input_f1@inv", ['f1d', 'f1u', 'f1x']),
+    ("input_f2@mask", ['f2d', 'f2x']),
+    ("input_f2@off", ['f2d', 'f2x']),
+    ("input_f2@inv", ['f2d', 'f2u', 'f2x']),
+]
+H3_MASKS = {
+    "input_port_buttons_both": 0xff,
+    "input_port_buttons_p1": 0xff,
+    "input_port_buttons_p2": 0xff,
+}
+H3_KINDS = {
+    "input_port_buttons_both@mask": {'eax'}, "input_port_buttons_both@bits": {'eax'},
+    "input_port_buttons_both@inv": {'eax'}, "input_port_buttons_both@all": {'eax'},
+    "input_port_buttons_p1@mask": {'eax'}, "input_port_buttons_p1@bits": {'eax'},
+    "input_port_buttons_p1@inv": {'eax'}, "input_port_buttons_p1@all": {'eax'},
+    "input_port_buttons_p2@mask": {'eax'}, "input_port_buttons_p2@bits": {'eax'},
+    "input_port_buttons_p2@inv": {'eax'}, "input_port_buttons_p2@all": {'eax'},
+}
+H3_CASES = [
+    ("input_port_buttons_both@mask", ['all', 'b1', 'b1b4', 'low']),
+    ("input_port_buttons_both@bits", ['b1', 'b2', 'b3', 'b4', 'low']),
+    ("input_port_buttons_both@inv", ['all', 'b1', 'b1b4', 'b2', 'b3', 'b4', 'low', 'none']),
+    ("input_port_buttons_both@all", ['b1', 'b1b4', 'b2', 'b3', 'b4', 'low', 'none']),
+    ("input_port_buttons_p1@mask", ['b1', 'both', 'p2']),
+    ("input_port_buttons_p1@bits", ['b2', 'both']),
+    ("input_port_buttons_p1@inv", ['b1', 'b2', 'both', 'none', 'p2']),
+    ("input_port_buttons_p1@all", ['b1', 'b2', 'none', 'p2']),
+    ("input_port_buttons_p2@mask", ['b1', 'both', 'p1']),
+    ("input_port_buttons_p2@bits", ['b2', 'both']),
+    ("input_port_buttons_p2@inv", ['b1', 'b2', 'both', 'none', 'p1']),
+    ("input_port_buttons_p2@all", ['b1', 'b2', 'none', 'p1']),
+]
+for _m in (H2_MASKS, H3_MASKS):
+    D1_MASKS.update(_m)
+for _k in (H2_KINDS, H3_KINDS):
+    D1_KINDS.update(_k)
+D1_CASES.extend(H2_CASES)
+D1_CASES.extend(H3_CASES)
+
 
 # ---- track D1 batch d1c (record 2026-10-11-reverse-d1c): measured, the C3G form ----
 D1C_MASKS = {
@@ -30636,12 +30722,10 @@ class RealFunctionTests(unittest.TestCase):
                                              "config_credit_spend", "fighter_23130", "fighter_3640c",
                                              "fighter_37dcc", "fighter_45878", "fighter_ctx_same",
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
-                                             "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
+                                             "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
                                             + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(C3D_MASKS) + list(C3E_MASKS) + list(C3F_MASKS) + list(C3G_MASKS) + list(D1_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
         for name, r in self.real.items():
-            if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
-                continue
             self.assertEqual((r.verdict, r.problems, r.unhit), ("VERIFIED", [], []), name)
             self.assertLessEqual(r.hit, r.total, name)
             self.assertEqual(r.outside, P45_OUTSIDE.get(name, []), name)
@@ -30729,7 +30813,7 @@ class RealFunctionTests(unittest.TestCase):
             "config_credit_spend": 0xFFFFFFFF, "config_codeword_len": 0xFFFFFFFF,
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
-            "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
+            "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0,
             **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS, **C3C_MASKS, **C3D_MASKS, **C3E_MASKS, **C3F_MASKS, **C3G_MASKS, **D1_MASKS,
             **P7_MASKS, **P8_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
@@ -31900,8 +31984,11 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual(E.callee_clobbers(img, 0x2AE14, {}), ("ebx", "ecx", "edx"))
 
     def test_the_named_gap_is_0x1b890s_in(self):
-        r = self.real["host_1b890"]
-        self.assertEqual((r.verdict, r.gap, r.problems), ("NAMED_GAP", "in at 0x1B899", []))
+        # the old named gap (record E3 §E3.8) became a row in Host Input Truth §H3: the machine's
+        # `in` answers 0x201 and all nine of the function's blocks are hit
+        r = self.real["input_port_buttons_both"]
+        self.assertEqual((r.verdict, r.gap, r.problems, r.unhit), ("VERIFIED", "", [], []))
+        self.assertEqual((r.hit, r.total), (9, 9))
 
     def spec(self, name, **kw):
         return dataclasses.replace([s for s in V.SPECS if s.name == name][0], **kw)
@@ -32021,8 +32108,11 @@ class RealFunctionTests(unittest.TestCase):
         # 0x1C308, 0x25FAC, 0x26194, 0x3D0BC, 0x3E4C4, 0x4F5C8, 0x5D86A, 0x5DC2A, 0x5DC4D, 0x5DC70,
         # 0x5DCA6, 0x5DCE4, 0x61A70 and 0x65546. No row blocks on a ported function in the portable set:
         # the rule's boundary. Measured on the lane.
-        self.assertIn("diff-verify: 1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps; "
-                      "774/832 rows with callees closed (175 have none); 768/832 closed on full rows; "
+        # Host Input Truth §H2/§H3 added nine rows with no callees and no named gap left (the 0x1B890
+        # gap became input_port_buttons_both), so 1007 -> 1016 functions, 14900 -> 14938 mutants,
+        # 1 -> 0 named gaps and 175 -> 184 callee-less rows; the closed counts are unchanged.
+        self.assertIn("diff-verify: 1016/1016 functions VERIFIED; 14938/14938 mutants detected; 0 named gaps; "
+                      "774/832 rows with callees closed (184 have none); 768/832 closed on full rows; "
                       "8 ported functions with no row. The closure rule (record J §J1): "
                       "an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred "
                       "in tools/port_classification.txt, or an address the decomp index never lists as a "
@@ -32652,6 +32742,17 @@ class H0MachineTextTests(unittest.TestCase):
             with self.subTest(name), self.assertRaises(ValueError):
                 V.parse_port_output("case a\n" + text + "end\n")
 
+    def test_the_game_port_byte_is_the_only_in_the_port_side_answers(self):
+        # record 2026-10-21-host-input-truth §H3: the original's `in 0x201` comes from the machine;
+        # the port has no `in`, so the same byte reaches it as the host's game-port answer through
+        # `ins`/`in 0x201 NN`. Any other port's `in` stays the emulator's alone (the retrace reads).
+        self.assertEqual(V.h0_machine_text(E.Machine(ins=((0x201, (0xEF,)), (0x3DA, (8,))))),
+                         ["ins", "in 0x201 0xEF"])
+        self.assertEqual(V.h0_machine_text(E.Machine(ins=((0x3DA, (8,)),))), [])
+        # the host holds one game-port byte: two different bytes in one case are refused
+        with self.assertRaises(ValueError):
+            V.h0_machine_text(E.Machine(ins=((0x201, (0xEF, 0xDF)),)))
+
     def test_each_machine_difference_is_a_discrepancy_that_detects_a_mutant(self):
         o = orig(0)
         o.outs, o.keys_left, o.aperture = [(0x3C8, 0x10), (0x3C9, 5)], 1, {0xA0000: 0x44}
@@ -32749,6 +32850,26 @@ class H0DiffrunMachineTests(unittest.TestCase):
         self.assertEqual(E.dac_effects(out["f1"].outs)[:2], [("dac", 0x10, 0x14, 0x2A, 0x3F), ("dac", 0x11, 0x14, 0x2A, 0x3F)])
         self.assertEqual(len(out["f1"].outs), 4 * 5)
         self.assertEqual(out["bare"].outs, [])
+
+    def test_the_game_port_byte_reaches_the_port(self):
+        # record §H3: `ins`/`in 0x201 NN` arms the host seam for the run, so the three readers'
+        # host port byte is the case's. Case c has no byte: the host's no-pad 0 (all four low).
+        with tempfile.TemporaryDirectory() as d:
+            out = V.run_port(DIFFRUN, EXE, os.path.join(d, "img"),
+                             "case a\nfn input_port_buttons_both\nins\nin 0x201 0xEF\nend\n"
+                             "case b\nfn input_port_buttons_both\nins\nin 0x201 0x0F\nend\n"
+                             "case c\nfn input_port_buttons_both\nend\n")
+        self.assertEqual((out["a"].eax, out["b"].eax, out["c"].eax), (0x1, 0x0F, 0x0F))
+        self.assertEqual((out["a"].error, out["b"].error, out["c"].error), ("", "", ""))
+
+    def test_an_in_line_for_another_port_or_without_ins_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            for text in ("case a\nfn input_port_buttons_both\nin 0x201 0xEF\nend\n",
+                         "case a\nfn input_port_buttons_both\nins\nin 0x3DA 0x8\nend\n",
+                         "case a\nfn input_port_buttons_both\nins\nin 0x201 0x1FF\nend\n",
+                         "case a\nfn input_port_buttons_both\nins\nin 0x201 0xEF\nin 0x201 0xDF\nend\n"):
+                with self.subTest(text=text), self.assertRaises(RuntimeError):
+                    V.run_port(DIFFRUN, EXE, os.path.join(d, "img"), text)
 # h0 end
 
 

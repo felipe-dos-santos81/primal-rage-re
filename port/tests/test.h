@@ -41,6 +41,7 @@ extern int g_failures;
     X(test_gfx)         \
     X(test_input)       \
     X(test_input_keyboard_readers) \
+    X(test_input_port_buttons) \
     X(test_host)        \
     X(test_flow)        \
     X(test_opl)         \

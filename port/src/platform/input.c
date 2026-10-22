@@ -207,3 +207,47 @@ u8 input_f2(void)
     const u8 ah = DSB(base + 0x290u) & 0x80u;           /* 0x1B879 */
     return ah == 0u ? 1u : 0u;                          /* 0x1B88A */
 }
+
+/* ---- the game-port button readers (record §H3) ---------------------------
+ * 0x1BBAC's device 2/4/6 arms. The raw reads the PC game port's button byte
+ * once (`mov edx,0x201; in al,dx`) and keeps it in AH while it tests the bits.
+ * The port's four button inputs live in bits 4..7 and are ACTIVE LOW -- a
+ * pressed button grounds its bit -- so an input bit CLEAR sets the game bit.
+ * 0x1B890 maps bits 4..7 -> 1/2/4/8 (both players); 0x1B8DC bits 4/5 -> 1/4
+ * (P1); 0x1B908 bits 6/7 -> 1/4 (P2). Bits 0..3 and each reader's other
+ * player's bits are not read. The byte comes from the host. */
+
+/* 0x1B890 — host input truth §H3. */
+u8 input_port_buttons_both(void)
+{
+    PR_SEAM_RET0(0x1B890u);
+    const u8 port = host_port_buttons();                /* 0x1B899 */
+    u8 al = 0u;
+    if ((port & 0x10u) == 0u) al |= 1u;                 /* 0x1B8A4/0x1B8A8 */
+    if ((port & 0x20u) == 0u) al |= 2u;                 /* 0x1B8B2/0x1B8B6 */
+    if ((port & 0x40u) == 0u) al |= 4u;                 /* 0x1B8C1/0x1B8C5 */
+    if ((port & 0x80u) == 0u) al |= 8u;                 /* 0x1B8D1/0x1B8D3 */
+    return al;                                          /* 0x1B8D6 */
+}
+
+/* 0x1B8DC — host input truth §H3. */
+u8 input_port_buttons_p1(void)
+{
+    PR_SEAM_RET0(0x1B8DCu);
+    const u8 port = host_port_buttons();                /* 0x1B8E5 */
+    u8 al = 0u;
+    if ((port & 0x10u) == 0u) al |= 1u;                 /* 0x1B8EA/0x1B8F3 */
+    if ((port & 0x20u) == 0u) al |= 4u;                 /* 0x1B8F7/0x1B900 */
+    return al;                                          /* 0x1B903 */
+}
+
+/* 0x1B908 — host input truth §H3. */
+u8 input_port_buttons_p2(void)
+{
+    PR_SEAM_RET0(0x1B908u);
+    const u8 port = host_port_buttons();                /* 0x1B911 */
+    u8 al = 0u;
+    if ((port & 0x40u) == 0u) al |= 1u;                 /* 0x1B916/0x1B91F */
+    if ((port & 0x80u) == 0u) al |= 4u;                 /* 0x1B923/0x1B92C */
+    return al;                                          /* 0x1B92F */
+}

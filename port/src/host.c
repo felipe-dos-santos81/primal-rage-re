@@ -249,6 +249,30 @@ void host_input_fill_keyboard(void)
     }
 }
 
+/* PORT: the game port's button byte (record §H3). The PC game port reads its
+ * four button inputs in bits 4..7 of port 0x201, active low: a pressed button
+ * grounds its bit. The host owns the port, so g_port_buttons is the host's
+ * answer: host_pad_fill() (Task 5) writes the pad's byte each frame, and the
+ * seam below pins it for the differential rows and the unit test (a fill must
+ * leave a pinned byte alone). With no pad the byte is 0 -- the readers then see
+ * all four buttons low, consistent only with the device word being cleared when
+ * no pad answers (0x4FBBB, Task 6). */
+static u8 g_port_buttons;
+static int g_port_buttons_override_on;
+
+void host_set_port_buttons_override(u8 buttons, int on)
+{
+    g_port_buttons = buttons;
+    g_port_buttons_override_on = on;
+}
+
+u8 host_port_buttons(void)
+{
+    /* PORT: no pad yet (Task 5's host_pad_fill writes the pad's byte); a pinned
+     * byte wins so the differential rows and the unit test see their case. */
+    return g_port_buttons;
+}
+
 static u32 g_tick;
 static uint64_t g_tick_base_ns;
 static int g_tick_started;
