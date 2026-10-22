@@ -41,7 +41,7 @@ Before the loop `0x63970` writes `[movie+0x728] = 0xFFFFFFFF` — "no stream ope
 the field `0x65240` tests (§H1.5) and the field `0x63180` sets on its first success
 (§H1.2).
 
-### §H1.2 The gate: `0x63180` opens a stream only for a track with bit `0x40`
+### §H1.2 The gate: `0x63180` opens a stream only for a track with bit `0x40` and a nonzero rate
 
 For track `i`, `0x63180` indexes the movie's seven track dwords at `movie+0x48+4*i` (the
 offsets `tools/smk_info.py` reads) and tests the dword's **high byte**:
@@ -52,18 +52,24 @@ offsets `tools/smk_info.py` reads) and tests the dword's **high byte**:
 06319D  test dl,0x40
 0631A0  je 0x631AC           ; bit clear -> local rate = 0
 0631A2  mov eax,[eax+0x48]
-0631A5  and eax,0xFFFFFF      ; bit set -> the rate is the low 24 bits
-...
-0631AE  mov [esp],eax
-0631B1  jne 0x631BA           ; ZF from the 0x6319D test: bit set -> open
+0631A5  and eax,0xFFFFFF      ; bit set -> the rate is the low 24 bits; ZF = (rate == 0)
+0631AA  jmp 0x631AE
+0631AC  xor eax,eax           ; bit clear -> rate 0, ZF = 1
+0631AE  mov [esp],eax         ; stores the rate; does not touch flags
+0631B1  jne 0x631BA           ; ZF from 0x631A5's and (or 0x631AC's xor): nonzero rate -> open
 0631B3  xor al,al
-0631B5  jmp 0x63418           ; bit clear -> return 0, no stream
+0631B5  jmp 0x63418           ; zero rate -> return 0, no stream
 ```
 
 So a track dword is `rate:24 | flags:8`, and bit `0x40` of the flags byte is the only
-"this track has audio" bit. The `jne` at `0x631B1` re-uses the `test`'s ZF across the
-`mov` at `0x631AE`, so the gate's result survives the assignment; the closed-gate return
-is `al = 0` at `0x631B3` into the epilogue at `0x63418`.
+"this track has audio" bit — but it is **necessary, not sufficient**. The `jne` at
+`0x631B1` reads the ZF the rate path left: the `and eax,0xFFFFFF` at `0x631A5`
+(ZF = rate == 0) or, on the bit-clear arm, the `xor eax,eax` at `0x631AC` (ZF = 1). The
+`mov [esp],eax` at `0x631AE` does not touch flags, so a set bit with a zero low-24-bit
+rate also returns 0. The decomp agrees: `port/decomp/prage.c:45074-45084` sets
+`bVar9 = true` on the bit-clear arm and `bVar9 = local_28 == 0` on the bit-set arm, and
+returns 0 when `bVar9`. The closed-gate return is `al = 0` at `0x631B3` into the epilogue
+at `0x63418`.
 
 The open path is the rest of the function: it allocates the track's stream buffer
 (`0x63305 call 0x62770`), stores the rate at `[track+0x27c]` (`0x6335A`), calls the stream
@@ -116,10 +122,15 @@ so `DAT_00081E00` stays 0, `[movie+0x728]` stays `-1` (set at `0x63970`, never
 overwritten because `0x63403` is on the open path only), and the open-stream count
 `DAT_000EF954` stays 0 (`0x6340F..0x63412` is on the open path too).
 
-The stream pump `0x102B8` is therefore never entered during the movie: every movie caller
-is guarded — `0x6279C` only when `[0xEF954] != 0` (`0x627FB`/`0x628B9`), `0x63E30` only
-when `[movie+0x728] != -1` (`0x63E3D`), and `0x65240` only on its stream arm (`0x6524F`,
-§H1.5). Were it called it would walk an empty list (`DAT_00081E00 == 0`, `0x102B8`'s head
+The stream pump `0x102B8` is therefore never entered during the movie: every movie-path
+caller is guarded — `0x6279C` only when `[0xEF954] != 0` (`0x627FB`/`0x628B9`), `0x63E30`
+only when `[movie+0x728] != -1` (`0x63E3D`), `0x65240` only on its stream arm (`0x6524F`,
+§H1.5), `0x643CC` (called from `0x1C740` at `0x1C83A`) only when `[0xEF954] != 0`
+(`0x643D2`), `0x64ED8` (called from `0x1C740` at `0x1C7EF`) only when `[0xEF954] != 0`
+(`0x64EE2`), and `0x640B8` (called from `0x64130` at `0x64187`) only when
+`[movie+0x728] != -1` (`0x640BE`). `0x640B8` reaches the pump a second time through
+`0x100DC` (`0x640FC`; `0x100DC` calls `0x102B8` unguarded at `0x100E3`), inside that same
+guard. Were it called it would walk an empty list (`DAT_00081E00 == 0`, `0x102B8`'s head
 test at `port/decomp/prage.c` line 160).
 
 ### §H1.5 `0x65240`'s no-audio path is a pure time wait

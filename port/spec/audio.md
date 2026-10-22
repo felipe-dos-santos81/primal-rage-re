@@ -595,6 +595,11 @@ sole acceptance bar.
 point, its observed signature at the call sites, the behaviour to reproduce, its
 reachability and a confidence mark.
 
+**The movie rows never run on the shipped data.** Both shipped movies declare zero audio
+tracks, so no stream opens and the `movie` rows below (`0x5dbf4`, `0x5dca6`, `0x5dcc5`,
+`0x5dd03`, `0x5dd5d`, `0x5dd86`) are never reached — see `## Movie audio — zero payload on
+the shipped data (§H1, 2026-10-21)` at the end of this file.
+
 **Evidence method (static only; no DOSBox-X).** Three passes, all reproducible:
 
 1. `port/decomp/prage.calls.csv` filtered to `caller < 0x5d000` and
@@ -1234,8 +1239,12 @@ The chain (raw; each address is a capstone read of the fixed-up image):
   track: `0x6345C` tests that byte at `0x63987`/`0x63A2C` and loops the seven tracks
   at `0x63992..0x63A2C`.
 * `0x63180` opens a track only when bit `0x40` of the track dword's high byte is set
-  (`0x63197 mov edx,[eax+0x48]; 0x6319A shr edx,0x18; 0x6319D test dl,0x40;
-  0x631A0 je 0x631AC` -> `0x631B3 xor al,al` returns 0). The low 24 bits are the rate.
+  **and** the low-24-bit rate is nonzero: `0x63197 mov edx,[eax+0x48]; 0x6319A
+  shr edx,0x18; 0x6319D test dl,0x40; 0x631A0 je 0x631AC` -> `0x631AC xor eax,eax`
+  (ZF = 1). On the bit-set arm `0x631A5 and eax,0xFFFFFF` sets ZF = (rate == 0); the
+  `0x631AE mov [esp],eax` leaves flags alone, so `0x631B1 jne` opens only on ZF = 0.
+  `0x631B3 xor al,al` returns 0. The low 24 bits are the rate; the decomp agrees
+  (`port/decomp/prage.c:45074-45084`, `bVar9 = local_28 == 0`).
 * Both shipped movies declare seven `(0, 0)` track descriptors and no audio frame
   flags:
 
@@ -1251,8 +1260,13 @@ The chain (raw; each address is a capstone read of the fixed-up image):
   The raw track table at file offset `0x48..0x63` is 28 zero bytes in both files.
 * No stream opens: `[movie+0x728]` stays `-1` (set at `0x63970`), the only opener
   `0x1013C` is never called, `DAT_00081E00` stays 0, and the pump `0x102B8` is never
-  entered (its movie callers `0x6279C`/`0x63E30`/`0x65240` are guarded by the open-stream
-  count `[0xEF954]`, `[movie+0x728]` and the stream arm).
+  entered. Every movie-path caller is guarded: `0x6279C` by the open-stream count
+  `[0xEF954]` (`0x627FB`/`0x628B9`), `0x63E30` by `[movie+0x728] != -1` (`0x63E3D`),
+  `0x65240` by its stream arm (`0x6524F`), `0x643CC` (from `0x1C740` at `0x1C83A`) and
+  `0x64ED8` (from `0x1C740` at `0x1C7EF`) by `[0xEF954] != 0` (`0x643D2`/`0x64EE2`), and
+  `0x640B8` (from `0x64130` at `0x64187`) by `[movie+0x728] != -1` (`0x640BE`). `0x640B8`
+  reaches the pump again through `0x100DC` (`0x640FC`; `0x100DC` calls `0x102B8` at
+  `0x100E3`), inside that same guard.
 * `0x65240` therefore takes the no-audio time path: `0x65246 cmp [esi+0x728],-1;
   je 0x652AC`, `0x652AC cmp [esi+0x700],0; je 0x652BC`, then `0x652BC..0x6532D`
   advance the next-frame deadline `[movie+0x704]` by the frame duration
