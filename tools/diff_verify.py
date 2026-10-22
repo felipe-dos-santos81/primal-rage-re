@@ -11550,6 +11550,41 @@ def d1i_pack_case(seed, rec=D1I_KREC):
     return {D1I_KMIRROR: bytes((seed + i * 9) & 0xFF for i in range(0x28)),
             rec: b"\x5a" * 0x2A}
 
+
+# Host Input Truth §H2 (record 2026-10-21-host-input-truth-derivations.md): the six keyboard
+# readers 0x1BBAC's device-0 arms call. The key-state table is the real-mode driver's:
+# RM.DRV:0x31B (`mov [bx+0x254], al` with `bx = scan & 0x7f`) stores the raw make/break byte,
+# so bit 7 CLEAR is a key down and the readers set their game bit then. The fixture points
+# 0x101514 at H2_BIOS (in-image BSS) and seeds the table's 128 entries (+0x254..+0x2D3; the
+# config block's device words start at +0x2D4): break (scan|0x80) everywhere, the case's make
+# (bit 7 clear) for its scan -- not 0x00, the make byte the raw handler stores. The 16 slot
+# scans are all distinct, and each make byte has bit 6 set, so a mutant that tests 0x40
+# instead of 0x80 turns every pressed case around.
+H2_BIOS = 0x0010A000
+H2_P1D = (0x48, 0x49, 0x4A, 0x4B)
+H2_P1B = (0x40, 0x41, 0x42, 0x43)
+H2_P2D = (0x4C, 0x4D, 0x4E, 0x4F)
+H2_P2B = (0x44, 0x45, 0x46, 0x47)
+H2_NIB_MUTANTS = ("@mask", "@bits", "@slot", "@table", "@all")
+
+
+def h2_key_case(pressed=(), raw=None):
+    """0x1B610..0x1B870: the key-state table at [0x101514]+0x254 (128 entries: all break, then
+    `pressed` as make, then `raw` bytes verbatim), the 16 slot scans at +0x2DE..+0x2ED, and the
+    0x101514 pointer between seeded dwords. The table ends at +0x2D3 (the config block's device
+    words are +0x2D4); the readers' slots are 0..0x7F, as RM.DRV's handler masks the scan. Every
+    index a reader or mutant derives stays inside the image: the mostly-unused 0x10A000 block."""
+    tbl = bytearray((s | 0x80) & 0xFF for s in range(0x80))
+    for s in pressed:
+        tbl[s] = s & 0x7F
+    for s, v in (raw or {}).items():
+        tbl[s] = v
+    p = {0x00101510: le32(0x10111213) + le32(H2_BIOS) + le32(0x18191A1B),
+         H2_BIOS + 0x2DE: bytes(H2_P1D + H2_P1B + H2_P2D + H2_P2B)}
+    for off in range(0, 0x80, 0x40):                   # diffrun takes 64 bytes a poke at most
+        p[H2_BIOS + 0x254 + off] = bytes(tbl[off:off + 0x40])
+    return p
+
 D1I_SPECS = [
     # 0x13F68 name_filter_word: EAX = word, EDX = str. It calls itself at 0x1403E (allowed: the
     # port recurses in C). AL only: 0x13F2F `or ah,al`; the recursive site reloads EAX (0x14043).
@@ -11796,6 +11831,61 @@ D1I_SPECS = [
         Case("x3", {"eax": 0xFFFFFFFF}, {0x000E1C34: le32(0xA5A5A5A5) + le32(0xA5A5A5A5)}),
         Case("x4", {"eax": 0x80000001}, {0x000E1C34: le32(0xFFFFFFFF) + le32(0x00000000)}),
     ], eax_mask=0xFFFFFFFF, mutants=("@xor", "@latch", "@keep", "@inv")),
+    # ---- Host Input Truth §H2 (record 2026-10-21-host-input-truth-derivations.md): the six
+    # keyboard readers 0x1BBAC's device-0 arms call. The key-state table is the real-mode
+    # driver's: RM.DRV:0x31B (`mov [bx+0x254], al` with `bx = scan & 0x7f`) stores the raw
+    # make/break byte, so bit 7 CLEAR is a key down and the readers set their game bit then.
+    # The fixture (h2_key_case) points 0x101514 at H2_BIOS and seeds the 128 entries from
+    # +0x254 (+0x254..+0x2D3; +0x2D4 is the config block's first device word): break
+    # (scan|0x80) everywhere, the case's make (bit 7 clear) for its scan. The 16 slot scans
+    # are all distinct and all have bit 6 set in their make byte, so a mutant that tests 0x40
+    # instead of 0x80 sees the make as pressed and turns a case around.
+    # 0x1B610/0x1B6A0 read +0x2DE..+0x2E1 / +0x2E6..+0x2E9; 0x1B730/0x1B7C0 +0x2E2..+0x2E5 /
+    # +0x2EA..+0x2ED; 0x1B850/0x1B870 the fixed +0x28F/+0x290. eax_mask 0xFF: the raw returns
+    # through AL and leaves EAX's upper bits as scratch (0x1B850/0x1B870 even write AH).
+    # Every index the bindings and mutants read stays inside mem[]: the table's 128 entries,
+    # and the @slot mutant's last slot +0x2EE (inside the block, past the 16 slots).
+    Spec("input_dirs_p1", 0x1B610, [
+        Case("up", {}, h2_key_case({0x48})),
+        Case("down", {}, h2_key_case({0x49})),
+        Case("left", {}, h2_key_case({0x4A})),
+        Case("right", {}, h2_key_case({0x4B})),
+        Case("both", {}, h2_key_case({0x48, 0x4B})),
+    ], eax_mask=0xFF, mutants=H2_NIB_MUTANTS),
+    Spec("input_dirs_p2", 0x1B6A0, [
+        Case("up", {}, h2_key_case({0x4C})),
+        Case("down", {}, h2_key_case({0x4D})),
+        Case("left", {}, h2_key_case({0x4E})),
+        Case("right", {}, h2_key_case({0x4F})),
+        Case("both", {}, h2_key_case({0x4C, 0x4F})),
+    ], eax_mask=0xFF, mutants=H2_NIB_MUTANTS),
+    Spec("input_buttons_p1", 0x1B730, [
+        Case("b1", {}, h2_key_case({0x40})),
+        Case("b2", {}, h2_key_case({0x41})),
+        Case("b3", {}, h2_key_case({0x42})),
+        Case("b4", {}, h2_key_case({0x43})),
+        Case("b1b4", {}, h2_key_case({0x40, 0x43})),
+    ], eax_mask=0xFF, mutants=H2_NIB_MUTANTS),
+    Spec("input_buttons_p2", 0x1B7C0, [
+        Case("b1", {}, h2_key_case({0x44})),
+        Case("b2", {}, h2_key_case({0x45})),
+        Case("b3", {}, h2_key_case({0x46})),
+        Case("b4", {}, h2_key_case({0x47})),
+        Case("b1b4", {}, h2_key_case({0x44, 0x47})),
+    ], eax_mask=0xFF, mutants=H2_NIB_MUTANTS),
+    # The F readers set AL = 1 when their fixed entry's bit 7 is clear. `f1x` seeds 0x7F (bit 7
+    # clear, bit 6 set): the raw masks 0x80, so a 0x40-mask mutant turns it into 0. `f1d` seeds
+    # EAX: the raw writes AH from the masked byte, which the 0xFF mask drops.
+    Spec("input_f1", 0x1B850, [
+        Case("f1d", {"eax": 0x5A5A5A5A}, h2_key_case({0x3B})),
+        Case("f1u", {}, h2_key_case()),
+        Case("f1x", {}, h2_key_case(raw={0x3B: 0x7F})),
+    ], eax_mask=0xFF, mutants=("@mask", "@off", "@inv")),
+    Spec("input_f2", 0x1B870, [
+        Case("f2d", {"eax": 0x5A5A5A5A}, h2_key_case({0x3C})),
+        Case("f2u", {}, h2_key_case()),
+        Case("f2x", {}, h2_key_case(raw={0x3C: 0x7F})),
+    ], eax_mask=0xFF, mutants=("@mask", "@off", "@inv")),
     # 0x51F72 gfx_fill_screen: EAX = addr, EDX = value; 0xFA00 bytes inside the image's data.
     Spec("gfx_fill_screen", 0x51F72, [
         Case("g0", {"eax": 0x000F1000, "edx": 0xA1B2C3D4, "ecx": 0x11223344}),

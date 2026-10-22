@@ -3257,6 +3257,108 @@ int test_host(void)
     return g_failures - before;
 }
 
+/* ---- test_input_keyboard_readers: Host Input Truth §H2 ---- */
+
+/* The six keyboard readers and the host key-state table. The table is the
+ * real-mode driver's: RM.DRV:0x31B stores the raw scan byte at
+ * [base+0x254+(scan&0x7F)], so bit 7 clear is a make (key down) and the readers
+ * set their game bit then. `TEST_KEY_BASE` stands in for game_init()'s
+ * GAME_BIOS_BASE. */
+int test_input_keyboard_readers(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    static const u8 slots[16] = { 0x48, 0x49, 0x4A, 0x4B, 0x40, 0x41, 0x42, 0x43,
+                                  0x4C, 0x4D, 0x4E, 0x4F, 0x44, 0x45, 0x46, 0x47 };
+    static const u8 dir_bit[4] = { 0x80, 0x40, 0x20, 0x10 };
+    static const u8 btn_bit[4] = { 1, 2, 4, 8 };
+
+    mem_fill(TEST_KEY_BASE, 0, 0x400u);
+    DSD(DS_00101514) = TEST_KEY_BASE;
+    for (u32 i = 0; i < 16u; i++) DSB(TEST_KEY_BASE + 0x2DEu + i) = slots[i];
+    for (u32 s = 0; s < 0x80u; s++) DSB(TEST_KEY_BASE + 0x254u + s) = (u8)(s | 0x80u);
+
+    /* The four positions in the raw's bit order: a make at a position sets that
+     * bit, and only that bit (the other slots are break). */
+    for (u32 k = 0; k < 4u; k++) {
+        DSB(TEST_KEY_BASE + 0x254u + slots[k]) = slots[k];          /* make */
+        CHECK_EQ_INT((int)input_dirs_p1(), dir_bit[k]);
+        DSB(TEST_KEY_BASE + 0x254u + slots[k]) = (u8)(slots[k] | 0x80u);
+    }
+    for (u32 k = 0; k < 4u; k++) {
+        DSB(TEST_KEY_BASE + 0x254u + slots[4u + k]) = slots[4u + k];
+        CHECK_EQ_INT((int)input_buttons_p1(), btn_bit[k]);
+        DSB(TEST_KEY_BASE + 0x254u + slots[4u + k]) = (u8)(slots[4u + k] | 0x80u);
+    }
+    for (u32 k = 0; k < 4u; k++) {
+        DSB(TEST_KEY_BASE + 0x254u + slots[8u + k]) = slots[8u + k];
+        CHECK_EQ_INT((int)input_dirs_p2(), dir_bit[k]);
+        DSB(TEST_KEY_BASE + 0x254u + slots[8u + k]) = (u8)(slots[8u + k] | 0x80u);
+    }
+    for (u32 k = 0; k < 4u; k++) {
+        DSB(TEST_KEY_BASE + 0x254u + slots[12u + k]) = slots[12u + k];
+        CHECK_EQ_INT((int)input_buttons_p2(), btn_bit[k]);
+        DSB(TEST_KEY_BASE + 0x254u + slots[12u + k]) = (u8)(slots[12u + k] | 0x80u);
+    }
+
+    /* The reader ORs the four positions (a last-wins read would return 0x10). */
+    DSB(TEST_KEY_BASE + 0x254u + slots[0]) = slots[0];
+    DSB(TEST_KEY_BASE + 0x254u + slots[3]) = slots[3];
+    CHECK_EQ_INT((int)input_dirs_p1(), 0x80 | 0x10);
+    DSB(TEST_KEY_BASE + 0x254u + slots[0]) = (u8)(slots[0] | 0x80u);
+    DSB(TEST_KEY_BASE + 0x254u + slots[3]) = (u8)(slots[3] | 0x80u);
+
+    /* F1/F2 read the fixed entries +0x28F/+0x290 (= +0x254+0x3B/0x3C). */
+    DSB(TEST_KEY_BASE + 0x28Fu) = 0x3B;                             /* F1 make */
+    CHECK_EQ_INT((int)input_f1(), 1);
+    CHECK_EQ_INT((int)input_f2(), 0);
+    DSB(TEST_KEY_BASE + 0x28Fu) = 0xBB;                             /* F1 break */
+    CHECK_EQ_INT((int)input_f1(), 0);
+    DSB(TEST_KEY_BASE + 0x290u) = 0x3C;                             /* F2 make */
+    CHECK_EQ_INT((int)input_f2(), 1);
+    CHECK_EQ_INT((int)input_f1(), 0);
+    DSB(TEST_KEY_BASE + 0x290u) = 0xBC;                             /* F2 break */
+    CHECK_EQ_INT((int)input_f2(), 0);
+
+    /* The host fill. A configured slot naming a scan outside the 26 letters and
+     * 10 pad keys the first cut sampled ('5' = 0x06) is written: the make byte
+     * when its bit is down (the seam's captured bitmap), the break byte when it
+     * is not. The table was zeroed (a make would look pressed), so the fill's
+     * write is what clears it. */
+    mem_fill(TEST_KEY_BASE, 0, 0x400u);
+    for (u32 i = 0; i < 16u; i++) DSB(TEST_KEY_BASE + 0x2DEu + i) = (u8)(0x06u + i);
+    host_set_key_bits_override(0x8000u, 1);                 /* the first slot is down */
+    host_input_fill_keyboard();
+    CHECK_EQ_INT(DSB(TEST_KEY_BASE + 0x254u + 0x06u), 0x06);   /* make, bit 7 clear */
+    CHECK_EQ_INT(DSB(TEST_KEY_BASE + 0x254u + 0x07u), 0x87);   /* break, bit 7 set */
+    CHECK_EQ_INT((int)input_dirs_p1(), 0x80);              /* the reader agrees */
+    host_set_key_bits_override(0x8000u, 0);
+    host_input_fill_keyboard();
+    CHECK_EQ_INT(DSB(TEST_KEY_BASE + 0x254u + 0x06u), 0x86);   /* released */
+    CHECK_EQ_INT((int)input_dirs_p1(), 0);
+
+    /* No block (all 16 slots zero): the default record's scans are filled -- S
+     * (0x1F) is P1 up, Up (0x48) is P2 up -- and F1's fixed entry follows its
+     * bit whatever the slots say. */
+    mem_fill(TEST_KEY_BASE, 0, 0x400u);
+    host_set_key_bits_override(0x8000u, 1);
+    host_input_fill_keyboard();
+    CHECK_EQ_INT(DSB(TEST_KEY_BASE + 0x254u + 0x1Fu), 0x1F);   /* default S: make */
+    CHECK_EQ_INT(DSB(TEST_KEY_BASE + 0x254u + 0x48u), 0xC8);   /* default Up: break */
+    /* The readers read whatever the block holds (the raw's sampler does too): an
+     * all-zero block has slots 0, so the fill's default scans are the host's
+     * fallback for the BIT byte and the block itself is game_init's to fill
+     * (config_keys_apply_defaults). Only the fixed F1 entry is read without it. */
+    host_set_key_bits_override(0x0100u, 1);
+    host_input_fill_keyboard();
+    CHECK_EQ_INT(DSB(TEST_KEY_BASE + 0x28Fu), 0x3B);           /* F1 make */
+    CHECK_EQ_INT((int)input_f1(), 1);
+
+    host_set_key_bits_override(0, 0);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
 /* ---- test_rng.c ---- */
 
 int test_rng(void)

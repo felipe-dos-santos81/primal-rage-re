@@ -17753,6 +17753,60 @@ static void m_d1i_sb_latch(const u32 *r, u32 *eax)     { *eax = d1i_50161_core(r
 static void m_d1i_sb_keep(const u32 *r, u32 *eax)      { *eax = d1i_50161_core(r[R_EAX], 4u); }
 static void m_d1i_sb_inv(const u32 *r, u32 *eax)       { *eax = d1i_50161_core(r[R_EAX], 8u); }
 
+/* Host Input Truth §H2 (record 2026-10-21-host-input-truth-derivations.md): 0x1B610/0x1B6A0
+ * (P1/P2 directions, bits 0x80/0x40/0x20/0x10), 0x1B730/0x1B7C0 (P1/P2 buttons, 1/2/4/8) and
+ * 0x1B850/0x1B870 (F1/F2, bit 0). Each reads the key-state table at [0x101514]+0x254 through
+ * its slot scans (+0x2DE+first); a table byte with bit 7 clear is a make and sets the bit. The
+ * mutants restate that with one mutation each: @mask tests 0x40 for 0x80, @bits swaps the
+ * output bit order, @slot reads the slot one position on, @table indexes one entry low, @all
+ * returns every bit. The F mutants: @mask tests 0x08, @off reads the other reader's fixed
+ * entry, @inv inverts the result. */
+static const u8 h2_dir_bit[4] = { 0x80u, 0x40u, 0x20u, 0x10u };
+static const u8 h2_btn_bit[4] = { 0x01u, 0x02u, 0x04u, 0x08u };
+static u32 h2_nib_core(u32 first, const u8 bit[4], u32 all, u32 mut)
+{
+    const u32 k = DSD(0x00101514u);
+    u32 al = 0u;
+    for (u32 i = 0u; i < 4u; i++) {
+        const u8 scan = DSB(k + first + i + ((mut & 4u) ? 1u : 0u));          /* @slot */
+        const u8 b = DSB(k + ((mut & 8u) ? 0x253u : 0x254u) + scan);          /* @table */
+        if ((b & ((mut & 1u) ? 0x40u : 0x80u)) == 0u)                         /* @mask */
+            al |= (mut & 2u) ? bit[3u - i] : bit[i];                          /* @bits */
+    }
+    return (mut & 0x10u) ? all : al;                                          /* @all */
+}
+static u32 h2_f_core(u32 off, u32 alt, u32 mut)
+{
+    const u32 k = DSD(0x00101514u);
+    const u8 ah = (u8)(DSB(k + ((mut & 2u) ? alt : off)) & ((mut & 1u) ? 0x08u : 0x80u)); /* @off @mask */
+    u32 al = ah == 0u ? 1u : 0u;
+    if (mut & 4u) al ^= 1u;                                                   /* @inv */
+    return al;
+}
+static void b_h2_dirs_p1(const u32 *r, u32 *eax)        { (void)r; *eax = input_dirs_p1(); }
+static void b_h2_dirs_p2(const u32 *r, u32 *eax)        { (void)r; *eax = input_dirs_p2(); }
+static void b_h2_btns_p1(const u32 *r, u32 *eax)        { (void)r; *eax = input_buttons_p1(); }
+static void b_h2_btns_p2(const u32 *r, u32 *eax)        { (void)r; *eax = input_buttons_p2(); }
+static void b_h2_f1(const u32 *r, u32 *eax)             { (void)r; *eax = input_f1(); }
+static void b_h2_f2(const u32 *r, u32 *eax)             { (void)r; *eax = input_f2(); }
+#define H2_NIB_MUTANTS(name, first, bits, all) \
+    static void m_h2_##name##_mask(const u32 *r, u32 *eax)  { (void)r; *eax = h2_nib_core(first, bits, all, 1u); } \
+    static void m_h2_##name##_bits(const u32 *r, u32 *eax)  { (void)r; *eax = h2_nib_core(first, bits, all, 2u); } \
+    static void m_h2_##name##_slot(const u32 *r, u32 *eax)  { (void)r; *eax = h2_nib_core(first, bits, all, 4u); } \
+    static void m_h2_##name##_table(const u32 *r, u32 *eax) { (void)r; *eax = h2_nib_core(first, bits, all, 8u); } \
+    static void m_h2_##name##_all(const u32 *r, u32 *eax)   { (void)r; *eax = h2_nib_core(first, bits, all, 0x10u); }
+H2_NIB_MUTANTS(d1, 0x2DEu, h2_dir_bit, 0xF0u)
+H2_NIB_MUTANTS(d2, 0x2E6u, h2_dir_bit, 0xF0u)
+H2_NIB_MUTANTS(b1, 0x2E2u, h2_btn_bit, 0x0Fu)
+H2_NIB_MUTANTS(b2, 0x2EAu, h2_btn_bit, 0x0Fu)
+static void m_h2_f1_mask(const u32 *r, u32 *eax)        { (void)r; *eax = h2_f_core(0x28Fu, 0x290u, 1u); }
+static void m_h2_f1_off(const u32 *r, u32 *eax)         { (void)r; *eax = h2_f_core(0x28Fu, 0x290u, 2u); }
+static void m_h2_f1_inv(const u32 *r, u32 *eax)         { (void)r; *eax = h2_f_core(0x28Fu, 0x290u, 4u); }
+static void m_h2_f2_mask(const u32 *r, u32 *eax)        { (void)r; *eax = h2_f_core(0x290u, 0x28Fu, 1u); }
+static void m_h2_f2_off(const u32 *r, u32 *eax)         { (void)r; *eax = h2_f_core(0x290u, 0x28Fu, 2u); }
+static void m_h2_f2_inv(const u32 *r, u32 *eax)         { (void)r; *eax = h2_f_core(0x290u, 0x28Fu, 4u); }
+
+
 /* 0x51F72 gfx_fill_screen: EAX = addr, EDX = value. The raw leaves EAX advanced by 0xFA00 (0x520F7,
  * 0xC8 passes); the port's function is void, so the binding states that value and the EAX
  * comparison documents the raw, not the port (0x5211E reloads EAX and 0x5213D clears it; 0x52156
@@ -46147,6 +46201,38 @@ static const binding_t k_bindings[] = {
     { "input_select_bits@latch",             m_d1i_sb_latch,     0xFFFFFFFFu },
     { "input_select_bits@keep",              m_d1i_sb_keep,      0xFFFFFFFFu },
     { "input_select_bits@inv",               m_d1i_sb_inv,       0xFFFFFFFFu },
+    { "input_dirs_p1",                       b_h2_dirs_p1,       0x000000FFu },
+    { "input_dirs_p1@mask",                  m_h2_d1_mask,       0x000000FFu },
+    { "input_dirs_p1@bits",                  m_h2_d1_bits,       0x000000FFu },
+    { "input_dirs_p1@slot",                  m_h2_d1_slot,       0x000000FFu },
+    { "input_dirs_p1@table",                 m_h2_d1_table,      0x000000FFu },
+    { "input_dirs_p1@all",                   m_h2_d1_all,        0x000000FFu },
+    { "input_dirs_p2",                       b_h2_dirs_p2,       0x000000FFu },
+    { "input_dirs_p2@mask",                  m_h2_d2_mask,       0x000000FFu },
+    { "input_dirs_p2@bits",                  m_h2_d2_bits,       0x000000FFu },
+    { "input_dirs_p2@slot",                  m_h2_d2_slot,       0x000000FFu },
+    { "input_dirs_p2@table",                 m_h2_d2_table,      0x000000FFu },
+    { "input_dirs_p2@all",                   m_h2_d2_all,        0x000000FFu },
+    { "input_buttons_p1",                    b_h2_btns_p1,       0x000000FFu },
+    { "input_buttons_p1@mask",               m_h2_b1_mask,       0x000000FFu },
+    { "input_buttons_p1@bits",               m_h2_b1_bits,       0x000000FFu },
+    { "input_buttons_p1@slot",               m_h2_b1_slot,       0x000000FFu },
+    { "input_buttons_p1@table",              m_h2_b1_table,      0x000000FFu },
+    { "input_buttons_p1@all",                m_h2_b1_all,        0x000000FFu },
+    { "input_buttons_p2",                    b_h2_btns_p2,       0x000000FFu },
+    { "input_buttons_p2@mask",               m_h2_b2_mask,       0x000000FFu },
+    { "input_buttons_p2@bits",               m_h2_b2_bits,       0x000000FFu },
+    { "input_buttons_p2@slot",               m_h2_b2_slot,       0x000000FFu },
+    { "input_buttons_p2@table",              m_h2_b2_table,      0x000000FFu },
+    { "input_buttons_p2@all",                m_h2_b2_all,        0x000000FFu },
+    { "input_f1",                            b_h2_f1,            0x000000FFu },
+    { "input_f1@mask",                       m_h2_f1_mask,       0x000000FFu },
+    { "input_f1@off",                        m_h2_f1_off,        0x000000FFu },
+    { "input_f1@inv",                        m_h2_f1_inv,        0x000000FFu },
+    { "input_f2",                            b_h2_f2,            0x000000FFu },
+    { "input_f2@mask",                       m_h2_f2_mask,       0x000000FFu },
+    { "input_f2@off",                        m_h2_f2_off,        0x000000FFu },
+    { "input_f2@inv",                        m_h2_f2_inv,        0x000000FFu },
     { "gfx_fill_screen",                     b_d1i_51f72,        0xFFFFFFFFu },
     { "gfx_fill_screen@count",               m_d1i_fs_count,     0xFFFFFFFFu },
     { "gfx_fill_screen@row",                 m_d1i_fs_row,       0xFFFFFFFFu },

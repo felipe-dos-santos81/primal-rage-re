@@ -138,6 +138,15 @@ u16 host_key_bits(void);
  * run has filled the block; 0 for any other scan. */
 u16 host_kb_bit(u8 scan);
 
+/* PORT: fills the key-state table at [DS_00101514]+0x254 the six ported
+ * keyboard readers (input_dirs_p1 .. input_f2) sample, from the same 16 bits
+ * host_key_bits() reports (SDL's keyboard through the configured binding, or
+ * host_set_key_bits_override's captured bitmap). Every configured slot is
+ * written, whatever scan it names (record 2026-10-21-host-input-truth §H2), and
+ * the fixed F1/F2 entries +0x28F/+0x290; the default record's scans stand in
+ * when the block is absent or all zero. A no-op without a usable base. */
+void host_input_fill_keyboard(void);
+
 /* PORT: test seam, no raw counterpart. With `on` set, host_key_bits() returns
  * `bits` instead of the SDL keyboard state; the K11 oracle driver holds the key
  * bitmap a capture's poll log recorded through it (named-gaps A record §A.3).

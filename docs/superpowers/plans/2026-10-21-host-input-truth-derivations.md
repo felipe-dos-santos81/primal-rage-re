@@ -213,3 +213,195 @@ Named gap: nothing here covers a hypothetical movie with a nonzero track dword. 
 the stream opener and the pump are recorded above but unexercised by the shipped data; and
 `0x102B8`/`0x1013C` remain the §49-W.2 named gap for their host-pointer reason (an AIL
 sample handle cannot be stored in a 32-bit `mem[]` word), independent of this finding.
+
+## §H2 The keyboard readers and the host key-state table
+
+Task 2 ports the six keyboard readers `0x1BBAC`'s device-0 arms call, and gives the host the
+table they read. Sources: capstone over `/tmp/hit.img` (the fixed-up image; image offset =
+address − `0x10000`) for the 32-bit readers, and `data/game/C/RM.DRV` disassembled as 16-bit
+code (`CS_MODE_16`) for the handler that writes the table. The plan's command
+`python3 tools/diff_verify.py --function 0x1B610` names no spec (`--function` takes the spec
+name): the rows were run as `--function input_dirs_p1` etc.
+
+### §H2.1 The six readers
+
+Each is argument-free and returns through AL. `ECX` is `[0x101514]`, the driver block's base;
+a slot byte from `+0x2DE..+0x2ED` indexes the table at `+0x254`, and the reader sets its game
+bit when the entry's **bit 7 is clear**:
+
+```
+1B610  push ebx / push ecx / push edx
+1B613  mov ecx,[0x101514]
+1B619  xor ebx,ebx
+1B61B  mov edx,ecx
+1B61D  mov bl,[ecx+0x2de]        ; the slot's scan
+1B623  mov dl,[edx+ebx+0x254]    ; the key-state byte
+1B62A  xor al,al
+1B62C  and dl,0x80
+1B62F  and edx,0xff
+1B635  jne 0x1b639              ; bit 7 set -> no game bit
+1B637  mov al,0x80              ; bit 7 clear -> the bit
+1B639  ... the next slot (0x2df, 0x2e0, 0x2e1), then
+1B693  mov [0x101514],ecx       ; re-stores the base it read (a no-op)
+1B699  pop edx / pop ecx / pop ebx / ret
+```
+
+The slot groups and bits:
+
+| function | slots | bits (in slot order) | store of the base |
+|---|---|---|---|
+| `0x1B610` `input_dirs_p1` | `+0x2DE..+0x2E1` | `0x80/0x40/0x20/0x10` | `0x1B693` |
+| `0x1B6A0` `input_dirs_p2` | `+0x2E6..+0x2E9` | `0x80/0x40/0x20/0x10` | `0x1B723` |
+| `0x1B730` `input_buttons_p1` | `+0x2E2..+0x2E5` | `1/2/4/8` | `0x1B7B3` |
+| `0x1B7C0` `input_buttons_p2` | `+0x2EA..+0x2ED` | `1/2/4/8` | `0x1B843` |
+| `0x1B850` `input_f1` | fixed `+0x28F` | `1` | none |
+| `0x1B870` `input_f2` | fixed `+0x290` | `1` | none |
+
+`0x1B850`/`0x1B870` are two instructions of substance: `mov ah,[edx+0x28f]` (`+0x290`),
+`and ah,0x80`, then `test edx,edx; jne; mov al,1` (`0x1B859..0x1B86A`). They therefore also
+write AH, which is why their row's EAX mask is `0xFF`. The port's versions take the base
+write of the raw's first read (no separate store), and `PR_SEAM_RET0` at each address so the
+sampler's row (Task 4) can record the call.
+
+### §H2.2 The table is the driver's make/break bytes, not the BIOS's 0x417 table
+
+`RM.DRV`'s keyboard handler writes the table:
+
+```
+030D  push ax / push bx / push ds
+0310  mov ax,cs / mov ds,ax      ; DS = the driver's own segment (the block [0x101514])
+0314  in al,0x60                 ; the raw set-1 scan byte: make, or break | 0x80
+0316  mov bx,ax
+0318  and bx,0x7f                ; the index is 7 bits
+031B  mov [bx+0x254],al          ; the whole byte, break flag included
+```
+
+So an entry is the key's make byte (`0x1E` for A) while down and its break byte (`0x9E`)
+while up, and **bit 7 clear means down**. That is the opposite of the standard BIOS key-state
+table's "bit 7 = pressed", and it is why the readers set the game bit on a CLEAR bit 7. The
+table is **128 entries**, `+0x254..+0x2D3`; `+0x2D4` is the config block's first device word
+(`DSW(0x101514+0x2D4)` is P1's), so the 16 scan slots at `+0x2DE..+0x2ED` sit after it and the
+table and the slots do not overlap. The readers index with the full slot byte, which is 0..0x7F
+for every binding the config path can produce (the service menu's key queue and the default
+record both carry set-1 make codes). The F1/F2 entries are the table's `0x3B`/`0x3C`
+(`+0x254+0x3B = +0x28F`, `+0x254+0x3C = +0x290`), which is why those two reads are "fixed".
+
+A correction from the first draft of the fixture: seeding 256 entries (`+0x254..+0x353`) also
+overwrote the slots at `+0x2DE`, and the case's slot bytes became the table's own `0x8A..`
+values; the row's original side then read `[0x2DE] = 0x8A` and returned 0. The 128-entry table
+is the raw's shape, and the fixture seeds exactly it.
+
+### §H2.3 The rows (`tools/diff_verify.py`) and their mutants
+
+Fixture `h2_key_case`: `[0x101514] = 0x10A000` (in-image BSS, between seeded dwords at
+`0x101510`), the 128 table entries all break (`scan|0x80`), the case's scan(s) make
+(`scan`), the 16 slot scans at `+0x2DE..+0x2ED`, and `raw={scan: byte}` for the F mask cases.
+All 16 slot scans are distinct, and each make byte has bit 6 set (`0x40..0x4F`), so a mutant
+that masks 0x40 instead of 0x80 sees a pressed key as up. Six rows, `eax_mask=0xFF`, no calls:
+
+| row | cases (expected AL) | mutants |
+|---|---|---|
+| `input_dirs_p1` | up `0x80`, down `0x40`, left `0x20`, right `0x10`, both `0x90` | `@mask @bits @slot @table @all` |
+| `input_dirs_p2` | the same four plus both `0x90` | the same five |
+| `input_buttons_p1` | b1 `1`, b2 `2`, b3 `4`, b4 `8`, b1+b4 `9` | the same five |
+| `input_buttons_p2` | the same | the same five |
+| `input_f1` | make `1`, break `0`, `0x7F` entry `1` | `@mask @off @inv` |
+| `input_f2` | make `1`, break `0`, `0x7F` entry `1` | `@mask @off @inv` |
+
+The "both" cases prove the four positions are OR'd (a last-wins read passes every
+single-press case). `@bits` swaps the output bit order, `@slot` reads slot `i+1`, `@table`
+indexes `+0x253`, `@all` returns `0xF0`/`0x0F`, `@off` reads the other F reader's entry, and
+`@inv` inverts. `0x7F` (bit 7 clear, bit 6 set) is what catches a 0x40-mask mutant on the F
+rows; the F1 down case also seeds EAX `0x5A5A5A5A`, so the raw's AH write is visible to the
+0xFF mask as nothing.
+
+Bindings (`port/tests/diff_runner.c`, `h2_nib_core`/`h2_f_core` and their wrappers, table
+entries after `input_select_bits`): none of the six has a callee, so all six rows are full
+(no pokes, no unhit blocks, no terminal difference). `--self-check` for each: VERIFIED,
+9/9 blocks per nibble row (3/3 per F row), and 5/5 or 3/3 mutants detected (26 mutants in
+all). RED before the port side existed: `--function input_dirs_p1` on the pre-batch `diffrun`
+printed `port: unknown binding input_dirs_p1` on every case (MISMATCH).
+
+### §H2.4 The host table and the scancode rule (`port/src/host.c`)
+
+`host_input_fill_keyboard()` writes the table the readers read:
+
+- Source of truth is `host_key_bits()`, which is the 16-bit kb word `game_loop` copies today
+  (`0x2D8 << 8 | 0x2D9`) and the seam `host_set_key_bits_override` holds. With the seam on,
+  the captured bitmap decides each slot; off, SDL's keyboard does. That keeps the drivers'
+  replays byte-identical when the sampler replaces the direct store (Task 4).
+- The 16 scans are the configured block's `+0x2DE..+0x2ED`, else the default record's
+  (S X Z C / U I N M / arrows / Home PgUp End PgDn) when the block is absent or all zero:
+  `host_key_scans()`.
+- Each bound slot is written every frame: the make byte `scan&0x7F` when its bit is down, the
+  break byte `(scan&0x7F)|0x80` when not (`host_key_state_store`, the RM.DRV handler's own
+  index mask). The fixed F1/F2 entries `+0x28F/+0x290` are written from bits `0x0100`/`0x0001`
+  in both paths; a slot bound to F1/F2 is the same table entry, so either source makes it
+  (the write is the OR).
+- A scan above 0x7F is not a set-1 make code and is skipped when sampling SDL (the table index
+  is masked); the fill still writes it at the masked index, which is the raw handler's own
+  behaviour.
+- Guard: `DS_00101514` must be non-zero and `<= MEM_SIZE - 0x2EE` (the 16 slots' end); the
+  table writes land in `+0x254..+0x2D3` only. Outside `build/diffrun`, nothing calls the fill
+  yet (Task 4 wires `game_loop`).
+
+`host_key_bits()` now samples **every configured slot's scan**, through `k_scan_sdl`
+(set-1 0x01..0x58 -> `SDL_Scancode`, `0` = `SDL_SCANCODE_UNKNOWN`), instead of walking the 26
+letters and 10 pad keys. The output bits are identical for every binding the old loop could
+see (an unbound scan produced no bit then either); a rebind outside those scancodes -- a digit,
+punctuation, F3..F10, Delete -- is now sampled. Where two keys share a set-1 code (the keypad's
+`0x47..0x53` and the navigation keys, which int 16h cannot tell apart) the map keeps the key
+the default record binds -- arrows, Home PgUp End PgDn -- exactly the first cut's choice.
+`host_kb_bit()`'s default fallback is now the same 16-scan table (`k_default_scan` +
+`k_cfg_bit`) plus the two fixed F1/F2 bits; its assertions in `test_host` are unchanged.
+
+### §H2.5 The unit test and its mutation proofs
+
+`port/tests/test_platform.c`, `test_input_keyboard_readers` (registered once in `test.h`).
+It saves `DS_00101514`, points it at `TEST_KEY_BASE` (`0x3000000`, game_init's
+`GAME_BIOS_BASE`), and asserts, on a seeded table:
+
+- each of the four positions of all four slot readers, one bit at a time (16 assertions), and
+  the OR of two positions (`0x90`);
+- F1/F2 make/break, and that one is not the other;
+- the fill: a configured slot naming `0x06` ('5', outside the 26 letters + 10 pad keys)
+  reaches the table as the make byte while its bit is in the seam, the other slot as break,
+  and `input_dirs_p1()` reads it back; with the seam off it becomes break (no key);
+- with no block, the fill uses the default record's scans (`0x1F` make for S, `0x48` break for
+  Up) and the fixed F1 entry.
+
+Each assertion was seen to fail under a mutation, applied alone and reverted:
+
+| mutation | first FAIL |
+|---|---|
+| `input_slot_bits`: `& 0x80` -> `& 0x40` | `test_platform.c:3285: 0 != 128` |
+| `input_slot_bits`: `+0x254` -> `+0x253` | `3285: 64 != 128` |
+| `input_buttons_p2`: slot base `0x2EA` -> `0x2EB` | `3300: 0 != 1` |
+| `input_f1`: `+0x28F` -> `+0x290` | `3313: 0 != 1` |
+| `input_f2`: mask `0x80` -> `0x01` | `3314: 1 != 0` |
+| fill: `down` forced to 0 (always break) | `3332: 134 != 6` |
+| fill: `host_key_scans()` -> the default list always | `3332: 0 != 6` |
+| fill: `host_key_scans()` drops the default fallback (`return cfg`) | `3346: 0 != 31` |
+
+Named limit: the SDL half of `host_key_bits()` (the `k_scan_sdl` lookup) cannot be asserted
+headless -- the suite never initializes SDL's keyboard, and the seam short-circuits the scan.
+The fill's rebind assertion proves the slot list is used and the reader reads it back; the map
+itself is host policy (SDL scancodes are physical positions), and the default binding's 18
+keys are covered by every capture oracle, which would move if the map were wrong for them.
+
+### §H2.6 Counters
+
+The differential step alone (`python3 tools/diff_verify.py --self-check`, this batch):
+**1013/1013 functions VERIFIED; 14926/14926 mutants detected; 1 named gap; 774/832 rows
+with callees closed (181 have none); 768/832 closed on full rows; 8 ported functions with no
+row.** The six new rows have no callees, so they raise the total row count (832 + 6) and the
+"have none" count (175 -> 181) without changing the closed pair; the six rows and 26 mutants
+are all VERIFIED/detected, and every existing row and mutant is unchanged.
+`tools/port_progress.py`: `793 1203 66`, `753 753 100`. The six classification rows in
+`tools/port_classification.txt` still read `host-owned` and the README title still reads 65%:
+Task 7 (closeout) moves them with the other six of the phase's 12 ported functions.
+
+No existing pin is expected to move: the default device-0/0 path samples the same 18 scans and
+produces the same kb word, and the build's `--check` frames, the oracle-required tests, the
+restart driver and the smk/title/front-end oracles passed with the change before the
+controller stopped the full gate (the whole gate is Task 7's closeout check).

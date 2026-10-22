@@ -69,4 +69,31 @@ u32 input_joystick_device(u32 selector);
  * level word and the two 0x50161 mask families. */
 void input_state_update(void);
 
+/* ---- the keyboard readers (record 2026-10-21-host-input-truth §H2) --------
+ * The six functions the ISR sampler 0x1BBAC's device-0 arms call. Each reads
+ * the key-config block at DAT_00101514: the 16 scan slots +0x2DE..+0x2ED by
+ * position and the key-state table at +0x254 indexed by those scans. The table
+ * is the real-mode driver's (RM.DRV:0x31B stores the raw scan byte at
+ * [base+0x254+(scan&0x7F)]: bit 7 clear on make, set on break), so a reader
+ * sets its game bit when the entry's bit 7 is CLEAR. The host fills the table
+ * from SDL in host_input_fill_keyboard(). */
+
+/* 0x1B610. P1's directions: slots +0x2DE..+0x2E1 -> 0x80/0x40/0x20/0x10. */
+u8 input_dirs_p1(void);
+
+/* 0x1B6A0. P2's directions: slots +0x2E6..+0x2E9 -> 0x80/0x40/0x20/0x10. */
+u8 input_dirs_p2(void);
+
+/* 0x1B730. P1's buttons: slots +0x2E2..+0x2E5 -> 1/2/4/8. */
+u8 input_buttons_p1(void);
+
+/* 0x1B7C0. P2's buttons: slots +0x2EA..+0x2ED -> 1/2/4/8. */
+u8 input_buttons_p2(void);
+
+/* 0x1B850. F1's fixed table entry +0x28F (= +0x254+0x3B) -> bit 0. */
+u8 input_f1(void);
+
+/* 0x1B870. F2's fixed table entry +0x290 (= +0x254+0x3C) -> bit 0. */
+u8 input_f2(void);
+
 #endif /* PR_INPUT_H */

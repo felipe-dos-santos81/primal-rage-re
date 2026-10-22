@@ -57,23 +57,62 @@ static const u8 k_bios_letter[26] = {
 };
 
 /* PORT: the host stands in for the IRQ1 key-state table and the ISR sampler
- * 0x1BBAC (host-owned, record §50-C). The sampler's device-0 arms read their
+ * 0x1BBAC (host-owned; record §50-C). The sampler's device-0 arms read their
  * binding out of the key-config block at [DS_00101514]: 0x1B610/0x1B730 test
  * P1's eight scans at +0x2DE..+0x2E5 by position, 0x1B6A0/0x1B7C0 P2's at
- * +0x2E6..+0x2ED, and 0x1B850/0x1B870 the fixed +0x28F/+0x290 bytes (record
- * gameplay-ground-truth §G.1.2; every bit captured in gp-pads, §G.7.2). The
- * block is the default record's scan list at 0xA2C62 after config_keys_apply
+ * +0x2E6..+0x2ED, and 0x1B850/0x1B870 the fixed +0x28F/+0x290 key-state bytes
+ * (record gameplay-ground-truth §G.1.2; every bit captured in gp-pads, §G.7.2).
+ * The block is the default record's scan list at 0xA2C62 after config_keys_apply
  * (0x1AE28) or the service menu's edited one, and the config image's mirror
  * (0x1014AC..) reaches it through the 0x20CF2/0x20CF9 pack/load pair at boot,
- * so a windowed run follows the configured binding. The letters map through
- * k_bios_letter; the other pad keys here. */
-typedef struct { SDL_Scancode sdl; u8 scan; } host_scan_pair;
-static const host_scan_pair k_bios_pad[] = {
-    { SDL_SCANCODE_UP, 0x48 },    { SDL_SCANCODE_DOWN, 0x50 },
-    { SDL_SCANCODE_LEFT, 0x4B },  { SDL_SCANCODE_RIGHT, 0x4D },
-    { SDL_SCANCODE_HOME, 0x47 },  { SDL_SCANCODE_PAGEUP, 0x49 },
-    { SDL_SCANCODE_END, 0x4F },   { SDL_SCANCODE_PAGEDOWN, 0x51 },
-    { SDL_SCANCODE_F1, 0x3B },    { SDL_SCANCODE_F2, 0x3C },
+ * so a windowed run follows the configured binding.
+ *
+ * The set-1 scan -> SDL scancode map (record §H2). The config holds set-1
+ * scans, so every one of the 16 slots must be sampled, not only the 26 letters
+ * and 10 pad keys the first cut knew. 0 is SDL_SCANCODE_UNKNOWN. Two keys share
+ * one set-1 code: the keypad's 0x47..0x53 and the navigation keys (the BIOS's
+ * int 16h hands back the same scan for both), and the map takes the key the
+ * default record binds (arrows / Home PgUp End PgDn), as the first cut did. */
+static const SDL_Scancode k_scan_sdl[0x80] = {
+    [0x01] = SDL_SCANCODE_ESCAPE,
+    [0x02] = SDL_SCANCODE_1, [0x03] = SDL_SCANCODE_2, [0x04] = SDL_SCANCODE_3,
+    [0x05] = SDL_SCANCODE_4, [0x06] = SDL_SCANCODE_5, [0x07] = SDL_SCANCODE_6,
+    [0x08] = SDL_SCANCODE_7, [0x09] = SDL_SCANCODE_8, [0x0A] = SDL_SCANCODE_9,
+    [0x0B] = SDL_SCANCODE_0, [0x0C] = SDL_SCANCODE_MINUS, [0x0D] = SDL_SCANCODE_EQUALS,
+    [0x0E] = SDL_SCANCODE_BACKSPACE, [0x0F] = SDL_SCANCODE_TAB,
+    [0x10] = SDL_SCANCODE_Q, [0x11] = SDL_SCANCODE_W, [0x12] = SDL_SCANCODE_E,
+    [0x13] = SDL_SCANCODE_R, [0x14] = SDL_SCANCODE_T, [0x15] = SDL_SCANCODE_Y,
+    [0x16] = SDL_SCANCODE_U, [0x17] = SDL_SCANCODE_I, [0x18] = SDL_SCANCODE_O,
+    [0x19] = SDL_SCANCODE_P, [0x1A] = SDL_SCANCODE_LEFTBRACKET,
+    [0x1B] = SDL_SCANCODE_RIGHTBRACKET, [0x1C] = SDL_SCANCODE_RETURN,
+    [0x1D] = SDL_SCANCODE_LCTRL,
+    [0x1E] = SDL_SCANCODE_A, [0x1F] = SDL_SCANCODE_S, [0x20] = SDL_SCANCODE_D,
+    [0x21] = SDL_SCANCODE_F, [0x22] = SDL_SCANCODE_G, [0x23] = SDL_SCANCODE_H,
+    [0x24] = SDL_SCANCODE_J, [0x25] = SDL_SCANCODE_K, [0x26] = SDL_SCANCODE_L,
+    [0x27] = SDL_SCANCODE_SEMICOLON, [0x28] = SDL_SCANCODE_APOSTROPHE,
+    [0x29] = SDL_SCANCODE_GRAVE, [0x2A] = SDL_SCANCODE_LSHIFT,
+    [0x2B] = SDL_SCANCODE_BACKSLASH,
+    [0x2C] = SDL_SCANCODE_Z, [0x2D] = SDL_SCANCODE_X, [0x2E] = SDL_SCANCODE_C,
+    [0x2F] = SDL_SCANCODE_V, [0x30] = SDL_SCANCODE_B, [0x31] = SDL_SCANCODE_N,
+    [0x32] = SDL_SCANCODE_M, [0x33] = SDL_SCANCODE_COMMA,
+    [0x34] = SDL_SCANCODE_PERIOD, [0x35] = SDL_SCANCODE_SLASH,
+    [0x36] = SDL_SCANCODE_RSHIFT, [0x37] = SDL_SCANCODE_KP_MULTIPLY,
+    [0x38] = SDL_SCANCODE_LALT, [0x39] = SDL_SCANCODE_SPACE,
+    [0x3A] = SDL_SCANCODE_CAPSLOCK,
+    [0x3B] = SDL_SCANCODE_F1, [0x3C] = SDL_SCANCODE_F2, [0x3D] = SDL_SCANCODE_F3,
+    [0x3E] = SDL_SCANCODE_F4, [0x3F] = SDL_SCANCODE_F5, [0x40] = SDL_SCANCODE_F6,
+    [0x41] = SDL_SCANCODE_F7, [0x42] = SDL_SCANCODE_F8, [0x43] = SDL_SCANCODE_F9,
+    [0x44] = SDL_SCANCODE_F10, [0x45] = SDL_SCANCODE_NUMLOCKCLEAR,
+    [0x46] = SDL_SCANCODE_SCROLLLOCK,
+    [0x47] = SDL_SCANCODE_HOME, [0x48] = SDL_SCANCODE_UP,
+    [0x49] = SDL_SCANCODE_PAGEUP, [0x4A] = SDL_SCANCODE_KP_MINUS,
+    [0x4B] = SDL_SCANCODE_LEFT, [0x4C] = SDL_SCANCODE_KP_5,
+    [0x4D] = SDL_SCANCODE_RIGHT, [0x4E] = SDL_SCANCODE_KP_PLUS,
+    [0x4F] = SDL_SCANCODE_END, [0x50] = SDL_SCANCODE_DOWN,
+    [0x51] = SDL_SCANCODE_PAGEDOWN, [0x52] = SDL_SCANCODE_INSERT,
+    [0x53] = SDL_SCANCODE_DELETE, [0x54] = SDL_SCANCODE_PRINTSCREEN,
+    [0x56] = SDL_SCANCODE_NONUSBACKSLASH,
+    [0x57] = SDL_SCANCODE_F11, [0x58] = SDL_SCANCODE_F12,
 };
 
 /* The key-config block's 16 scan slots in the sampler's own bit order: P1's
@@ -85,11 +124,30 @@ static const u16 k_cfg_bit[16] = {
     0x0080u, 0x0040u, 0x0020u, 0x0010u, 0x0001u, 0x0002u, 0x0004u, 0x0008u
 };
 
+/* The game's default binding (the record at 0xA2C62: P1 S X Z C / U I N M, P2
+ * the arrows / Home PgUp End PgDn) for a run whose block is absent or all
+ * zero. 0x3B/0x3C (F1/F2) are outside the block: 0x1B850/0x1B870 read them at
+ * the fixed +0x28F/+0x290. */
+static const u8 k_default_scan[16] = {
+    0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32,
+    0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51
+};
+
+/* The 16 scans a run samples: the configured block when one is filled, else the
+ * default record's. NULL when DS_00101514 does not point into mem[]. */
+static const u8 *host_key_scans(void)
+{
+    const u32 base = DSD(DS_00101514);
+    if (base == 0u || base > MEM_SIZE - 0x2EEu) return NULL;
+    const u8 *cfg = mem + base + 0x2DEu;
+    u8 any = 0u;
+    for (u32 i = 0u; i < 16u; i++) any |= cfg[i];     /* a zero table is no table */
+    return any != 0u ? cfg : k_default_scan;
+}
+
 /* PORT: one set-1 scan's kb bit under the binding the sampler reads: the
  * configured scans when a run has filled the block (config_keys_apply, record
- * §50-C), else the game's default binding (the record at 0xA2C62: S X Z C /
- * U I N M / F1 for P1, the arrows / Home PgUp End PgDn / F2 for P2). Any other
- * scan is no pad key. */
+ * §50-C), else the game's default binding. Any other scan is no pad key. */
 u16 host_kb_bit(u8 scan)
 {
     const u32 base = DSD(DS_00101514);
@@ -112,27 +170,12 @@ u16 host_kb_bit(u8 scan)
      * no pad key for a block whose slots are empty. The windowed run's block is
      * never empty: config_set_defaults (0x2CADC) applies the default record, or
      * the pack/load pair carries the image's own. */
-    switch (scan) {
-    case 0x1F: return 0x8000u;   /* S */
-    case 0x2D: return 0x4000u;   /* X */
-    case 0x2C: return 0x2000u;   /* Z */
-    case 0x2E: return 0x1000u;   /* C */
-    case 0x16: return 0x0100u;   /* U */
-    case 0x3B: return 0x0100u;   /* F1 */
-    case 0x17: return 0x0200u;   /* I */
-    case 0x31: return 0x0400u;   /* N */
-    case 0x32: return 0x0800u;   /* M */
-    case 0x48: return 0x0080u;   /* Up */
-    case 0x50: return 0x0040u;   /* Down */
-    case 0x4B: return 0x0020u;   /* Left */
-    case 0x4D: return 0x0010u;   /* Right */
-    case 0x47: return 0x0001u;   /* Home */
-    case 0x3C: return 0x0001u;   /* F2 */
-    case 0x49: return 0x0002u;   /* PgUp */
-    case 0x4F: return 0x0004u;   /* End */
-    case 0x51: return 0x0008u;   /* PgDn */
-    default: return 0u;
-    }
+    u16 bits = 0u;
+    for (u32 i = 0u; i < 16u; i++)
+        if (k_default_scan[i] == scan) bits |= k_cfg_bit[i];
+    if (scan == 0x3B) bits |= 0x0100u;
+    if (scan == 0x3C) bits |= 0x0001u;
+    return bits;
 }
 
 static int g_key_bits_override_on;
@@ -150,12 +193,60 @@ u16 host_key_bits(void)
     if (g_key_bits_override_on) return g_key_bits_override;
     const bool *st = SDL_GetKeyboardState(NULL);
     if (st == NULL) return 0u;
+    const u8 *scans = host_key_scans();
+    if (scans == NULL) return 0u;
     u16 bits = 0u;
-    for (int i = 0; i < 26; i++)
-        if (st[SDL_SCANCODE_A + i]) bits |= host_kb_bit(k_bios_letter[i]);
-    for (size_t i = 0; i < sizeof k_bios_pad / sizeof k_bios_pad[0]; i++)
-        if (st[k_bios_pad[i].sdl]) bits |= host_kb_bit(k_bios_pad[i].scan);
+    /* Every configured slot is sampled, whatever scan it names (record §H2):
+     * the first cut walked the 26 letters and 10 pad keys, so a rebind outside
+     * them was stored but never read. */
+    for (u32 i = 0u; i < 16u; i++) {
+        const u8 scan = scans[i];
+        if (scan >= 0x80u) continue;                  /* no SDL key for it */
+        const SDL_Scancode key = k_scan_sdl[scan];
+        if (key != SDL_SCANCODE_UNKNOWN && st[key]) bits |= k_cfg_bit[i];
+    }
+    if (st[SDL_SCANCODE_F1]) bits |= 0x0100u;         /* 0x1B850 */
+    if (st[SDL_SCANCODE_F2]) bits |= 0x0001u;         /* 0x1B870 */
     return bits;
+}
+
+/* One key-state entry: the RM.DRV int 9 handler (0x31B) stores the raw scan
+ * byte at [base+0x254+(scan&0x7F)] -- the table is 128 entries, +0x254..+0x2D3,
+ * with the config block's device words at +0x2D4. So the make byte has bit 7
+ * clear and the break byte sets it; the six readers test bit 7. */
+static void host_key_state_store(u8 *tbl, u8 scan, int down)
+{
+    const u8 make = (u8)(scan & 0x7Fu);
+    tbl[make] = down ? make : (u8)(make | 0x80u);
+}
+
+/* PORT: fills the key-state table the ported readers (input_dirs_p1 .. input_f2)
+ * read, from the same 16 bits host_key_bits() reports -- SDL's keyboard through
+ * the configured binding, or the test seam's captured bitmap. The raw's ISR
+ * writes only the key it saw; the host writes every bound slot and F1/F2 each
+ * frame, so no read entry can keep a stale make. The default record's scans are
+ * used when the block is absent or all zero (record §H2). */
+void host_input_fill_keyboard(void)
+{
+    const u32 base = DSD(DS_00101514);
+    if (base == 0u || base > MEM_SIZE - 0x2EEu) return;
+    const u8 *scans = host_key_scans();
+    if (scans == NULL) return;
+    u8 *const tbl = mem + base + 0x254u;
+    const u16 bits = host_key_bits();
+    /* 0x1B850/0x1B870 read the fixed entries +0x28F/+0x290 (= +0x254+0x3B/0x3C). */
+    host_key_state_store(tbl, 0x3Bu, (bits & 0x0100u) != 0u);
+    host_key_state_store(tbl, 0x3Cu, (bits & 0x0001u) != 0u);
+    for (u32 i = 0u; i < 16u; i++) {
+        const u8 scan = scans[i];
+        if (scan == 0u) continue;                     /* an unbound slot */
+        int down = (bits & k_cfg_bit[i]) != 0u;
+        /* One table entry can serve two readers: a slot bound to F1/F2 is the
+         * entry 0x1B850/0x1B870 reads, so either source makes it. */
+        if (scan == 0x3Bu) down |= (bits & 0x0100u) != 0u;
+        if (scan == 0x3Cu) down |= (bits & 0x0001u) != 0u;
+        host_key_state_store(tbl, scan, down);
+    }
 }
 
 static u32 g_tick;

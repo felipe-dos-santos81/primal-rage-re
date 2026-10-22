@@ -125,3 +125,85 @@ void input_state_update(void)
     DSW(DS_001088E2) = (u16)(((DSD(DS_001088E4) & 0x0000FF00u) >> 8) |
                              (DSD(DS_001088D8) & 0x0000FF00u));
 }
+
+/* ---- the keyboard readers (record §H2) ----------------------------------
+ * 0x1BBAC's device-0 arms. The raw loads the block base once into ECX, reads
+ * each slot's scan byte, and indexes the key-state table at +0x254 with it;
+ * the four slot readers re-store the base at the end (0x1B693/0x1B723/
+ * 0x1B7B3/0x1B843) -- a no-op, since it is the value they read, kept for the
+ * raw's own shape. A slot whose table byte has bit 7 clear is a make (the RM.DRV
+ * handler's make byte), and that sets the game bit. */
+
+static const u8 k_dir_bit[4] = { 0x80u, 0x40u, 0x20u, 0x10u };
+static const u8 k_btn_bit[4] = { 0x01u, 0x02u, 0x04u, 0x08u };
+
+/* The four positions from `first`: each slot's scan indexes the key-state
+ * table, and a make entry sets that position's bit. */
+static u8 input_slot_bits(u32 base, u32 first, const u8 bit[4])
+{
+    u8 al = 0u;
+    for (u32 i = 0u; i < 4u; i++) {
+        const u8 scan = DSB(base + first + i);          /* 0x1B61D */
+        if ((DSB(base + 0x254u + scan) & 0x80u) == 0u)  /* 0x1B623 */
+            al |= bit[i];                               /* 0x1B637 */
+    }
+    return al;
+}
+
+/* 0x1B610 — host input truth §H2. */
+u8 input_dirs_p1(void)
+{
+    PR_SEAM_RET0(0x1B610u);
+    const u32 base = DSD(DS_00101514);                  /* 0x1B613 */
+    const u8 al = input_slot_bits(base, 0x2DEu, k_dir_bit);
+    DSD(DS_00101514) = base;                            /* 0x1B693 */
+    return al;
+}
+
+/* 0x1B6A0 — host input truth §H2. */
+u8 input_dirs_p2(void)
+{
+    PR_SEAM_RET0(0x1B6A0u);
+    const u32 base = DSD(DS_00101514);                  /* 0x1B6A3 */
+    const u8 al = input_slot_bits(base, 0x2E6u, k_dir_bit);
+    DSD(DS_00101514) = base;                            /* 0x1B723 */
+    return al;
+}
+
+/* 0x1B730 — host input truth §H2. */
+u8 input_buttons_p1(void)
+{
+    PR_SEAM_RET0(0x1B730u);
+    const u32 base = DSD(DS_00101514);                  /* 0x1B733 */
+    const u8 al = input_slot_bits(base, 0x2E2u, k_btn_bit);
+    DSD(DS_00101514) = base;                            /* 0x1B7B3 */
+    return al;
+}
+
+/* 0x1B7C0 — host input truth §H2. */
+u8 input_buttons_p2(void)
+{
+    PR_SEAM_RET0(0x1B7C0u);
+    const u32 base = DSD(DS_00101514);                  /* 0x1B7C3 */
+    const u8 al = input_slot_bits(base, 0x2EAu, k_btn_bit);
+    DSD(DS_00101514) = base;                            /* 0x1B843 */
+    return al;
+}
+
+/* 0x1B850 — host input truth §H2. */
+u8 input_f1(void)
+{
+    PR_SEAM_RET0(0x1B850u);
+    const u32 base = DSD(DS_00101514);                  /* 0x1B851 */
+    const u8 ah = DSB(base + 0x28Fu) & 0x80u;           /* 0x1B859 */
+    return ah == 0u ? 1u : 0u;                          /* 0x1B86A */
+}
+
+/* 0x1B870 — host input truth §H2. */
+u8 input_f2(void)
+{
+    PR_SEAM_RET0(0x1B870u);
+    const u32 base = DSD(DS_00101514);                  /* 0x1B871 */
+    const u8 ah = DSB(base + 0x290u) & 0x80u;           /* 0x1B879 */
+    return ah == 0u ? 1u : 0u;                          /* 0x1B88A */
+}
