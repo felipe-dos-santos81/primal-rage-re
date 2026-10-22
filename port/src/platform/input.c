@@ -311,7 +311,8 @@ void input_sampler(void)
     int p2 = 0;
     if (dev2 == 2u || dev2 == 4u || dev2 == 6u) {           /* 0x1BBE9 */
         /* A P2 device 2 arm reads the same both-player game-port bits as P1's,
-         * so a P2 device 2 forces P1's arm to a port too (0x1BC35). */
+         * so the raw's presence code treats P1 as a port when P2 selects 2
+         * (0x1BC35): it sets its local flag, not the +0x2D4 word. */
         if (p1 || dev2 != 2u) p2 = 1;                       /* 0x1BBF8..0x1BC3B */
         else { p1 = 1; p2 = 0; }
     }
@@ -326,7 +327,7 @@ void input_sampler(void)
                 DSW(base + 0x2D6u) = 0u;
             }
         }
-    } else if (!p1 || p2) {
+    } else if (!p1 || p2) {                                 /* the raw's 0x1BCC8 `test al,al; jne` chain */
         if (!p1 && p2) {                                    /* P2 is the only port */
             if (host_port_poll_p2() == 0) {                 /* 0x1BCD8 (0x4FCFD) */
                 base = DSD(DS_00101514);                    /* 0x1BCE1 */

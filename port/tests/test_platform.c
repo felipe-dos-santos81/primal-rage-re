@@ -2878,6 +2878,11 @@ int test_render(void)
  * break the mem[] linear-address invariant. */
 #define TEST_KEY_BASE 0x3000000u
 
+/* The 16 key-config slot scans the keyboard-reader and sampler tests plant: all
+ * distinct, so one make byte sets exactly one game bit. */
+static const u8 k_test_slots[16] = { 0x48, 0x49, 0x4A, 0x4B, 0x40, 0x41, 0x42, 0x43,
+                                     0x4C, 0x4D, 0x4E, 0x4F, 0x44, 0x45, 0x46, 0x47 };
+
 /* Dequeues one key, failing instead of blocking forever: input_get_key() spins
  * on host_pump() while empty, and the headless suite has no window to produce a
  * key, so a missing key must fail rather than hang. */
@@ -3268,8 +3273,7 @@ int test_input_keyboard_readers(void)
 {
     int before = g_failures;
     const u32 saved_base = DSD(DS_00101514);
-    static const u8 slots[16] = { 0x48, 0x49, 0x4A, 0x4B, 0x40, 0x41, 0x42, 0x43,
-                                  0x4C, 0x4D, 0x4E, 0x4F, 0x44, 0x45, 0x46, 0x47 };
+    const u8 *const slots = k_test_slots;
     static const u8 dir_bit[4] = { 0x80, 0x40, 0x20, 0x10 };
     static const u8 btn_bit[4] = { 1, 2, 4, 8 };
 
@@ -3432,17 +3436,14 @@ int test_input_port_buttons(void)
 /* ---- test_input_sampler / test_input_axes: Host Input Truth §H4 ---- */
 
 /* The sampler's fixture: TEST_KEY_BASE is the key-config block, the 16 slots
- * are the H2 set (all distinct), the device words are 0/0, the axis words and
- * centers are 0, and +0x2D8/+0x2D9 start at sentinels no arm writes so a device
- * that is not 0/2/4/6 is visible. */
-static const u8 sampler_slots[16] = { 0x48, 0x49, 0x4A, 0x4B, 0x40, 0x41, 0x42, 0x43,
-                                      0x4C, 0x4D, 0x4E, 0x4F, 0x44, 0x45, 0x46, 0x47 };
-
+ * are `k_test_slots`, the device words are 0/0, the axis words and centers are
+ * 0, and +0x2D8/+0x2D9 start at sentinels no arm writes so a device that is not
+ * 0/2/4/6 is visible. */
 static void sampler_fixture(void)
 {
     mem_fill(TEST_KEY_BASE, 0, 0x400u);
     DSD(DS_00101514) = TEST_KEY_BASE;
-    for (u32 i = 0; i < 16u; i++) DSB(TEST_KEY_BASE + 0x2DEu + i) = sampler_slots[i];
+    for (u32 i = 0; i < 16u; i++) DSB(TEST_KEY_BASE + 0x2DEu + i) = k_test_slots[i];
     DSW(DS_000E1C1E) = 0u; DSW(DS_000E1C20) = 0u;
     DSW(DS_000E1C26) = 0u; DSW(DS_000E1C28) = 0u;
     DSW(DS_000E1C22) = 0u; DSW(DS_000E1C24) = 0u;
@@ -3497,7 +3498,9 @@ static void sampler_bytes(u8 p1, u8 p2)
 
 /* The default device 0/0 path: the sampler's keyboard arms must reproduce the
  * direct write game_loop used to make (DSB(+0x2d8) = word >> 8,
- * DSB(+0x2d9) = word) for every bit, the F1/F2 bits included. */
+ * DSB(+0x2d9) = word). Eight words are sampled, each setting one bit per byte
+ * (the F1/F2 bit-0 cases included), so every one of the 16 positions is
+ * covered. */
 int test_input_sampler_device0(void)
 {
     int before = g_failures;
@@ -3538,6 +3541,17 @@ int test_input_sampler_device0(void)
     sampler_bytes(0x00u, 0x00u);
     CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
     CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+
+    /* A non-port device is not the presence block's to clear: seed a word value
+     * the sampler never writes (3) and a byte sentinel, so a spurious clear
+     * cannot pass vacuously at 0. */
+    sampler_devs(3u, 3u);
+    DSB(TEST_KEY_BASE + 0x2d8u) = 0xC3u;
+    DSB(TEST_KEY_BASE + 0x2d9u) = 0x3Cu;
+    input_sampler();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 3);
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 3);
+    sampler_bytes(0xC3u, 0x3Cu);
 
     host_set_key_bits_override(0, 0);
     sampler_axes_restore(saved_axes);
@@ -3603,8 +3617,9 @@ int test_input_sampler_arms(void)
     input_sampler();
     sampler_bytes(0x40u, 0x10u);                           /* P1 arm 4, P2 keyboard */
 
-    /* dev 0/2: P2's device 2 also forces the both-port presence check, but
-     * P1's own arm is still the keyboard (its device word is 0). */
+    /* dev 0/2: P2's device 2 makes the presence check treat P1 as a port (the
+     * raw's 0x1BC35; it does not write +0x2D4), so the P1-only poll 0x4FC05
+     * runs. P1's own arm is still the keyboard (its device word is 0). */
     sampler_devs(0u, 2u);
     sampler_axes(0x001E, 0x0000, 0x001E, 0x0000);
     sampler_keys(0x0000u);
@@ -3621,8 +3636,9 @@ int test_input_sampler_arms(void)
     input_sampler();
     sampler_bytes(0xA5u, 0x5Au);
 
-    /* No pad answers: the sampler clears the device words (0x1BC6F/0x1BC9E/
-     * 0x1BCE6) and the arms fall back to the keyboard. */
+    /* No pad answers: the sampler clears the device words (0x1BC6F, and
+     * 0x1BCB4/0x1BCBF for the P1-only arm, 0x1BCE6) and the arms fall back to
+     * the keyboard. */
     host_set_port_present_override(0, 1);
     sampler_devs(2u, 2u);
     sampler_keys(0x0100u);
@@ -3641,7 +3657,19 @@ int test_input_sampler_arms(void)
     sampler_devs(0u, 4u);                                  /* P2-only arm: clear P2 */
     input_sampler();
     CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+    sampler_devs(0u, 2u);                                  /* dev 0/2: the P1-only arm clears P2 */
+    input_sampler();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D6u), 0);
+    sampler_bytes(0x01u, 0x00u);
     host_set_port_present_override(0, 0);
+
+    /* The production answer (no pad, the override off): one device-2 sample
+     * clears the word and the keyboard arms take over. */
+    sampler_devs(2u, 0u);
+    sampler_keys(0x0100u);
+    input_sampler();
+    CHECK_EQ_INT((int)DSW(TEST_KEY_BASE + 0x2D4u), 0);
+    sampler_bytes(0x01u, 0x00u);
 
     host_set_port_buttons_override(0, 0);
     host_set_key_bits_override(0, 0);
@@ -3660,6 +3688,20 @@ int test_input_axes_dead_band(void)
     sampler_axes_save(saved);
     const u16 cx = 0x2000u, cy = 0x2400u;               /* distinct centers per axis */
     const u16 bx = 0x1C00u, by = 0x2800u;
+
+    /* The no-pad fill: each axis word becomes its own center, so a non-zero
+     * center is copied rather than zeroed and both readers see the dead band. */
+    DSW(DS_000E1C1E) = 0u; DSW(DS_000E1C20) = 0u;
+    DSW(DS_000E1C26) = 0u; DSW(DS_000E1C28) = 0u;
+    DSW(DS_000E1C22) = 0x1234u; DSW(DS_000E1C24) = 0x2345u;
+    DSW(DS_000E1C2A) = 0x3456u; DSW(DS_000E1C2C) = 0x4567u;
+    host_input_fill_axes();
+    CHECK_EQ_INT((int)DSW(DS_000E1C1E), 0x1234);
+    CHECK_EQ_INT((int)DSW(DS_000E1C20), 0x2345);
+    CHECK_EQ_INT((int)DSW(DS_000E1C26), 0x3456);
+    CHECK_EQ_INT((int)DSW(DS_000E1C28), 0x4567);
+    CHECK_EQ_INT((int)input_axes_a(), 0);
+    CHECK_EQ_INT((int)input_axes_b(), 0);
 
     /* Reader A (0x4FF8F): X 0x10/0x20 against 0xE1C22, Y 0x40/0x80 against 0xE1C24. */
     DSW(DS_000E1C22) = cx; DSW(DS_000E1C24) = cy;

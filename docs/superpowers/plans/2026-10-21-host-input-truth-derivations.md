@@ -565,19 +565,278 @@ seam's wiring, not a bit map, so the last row is a wiring mutation):
 
 | mutation | failing checks |
 |---|---|
-| device-0 P1 arm drops the F1 OR | `3494: 0 != 1` (F1-only p1) |
-| device-0 P2 arm reads F1 for F2 | `3495: 1 != 0` x3 (F2-only p2) |
-| device-0 P1 arm ORs `input_axes_a()` | `3494: 144 != 0`, `3494: 96 != 32`, `3494: 16 != 0`, `3494: 17 != 1` x2 |
-| P2 device 2 reads axes B | `3495: 32 != 16`, `3495: 33 != 17`, `3495: 47 != 31` |
-| P1 device 6 reads the game-port buttons | `3494: 69 != 79` |
-| P1-only clear ignores `+0x2D6` | `3639: 0 != 4`, `3640: 1 != 0` |
-| a non-port device writes the keyboard byte | `3494: 0 != 165` x2 |
-| axes A threshold 0x1E -> 0x1D | `3669: 16 != 0` |
-| axes A Y+ bit 0x40 -> 0x80 | `3494: 143 != 79`, `3494: 128 != 64`, `3680: 128 != 64` |
-| axes B X center -> its Y center | eight B checks `3700..3717` (`32 != 0`, `32 != 16`, `96 != 64`, `160 != 128`) |
-| axes A X difference 32-bit | `3693: 32 != 0` (the wrap case) |
+| `0x1B890` bit-4 test `0x10` -> `0x20` | `test_platform.c:3380: 0 != 1`, `3380: 3 != 2`, `3419: 15 != 14` |
+| `0x1B8DC` bit-5 output `4` -> `2` | `3390: 3 != 5`, `3398: 2 != 4`, `3400: 3 != 5`, `3426: 3 != 5` |
+| `0x1B908` bit-6 test `0x40` -> `0x10` | `3406: 0 != 1`, `3410: 4 != 5`, `3412: 1 != 0` |
+| `0x1B890` bit-7 polarity `== 0u` -> `!= 0u` | `3380` x4, `3385: 8 != 0`, `3389: 7 != 15`, `3417: 8 != 0`, `3419: 6 != 14`, `3425: 7 != 15` |
+| `0x1B8DC` bit-4 polarity `== 0u` -> `!= 0u` | `3386: 1 != 0`, `3390: 4 != 5`, `3396: 0 != 1`, `3398: 5 != 4`, `3400: 4 != 5`, `3402: 1 != 0`, `3426: 4 != 5` |
+| `0x1B8DC` bit-4 mask `0x10` -> `0x40` | `3396: 0 != 1`, `3400: 4 != 5`, `3402: 1 != 0` |
+| `0x1B908` bit-7 polarity `== 0u` -> `!= 0u` | `3387: 4 != 0`, `3391: 1 != 5`, `3406: 5 != 1`, `3408: 0 != 4`, `3410: 1 != 5`, `3412: 4 != 0`, `3427: 1 != 5` |
+| `host_port_buttons()` byte `^ 0x40` (the seam's wiring) | 21 checks: `3379` x4 (`175 != 239`, `159 != 223`, `255 != 191`, `63 != 127`), `3380` x4, `3385`, `3387`, `3389`, `3391`, `3406`, `3408`, `3410`, `3412`, `3417`, `3419`, `3424: 64 != 0`, `3425`, `3427` |
 
-Line numbers are this commit's `test_platform.c`; `3494`/`3495` are `sampler_bytes`' p1/p2
+Coverage after these: every check line `3379..3427` appears in at least one row -- `3379`
+and `3424` only in the wiring row, `3386`/`3387`/`3391`/`3396`/`3402`/`3408`/`3427` in the
+three polarity/mask rows added for this review (they were green under the first four), and
+the rest in the earlier rows. The three new bit-map mutations are what make a P1 or P2
+polarity inversion fail the unit test, not only the differential row.
+
+Named limit: the test cannot exercise the SDL pad (Task 5) and does not; it pins the byte ->
+bit maps for the byte the host answers, which is the row's claim too.
+
+### §H3.5 Counters and the harness suite's name tables
+
+The differential step (`--self-check`) now reads **1016/1016 functions VERIFIED;
+14938/14938 mutants detected; 0 named gaps; 774/832 rows with callees closed (184 have
+none); 768/832 closed on full rows; 8 ported functions with no row.** Against §H2.6's 1013 /
+14926 / 1 / 181: +3 rows and +12 mutants from this batch, the named gap count 1 -> 0, and
+the callee-less count 181 -> 184; the closed pair is unchanged. `tools/port_progress.py`
+reads `796 1203 66`, `756 756 100` (README stays at 65% until Task 7's closeout).
+
+**A Task 2 omission repaired here.** Task 2's six rows were never added to
+`tools/tests/test_diff_verify.py`'s expected-name tables, so at this task's start the harness
+suite (`make diff-verify`'s unittest, AGENTS.md) failed with six unknown functions; the
+controller's Task 2 review did not catch it. This batch adds `H2_MASKS`/`H2_KINDS`/
+`H2_CASES` for those six rows and `H3_MASKS`/`H3_KINDS`/`H3_CASES` for the three here (all
+values measured), removes `host_1b890` from the name list and the EAX-mask dict, turns its
+named-gap test into a 9/9 full-row assertion, pins the new counter string, and adds two tests
+for the `ins`/`in 0x201` case line (the machine text and the runner's answer/refusals).
+`python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify`: 216 tests, OK.
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` (repo root): `all checks passed`.
+
+## §H4 The axis readers, the ISR sampler and the `game_loop` call
+
+Task 4 ports the two axis readers and the sampler `0x1BBAC` that consumes all eleven readers,
+gives the host the no-pad axis state and the presence answer, and replaces `game_loop`'s direct
+`+0x2D8`/`+0x2D9` write with the sampler. Sources: capstone over the fixed-up image (image offset
+= address − `0x10000`) for every instruction below; the Ghidra listing
+(`port/decomp/prage.c:7484-7603`, `36561-36625`) agrees. The rows were run by spec name
+(`--function input_axes_a`, ...): the plan's `--function 0x4FF8F` form is not the CLI's, as §H2
+already records.
+
+### §H4.1 The three functions
+
+The axis readers are argument-free leaves returning through AL:
+
+```
+4FF8F  push ecx / xor eax,eax
+4FF92  mov cx,[0xe1c1e] / sub cx,[0xe1c22] / js 0x4ffac / cmp cx,0x1e / jl 0x4ffb4 / or al,0x10
+4FFAC  cmp cx,0xffffffe2 (-0x1e) / jg 0x4ffb4 / or al,0x20
+4FFB4  mov cx,[0xe1c20] / sub cx,[0xe1c24] / ... / or al,0x40 (>= +0x1e) / or al,0x80 (<= -0x1e)
+4FFD6  pop ecx / ret
+```
+
+and `0x4FFD8` is the same shape on `0xE1C26/0xE1C28` against `0xE1C2A/0xE1C2C`. The subtraction
+is **16-bit** (`sub cx,`), so a value below its center wraps; the compares are signed, so the
+thresholds are `>= +0x1E` and `<= -0x1E` and `+0x1D/-0x1D` stay in the dead band. X's bits are
+`0x10/0x20` and Y's `0x40/0x80`, independent of each other (8-way). The port's versions cast the
+difference to `s16` and mirror the two compares (`port/src/platform/input.c`).
+
+`0x1BBAC` (the ISR's sampler, called from `0x1BDF4` at `0x1BE1C`) is the whole of
+`port/decomp/prage.c:7486-7603`:
+
+- **The device masks.** P1's word `+0x2D4` (`0x1BBB6`) is a port when it is 2/4/6; P2's `+0x2D6`
+  (`0x1BBDC`) likewise. A P2 device 2 arm reads the same both-player game-port bits as P1's, so
+  when P2 selects 2 the raw's presence code treats P1 as a port too (`0x1BC35`): it sets its own
+  flag, not the `+0x2D4` word (which stays 0 unless the config says otherwise). That is why
+  `input_sampler`'s `p1`/`p2` are not the two independent "is a port" tests; the raw's `mov ah,1`/
+  `mov al,1` pair is kept.
+- **The presence block** (`0x1BC4F..0x1BCE6`): both ports call `0x4FDF5` (`0x1BC4F`); a 0 answer
+  probes `0x4FBBB(3)` (`0x1BC61`, clear `+0x2D4` on 0, `0x1BC6F`) and `0x4FBBB(0xC)` (`0x1BC7D`,
+  clear `+0x2D6` on 0, `0x1BCE1`). The two masks are the game port's four axis one-shot bits
+  (port 0x201 bits 0..3): 3 is P1's axes 0/1 and 0xC P2's axes 2/3 (`0x4FBBB` waits for the mask to
+  clear, writes `out 0x201,0` and waits again). P1 only calls `0x4FC05` (`0x1BC99`); a 0 answer
+  clears `+0x2D4` when `+0x2D6 == 0` (`0x1BCBF`) else clears `+0x2D6` (`0x1BCB4`). P2 only calls
+  `0x4FCFD` (`0x1BCD8`) and a 0 answer clears `+0x2D6` (`0x1BCE6`). Neither skips it. The block
+  re-reads `+0x101514` before each clear (`0x1BC6A`/`0x1BCA2`/`0x1BCE1`), and so does the port.
+- **The arms** (the switch tables `0x1BB74` for P1 and `0x1BB90` for P2, seven entries each; the
+  entries for 1, 3 and 5 are the "past the write" target `0x1BD61`/`0x1BDEE`, so a non-0/2/4/6
+  device leaves that player's byte untouched, as do values above 6 via the `ja` guards):
+
+  | dev | P1 (+0x2D4) call order | P2 (+0x2D6) call order |
+  |---|---|---|
+  | 0 | `0x1B610` dirs, `0x1B730` buttons, `0x1B850` F1 | `0x1B6A0`, `0x1B7C0`, `0x1B870` F2 |
+  | 2 | `0x4FF8F` axes A, `0x1B890` both, `0x1B850` F1 | `0x4FF8F` axes A, `0x1B890`, `0x1B870` F2 |
+  | 4 | `0x4FF8F`, `0x1B8DC` P1, `0x1B850` | `0x4FFD8` axes B, `0x1B908` P2, `0x1B870` |
+  | 6 | `0x4FF8F`, `0x1B730` keyboard buttons, `0x1B850` | `0x4FFD8`, `0x1B7C0`, `0x1B870` |
+
+  The write ORs the three readers with F1/F2 (`0x1BD53` for `+0x2D8`, `0x1BDE0` for `+0x2D9`).
+  **P2's device 2 arm reads axes A, not B** (`0x1BD8B` calls `0x4FF8F`; `0x1BDA4`/`0x1BDC9` call
+  `0x4FFD8`): the design's table agrees, and the row's `b2` case pins it (the `@axesb` mutant is
+  caught on three cases).
+
+Two raw-vs-listing notes. The Ghidra listing shows `case 0: FUN_0001b610(); break;` (no write):
+that is a decompiler artifact — the jump-table entry for 0 is `0x1BD0E`, whose `jmp 0x1BD41`
+re-enters the case 6 block at `mov dl,al` and reaches the `+0x2D8` store through
+`0x1BD48..0x1BD53`, so device 0 does write the byte. And the P2 switch's `jmp
+cs:[edx*4+0x1bb90]` (`0x1BD7C`) is added to `E.RESOLVED_JUMPS` (`tools/diff_emu.py`) because the
+`xor edx,edx; mov dx,ax` pair hides the guard from `switch_cases` (the P1 table is found
+heuristically). Without the resolution the row's static scan is **42 leaders with one indirect
+jump**; with it, **48 leaders, no indirect jump, not truncated**, and all 48 are hit.
+
+A PORT guard: the sampler returns before touching `mem[]` when `DS_00101514` is 0 or outside
+`MEM_SIZE - 0x2EE` — the drivers' diffrun cases and any headless run before `0x1BEC4` has built the
+block. The raw's ISR is installed only after that block exists (`0x1BF4C/0x1BF6D`), and the port's
+`game_loop` folds the ISR in, so without the guard the game_loop row would read `mem[0x254]`
+through a zero base. The sampler row's cases all set the base, so the guard is outside the raw's
+behaviour it compares; the game_loop row exercises it.
+
+### §H4.2 The rows (`tools/diff_verify.py`) and their mutants
+
+The axis rows (`input_axes_a` `0x4FF8F`, `input_axes_b` `0x4FFD8`) are added to the D1I group,
+`eax_mask=0xFF` (AL only; the sampler reads AL). Fixture `h4_axis_case(cid, ax, ay, cx, cy,
+player_a)`: the player's two axis words and their two centers (A `0xE1C1E/0xE1C20` against
+`0xE1C22/0xE1C24`, B `+8` on both). The cases use **distinct centers per axis** (`cx=0x100,
+cy=0x200`) so a wrong-center mutant is caught:
+
+| case | words | expected |
+|---|---|---|
+| a0 | rest | 0 |
+| a1/a2 | X +0x1E / -0x1E | 0x10 / 0x20 |
+| a3/a4 | X +0x1D / -0x1D | 0 (dead band) |
+| a5/a6 | Y +0x1E / -0x1E | 0x40 / 0x80 |
+| a7/a8 | Y +0x1D / -0x1D | 0 |
+| a9/a10/a11 | both extremes (X-,Y+ / X+,Y+ / X-,Y-) | 0x90 / 0x50 / 0xA0 |
+| a12 | X word 0x0005 against center 0xFFF0 | 0 (+0x15; a 32-bit subtract would read +0x80015) |
+| a13 | X word 0x8000 against 0 | 0x20 (-0x8000) |
+
+`input_axes_b` has the same fourteen cases on its words. Six mutants each: `@thr` (0x1D threshold),
+`@xbit`/`@ybit` (the sign bits swapped), `@or` (Y assigned instead of OR'd), `@wide` (the 16-bit
+truncation dropped) and `@ctr` (X compared against the Y center). All 12 are detected; measured
+case sets (`H4_CASES`): `@thr` the four ±0x1D cases per axis (a3/a4/a7/a8, b3/b4/b7/b8), `@wide`
+only a12/a13 (b12/b13), `@ctr` ten cases, the rest the sign cases.
+
+The sampler row (`input_sampler` `0x1BBAC`, `eax_mask=0`, void) has **11 `real` callees** (the six
+keyboard readers, the three game-port readers and the two axis readers; each has its own row) and
+**4 stubbed host-owned presence routines** (`0x4FDF5`/`0x4FBBB`/`0x4FC05`/`0x4FCFD`), whose
+per-case EAX the `stub_eax` map chooses. Fixture `h4_sampler_case(cid, dev1, dev2, pressed, f1, f2,
+a, b, port, poll, probe)`: the key-config block `H4_BIOS = 0x109000` with `[0x101514]` pointing at
+it, the 16 H2 slot scans, the table (all break, `pressed` make, F1/F2 at `+0x28F/+0x290`), the
+device words `+0x2D4/+0x2D6`, the four axis words (centers 0), the sentinels `+0x2D8=0xA5`,
+`+0x2D9=0x5A`, and the game-port byte as the machine's `in 0x201 NN` (the §H3 channel; the byte is
+listed twice because a 2/2 or 4/4 case reads the port once per player's arm). Sixteen cases:
+
+| case | devices | what it pins |
+|---|---|---|
+| k1/k2 | 0/0 | the keyboard arms, F1/F2 on and off (the default path) |
+| b2/b2b | 2/2 | axes A for **both** players, game-port bits 4..7 -> 1/2/4/8 |
+| b4 | 4/4 | P1 axes A + bits 4/5, P2 axes B + bits 6/7 |
+| b6 | 6/6 | axes A/B with the keyboard button scans (no game port) |
+| o1/o2 | 4/1, 0/4 | the single-player port arm beside the other player's keyboard arm |
+| o3 | 0/2 | P2 device 2 makes the presence code treat P1 as a port (no word write), so the P1-only poll runs; P1's arm stays the keyboard |
+| c1 | 2/2 poll 0 probe 0 | both device words cleared (0x1BC6F + 0x1BCE1) |
+| c2 | 4/0 poll 0 | P1-only, `+0x2D6 == 0` -> clear P1 (0x1BCBF) |
+| c3 | 4/1 poll 0 | P1-only, `+0x2D6 != 0` -> clear P2 (0x1BCB4) |
+| c4 | 0/4 poll 0 | P2-only -> clear P2 (0x1BCE6) |
+| x1/x2/x3 | 1/1, 7/7, 1/7 | no presence call and no write (the sentinels) |
+
+All **48/48 blocks** are hit and the row has no pokes, no unhit block and no terminal difference,
+but it is **open** on the four presence stubs: the closure rule (record §J1) excuses only
+*allow-mode* callees outside the portable set, and a recorded stub keeps the row open. That is the
+honest statement — the presence block's calls and answers are compared, the routines themselves are
+host-owned (record §49-V) and Task 6 models them. Six mutants: `@axesb` (P2 device 2 reads axes B),
+`@p1f1`/`@p2f2` (F2 in P1's byte / F1 in P2's), `@arm6` (P1 device 6 reads the game-port buttons),
+`@clear` (the P1-only arm always clears P1) and `@nonport` (a device that is not 0/2/4/6 writes the
+keyboard byte). All six are detected, measured kinds and case sets in `H4_KINDS`/`H4_CASES`
+(`@arm6` and `@clear` change which reader an arm calls as well as the byte).
+
+RED before the port side existed: the three rows against `db8862f6`'s predecessor
+`build/diffrun` (the Task 3 binding table) print `port: unknown binding input_axes_a` (and
+`input_axes_b`/`input_sampler`) on every case, a MISMATCH. GREEN by name (`--self-check`):
+`input_axes_a` 11/11 VERIFIED 6/6 mutants, `input_axes_b` 11/11 VERIFIED 6/6, `input_sampler`
+48/48 VERIFIED 6/6.
+
+### §H4.3 The host: the no-pad axes, the presence answer and the `game_loop` call
+
+`port/src/host.c`:
+
+- `host_input_fill_axes()` writes each of the four normalized axis words to its calibrated center
+  (`0xE1C1E` <- `0xE1C22`, `0xE1C20` <- `0xE1C24`, `0xE1C26` <- `0xE1C2A`, `0xE1C28` <- `0xE1C2C`).
+  With no pad every axis is at rest, so the ported readers read their dead band; Task 5's
+  `host_pad_fill` writes the pad's displacement over them. In the captured runs the centers are 0
+  (the all-zero CMOS image), so this is a 0 -> 0 write and cannot move a pin. The unit test seeds
+  non-zero centers and asserts the copy (so a zeroing fill fails).
+- The four presence answers `host_port_poll_both()` (`0x4FDF5`), `host_port_poll_p1()` (`0x4FC05`),
+  `host_port_poll_p2()` (`0x4FCFD`) and `host_port_probe(u32)` (`0x4FBBB`) are the port's stand-ins
+  for the host-owned routines. Each opens with its differential seam (`PR_SEAM_RET0`/`PR_SEAM_RET`)
+  so the sampler's row records the call and takes the case's answer, and each returns
+  `host_port_present()` otherwise. **Task 4 answers 0 (no port)** — the no-pad state — so a
+  device 2/4/6 selection is cleared on the next sample exactly as the original does when nothing
+  answers; Task 6 models the pad's answer and the boot probe.
+  `host_set_port_present_override(int, int)` is the unit test's seam (like
+  `host_set_port_buttons_override`); off by default. The production answer is asserted by
+  `test_input_sampler_arms`'s last block (override off, a device-2 sample clears the word and the
+  keyboard arms take over).
+- The seam functions carry no column-0 `/* 0xADDR` header and no `fn_register`, so the port-code
+  guard does not read them as ported: the four addresses stay host-owned in
+  `tools/port_classification.txt` and the sampler row's open state is the stub, not a ported callee.
+
+`port/src/game/flow.c` (`game_loop`'s body, the old lines 7117-7121) now reads
+
+```
+host_input_fill_keyboard();
+host_input_fill_axes();
+input_sampler();                 /* 0x1BBAC (0x1BE1C) */
+```
+
+where it used to write `k[0x2d8] = host_key_bits() >> 8` and `k[0x2d9] = host_key_bits()`. The
+`0x4F644` update is untouched (`game_frame` calls `input_state_update` at 0x24C6E).
+
+**The default device 0/0 path is byte-identical.** For every one of the 16 bits, the fill writes
+the slot's make/break byte from the same kb word the direct write copied, and the sampler's device-0
+arms read the same four positions per player back (the slot->bit map is `k_cfg_bit` in reverse);
+F1/F2 are bits `0x0100`/`0x0001` of the word and the readers' `0x1B850/0x1B870` OR the same two
+into `+0x2D8`/`+0x2D9` bit 0. The proof, all run this task: `PR_ORACLE_REQUIRED=1
+./build/run_tests` all checks passed; `make gp-oracle` first unexplained 7559 and trace difference
+8320 (pins unchanged), `make gp-twop-oracle` 612/1506/1506 moves and the two-human check
+unchanged, `make gp-keys-oracle` 11/11 events, first unexplained 1136 and trace 2164 unchanged;
+`make frontend-oracle` (1325 frames in window, 2 named unexplained), `make demo-fight-oracle`
+(fight window empty, N 1886) and `make attract2-oracle` (N 3617) all exit 0 with their pins as
+they were. The default path also leaves the axis words and the key-state table equal to what they
+held (the captures' centers and table entries are 0/absent), so no capture byte moves.
+
+### §H4.4 The unit test and its mutation proofs
+
+`port/tests/test_platform.c`, three tests registered once in `test.h` after
+`test_input_port_buttons`:
+
+- `test_input_sampler_device0`: eight kb words (`0x0000`, `0xFFFF`, `0x1234`, `0x0100`, `0x0001`,
+  `0x8000`, `0x0080`, `0x8040`) through `host_set_key_bits_override` + `host_input_fill_keyboard` +
+  `input_sampler`, asserting `+0x2D8 == word >> 8` and `+0x2D9 == word` (the old direct write's
+  bytes; one bit per byte per word, all 16 positions covered); F1/F2 alone with their slots
+  released set bit 0 and releasing the fixed entries clears it; a device-0 sample ignores non-zero
+  axis words; a non-port 3/3 device leaves the words and the byte sentinels alone.
+- `test_input_sampler_arms`: with `host_set_port_present_override(1, 1)`, devices 2/2 (axes A for
+  both, game-port `0xFF/0x0F`), 4/4 (`0x3F`/`0xCF` for bits 4/5 vs 6/7), 6/6 (axis A/B + keyboard
+  buttons), 0/4, 4/0, 0/2, the non-port 1/1 and 7/7 (sentinels), the no-pad clears
+  (`host_set_port_present_override(0, 1)`: 2/2 clears both, 4/0 clears P1, 4/1 clears P2, 0/4
+  clears P2, 0/2 clears P2), and the production answer (the override off, a device 2/0 sample
+  clears P1 and the keyboard arms take over).
+- `test_input_axes_dead_band`: `host_input_fill_axes()` over non-zero centers (each word becomes its
+  own center, so a zeroing fill fails), then each axis of both readers at ±0x1D (no bit) and ±0x1E
+  (the bit), with distinct centers per axis (`0x2000/0x2400` for A, `0x1C00/0x2800` for B), both
+  axes together, and the 16-bit wrap (`0x0005` vs `0xFFF0` -> 0; `0x8000` vs 0 -> 0x20).
+
+Each assertion was seen to fail under a mutation, applied alone, rebuilt and reverted (the suite's
+only FAILs were these):
+
+| mutation | failing checks |
+|---|---|
+| device-0 P1 arm drops the F1 OR | `3495: 0 != 1` (F1-only p1) |
+| device-0 P2 arm reads F1 for F2 | `3496: 1 != 0` x5 |
+| device-0 P1 arm ORs `input_axes_a()` | `3495: 144 != 0`, `3495: 96 != 32`, `3495: 16 != 0`, `3495: 17 != 1` x4 |
+| P2 device 2 reads axes B | `3496: 32 != 16`, `3496: 33 != 17`, `3496: 47 != 31` |
+| P1 device 6 reads the game-port buttons | `3495: 69 != 79` |
+| P1-only clear ignores `+0x2D6` | `3655: 0 != 4`, `3656: 1 != 0`, `3662: 2 != 0` (the 0/2 case), `3496: 16 != 0` |
+| a non-port device writes the keyboard byte | `3495: 0 != 195` (the 3/3 sentinel), `3495: 0 != 165` x2 |
+| `host_input_fill_axes` writes 0 for P1 X | `3699: 0 != 4660`, `3703: 32 != 0` |
+| `host_input_fill_axes` P1 Y reads the P2 Y center | `3700: 17767 != 9029`, `3703: 64 != 0` |
+| the production presence answer becomes 1 | `3671: 2 != 0` (the word not cleared), `3495: 17 != 1` |
+| axes A threshold 0x1E -> 0x1D | `3711: 16 != 0` |
+| axes A Y+ bit 0x40 -> 0x80 | `3495: 143 != 79`, `3495: 128 != 64`, `3722: 128 != 64` |
+| axes B X center -> its Y center | `3704` (the fill's B dead-band check) and the eight B checks `3742..3759` |
+| axes A X difference 32-bit | `3735: 32 != 0` (the wrap case) |
+
+Line numbers are this commit's `test_platform.c`; `3495`/`3496` are `sampler_bytes`' p1/p2
 assertions, so a mutation names the call site's expectation, not a distinct line per case.
 
 ### §H4.5 Counters

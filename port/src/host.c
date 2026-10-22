@@ -304,8 +304,10 @@ void host_set_port_present_override(int present, int on)
 
 /* PORT: the game port's presence (record §H4; the routines stay host-owned,
  * record §49-V). 0x4FDF5 polls all four axes, 0x4FC05 P1's two and 0x4FCFD
- * P2's; each returns nonzero when the port answered, and 0x4FBBB probes one
- * button mask (3 = game port 0's two buttons, 0xC = game port 1's). The
+ * P2's; each returns nonzero when the port answered. 0x4FBBB waits for a mask
+ * of the game port's axis one-shot bits (port 0x201 bits 0..3), triggers the
+ * port (`out 0x201,0`) and waits again, so a fan-out of the bits is its
+ * answer; the sampler probes 3 (P1's axes 0/1) and 0xC (P2's axes 2/3). The
  * original times the PIT and reads port 0x201; the host owns that answer.
  * Task 4 answers "no port" (0) -- the no-pad state -- so the sampler clears a
  * joystick device word exactly as the original does when nothing answers; Task
