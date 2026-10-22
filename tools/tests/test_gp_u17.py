@@ -113,10 +113,23 @@ class TestCheck(unittest.TestCase):
         rows = _rows(_log())
         self.assertTrue(all(r[1] for r in rows), rows)
         self.assertIn(('the selection is not sampled (wall-paced menu: no S record while one is open)',
-                       True, 'pinned by the end state; the write is unobservable in the poll'), rows)
+                       True, 'pinned by the screen evidence and the end state; the write is '
+                             'unobservable in the poll'), rows)
         # a nonzero sample still has to be the derived device
         rows = _rows(_log(dev1_at={0x120: 4}))
         self.assertFalse([r for r in rows if r[0].startswith('the selection is seen')][0][1])
+
+    def test_an_explicit_device_needs_the_acknowledgment_when_unsampled(self):
+        # record §H6.6: the wall capture cannot confirm a --device, so an explicit one is a
+        # FAIL until the caller acknowledges the gap; the pinned value then comes from the
+        # screen evidence, not the poll
+        rows = _rows(_log(), device=2)
+        self.assertFalse([r for r in rows if r[0].startswith('the selection is not sampled: --device')][0][1])
+        rows = _rows(_log(), device=2, unseen_ok=True)
+        self.assertTrue(all(r[1] for r in rows), rows)
+
+    def test_an_empty_device_means_the_default(self):
+        self.assertTrue(all(r[1] for r in _rows(_log(), device=None)), _rows(_log(), device=None))
 
     def test_no_leave_record(self):
         lines = [l for l in _log(dev1_at={0x120: 2}) if not l.startswith('I ')]
@@ -154,6 +167,78 @@ class TestWallShape(unittest.TestCase):
         rows = _rows(L)
         self.assertTrue(all(r[1] for r in rows), rows)
         self.assertIn(('clear frame', True, 'f=141 (321)'), rows)
+
+
+class TestDeviceProof(unittest.TestCase):
+    """record §H6.6: the selection's value comes from the capture's own screens -- the
+    MODIFY CONTROLS device-label band (text row 6 -> screen rows 40..45) before and
+    after the step. The joystick label is the longer string, so the after band has
+    more ink; both bands are pinned by sha256."""
+
+    ROWS = '40:46'
+
+    def _cap(self):
+        import gzip, shutil
+        d = tempfile.mkdtemp(prefix='gp-u17-proof-')
+        self.addCleanup(shutil.rmtree, d, True)
+        for idx, ink in ((149, 10), (150, 20)):
+            raw = bytearray(320 * 200 * 3)                 # black
+            for x in range(ink):                           # white pixels in the label band
+                raw[(40 * 320 + x) * 3:(40 * 320 + x) * 3 + 3] = b'\xff\xff\xff'
+            with gzip.open(os.path.join(d, 'frame_%05d.raw.gz' % idx), 'wb') as f:
+                f.write(raw)
+        with open(os.path.join(d, 'poll.log'), 'w') as f:
+            f.write('\n'.join(_log(dev1_at={0x120: 2})) + '\n')
+        return d
+
+    def _proof(self, d):
+        import gzip, hashlib
+        def sha(idx):
+            with gzip.open(os.path.join(d, 'frame_%05d.raw.gz' % idx), 'rb') as f:
+                raw = f.read()
+            return hashlib.sha256(raw[40 * 320 * 3:46 * 320 * 3]).hexdigest()
+        return dict(before=149, frame=150, rows=(40, 46), before_sha=sha(149), frame_sha=sha(150))
+
+    def test_the_bands_pin_the_selection(self):
+        d = self._cap()
+        rows = gu.check(_log(dev1_at={0x120: 2}), unseen_ok=True, device=2, cap_dir=d,
+                        proof=self._proof(d))
+        self.assertTrue(all(r[1] for r in rows), rows)
+        self.assertIn(('the device label grew with the selection (KEYBOARD -> 4 BUTTON JOYSTICK)',
+                       True, 'band ink 10 -> 20 px'), rows)
+
+    def test_a_band_byte_or_a_pin_fails(self):
+        import gzip
+        d = self._cap()
+        proof = self._proof(d)
+        p = os.path.join(d, 'frame_00150.raw.gz')
+        with gzip.open(p, 'rb') as f:
+            raw = bytearray(f.read())
+        raw[(42 * 320 + 15) * 3] ^= 0x01                   # one byte inside the band
+        with gzip.open(p, 'wb') as f:
+            f.write(raw)
+        rows = gu.check(_log(dev1_at={0x120: 2}), unseen_ok=True, device=2, cap_dir=d, proof=proof)
+        self.assertFalse(all(r[1] for r in rows))
+        self.assertFalse([r for r in rows if 'after the step' in r[0]][0][1])
+        proof['frame_sha'] = '0' * 64
+        rows = gu.check(_log(dev1_at={0x120: 2}), unseen_ok=True, device=2, cap_dir=d, proof=proof)
+        self.assertFalse([r for r in rows if 'after the step' in r[0]][0][1])
+
+    def test_a_missing_frame_or_a_partial_proof_is_refused(self):
+        d = self._cap()
+        proof = self._proof(d)
+        proof['frame'] = 999
+        rows = gu.check(_log(dev1_at={0x120: 2}), unseen_ok=True, device=2, cap_dir=d, proof=proof)
+        self.assertFalse([r for r in rows if 'after the step' in r[0]][0][1])
+
+        def run(*extra):
+            return subprocess.run([sys.executable, TOOL, 'check', '--capture', d] + list(extra),
+                                  capture_output=True, text=True)
+        r = run('--device-before', '149')                  # a partial proof
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('needs --device-before, --device-frame', r.stdout)
+        r = run('--device', '')                            # an empty device: the default
+        self.assertIn('check=ok', r.stdout)
 
 
 class TestPath(unittest.TestCase):

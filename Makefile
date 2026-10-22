@@ -1394,61 +1394,70 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 
 # Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
 # gp_session.SCENARIOS['gp-u17-device2'], record §H6.6/§H6.9): the K11 service-menu walk to MODIFY
-# CONTROLS (0x31F24) with the K11 walk's own keys, one 5-frame Down (P1's device KEYBOARD 0 ->
-# JOYSTICK 2; the Down arm 0x320CF -> 0x320ED adds 2 and its 0x0C-ISR-tick repeat gate exceeds the
-# 83 ms hold, so exactly one step -- gp_u17.py's --device names the expected value if a measurement
-# disagrees), Esc (leave MODIFY CONTROLS) and Esc (leave the OPTIONS MENU, which resumes the master
-# loop so the cleared word is in an S record). 0x32345 config_keys_apply writes 2 into BIOS+0x2D4
-# (0x1AE3B); DOSBox-X has no game port, so the ISR sampler's presence block (0x1BC4F..0x1BCE6)
-# probes 0x4FBBB(3), gets 0 and clears it on its next tick: P1 is the only selected side, so the
-# P1-only arm's 0x1BCBF clears the word (dev2 == 0; 0x1BC6F is the both-player arm's clear).
+# CONTROLS (0x31F24) with the K11 walk's own keys, one 5-frame Down, Esc (leave MODIFY CONTROLS) and
+# Esc (leave the OPTIONS MENU, which resumes the master loop so the cleared word is in an S record).
+# The Down arm (0x320CF -> 0x320ED `dev + 2`) is gated by `until = [0x101500] + 0x0C`, so the 83 ms
+# hold is one step, 0 -> 2. The device write is MODIFY CONTROLS' own return path (0x32345
+# config_keys_apply writes the record's device into BIOS+0x2D4, 0x1AE3B) -- i.e. on the FIRST Esc,
+# not the OPTIONS MENU leave; that second Esc runs 0x2CBAF config_file_save (a no-op on the
+# capture's read-only mount) and resumes the master loop. No pad answered the probe, so the ISR
+# sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3), gets 0 and clears the word on its
+# next tick: P1 is the only selected side, so the P1-only arm's 0x1BCBF clears it (dev2 == 0;
+# 0x1BC6F is the both-player arm's clear).
 #
 # The steps are WALL-paced ('after_wall'): a service-menu sub-loop presents frames through
 # 0x2EA78 inside one game_frame, so the master frame counter and the spin predicate freeze and a
-# frame-keyed step never comes due (the 2026-10-22 failed run, data/k11-captures/
-# gp-u17-device2.failed: the OPTIONS MENU held f at 0x25B for 34 s, the schedule stalled at step
-# 12, the 20 s idle timeout restarted to the attract). Only the wall clock reaches those screens.
-# The frame-keyed replay cannot follow wall steps yet, so this oracle pins the capture-side
-# evidence and the capture identity, and the frame/trace ratchets wait for the driver's tick-based
-# path (the K11 driver's pump-hook model): MIN_FIRST/TRACE_MIN_FIRST/MAX_START/MIN_REACH stay
-# empty and unused until then -- a named gap, not a passing claim.
+# frame-keyed step never comes due (the 2026-10-22 failed run, whose diagnosis is record §H6.9;
+# the successful publish removed its staging directory). Only the wall clock reaches those
+# screens. The frame-keyed replay cannot follow wall steps yet, so this oracle pins the measured
+# capture-side evidence, the selection's screen evidence and the capture identity, and the
+# frame/trace ratchets stay empty and unused until the driver's tick-based path lands (the K11
+# driver's pump-hook model) -- a named gap, not a passing claim.
 #
 # The claim is narrow: no game-port axis or button is injected (the harness cannot), so the arms'
 # evidence is the unit tests and the differential rows; this capture pins the clear, not the pad's
-# answer. gp_u17.py check is the capture-side evidence (the scenario's last three presses, the
-# mode path, the clear and no sticky word, the identity) and its `--device` the selection's value.
-# The pins are EMPTY until data/k11-captures/gp-u17-device2 is captured and measured (the
-# user-gated capture half): the target skips on the absent capture directory (`[ ! -d ]`), and a
-# present capture with an empty identity pin passes/FAILs only on the measured evidence rows.
-# The measured pins (capture 2026-10-22, 155 frames, raw 1373..3669, wall 55.5 s):
-#   DEVICE 2      the derived one +2 step (argv: gp_u17.py --device; a data point of
-#                 the derivation, not a fitted constant -- 0x320ED's Down arm, held
-#                 5 frames under the 0x0C-tick repeat gate)
-#   CLEAR_FRAME 761 (f=0x2F9): the first S record after the last injected key (the
-#                 OPTIONS MENU leave at f=0x2F7) whose dev1 is 0 -- the master loop
-#                 resumes on that leave and the sampler's no-pad clear (0x1BCBF) has
-#                 already run, so dev1/dev2 read 0 in every S record (the selection's
-#                 write is not sampled: no S record while a menu is open, §H6.9)
+# answer.
+#
+# The measured pins (capture 2026-10-22, 155 frames, raw 1373..3669, wall 55.5 s; the target skips
+# on the absent capture directory and every pin below fails when moved):
+#   CLEAR_FRAME 761 (f=0x2F9): the first S record after the last injected key (the OPTIONS MENU
+#                 leave at f=0x2F7) whose dev1 is 0 -- the master loop resumes on that leave and
+#                 the sampler's no-pad clear has already run, so dev1/dev2 read 0 in every S record
+#   DEVICE_BEFORE/DEVICE_FRAME 149/150 + their band sha256 + the band rows 40:46: the MODIFY
+#                 CONTROLS device-label band (text row 6, `config_option_row`'s
+#                 `text_cursor_set(base-8, 6, ...)`) before and after the step -- KEYBOARD's band
+#                 (9dfc4df1..) then the 4 BUTTON JOYSTICK one (87141468..), with more ink after
+#                 (1028 -> 1096 px). This is how `--device` is pinned on a wall-paced capture: the
+#                 poll has no S record while a menu is open, so the VALUE comes from the screen,
+#                 and an explicit `--device` without --unseen-selection-ok fails
 #   SHA256       5c0a3b56.. of poll.log; FRAMES 155 (frame_*.raw.gz)
-# The frame/trace ratchets stay EMPTY and unused: the wall-paced walk's replay needs
-# the tick-keyed driver path (named gap, record §H6.9), so this oracle pins the
-# capture-side evidence and the capture identity only -- not the frames or the trace.
-# A re-capture invalidates every pin (record §G.24).
+# GP_U17_DEVICE (2) is the scenario's DERIVED expectation (the one +2 step), not a measured pin:
+# it is passed with --unseen-selection-ok so the tool records that the poll cannot confirm it, and
+# the screen bands above are its evidence. A re-capture invalidates every pin (record §G.24).
 GP_U17_DEVICE = 2
 GP_U17_CLEAR_FRAME = 761
+GP_U17_DEVICE_BEFORE = 149
+GP_U17_DEVICE_FRAME = 150
+GP_U17_DEVICE_ROWS = 40:46
+GP_U17_DEVICE_BEFORE_SHA256 = 9dfc4df15b4b797073449209cb1c1d3fb721319ba8fa2f135c21ab1b5f335528
+GP_U17_DEVICE_FRAME_SHA256 = 871414689bd920a87b68bec299889bc2c20667b62a9c4980cea1daf3cb930fff
 GP_U17_MIN_FIRST =
 GP_U17_TRACE_MIN_FIRST =
 GP_U17_MAX_START =
 GP_U17_MIN_REACH =
 GP_U17_CAPTURE_SHA256 = 5c0a3b5610535f9b28739ea7a436104aabc3e2c740c97d40400080b5c41d6d5d
 GP_U17_CAPTURE_FRAMES = 155
-gp-u17-oracle: build ## Host input truth U17 oracle: the device-2 selection's no-pad clear and the capture identity on gp-u17-device2 (skips without it)
+gp-u17-oracle: build ## Host input truth U17 oracle: the device-2 selection's no-pad clear, its screen evidence and the capture identity on gp-u17-device2 (skips without it)
 	@echo "== gameplay oracle: gp-u17-device2 (the device-2 selection and the no-pad clear) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_u17
 	@if [ ! -d $(K11_CAPTURES)/gp-u17-device2 ]; then echo "gp-u17-oracle: no capture at $(K11_CAPTURES)/gp-u17-device2 (skipped)"; else \
 		$(PYTHON) tools/gp_u17.py check --capture $(K11_CAPTURES)/gp-u17-device2 \
-			--device "$(GP_U17_DEVICE)" \
+			--device "$(GP_U17_DEVICE)" --unseen-selection-ok \
 			--clear-frame "$(GP_U17_CLEAR_FRAME)" \
+			--device-before "$(GP_U17_DEVICE_BEFORE)" --device-frame "$(GP_U17_DEVICE_FRAME)" \
+			--device-rows "$(GP_U17_DEVICE_ROWS)" \
+			--device-before-sha "$(GP_U17_DEVICE_BEFORE_SHA256)" \
+			--device-frame-sha "$(GP_U17_DEVICE_FRAME_SHA256)" \
 			--capture-sha256 "$(GP_U17_CAPTURE_SHA256)" \
 			--capture-frames "$(GP_U17_CAPTURE_FRAMES)"; \
 		rc=$$?; \

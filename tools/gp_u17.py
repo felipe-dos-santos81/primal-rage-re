@@ -4,16 +4,21 @@
 2026-10-21-host-input-truth-derivations.md §H6).
 
 The scenario gp-u17-device2 (gp_session) walks the K11 service menu to MODIFY
-CONTROLS (0x31F24), steps P1's device from KEYBOARD (0) to JOYSTICK 2 with one
-p1.down and leaves with Esc, whose 0x32345 config_keys_apply writes the record's
-device into BIOS+0x2D4 (0x1AE3B). DOSBox-X has no game port, so the ISR
-sampler's presence block (0x1BC4F..0x1BCE6) probes 0x4FBBB(3) (P1's axes 0/1),
-gets 0 and clears the word on its next tick: P1's device is the only one
-selected, so the P1-only arm runs and the clear is 0x1BCBF (dev2 == 0), not the
-both-player arm's 0x1BC6F. The capture's S records carry dev1/dev2
-(+0x2D4/+0x2D6 behind DS_00101514, gp_session's POINTER_FIELDS), so the clear is
-observable: the word reads 2 (the selection) and is 0 in every record after the
-leave.
+CONTROLS (0x31F24), steps P1's device from KEYBOARD (0) to 4 BUTTON JOYSTICK (2)
+with one Down and leaves with Esc. The write is MODIFY CONTROLS' own return path
+(0x32345 config_keys_apply, svcmenu.c's tail), so the *first* Esc writes the
+record's device into BIOS+0x2D4 (0x1AE3B); the second Esc leaves the OPTIONS MENU
+(0x2CBAF config_file_save, a no-op on the capture's read-only mount) and resumes
+the master loop, which is what puts the cleared word into an S record. No pad
+answered the probe, so the ISR sampler's presence block (0x1BC4F..0x1BCE6) probes
+0x4FBBB(3) (P1's axes 0/1), gets 0 and clears the word on its next tick: P1's
+device is the only one selected, so the P1-only arm runs and the clear is
+0x1BCBF (dev2 == 0), not the both-player arm's 0x1BC6F. The capture's S records
+carry dev1/dev2 (+0x2D4/+0x2D6 behind DS_00101514, gp_session's POINTER_FIELDS),
+so the clear is observable: for a FRAME-paced capture the word reads 2 (the
+selection) and is 0 in every record after the leave; for the wall-paced
+gp-u17-device2 the selection is not sampled (see below), and the value is pinned
+by the screen evidence instead.
 
 **One press is one step (+2).** MODIFY CONTROLS polls the *held* level every
 iteration (0x31FC4 `xor eax,eax` -> 0x2EDE0(0, 1) -> 0x50161(0) returns the
@@ -43,11 +48,18 @@ state, a named gap to record.
 The scenario is WALL-paced (record §H6.9): a service-menu sub-loop presents
 frames without the master loop's spin, so the poll has no S record between the
 device write and the OPTIONS MENU leave and the selection's write cannot be
-observed. The tool says so and pins the end state; the frame/trace replay and
-its ratchets wait for a tick-keyed driver path, so the capture identity
-(--capture-sha256, --capture-frames) is pinned here instead.
+observed. The tool says so, pins the end state and refuses an explicit --device
+that it cannot confirm (pass --unseen-selection-ok to acknowledge the gap). The
+selection's VALUE is pinned by the capture's own screens instead
+(--device-before/--device-frame: the MODIFY CONTROLS device-label band, text row
+6, before and after the step; the joystick label is the longer string, so the
+after frame's band carries more ink), and the band's sha256 pins both. The
+frame/trace replay and its ratchets wait for a tick-keyed driver path, so the
+capture identity (--capture-sha256, --capture-frames) is pinned here too.
 Stdlib only."""
 import argparse
+import collections
+import gzip
 import hashlib
 import os
 import sys
@@ -59,9 +71,15 @@ SCENARIO = 'gp-u17-device2'
 DEVICE2 = 2                      # the derived one-step selection (see the module docstring)
 
 
-def check(lines, clear_frame=None, unseen_ok=False, device=DEVICE2):
-    """[(label, ok, detail)] over a poll.log (record §H6). `device` is the value
-    the one-step selection must read (2 unless a measurement says otherwise)."""
+def check(lines, clear_frame=None, unseen_ok=False, device=None, cap_dir=None, proof=None):
+    """[(label, ok, detail)] over a poll.log (record §H6). `device` is the value the
+    one-step selection must read; None means the scenario's derived 2 and is not
+    asserted against a sample (an explicitly supplied value must be confirmable:
+    a wall-paced capture has no sample, so it needs `unseen_ok`). `proof` = the
+    screen evidence `device_proof` checks (cap_dir + the frame/band pins)."""
+    dev_given = device is not None
+    if device is None:
+        device = DEVICE2
     recs = [r for r in (gs.parse(l) for l in lines) if r]
     snaps = gs.snapshots(lines)
     out = []
@@ -104,8 +122,14 @@ def check(lines, clear_frame=None, unseen_ok=False, device=DEVICE2):
     sel = [(f, snaps[f]['dev1']) for f in fs if snaps[f]['dev1'] != 0]
     sel_ok = bool(sel) and all(v == device for _, v in sel)
     if gs.SCENARIOS[SCENARIO].get('wall') and not sel:
-        out.append(('the selection is not sampled (wall-paced menu: no S record while one is open)',
-                    True, 'pinned by the end state; the write is unobservable in the poll'))
+        if dev_given and not unseen_ok:
+            out.append(('the selection is not sampled: --device %d cannot be confirmed' % device,
+                        False, 'pass --unseen-selection-ok to acknowledge the gap; the value is '
+                               'pinned by the screen evidence (--device-before/--device-frame)'))
+        else:
+            out.append(('the selection is not sampled (wall-paced menu: no S record while one is open)',
+                        True, 'pinned by the screen evidence and the end state; the write is '
+                              'unobservable in the poll'))
     elif not unseen_ok:
         out.append(('the selection is seen: dev1 = %d (one Down from KEYBOARD)' % device, sel_ok,
                     'frames %s' % (['%X' % f for f, _ in sel] or 'none: the poll never sampled it')))
@@ -139,6 +163,8 @@ def check(lines, clear_frame=None, unseen_ok=False, device=DEVICE2):
                     'measured f=%X, pinned f=%X' % (clear, clear_frame)))
 
     out.append(('clear frame', True, 'f=%X (%d)' % (clear, clear)))
+    if proof is not None:
+        out += device_proof(cap_dir, proof)
     return out
 
 
@@ -154,6 +180,57 @@ def path(lines):
     return rows
 
 
+FRAME_W, FRAME_H = 320, 200       # a capture frame_*.raw.gz: 320x200 RGB24 (gp_compare)
+
+
+def _band(path, rows):
+    """The screen rows `rows` (y0:y1) of one capture frame, as its RGB24 bytes."""
+    with gzip.open(path, 'rb') as f:
+        raw = f.read()
+    if len(raw) != FRAME_W * FRAME_H * 3:
+        raise ValueError('%s: %d bytes, not a 320x200 RGB24 frame' % (path, len(raw)))
+    return raw[rows[0] * FRAME_W * 3:rows[1] * FRAME_W * 3]
+
+
+def _ink(band):
+    """Non-background pixels in the band (the background is its commonest colour)."""
+    px = collections.Counter(band[k:k + 3] for k in range(0, len(band), 3))
+    bg = px.most_common(1)[0][0]
+    return sum(1 for k in range(0, len(band), 3) if band[k:k + 3] != bg)
+
+
+def device_proof(cap_dir, p):
+    """[(label, ok, detail)] for the selection's screen evidence (record §H6.6): the
+    MODIFY CONTROLS device label is text row 6 (`config_option_row`'s
+    `text_cursor_set(base - 8, 6, ...)`, base 0xA for P1 -> screen rows 40..45). The
+    KEYBOARD frame and the frame after the device step are pinned by their band's
+    sha256, and the joystick label being the longer string, the after frame's band
+    carries more ink. A frame-paced capture needs this not (dev1 shows the value);
+    the wall-paced one has no other measurement of --device."""
+    out = []
+    rows = p['rows']
+    bands = {}
+    for key, label in (('before', 'before the step (KEYBOARD)'), ('frame', 'after the step')):
+        name = 'frame_%05d.raw.gz' % p[key]
+        path = os.path.join(cap_dir, name)
+        if not os.path.isfile(path):
+            out.append(('the device %s screen %s exists' % (label, name), False, path))
+            return out
+        try:
+            bands[key] = _band(path, rows)
+        except ValueError as e:
+            out.append(('the device %s screen %s is a 320x200 frame' % (label, name), False, str(e)))
+            return out
+        got = hashlib.sha256(bands[key]).hexdigest()
+        out.append(('the device %s screen %s label band (rows %d..%d) is the pinned one'
+                    % (label, name, rows[0], rows[1] - 1), got == p[key + '_sha'],
+                    'sha256 %s..%s, pinned %s..' % (got[:8], got[-6:], p[key + '_sha'][:8])))
+    inks = (_ink(bands['before']), _ink(bands['frame']))
+    out.append(('the device label grew with the selection (KEYBOARD -> 4 BUTTON JOYSTICK)',
+                inks[1] > inks[0], 'band ink %d -> %d px' % inks))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -161,10 +238,12 @@ def main():
     ap.add_argument('--capture', required=True)
     ap.add_argument('--clear-frame', default=None,
                     help='the pinned clear frame (decimal or 0x hex); exact')
-    ap.add_argument('--device', default=str(DEVICE2),
-                    help='the device value the one-step selection must read (default 2; the '
-                         'derivation is one +2 step, see the module docstring -- pass the '
-                         'measured value if a capture disagrees, and record why)')
+    ap.add_argument('--device', default=None,
+                    help='the device value the one-step selection must read (a frame-paced '
+                         'capture must show it; the wall-paced one cannot, so an explicit value '
+                         'needs --unseen-selection-ok and the screen evidence pins it). Omit (or '
+                         'pass an empty value) for the derived default 2 -- the expectation, '
+                         'not a measured pin')
     ap.add_argument('--unseen-selection-ok', action='store_true',
                     help='accept a capture whose poll never sampled the selection (a named gap: '
                          'the clear is then pinned by the end state only)')
@@ -174,6 +253,18 @@ def main():
                          'pinned here, record §H6.9)')
     ap.add_argument('--capture-frames', default=None,
                     help='the pinned number of frame_*.raw.gz in the capture')
+    ap.add_argument('--device-before', default=None,
+                    help='the capture frame before the device step (the KEYBOARD label); with '
+                         '--device-frame/--device-rows/--device-before-sha/--device-frame-sha it '
+                         'pins the selection by the screen evidence (record §H6.6)')
+    ap.add_argument('--device-frame', default=None,
+                    help='the capture frame after the device step (the 4 BUTTON JOYSTICK label)')
+    ap.add_argument('--device-rows', default=None,
+                    help="the device-label band's screen rows as Y0:Y1 (text row 6 -> 40:46)")
+    ap.add_argument('--device-before-sha', default=None,
+                    help='the pinned sha256 of that band in --device-before')
+    ap.add_argument('--device-frame-sha', default=None,
+                    help='the pinned sha256 of that band in --device-frame')
     a = ap.parse_args()
     poll = os.path.join(a.capture, 'poll.log')
     if not os.path.isfile(poll):
@@ -186,7 +277,22 @@ def main():
             print(row)
         return 0
     pin = None if a.clear_frame in (None, '') else int(a.clear_frame, 0)
-    rows = check(lines, pin, a.unseen_selection_ok, int(a.device, 0))
+    device = None if a.device in (None, '') else int(a.device, 0)
+    proof = None
+    given = [a.device_before, a.device_frame, a.device_rows, a.device_before_sha, a.device_frame_sha]
+    if any(v not in (None, '') for v in given):
+        if any(v in (None, '') for v in given):
+            print('gp_u17: the device proof needs --device-before, --device-frame, --device-rows, '
+                  '--device-before-sha and --device-frame-sha together')
+            return 2
+        try:
+            y0, y1 = (int(v, 0) for v in a.device_rows.split(':'))
+        except ValueError:
+            print('gp_u17: --device-rows must be Y0:Y1 (e.g. 40:46)')
+            return 2
+        proof = dict(before=int(a.device_before, 0), frame=int(a.device_frame, 0),
+                     rows=(y0, y1), before_sha=a.device_before_sha, frame_sha=a.device_frame_sha)
+    rows = check(lines, pin, a.unseen_selection_ok, device, a.capture, proof)
     ok = all(r[1] for r in rows)
     # The capture identity (record §H6.9): this scenario has no frame/trace replay
     # yet, so the pinned sha256 and frame count live here instead of gp_compare's.

@@ -1207,20 +1207,24 @@ the flow.c site is tested. The SDL pad's own answer is the windowed run's (§H5.
 own keys (`k11_session.WALK[2:24]`, after the boot Enter and the START MENU Enter — scans `0x50`
 Down, `0x1C` Enter, `0x01` Esc) take the service menu through GAME OPTIONS and the OPTIONS MENU's
 CONFIG OPTIONS editor, STATISTICS' five screens, SOUND, MUSIC and into MODIFY CONTROLS
-(`0x31F24`); then one 5-frame Down steps P1's device KEYBOARD (0) -> JOYSTICK 2, `esc` leaves
-MODIFY CONTROLS and a second `esc` leaves the OPTIONS MENU, whose `0x32345 config_keys_apply`
-writes the record's device into BIOS+0x2D4 (`0x1AE3B`) and whose return resumes the master loop
-(so the poll sees the cleared word). The step is the **Down** arm (`0x320CF test edx,0x40004000` ->
-`0x320ED dev + 2`); `0x3206F` is the Up arm's `dev - 2`. DOSBox-X has no game port, so the ISR
-sampler's presence block probes `0x4FBBB(3)`, gets 0, and the **P1-only** arm clears the word on its
-next tick: `0x1BCBF`, the `+0x2D6 == 0` branch (`0x1BC6F` is the both-player arm's clear and needs
-both words selected).
+(`0x31F24`); then one 5-frame Down steps P1's device KEYBOARD (0) -> 4 BUTTON JOYSTICK (2), the
+first `esc` leaves MODIFY CONTROLS and a second `esc` leaves the OPTIONS MENU. **The device write is
+MODIFY CONTROLS' own return path**: `svc_modify_controls`' tail calls `config_keys_apply` at
+`0x32345` (`port/src/game/svcmenu.c:954`), so the *first* Esc writes the record's device into
+BIOS+0x2D4 (`0x1AE3B`); the second Esc runs `0x2CBAF config_file_save` (a no-op on the capture's
+read-only mount) and resumes the master loop, which is what puts the cleared word into an S record.
+The step is the **Down** arm (`0x320CF test edx,0x40004000` -> `0x320ED dev + 2`); `0x3206F` is the
+Up arm's `dev - 2`. **No pad answered the probe**, so the ISR sampler's presence block probes
+`0x4FBBB(3)`, gets 0, and the **P1-only** arm clears the word on its next tick: `0x1BCBF`, the
+`+0x2D6 == 0` branch (`0x1BC6F` is the both-player arm's clear and needs both words selected).
 
 **The steps are wall-paced (`after_wall`), and that is why the first capture failed.** A
 service-menu sub-loop (`menu_run` -> `0x2EA78`'s present loop) runs inside one `game_frame` with no
-master-loop spin, so `DS_000EF6DC` and the S records freeze while one is open. The 2026-10-22 run
-(`data/k11-captures/gp-u17-device2.failed`, 838 frames) shows the OPTIONS MENU holding `f` at
-`0x25B` for 34 s of wall time: the frame-keyed schedule fired 12 of its 26 steps, the 20 s idle
+master-loop spin, so `DS_000EF6DC` and the S records freeze while one is open. The failed 2026-10-22
+run (838 frames; it was staged at `data/k11-captures/gp-u17-device2.failed` and the successful
+publish removed it — `gp_capture.publish` deletes a stale `.failed` beside a good capture, so the
+diagnosis below is the record of it) shows the OPTIONS MENU holding `f` at `0x25B` for 34 s of wall
+time: the frame-keyed schedule fired 12 of its 26 steps, the 20 s idle
 timeout (`0x2EB80`, `0x4B0` ticks) restarted to the attract, and the X record never came. §H6.9
 adds the wall clock; the K11 harness's AUTOTYPE is wall-paced for the same reason.
 
@@ -1243,10 +1247,18 @@ leave; the mode stays 0x27 from the menu Enter on; dev2 stays 0; the clear is th
 after the leaves with dev1 = 0, and no later record holds a word. **The selection's write is not
 observable in the poll** (no spin/S record between the device write and the OPTIONS MENU leave): the
 tool says so rather than pretending, and the word is pinned by its end state — a port whose
-presence answer kept the word would show dev1 = 2 there. `--device` and `--unseen-selection-ok`
-remain for a frame-paced capture. The unit tests (`tools/tests/test_gp_u17.py`, 16) cover each row's
-pass and fail on synthetic logs, the `--device` parameter, the wall-scenario row, the pin, the
-identity pins, the CLI exit codes and the scenario's steps.
+presence answer kept the word would show dev1 = 2 there. The value is pinned by the capture's own
+screens: `--device-before 149` / `--device-frame 150` / `--device-rows 40:46` (the MODIFY CONTROLS
+device label is text row 6, `config_option_row`'s `text_cursor_set(base - 8, 6, ...)`, base 0xA for
+P1) with each band's sha256 — frame 00149 shows KEYBOARD (`9dfc4df1…`, band ink 1028 px) and frame
+00150 4 BUTTON JOYSTICK (`87141468…`, ink 1096 px; the joystick string is longer), and the next
+screens are 00152 the OPTIONS MENU and 00154 the MAIN MENU. An explicit `--device` on this capture
+is a FAIL unless `--unseen-selection-ok` acknowledges the gap; the tool then reports the value as
+pinned by the screen evidence, not the poll. `--unseen-selection-ok` and `--device` remain for a
+frame-paced capture too. The unit tests (`tools/tests/test_gp_u17.py`, 17 before this fix and 22 after
+the screen proof's cases) cover each row's pass and fail on synthetic logs, the `--device` rule, the
+band proof (a flipped band byte, a wrong pin, a missing frame, a partial proof), the wall row, the
+clear pin, the identity pins, the CLI exit codes and the scenario's steps.
 
 **The capture (2026-10-22):** `data/k11-captures/gp-u17-device2`, 155 frames, raw window
 1373..3669, wall 55.5 s, `rc=0`; every CHECK green — `steps fired 27/27`, `end frame reached`,
@@ -1254,28 +1266,38 @@ identity pins, the CLI exit codes and the scenario's steps.
 `port script v2 (deferred: wall-paced steps...)`, `no unscripted input`, `pokes written 0/0`,
 `stopped at the end (SIGTERM at f=038A)`. `gp_capture.py check-input` is clean.
 
-**The measured pins** (all from this capture; `gp_u17.py check --device 2` prints them):
+**The measured pins** (all from this capture; `gp-u17-oracle` prints them, and each fails when
+moved):
 
 | pin | value | provenance |
 |---|---|---|
-| `GP_U17_DEVICE` | 2 | the derivation's one +2 step (0x320ED's Down arm, `U17_HOLD` 5 frames under the 0x0C-tick gate) — a data point, not a fitted constant |
 | `GP_U17_CLEAR_FRAME` | 761 (f=0x2F9) | the first S record after the last injected key (the OPTIONS MENU leave at f=0x2F7) whose dev1 is 0; the master loop resumes on that leave and the sampler's no-pad clear has already run |
+| `GP_U17_DEVICE_BEFORE` / `GP_U17_DEVICE_FRAME` | 149 / 150 | the two capture frames around the device step (the MODIFY CONTROLS label band) |
+| `GP_U17_DEVICE_ROWS` | 40:46 | the label band's screen rows (text row 6 at 20/3 px/row) |
+| `GP_U17_DEVICE_BEFORE_SHA256` / `GP_U17_DEVICE_FRAME_SHA256` | `9dfc4df1…335528` / `87141468…930fff` | the sha256 of that band in each frame: KEYBOARD before, 4 BUTTON JOYSTICK after (band ink 1028 -> 1096 px) |
 | `GP_U17_CAPTURE_SHA256` | `5c0a3b56…1d6d5d` | poll.log's sha256 |
 | `GP_U17_CAPTURE_FRAMES` | 155 | the `frame_*.raw.gz` count |
 | `GP_U17_MIN_FIRST` / `TRACE_MIN_FIRST` / `MAX_START` / `MIN_REACH` | empty | the frame/trace ratchets need a replay that can follow the wall-paced walk — none yet (§H6.9's named gap), so they are left empty and unused, and `gp-u17-oracle` says so |
 
-The evidence rows: the three joystick device words stay 0 in all 897 S records (dev1 and dev2 —
+`GP_U17_DEVICE` (2) is **not a measured pin**: it is the scenario's *derived expectation* (the one
++2 step from `0x320ED`'s Down arm, held 5 frames under the `0x0C`-tick gate), and the wall-paced
+capture's poll cannot confirm it. The recipe passes it with `--unseen-selection-ok` so the tool
+records that (and refuses an explicit `--device` without the acknowledgment); its evidence is the
+label-band pins above, not the poll.
+
+The evidence rows: the two joystick device words stay 0 in all 897 S records (dev1 and dev2 —
 `gp_u17.py path` prints one line, `f=5 dev1=0 dev2=0`); the selection's write is not sampled (no S
 record while a menu is open), so the dev1 = 0 of every record *after* the leaves is the clear's
 end state — a port whose presence answer kept the word would show dev1 = 2 from f=0x2F9 on. The mode
 stays 0x27 from f=0x13B to the end; the X record is at f=0x34E (the wall end's moment) and the tail's
-S records run to f=0x38A. Each pin was seen to fail when moved: `--clear-frame 762`, a wrong sha256
-and `--capture-frames 156` each print their FAIL.
+S records run to f=0x38A. Each pin was seen to fail when moved: `--clear-frame 762`, a wrong
+poll.log sha256, `--capture-frames 156`, a wrong band sha256, and a single byte changed inside
+frame 00150's label band each print their FAIL.
 
-`make gp-u17-oracle` runs the tool's unit tests always, then the evidence and identity pins (with
-`--device "$(GP_U17_DEVICE)"`); the frame/trace ratchets stay out of the recipe until the driver has
-the tick-based path (its actions applied from a pump hook, the K11 driver's model) — a named gap,
-not a passing claim. The claim is narrow: no game-port axis or button is injected (the harness
+`make gp-u17-oracle` runs the tool's unit tests always, then the evidence, screen and identity pins
+(with `--device "$(GP_U17_DEVICE)" --unseen-selection-ok`); the frame/trace ratchets stay out of the
+recipe until the driver has the tick-based path (its actions applied from a pump hook, the K11
+driver's model) — a named gap, not a passing claim. The claim is narrow: no game-port axis or button is injected (the harness
 cannot), so the arms' evidence is the unit tests and the differential rows; the capture pins the
 **clear**, not the pad's answer.
 
@@ -1339,11 +1361,13 @@ pins; `make gp-u17-oracle` still skips on the absent capture.
 
 ### §H6.9 The wall-clock path (the failed capture and the fix)
 
-The first `gp-u17-device2` capture (2026-10-22, `DISPLAY=:1`) failed at
-`data/k11-captures/gp-u17-device2.failed`: 838 frames, raw 1387..6303, wall 90.9 s,
-`check=FAIL steps fired 12/26`, `check=FAIL end frame reached`, `check=FAIL port script v2 (the
-scenario end (X record) was not reached)`, `check=FAIL stopped at the end`; the harness itself was
-clean (`check=ok no unscripted input`). The cause is **not** the one-step device derivation (the walk
+The first `gp-u17-device2` capture (2026-10-22, `DISPLAY=:1`) failed: 838 frames, raw
+1387..6303, wall 90.9 s, `check=FAIL steps fired 12/26`, `check=FAIL end frame reached`,
+`check=FAIL port script v2 (the scenario end (X record) was not reached)`, `check=FAIL stopped at
+the end`; the harness itself was clean (`check=ok no unscripted input`). It was staged at
+`data/k11-captures/gp-u17-device2.failed`, which the successful run's publish removed
+(`gp_capture.publish` deletes a stale `.failed` beside a good capture): this section is that run's
+record. The cause is **not** the one-step device derivation (the walk
 never reached MODIFY CONTROLS): the poll log's P records show mode `0x27` -> `3` -> `0x27` -> `3` at
 `f=0x25D/0x27C/0x29B/0x2F3`, the OPTIONS MENU holding `f=0x25B` for 34 s of wall time while its
 tick `DS_00101500` ran 1510 ticks, and the 20 s idle timeout (`0x2EB80`, `0x4B0` ticks) restarting
