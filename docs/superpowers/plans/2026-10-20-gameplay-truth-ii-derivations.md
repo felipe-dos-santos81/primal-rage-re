@@ -844,9 +844,9 @@ The press rose in `0x832`/`0x833`, both unsampled, so the S records around it ar
 | 0x832, 0x833 | missed (the P record sees mode 0x17 at 0x833) | | | | |
 | 0x834 | 0x17 | 0100 | 0 | 0100 | 3 |
 
-`two_human(join_only=True)` first required `new & START_MASK[1]` at the join record (the first `b1f == 3`), which the missed frames hid (`new` is set for one game frame only). **Ruling R6** (the controller's amendment): when `new` has no bit, accept the joining side's start mask held in the join record **and** not held in the last S record before it (`start_edge == 'held'`); a mask already held before the join still fails ("not newly pressed at f=… (new …, held …; the record before it held …)"). The mode 6 → 0x17, `b1f` 1 → 3 and no-debit checks are unchanged. `tools/tests/test_gp_twop.py` covers the `new` pass (now also asserting `start_edge == 'new'`), the held-edge pass, the held-before failure and the no-bit failure; mutating away either clause of the held test fails a test.
+`two_human(join_only=True)` first required `new & START_MASK[1]` at the join record (the first `b1f == 3`), which the missed frames hid (`new` is set for one game frame only). **Ruling R6** (the controller's amendment): when `new` has no bit, accept the joining side's start mask held in the join record, not held in the last S record before it, and `join - before[-1] > 1` (`start_edge == 'held'`); this requires a genuine sampling gap. A held rise between consecutive S records and a mask already held before the join both fail as "not newly pressed". The mode 6 → 0x17, `b1f` 1 → 3 and no-debit checks are unchanged. `tools/tests/test_gp_twop.py` covers the `new` pass (now also asserting `start_edge == 'new'`), the held-edge pass across a gap, a consecutive-frame held rise failure, the held-before failure and the no-bit failure; mutating away either held-edge condition fails a test.
 
-**The narrow claim:** the join's start press is inferred from the held edge across two unsampled frames; the raw `new` bit was not sampled. The credit/`b1f`/mode evidence is sampled directly (`0x831` before, `0x834` after). Nothing past the capture's end (60 frames into the 0x78-frame window) is claimed.
+**The narrow claim:** the join's start press is inferred from the held edge across the genuine sampling gap (`0x834 - 0x831 > 1`); the raw `new` bit was not sampled. A held rise between consecutive S records is rejected because it does not prove the edge happened in missed frames. The credit/`b1f`/mode evidence is sampled directly (`0x831` before, `0x834` after). Nothing past the capture's end (60 frames into the 0x78-frame window) is claimed.
 
 ### The measured report
 
@@ -874,7 +874,7 @@ The replay has no first unexplained frame and no first trace/move difference: 80
 | `GP_U15_CAPTURE_FRAMES` | 805 | the harness's 805/805 frames written | 806 → FAIL (the identity line) |
 | `GP_U15_CAPTURE_SHA256` | `5f7ab1d7…e3664c` | `poll.log` | a different sha (`6f7a…`) → FAIL (the identity line) |
 
-Every FAIL was shown by `make gp-u15-oracle GP_U15_X=value` (the Makefile restored: the final default run exits 0). The full `make verify` was not run (the closeout runs the gate).
+`GP_U15_MIN_FIRST` and `GP_U15_TRACE_MIN_FIRST` are exact window bounds; raising either by one fails as `unreachable` at the end of its compared window, not as a newly observed divergence. Every FAIL was shown by `make gp-u15-oracle GP_U15_X=value` (the Makefile restored: the final default run exits 0). The full `make verify` was not run (the closeout runs the gate).
 
 ### What this section does not claim
 
@@ -911,7 +911,7 @@ The scenario adds only `0x29D60` (`frontend_mode_1b_step`, the bare `ret`) and `
 
 ### Two-human evidence and the finisher gap (R2)
 
-`python3 tools/gp_twop.py check --finisher --capture data/k11-captures/gp-u16-twop2`:
+The strict diagnostic `python3 tools/gp_twop.py check --finisher --capture data/k11-captures/gp-u16-twop2`:
 
 ```
 gp_twop: gp-u16-twop2: join f=2CA (cred 4 -> 4); 7911 S records from the join to X f=21BC; side 0 [('pad', 7911)], side 1 [('pad', 7911)]; fight presses 368/40
@@ -920,7 +920,7 @@ gp_twop: gp-u16-twop2: finisher: FAIL; mode 0x09 reached, mode 0x12 reached, rea
 gp_twop: gp-u16-twop2: FAIL: no finisher reaction 0x32..0x34 in any S record
 ```
 
-The capture proves two pad-controlled sides through the replay end, including the no-debit join (`cred 4 -> 4`); both required modes are reached. Although the three finisher entry sequences were attempted, no sampled `r0`/`r1` value is in `0x32..0x34`. No narrower retry was made and no finisher pin was fabricated. **R2: finisher application remains a named gap.** Consequently `gp-u16-oracle` calls the ordinary `gp_twop.py check` (two-human claim only), not `--finisher`; its enforced claims are the two-human evidence and the narrow frame/trace/moves ratchets below.
+The capture proves two pad-controlled sides through the replay end, including the no-debit join (`cred 4 -> 4`); both required modes are reached. Although the three finisher entry sequences were attempted, no sampled `r0`/`r1` value is in `0x32..0x34`. No narrower retry was made and no finisher pin was fabricated. **R2: finisher reaction remains a named gap.** `gp-u16-oracle` now calls `gp_twop.py check --finisher --allow-missing-reaction`: this enforces the two-human evidence and the capture's mode-0x09/mode-0x12 end-state evidence while reporting the empty reaction list without failing solely for that absence. It does not claim that any finisher reaction occurred. The narrow frame/trace/moves ratchets below are unchanged.
 
 ### The measured pixel allowances and report
 
@@ -946,7 +946,7 @@ The capture's S records carry all five move fields `c0 c1 r0 r1 s0_43`; the repo
 
 ### Pins and failing-direction proofs (`make gp-u16-oracle`, PASS)
 
-`make gp-u16-oracle GP_WIN_KEEP=1` passes the 25 `gp_twop` tests, two-human check, replay, capture identity, frame/trace/moves ratchets. `GP_WIN_KEEP=1` only preserves the `/tmp` dump for pin proofs; the default target removes it. The values and actual failing-direction checks (each run used the retained port dump with the other pins at their defaults):
+`make gp-u16-oracle GP_WIN_KEEP=1` passes the `gp_twop` tests, two-human/end-mode check, replay, capture identity, frame/trace/moves ratchets. The finisher reaction remains the R2 named gap; the allow option changes no frame or state pin. `GP_WIN_KEEP=1` only preserves the `/tmp` dump for pin proofs; the default target removes it. The values and actual failing-direction checks (each run used the retained port dump with the other pins at their defaults):
 
 | Pin | Value | Provenance | Failing direction, observed output |
 |---|---:|---|---|
@@ -962,7 +962,7 @@ The pin proofs were direct `gp_compare.py` invocations against the retained, mea
 
 ## §J10 Closeout index and remeasurement (Task 10, 2026-10-22)
 
-Capture index: §J4 is U12 ENDURANCE (team pass and modes 0x30/0x31); §J5 is U13 BLIZZARD's ending (30/30 milestones, pixel claim stops at capture 4248); §J6 is the U14 live-win R1 named gap (no completed capture, no pin); §J7 is U15's mid-round join; §J8 is U16's extended two-human capture (R2 finisher named gap). §J9 records the raw joystick verdict.
+Capture index: §J4 is U12 ENDURANCE (team pass and modes 0x30/0x31); §J5 is U13 BLIZZARD's ending (30/30 milestones, pixel claim stops at capture 4248); §J6 is the U14 live-win R1 named gap (no completed capture, no pin); §J7 is U15's mid-round join; §J8 is U16's extended two-human capture (mode-0x09/0x12 end-state checks enforced; R2 finisher-reaction gap remains). §J9 records the raw joystick verdict.
 
 Task 10 re-ran each available oracle and a report-only replay using `make gp-report scenario=<scenario> GP_REPORT_MAX=0`. All four reports exited 0 and reproduced their recorded comparison results (U15 has no unexplained frame within its compared end); the oracle pins and capture identities also matched. No pin or oracle line was changed:
 

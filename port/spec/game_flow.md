@@ -471,12 +471,12 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
   `0x416D4`/`0x41C28`, both since ported, mode `0x12`'s step, record §48-Z).
   `0x29B74`'s every live caller is still reached only through `0x24C5C`'s
-  **unported mode cases** and the unported match/fight chain; the `0x2861C`
+  **unported mode cases** and the now-ported match/fight chain; the `0x2861C`
   region is dead outright. On the no-input path no ported code moves the
   port's `DS_00104B00` off the 3 that `0x10E80` stores (record §47-B.2; an
   accepted coin/start event does, through `0x257A4`, record §48-W, but only
   into modes `0x1A`/`0x1B`/`0x10` with the hook `0x4367C`, and mode `0x12`
-  itself is stored only by the same unported chain, record §48-Z), so
+  itself is stored only by the same now-ported chain, record §48-Z), so
   `0x29B74` is unreachable and unit-tested (`test_effects`), and registered
   in `actors_init` for a future `DS_00104AE4` dispatch. `0x41578` is now
   reached from ported code (`0x416D4`/`0x41C28`) but not from any oracle

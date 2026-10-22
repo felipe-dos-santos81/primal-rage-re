@@ -102,16 +102,13 @@ deps: ## Check the toolchain and the (untracked) game assets
 	else \
 		echo "warning: $(PORT_DIR)/tests/ghidra_data.bin missing — PR_ORACLE_REQUIRED runs need it; make re-oracle regenerates it"; \
 	fi
-	@if $(PYTHON) -c 'import unicorn' >/dev/null 2>&1; then \
-		echo "ok: python unicorn importable"; \
-	else \
-		echo "warning: python unicorn not importable — make diff-verify needs tools/requirements-diff.txt"; \
-	fi
-	@if $(PYTHON) -c 'import capstone' >/dev/null 2>&1; then \
-		echo "ok: python capstone importable"; \
-	else \
-		echo "warning: python capstone not importable — make diff-verify needs tools/requirements-diff.txt"; \
-	fi
+	@for module in unicorn capstone; do \
+		if $(PYTHON) -c "import $$module" >/dev/null 2>&1; then \
+			echo "ok: python $$module importable"; \
+		else \
+			echo "warning: python $$module not importable — make diff-verify needs tools/requirements-diff.txt"; \
+		fi; \
+	done
 	@cmos="$(GAME_DIR)/CMOS"; \
 	if [ ! -e "$$cmos" ] || { [ "$$(wc -c < "$$cmos" | tr -d ' ')" = 2040 ] && [ "$$(tr -d '\000' < "$$cmos" | wc -c | tr -d ' ')" = 0 ]; }; then \
 		echo "ok: $$cmos absent or 2040 zero bytes"; \
@@ -1401,9 +1398,9 @@ gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips
 # position gate 0x36E2C, and DS_00105B3A (the config word's bit 8, 0x20C9F) is 0 on the
 # all-zero CMOS. The capture reaches modes 0x09 and 0x12, but `gp_twop.py check --finisher`
 # found no 0x32..0x34 reaction after the three attempted TALON entries. R2: the finisher
-# effect is a named gap; this target therefore enforces only the two-human match and frame/
-# state evidence, not a finisher claim. The S records carry c0/c1/r0/r1/s0_43 and all five
-# fields agree through the replay end, so pin the moves claim too.
+# reaction remains a named gap; `--finisher --allow-missing-reaction` enforces the two-human
+# match and both end modes without claiming a reaction. The S records carry c0/c1/r0/r1/s0_43
+# and all five fields agree through the replay end, so pin the moves claim too.
 # Provenance (Task 8, record gameplay-truth-ii §J8):
 #   MIN_FIRST 8069: after the byte-pinned scan-out at capture 4089 and loader overlay at
 #     8066, the first unexplained frame is 8069 (raw 11594), nearest port 6816. The capture
@@ -1423,11 +1420,11 @@ GP_U16_MAX_START = 100
 GP_U16_MIN_REACH = 6817
 GP_U16_CAPTURE_SHA256 = 5d38ca1fc3a52bcd02d91df3d7f0ae94a0275f9531f8bd81ffacee5343d31513
 GP_U16_CAPTURE_FRAMES = 8091
-gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human match and frame evidence (finisher gap; skips without data/k11-captures/gp-u16-twop2)
-	@echo "== gameplay oracle: gp-u16-twop2 (extended two-human match and frame evidence; finisher gap) =="
+gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human match and frame evidence (finisher reaction gap; skips without data/k11-captures/gp-u16-twop2)
+	@echo "== gameplay oracle: gp-u16-twop2 (extended two-human match and frame evidence; finisher reaction gap) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_twop
 	@if [ ! -d $(K11_CAPTURES)/gp-u16-twop2 ]; then echo "gp-u16-oracle: no capture at $(K11_CAPTURES)/gp-u16-twop2 (skipped)"; else \
-		$(PYTHON) tools/gp_twop.py check --capture $(K11_CAPTURES)/gp-u16-twop2 && \
+		$(PYTHON) tools/gp_twop.py check --finisher --allow-missing-reaction --capture $(K11_CAPTURES)/gp-u16-twop2 && \
 		$(MAKE) --no-print-directory gp-replay scenario=gp-u16-twop2 GP_OPTIONAL=1 && \
 		$(PYTHON) tools/gp_compare.py --scenario gp-u16-twop2 --capture $(K11_CAPTURES)/gp-u16-twop2 \
 			--port $(GP_DUMP)/gp-u16-twop2 --min-first "$(GP_U16_MIN_FIRST)" \

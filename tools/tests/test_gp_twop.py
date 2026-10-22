@@ -112,8 +112,21 @@ class TestMidRoundJoin(unittest.TestCase):
     def test_the_held_edge_across_missed_frames_is_accepted(self):
         # gp-u15-join: the harness missed f=0x832/0x833 where the bit rose, so the join
         # record (0x834) holds F2 with new=0 and the record before it (0x831) did not
-        r = gt.two_human(_join(new=0, held=gt.START_MASK[1]), join_only=True)
+        lines = [line for line in _join(new=0, held=gt.START_MASK[1])
+                 if not (gs.parse(line) and gs.parse(line).get('f') in (0x3FE, 0x3FF))]
+        r = gt.two_human(lines, join_only=True)
         self.assertEqual((r['fail'], r['start_edge']), ([], 'held'))
+
+    def test_a_held_rise_between_consecutive_frames_is_not_proven(self):
+        r = gt.two_human(_join(new=0, held=gt.START_MASK[1]), join_only=True)
+        self.assertEqual(r['start_edge'], None)
+        self.assertIn('not newly pressed at f=400', r['fail'][0])
+
+    def test_the_join_without_a_prior_snapshot_fails(self):
+        lines = [_s(0x400, mode=0x17, b1f=3, new=gt.START_MASK[1]),
+                 'X ms=0 f=0440 step=9 end']
+        r = gt.two_human(lines, join_only=True)
+        self.assertTrue(any('has no S record before it' in failure for failure in r['fail']))
 
     def test_a_start_held_before_the_join_is_not_newly_pressed(self):
         r = gt.two_human(_join(new=0, held=gt.START_MASK[1], before_held=gt.START_MASK[1]), join_only=True)
@@ -230,6 +243,47 @@ class TestFinisher(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn('two-human match: ok', stdout.getvalue())
         self.assertIn('no finisher reaction 0x32..0x34 in any S record', stdout.getvalue())
+
+    def test_cli_finisher_can_allow_a_missing_reaction(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(self.lines(reaction=0)) + '\n')
+            stdout = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', d,
+                                                  '--finisher', '--allow-missing-reaction']):
+                with contextlib.redirect_stdout(stdout):
+                    rc = gt.main()
+        self.assertEqual(rc, 0)
+        self.assertIn('two-human match: ok', stdout.getvalue())
+        self.assertIn('finisher: ok; mode 0x09 reached, mode 0x12 reached, reactions []',
+                      stdout.getvalue())
+
+    def test_cli_finisher_allowing_a_missing_reaction_still_requires_mode_0x12(self):
+        lines = self.lines(reaction=0, mode12=False)
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+            stdout = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', d,
+                                                  '--finisher', '--allow-missing-reaction']):
+                with contextlib.redirect_stdout(stdout):
+                    rc = gt.main()
+        self.assertEqual(rc, 1)
+        self.assertIn('two-human match: ok', stdout.getvalue())
+        self.assertIn('mode 0x12 not reached', stdout.getvalue())
+
+    def test_cli_rejects_allowing_a_missing_reaction_without_finisher(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('')
+            stderr = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', d,
+                                                  '--allow-missing-reaction']):
+                with contextlib.redirect_stderr(stderr):
+                    with self.assertRaises(SystemExit) as cm:
+                        gt.main()
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn('--allow-missing-reaction requires --finisher', stderr.getvalue())
 
     def test_cli_join_and_finisher_are_mutually_exclusive(self):
         stderr = io.StringIO()

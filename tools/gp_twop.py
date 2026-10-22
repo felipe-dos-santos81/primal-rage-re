@@ -11,8 +11,11 @@ record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
                                     (mode 6 -> 0x17, the joining side's start mask,
                                     b1f, no debit), not the two-human fight claim
   gp_twop.py check --finisher --capture DIR
-                                    the two-human check plus the U16 finisher reaction
-                                    and mode-0x09/mode-0x12 evidence
+                                     the two-human check plus the U16 finisher reaction
+                                     and mode-0x09/mode-0x12 evidence
+  gp_twop.py check --finisher --allow-missing-reaction --capture DIR
+                                     enforce the two-human and end-mode evidence while
+                                     reporting, but allowing, the R2 reaction gap
   gp_twop.py check --trace FILE     the same over a port trace.txt (T records)
                                     (a trace is converted only when the file is named
                                     trace.txt; any other name is read as a poll.log
@@ -88,7 +91,8 @@ def two_human(lines, join_only=False):
     side human, the join's own record is the join window mode 0x17 (0x28DA4 stores it,
     0x28E3A/0x28E66), the joining side's start mask DS_0009ACBC[side] is newly pressed
     in DS_001088E4 (or, when the harness missed the frames where it rose, held in the
-    join's record after a record before it that did not hold it: start_edge 'held'),
+    join's record after a record before it that did not hold it and a genuine sampling
+    gap: start_edge 'held'),
     and b1f stays 3 to the end; the credit check is shared (0x2CA93).
     The fight-press and command-word claims are skipped: the capture ends inside the
     join's 0x78-frame 0x17 window (0x28E75), where no fight frame runs and the CPU
@@ -135,7 +139,8 @@ def two_human(lines, join_only=False):
                                    % (out['b1f_before'], out['b1f_join'], join))
             elif snap[join]['new'] & START_MASK[side]:
                 out['start_edge'] = 'new'
-            elif (snap[join]['held'] & START_MASK[side]) and not (snap[before[-1]]['held'] & START_MASK[side]):
+            elif (join - before[-1] > 1 and snap[join]['held'] & START_MASK[side]
+                  and not (snap[before[-1]]['held'] & START_MASK[side])):
                 out['start_edge'] = 'held'
             else:
                 out['fail'].append('the joining side %d start mask %08X is not newly pressed at f=%X '
@@ -165,9 +170,10 @@ def two_human(lines, join_only=False):
     return out
 
 
-def finisher(lines):
+def finisher(lines, allow_missing_reaction=False):
     """The U16 finisher evidence: a two-human log reached modes 0x09 and 0x12 and
-    contains a finisher reaction (0x32..0x34) in either S record move field."""
+    contains a finisher reaction (0x32..0x34) in either S record move field. When
+    allow_missing_reaction is true, only that reaction requirement is waived."""
     records = [gs.parse(line) for line in lines]
     snapshots = [r for r in records if r and r['kind'] == 'S']
     mode9 = any(r['mode'] == 0x09 for r in snapshots)
@@ -175,7 +181,7 @@ def finisher(lines):
     reactions = [r[field] for r in snapshots for field in ('r0', 'r1')
                  if r.get(field) in (0x32, 0x33, 0x34)]
     fail = []
-    if not reactions:
+    if not reactions and not allow_missing_reaction:
         fail.append('no finisher reaction 0x32..0x34 in any S record')
     if not mode9:
         fail.append('mode 0x09 not reached')
@@ -196,6 +202,19 @@ def mode_path(lines):
     return out
 
 
+def report_human(name, human):
+    if human['join'] is not None:
+        print('gp_twop: %s: join f=%X (cred %s -> %X); %d S records from the join to %s; '
+              'side 0 %s, side 1 %s; fight presses %d/%d'
+              % (name, human['join'], '?' if human['cred_before'] is None else '%X' % human['cred_before'],
+                 human['cred_join'], human['frames'],
+                 'the end' if human['end'] is None else 'X f=%X' % human['end'],
+                 sorted(human['counts'][0].items()), sorted(human['counts'][1].items()),
+                 human['pressed'][0], human['pressed'][1]))
+    for x in human['fail']:
+        print('gp_twop: %s: FAIL: %s' % (name, x))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('cmd', choices=('check', 'path'))
@@ -207,7 +226,11 @@ def main():
                        help="check the mid-round join only (0x28CC8/0x28DA4); the capture ends inside the join's mode-0x17 window")
     check.add_argument('--finisher', action='store_true',
                        help='check the U16 finisher reactions and match-end modes, as well as the two-human match')
+    ap.add_argument('--allow-missing-reaction', action='store_true',
+                    help='with --finisher, allow no sampled finisher reaction while still checking end modes')
     a = ap.parse_args()
+    if a.allow_missing_reaction and not a.finisher:
+        ap.error('--allow-missing-reaction requires --finisher')
     path = os.path.join(a.capture, 'poll.log') if a.capture else a.trace
     lines = load(path)
     name = os.path.basename(os.path.normpath(a.capture)) if a.capture else path
@@ -218,20 +241,11 @@ def main():
         return 0
     if a.finisher:
         human = two_human(lines)
-        if human['join'] is not None:
-            print('gp_twop: %s: join f=%X (cred %s -> %X); %d S records from the join to %s; '
-                  'side 0 %s, side 1 %s; fight presses %d/%d'
-                  % (name, human['join'], '?' if human['cred_before'] is None else '%X' % human['cred_before'],
-                     human['cred_join'], human['frames'],
-                     'the end' if human['end'] is None else 'X f=%X' % human['end'],
-                     sorted(human['counts'][0].items()), sorted(human['counts'][1].items()),
-                     human['pressed'][0], human['pressed'][1]))
-        for x in human['fail']:
-            print('gp_twop: %s: FAIL: %s' % (name, x))
+        report_human(name, human)
         print('gp_twop: %s: two-human match: %s'
               % (name, 'FAIL' if human['fail'] else 'ok'))
 
-        result = finisher(lines)
+        result = finisher(lines, allow_missing_reaction=a.allow_missing_reaction)
         print('gp_twop: %s: finisher: %s; mode 0x09 %s, mode 0x12 %s, reactions %s'
               % (name, 'FAIL' if result['fail'] else 'ok',
                  'reached' if result['mode9'] else 'missing',
@@ -242,20 +256,13 @@ def main():
         return 1 if human['fail'] or result['fail'] else 0
 
     r = two_human(lines, join_only=a.join)
+    report_human(name, r)
     if r['join'] is not None:
-        print('gp_twop: %s: join f=%X (cred %s -> %X); %d S records from the join to %s; '
-              'side 0 %s, side 1 %s; fight presses %d/%d'
-              % (name, r['join'], '?' if r['cred_before'] is None else '%X' % r['cred_before'],
-                 r['cred_join'], r['frames'], 'the end' if r['end'] is None else 'X f=%X' % r['end'],
-                 sorted(r['counts'][0].items()), sorted(r['counts'][1].items()),
-                 r['pressed'][0], r['pressed'][1]))
         if a.join:
             print('gp_twop: %s: mid-round join: mode %X -> %X, b1f %X -> %X, start press seen as %s'
                   % (name, r['before_mode'], r['join_mode'], r['b1f_before'], r['b1f_join'],
                      {'new': 'the newly-pressed bit', 'held': 'the held-edge across missed frames',
                       None: 'neither'}[r['start_edge']]))
-    for x in r['fail']:
-        print('gp_twop: %s: FAIL: %s' % (name, x))
     if r['fail']:
         return 1
     print('gp_twop: %s: %s: ok' % (name, 'mid-round join' if a.join else 'two-human match'))
