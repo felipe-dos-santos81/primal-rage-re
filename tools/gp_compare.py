@@ -199,6 +199,16 @@ OVERLAY_ALLOWED = {
         (2062, 1685, 1684, 1686,
          'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
     ),
+    'gp-u13-ending2': (
+        # Capture 2188 (raw 5047): U13's own mode-0x17 -> 0x12 loader
+        # presentation, with the 166 glyph pixels at rows 192..197, x 0..85
+        # from port 1799 over port 1800's mode-0x12 screen; port 1798 supplies
+        # the same indices under the stale black palette. The glyph bytes match
+        # the same loader string, but the capture and all three port frames are
+        # independently measured for U13.
+        (2188, 1799, 1798, 1800,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
 }
 
 

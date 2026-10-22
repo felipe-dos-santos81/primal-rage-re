@@ -835,6 +835,24 @@ class OverlayAllowance(Dirs):
                             '(the mask from port 2, the named glyph bytes)' in l for l in out), out)
         self.assertTrue(any('1 overlay-allowed' in l for l in out), out)
 
+    def test_u13_overlay_recipe_is_pinned_and_mutations_fail(self):
+        # Task 7 (record gameplay-truth-ii §J5): U13's capture 2188 is its own
+        # loader strip recipe, not U10's frame or port pair.
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u13-ending2'],
+                         ((2188, 1799, 1798, 1800,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+
+        # The fixture's captured overlay is byte-pinned by its SHA and off-mask
+        # screen source. Changing either value in the named recipe un-explains it.
+        wrong_sha = (1, 1, 2, 3, '0' * 64)
+        wrong_screen = (1, 1, 2, 2, self.entry[4])
+        for changed in (wrong_sha, wrong_screen):
+            with self.subTest(changed=changed):
+                rc, first, out = self.run_overlay(ov=(changed,))
+                self.assertEqual((rc, first), (1, 1), out)
+                self.assertTrue(any('FAIL: allowed capture 1' in l and
+                                    'is not its named glyph overlay' in l for l in out), out)
+
     def test_a_mutated_screen_frame_unexplains_it_again(self):
         # Review Focus #3: mutate S's bytes (frame 3: 9 -> 4) without touching
         # the capture. The off-mask pixels no longer match, the allowance FAILs

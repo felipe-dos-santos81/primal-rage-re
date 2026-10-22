@@ -1257,23 +1257,23 @@ gp-win-one: build
 # §C5.4/§C5.7). Its first poke writes BLIZZARD's land marks (0x81, not u10's SAURON 0x80:
 # 0x41C28 state 1 tallies (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C), and
 # the rest are gp-u10-ending's from its second poke on; the ending row is therefore
-# _all(ad4=0, c0=1) rather than SAURON's c0 = 0. The pins are EMPTY until
-# data/k11-captures/gp-u13-ending2 is captured and measured (Task 10): an absent capture skips
-# the target (gp-replay's GP_OPTIONAL=1, gp_win.py's own no-poll.log skip), while a present
-# capture with an empty pin FAILS (gp_compare's ratchet and identity checks print "not pinned").
-# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture frame,
-# TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
-# MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's
-# two ratchets, and the capture identity (poll.log sha256 and the frame_*.raw.gz count). Raise
-# MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/WIN_MIN_FIRST when they improve.
-GP_U13_MIN_FIRST =
-GP_U13_TRACE_MIN_FIRST =
-GP_U13_MAX_START =
-GP_U13_MIN_REACH =
-GP_U13_CAPTURE_SHA256 =
-GP_U13_CAPTURE_FRAMES =
-GP_U13_MILESTONES =
-GP_U13_WIN_MIN_FIRST =
+# _all(ad4=0, c0=1) rather than SAURON's c0 = 0. Measured on the clean Task 7 capture:
+# after its own loader-overlay recipe (tools/gp_compare.py), the report starts at capture 96
+# (raw 1739), scans through port 4939 in report mode, and first diverges at capture 4248
+# (raw 7887); enforced comparison stops there at port 3549. Trace and win fields agree through
+# f=10013, so their end pins are 10014. gp_win.py finds 30/30 milestones including BLIZZARD
+# c0=1, and the capture has 5904 frames with this poll.log sha256.
+# An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
+# capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
+# WIN_MIN_FIRST when they improve.
+GP_U13_MIN_FIRST = 4248
+GP_U13_TRACE_MIN_FIRST = 10014
+GP_U13_MAX_START = 96
+GP_U13_MIN_REACH = 3549
+GP_U13_CAPTURE_SHA256 = e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6
+GP_U13_CAPTURE_FRAMES = 5904
+GP_U13_MILESTONES = 30
+GP_U13_WIN_MIN_FIRST = 10014
 gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 ending (skips without data/k11-captures/gp-u13-ending2)
 	@echo "== gameplay oracle: gp-u13-ending2 (BLIZZARD's ending under pokes) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_win

@@ -671,6 +671,118 @@ The report-only command lists capture 732..771 as the 40 unexplained frames afte
 
 Each proof was run against the real capture and replay dump with only that gp_compare pin changed; all six returned nonzero with the stated failure, and the defaults were left unchanged. The final `make gp-u12-oracle` passes, including `tools.tests.test_gp_modes`, the evidence check and the replay/compare. The narrow claim is no unexplained content-bearing capture frame in the exhibited window below 732, the ENDURANCE team pass and modes 0x30/0x31 reached, and the scripted replay reaching port frame 490. It does not claim the 732..771 post-script tail is reproduced, nor port-frame order or complete interior frame coverage.
 
+## §J5 The `gp-u13-ending2` BLIZZARD ending capture (evidence closeout Task 7; measured on the closeout branch)
+
+`data/k11-captures/gp-u13-ending2` (git-ignored) is the U10-clone path to the second ending. P1 takes three right edges to character-select cell 3 (class 1, BLIZZARD), then the scenario's `memsize=64` and seven `0x81` land-mark poke lead to the final. Nobody typed in the DOSBox-X window. `DISPLAY=:1 make gp-capture scenario=gp-u13-ending2` ran with the scenario's 240 s time limit and emitted `dosbox memsize=64` in its DOSBox-X command.
+
+### The capture checks and identity
+
+```
+snapshots 10021, f 5..2754, 43 frames missed (spec §3.7)
+CHECK base: ok
+CHECK steps fired 23/23: ok
+CHECK end frame reached: ok
+CHECK mode 0x27 after the Enter: ok
+CHECK snapshots kb == raw (0 differ): ok
+CHECK frames written 5904/5904: ok
+CHECK port script v2: ok
+CHECK no unscripted input: ok
+CHECK pokes written 17/17, 0 raced: ok
+CHECK stopped at the end (SIGTERM at f=2754, rc=0): ok
+```
+
+`python3 tools/gp_capture.py check-input data/k11-captures/gp-u13-ending2` prints `check=ok no unscripted input`. The capture spans raw video frames 1388..14417 and contains 5904 `frame_*.raw.gz` files. `poll.log` sha256 is `e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6`. The recorder printed ffmpeg broken-pipe muxer messages while DOSBox-X shut down; the capture command returned success and every capture check above passed.
+
+### The replay's miss set
+
+The first `make gp-replay scenario=gp-u13-ending2` correctly failed the existing exact-set guard (`4 != 2`):
+
+```
+fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=66037
+fn-miss PR_GP_DUMP 0x5D812 set_dead hits=65158
+fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP 0x5D812 frontend_mode_1b_step hits=3
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+```
+
+The two scenario-specific pairs are the §G.24 wipe hooks: `0x29D60` is the bare `ret`, and `0x5D812` is the runtime `xor eax,eax; ret`; they are not unported replay targets. The base `actor_spawn`/`set_dead` pairs are the known runtime stub. `port/tests/test_platform.c` now pins only the two measured `frontend_mode_1b_step` pairs in `k_miss_gp_u13_ending2`, selected by its exact-name `k_gp_sets` row. The replay then passes with `distinct=4 dropped=0`, 0 restarts, and the 36-line port script ending at X f=10013. No new porting was needed.
+
+### The BLIZZARD ending evidence
+
+`python3 tools/gp_win.py check --scenario gp-u13-ending2 --capture data/k11-captures/gp-u13-ending2` passes all 30 milestones. The ending predicate requires `ad4=0, c0=1`; the matched ending row at f=184D proves both, and specifically proves this is BLIZZARD (`c0=1`), not U10's character-0 ending.
+
+```
+character select (mode 0x10) at f=283 ok
+round 1: P1 is character 1 (cursor 3 confirmed, 0x43CAD) at f=4D0 ok
+round 1 KO with the seven lands poked P1's at f=4DC ok
+round 2 (mode 6, round index 2) at f=89E ok
+round 2 KO: P1 wins the match (0x27BA4 result 0) -> mode 9 at f=8AB ok
+the conquered-lands screen (mode 0x12, 0x4142C), the won land marked by 0x286BC (0x80 | side 0 | character) at f=BF3 ok
+0x41C28 state 3 counts the seventh land at f=C94 ok
+WORLD DOMINATION: 0x4160C clears the marks, +0x82 = 1 at f=CE0 ok
+YOU MUST REPLENISH YOUR HEALTH: mode 0x23 (0x417C4, 0x26978) at f=E12 ok
+the health bonus (mode 0x22) at f=E8D ok
+mode 0x24 (0x26F58) at f=1321 ok
+the final: mode 0xC, stage 7, flag DS_00104B14 (0x26F58, 0x25C88) at f=14ED ok
+final opponent 1 KO'd -> mode 0xD (0x272DC) at f=14F9 ok
+final opponent 1 replaced (0x274FC, count 1) at f=1503 ok
+final opponent 2 KO'd -> mode 0xD (0x272DC) at f=150D ok
+final opponent 2 replaced (0x274FC, count 2) at f=1517 ok
+final opponent 3 KO'd -> mode 0xD (0x272DC) at f=1521 ok
+final opponent 3 replaced (0x274FC, count 3) at f=152B ok
+final opponent 4 KO'd -> mode 0xD (0x272DC) at f=1535 ok
+final opponent 4 replaced (0x274FC, count 4) at f=153F ok
+final opponent 5 KO'd -> mode 0xD (0x272DC) at f=1549 ok
+final opponent 5 replaced (0x274FC, count 5) at f=1553 ok
+final opponent 6 KO'd -> mode 0xD (0x272DC) at f=155D ok
+final opponent 6 replaced (0x274FC, count 6) at f=1567 ok
+final opponent 7 KO'd -> mode 0xD (0x272DC) at f=1571 ok
+YOU ARE MASTER OF THE NEW URTH: mode 0xF, count 7 (0x274FC) at f=157B ok
+BLIZZARD's ending (mode 0x1F, 0x208F8): the winner's character DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x20914) is character c0=1 at f=184D ok
+the ending, second part (mode 0x1F, state 3) at f=1DEF ok
+the high-score entry (mode 0x1E) at f=21B5 ok
+back in mode 3 at f=271D ok
+30/30 milestones ok
+```
+
+### The measured overlay and frame report
+
+The first report-only unexplained frame is the loader's `- LOADING -` strip, so `tools/gp_compare.py` has a U13-specific `OVERLAY_ALLOWED` recipe. Capture frame 2188 (raw 5047) is exactly 166 glyph pixels (rows 192..197, x 0..85) from port frame 1799 over the mode-0x12 screen at port 1800; port 1798 supplies the same indices under the stale black palette. The measured glyph-byte sha256 is `de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced`. These are U13's own capture/frame indices, independently measured rather than copied from U10. `test_u13_overlay_recipe_is_pinned_and_mutations_fail` pins that exact tuple and shows that changing its sha or screen-pair index un-explains the fixture; the full `tools.tests.test_gp_compare` suite passes (63 tests). No mode-8 scan-out allowance is needed (`scan3-allowed=0`).
+
+`python3 tools/gp_compare.py --report --scenario gp-u13-ending2 --capture data/k11-captures/gp-u13-ending2 --port /tmp/pr_gp_dump/gp-u13-ending2 --max-unexplained 0` (report-only, no ratchet) reports:
+
+```
+frames: captured frame 2188 (raw 5047) allowed by name as a glyph overlay: 166 px of port 1799 over port 1800 (the mask from port 1798, the named glyph bytes)
+frames: window from capture 96 (raw 1739); 5786 classified: 3492 clean, 2270 splice, 7 transition, 0 band-allowed, 0 scan3-allowed, 1 overlay-allowed, 16 unexplained, 22 all-black
+frames: FIRST UNEXPLAINED capture 4248 (raw 7887): nearest port 3551, rows 0..96, x 0..319 (22923 px)
+frames: other unexplained capture frames 4320, 5120, and 5891..5903
+frames: coverage (reported, not ratcheted): 72 non-black port frame(s) up to port 4939 not exhibited by any classified capture frame
+trace: 9667 frames compared (f 130..), 43 without a capture snapshot; first tick difference f=131 (reported, not ratcheted)
+trace: normalised: ent 0 of 9667 differ; t508 7857 of 9667 differ (first f=273)
+trace: 0 differing through 10013
+moves: 9667 frames compared (f 130..) over c0 c1 r0 r1 s0_43, 43 without a capture snapshot
+moves: 0 differing through 10013
+```
+
+The enforced compare stops at the first unexplained frame: it classifies 4139 frames from window start 96, reaches port 3549, and finds the same first unexplained capture frame 4248. The `--report` scan continues after that frame through port 4939, which is why its reported reach is not the enforced `GP_U13_MIN_REACH`. Capture 4248 is a large unexplained region (nearest port 3551, rows 0..96, x 0..319); it is not pinned as a scan-out or overlay and its cause is not claimed. The later unexplained frames, including 5891..5903 after the ending/script tail, are likewise outside the frame claim. No allowance was invented for them.
+
+### Pins and their failing-direction proofs (`make gp-u13-oracle`, PASS at the final pins)
+
+| pin | value | provenance | failing-direction proof |
+|---|---:|---|---|
+| `GP_U13_MIN_FIRST` | 4248 | First unexplained capture frame after the named loader overlay | 4249 → FAIL (`first unexplained 4248 < ratchet N 4249`) |
+| `GP_U13_TRACE_MIN_FIRST` | 10014 | 0 trace differences through f=10013, the replay's X record | 10015 → FAIL (`N 10015 > end 10014: N is unreachable`) |
+| `GP_U13_MAX_START` | 96 | Measured window starts at capture 96 (raw 1739) | 95 → FAIL (`window starts at capture 96 > pinned start 95`) |
+| `GP_U13_MIN_REACH` | 3549 | Enforced compare reaches port 3549 before stopping at capture 4248 | 3550 → FAIL (`window reach port 3549 < pinned reach 3550`) |
+| `GP_U13_CAPTURE_SHA256` | `e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6` | `poll.log` sha256 | first hex digit changed (`f581…`) → FAIL (capture identity mismatch) |
+| `GP_U13_CAPTURE_FRAMES` | 5904 | Count of `frame_*.raw.gz` files | 5905 → FAIL (capture identity frame-count mismatch) |
+| `GP_U13_MILESTONES` | 30 | `gp_win.py path`: all 30 rows reproduced | 31 → FAIL (`N 31 > end 30: N is unreachable`) |
+| `GP_U13_WIN_MIN_FIRST` | 10014 | Win fields have 0 differences through f=10013 | 10015 → FAIL (`N 10015 > end 10014: N is unreachable`) |
+
+Each failing-direction proof was run against the capture and replay dump with only that pin changed; the exact output is summarized in the table. The first target attempt exposed a measurement distinction: report-only continued to port 4939, while enforced comparison stopped at port 3549 at the first unexplained frame. The initial 4939 reach pin therefore failed; it was corrected to the enforced output and the oracle then passed. The final `make gp-u13-oracle` runs `tools.tests.test_gp_win` (24 tests, including Task 4's BLIZZARD label guard), `gp_win.py check`, the replay, the frame/trace compare, and the win-path/milestone ratchets.
+
+**The narrow claim:** capture frames in the exhibited window below 4248 are explained (with the one byte-pinned loader overlay); the ending row proves `ad4=0,c0=1`, all 30 milestones and the script end at f=10013 are reached, and trace/win fields match through that end. The unexplained frame at 4248 is the pixel-claim limit; nothing at or after it is claimed correct. Port-frame order and complete interior coverage are not claimed.
+
 ## §J7 The `gp-u15-join` capture (evidence closeout Task 5; measured on the closeout branch)
 
 `data/k11-captures/gp-u15-join` (git-ignored): P2 joins the gp-idle-loss fight mid-round with F2 (`gp_session.SCENARIOS['gp-u15-join']`, 75 s limit, 4 injected steps, end 60 frames into the join's mode 0x17). Captured with `DISPLAY=:1 make gp-capture scenario=gp-u15-join`, nobody typing in the window.
