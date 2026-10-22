@@ -974,22 +974,28 @@ gp-modes-one: build
 # record §J4): gp-u12-endurance, the ENDURANCE team pass 0x44798's eight picks and the fight
 # they open (modes 0x30/0x31), the named gap record 2026-10-01-gameplay-u8-derivations.md
 # §U8.9 leaves past gp-u8-endurance's 300-frame team-select cut (D3; that capture and its
-# GP_MODES_EN_* pins stay as they are). The pins are EMPTY until data/k11-captures/
-# gp-u12-endurance is captured and measured (Task 9): an absent capture skips the target
-# (gp-replay's GP_OPTIONAL=1 and gp_compare's own skip), while a present capture with an empty
-# pin FAILS (gp_compare's ratchet and identity checks print "not pinned"). Provenance goes
-# here with the measured values: MIN_FIRST the first unexplained capture frame, TRACE_MIN_FIRST
-# the first differing traced f, MAX_START the window's first capture frame, MIN_REACH the
-# replay's last exhibited port frame, and the capture identity (poll.log sha256 and the
-# frame_*.raw.gz count). Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH when they improve.
-GP_U12_MIN_FIRST =
-GP_U12_TRACE_MIN_FIRST =
-GP_U12_MAX_START =
-GP_U12_MIN_REACH =
-GP_U12_CAPTURE_SHA256 =
-GP_U12_CAPTURE_FRAMES =
+# GP_MODES_EN_* pins stay as they are). Measured on data/k11-captures/gp-u12-endurance (evidence
+# closeout Task 6; an absent capture skips the target, gp-replay's GP_OPTIONAL=1 and gp_compare's
+# own skip, while a present capture with an empty pin FAILS: "not pinned").
+# MIN_FIRST = 732 is the first unexplained capture frame: the replay's script ends at its X record
+# (f=0x78A, port frame 490, the last of 491 dumped) and the capture runs 60 game frames on, so
+# capture 732..771 (40 frames) are the post-script tail, how far the port got, not a divergence;
+# every capture frame of the window below it is explained (400 clean, 222 splice, 10 all-black),
+# through the whole mode-0x30/0x31 span (0x31 from f=0x6D9, port frame 418). TRACE_MIN_FIRST = 1931
+# is the exact pin (`0 differing through 1930`, the X record's f), MAX_START the window's first
+# capture frame, MIN_REACH the replay's last exhibited port frame (the report's "port 490"), the
+# capture identity the poll.log sha256 and the frame_*.raw.gz count. Raise MIN_FIRST/MIN_REACH
+# when the script is extended.
+GP_U12_MIN_FIRST = 732
+GP_U12_TRACE_MIN_FIRST = 1931
+GP_U12_MAX_START = 100
+GP_U12_MIN_REACH = 490
+GP_U12_CAPTURE_SHA256 = 2edcc088d26162d0fd288c8a5caf17500ac4b7f4a974f57b6f780be0236a9014
+GP_U12_CAPTURE_FRAMES = 772
 gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fight (skips without data/k11-captures/gp-u12-endurance)
 	@echo "== gameplay oracle: gp-u12-endurance (team pass and modes 0x30/0x31) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_modes
+	@$(PYTHON) tools/gp_modes.py check --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-u12-endurance GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance \
 		--port $(GP_DUMP)/gp-u12-endurance --min-first "$(GP_U12_MIN_FIRST)" \

@@ -273,6 +273,15 @@ static const fnm_pair k_miss_gp_u15_join[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u12-endurance (plan 2026-10-22-evidence-closeout task 6, record gameplay-truth-ii
+ * §J4), measured on its full replay to its X record: the same two wipe hooks of §G.24
+ * (0x29D60, a bare `ret`, and 0x5D812, the runtime stub, from frontend_mode_1b_step),
+ * hits=1 each; the global actor_spawn/set_dead 0x5D812 rows are the fight's. */
+static const fnm_pair k_miss_gp_u12_endurance[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -328,6 +337,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u9-win", 0, k_miss_gp_u9_win, FNM_N(k_miss_gp_u9_win) },
     { "gp-u10-ending", 0, k_miss_gp_u10_ending, FNM_N(k_miss_gp_u10_ending) },
     { "gp-u15-join", 0, k_miss_gp_u15_join, FNM_N(k_miss_gp_u15_join) },
+    { "gp-u12-endurance", 0, k_miss_gp_u12_endurance, FNM_N(k_miss_gp_u12_endurance) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

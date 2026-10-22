@@ -618,6 +618,59 @@ selection, the `|diff| >= 0x1E` axis thresholds (a ±0x1D dead band) or the butt
 capture, no `gp-*` scenario, no pin and no `port/src` change; the `0x2D2F0` and `0x4F644` rows are
 unchanged and VERIFIED. The verdict is raw-only, measured at `f1f665c2`.
 
+## §J4 The `gp-u12-endurance` fight capture (evidence closeout Task 6; measured on the closeout branch)
+
+`data/k11-captures/gp-u12-endurance` (git-ignored) captures the ENDURANCE team pass and its fight. The already-existing artifact was verified, not recaptured. `session.txt` reports all checks ok: base; 22/22 injected steps; end frame reached; mode 0x27 after Enter; snapshots' keyboard bytes equal raw (0 differ); 772/772 frames written; port script v2; no unscripted input; 0/0 pokes, 0 raced; stopped at the end (SIGTERM at f=07C6, rc=0). `python3 tools/gp_capture.py check-input data/k11-captures/gp-u12-endurance` prints `check=ok no unscripted input`. `poll.log` sha256 is `2edcc088d26162d0fd288c8a5caf17500ac4b7f4a974f57b6f780be0236a9014`; the directory has 772 `frame_*.raw.gz` files.
+
+### The replay's miss set
+
+`make gp-replay scenario=gp-u12-endurance` reaches the X record (f=0x78A). Its exact misses are the known pair `0x29D60` and `0x5D812` from `frontend_mode_1b_step`, one hit each; these are the §G.24 wipe hooks, not unported replay targets. The other known rows are `0x5D812` from `actor_spawn` (3899 hits) and `set_dead` (3602 hits). `distinct=4 dropped=0`. `port/tests/test_platform.c` pins the two scenario-specific pairs in `k_miss_gp_u12_endurance`, and the exact-name `k_gp_sets` row selects them. No new porting was needed.
+
+### The mode path
+
+`python3 tools/gp_modes.py check --scenario gp-u12-endurance --capture data/k11-captures/gp-u12-endurance` passes. Its measured path is:
+
+```
+row mode 0x2B: f=33B (P); no other game-start mode
+START MENU open before select; divert b1d=3 b1f=3 at f=33C; credits 5 -> 5
+character select mode 0x10 at f=360
+mode 0x30 reached at f=65E
+mode 0x31 reached (report only) at f=6D9 (port frame 418)
+scenario X record at f=78A
+```
+
+Thus the non-failing 0x31 report row did appear; no named limit for that half is needed.
+
+### The measured report
+
+`python3 tools/gp_compare.py --report --scenario gp-u12-endurance --capture data/k11-captures/gp-u12-endurance --port /tmp/pr_gp_dump/gp-u12-endurance --max-unexplained 0` is report-only (no ratchet; exit 0):
+
+```
+frames: window from capture 100 (raw 1745); 662 classified: 400 clean, 222 splice, 0 transition, 0 band-allowed, 0 scan3-allowed, 0 overlay-allowed, 40 unexplained, 10 all-black
+frames: FIRST UNEXPLAINED capture 732 (raw 3728): nearest port 490, rows 57..158, x 154..230 (2221 px)
+frames: coverage (reported, not ratcheted): 12 non-black port frame(s) up to port 490 not exhibited by any classified capture frame: [14, 16, 74, 302, 339, 342, 343, 344, 345, 347, 348, 349]
+trace: 1610 frames compared (f 13A..), 7 without a capture snapshot; first tick difference f=13B (reported, not ratcheted)
+trace: normalised (reported, not ratcheted): ent 0 of 1610 differ; t508 673 of 1610 differ (first f=34F)
+trace: 0 differing through 1930
+moves: 1610 frames compared (f 13A..) over c0 c1 r0 r1 s0_43, 7 without a capture snapshot
+moves: 0 differing through 1930
+```
+
+The report-only command lists capture 732..771 as the 40 unexplained frames after the replay's X record, not as a divergence: the scripted port replay ends at port frame 490, and those capture frames are the post-script tail. The oracle's ratchet stops at the pinned first unexplained frame 732. In its window below 732 it reports 400 clean, 222 splice and 10 all-black frames, with no unexplained content-bearing frame. The 12 unexhibited port frames are reported coverage, not a coverage/order ratchet.
+
+### The pins and their proofs (`make gp-u12-oracle`, PASS at the pinned values)
+
+| pin | value | provenance | failing-direction proof |
+|---|---:|---|---|
+| `GP_U12_MIN_FIRST` | 732 | First unexplained capture frame 732; capture frames below it in the exhibited window are explained | 733 → FAIL (`first unexplained 732 < ratchet N 733`) |
+| `GP_U12_TRACE_MIN_FIRST` | 1931 | `0 differing through 1930`; gp_compare's exact pin at the X record f=0x78A | 1932 → FAIL (`N 1932 > end 1931: N is unreachable`) |
+| `GP_U12_MAX_START` | 100 | Measured window starts at capture 100 (raw 1745) | 99 → FAIL (`window starts at capture 100 > pinned start 99`) |
+| `GP_U12_MIN_REACH` | 490 | Last port frame reached by the replay | 491 → FAIL (`window reach port 490 < pinned reach 491`) |
+| `GP_U12_CAPTURE_FRAMES` | 772 | Capture contains 772 `frame_*.raw.gz` files | 773 → FAIL (capture identity frame-count mismatch) |
+| `GP_U12_CAPTURE_SHA256` | `2edcc088d26162d0fd288c8a5caf17500ac4b7f4a974f57b6f780be0236a9014` | `poll.log` sha256 | changed first hex digit (`3edcc088…`) → FAIL (capture identity mismatch) |
+
+Each proof was run against the real capture and replay dump with only that gp_compare pin changed; all six returned nonzero with the stated failure, and the defaults were left unchanged. The final `make gp-u12-oracle` passes, including `tools.tests.test_gp_modes`, the evidence check and the replay/compare. The narrow claim is no unexplained content-bearing capture frame in the exhibited window below 732, the ENDURANCE team pass and modes 0x30/0x31 reached, and the scripted replay reaching port frame 490. It does not claim the 732..771 post-script tail is reproduced, nor port-frame order or complete interior frame coverage.
+
 ## §J7 The `gp-u15-join` capture (evidence closeout Task 5; measured on the closeout branch)
 
 `data/k11-captures/gp-u15-join` (git-ignored): P2 joins the gp-idle-loss fight mid-round with F2 (`gp_session.SCENARIOS['gp-u15-join']`, 75 s limit, 4 injected steps, end 60 frames into the join's mode 0x17). Captured with `DISPLAY=:1 make gp-capture scenario=gp-u15-join`, nobody typing in the window.
