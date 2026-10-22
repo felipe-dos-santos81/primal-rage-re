@@ -1,6 +1,6 @@
 # Gameplay truth II — the unexplained tail and the held captures (2026-10-20)
 
-Status: implemented; capture Tasks 9–12 open (evidence closeout plan 2026-10-22).
+Status: implemented; evidence closeout complete (2026-10-22): four captures are taken and pinned (U15, U12, U13, U16); U14 live win is the R1 named gap (§J6), U16 finisher is the R2 named gap (§J8), and U13's pixel claim ends at capture 4248 (§J5). No existing pin moved.
 Written from the 2026-10-14 next-phase recon, the track G/J/A records, and a
 2026-10-20 re-read of the current pins and tools. Builder-checked 2026-10-20: its three findings are folded in (W1 is a tail pass, not a single
 frame; W8 is a raw verdict, not a capture; W5's death-animation test is

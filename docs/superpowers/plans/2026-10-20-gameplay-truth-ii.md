@@ -1,6 +1,6 @@
 # Gameplay Truth II — Implementation Plan
 
-Status: implemented; capture Tasks 9–12 open (evidence closeout plan 2026-10-22).
+Status: implemented; evidence closeout complete (2026-10-22): four captures are taken and pinned (U15, U12, U13, U16); U14 live win is the R1 named gap (§J6), U16 finisher is the R2 named gap (§J8), and U13's pixel claim ends at capture 4248 (§J5). No existing pin moved.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps

@@ -959,3 +959,18 @@ The capture's S records carry all five move fields `c0 c1 r0 r1 s0_43`; the repo
 | `GP_U16_CAPTURE_SHA256` | `5d38ca1f…d31513` | `poll.log` sha256 | all-zero sha → FAIL: actual hash != pinned hash |
 
 The pin proofs were direct `gp_compare.py` invocations against the retained, measured replay, not assumed failures; the exit status was 1 for each modified pin. Makefile values were not changed for those checks. The final claim is narrow: the two-human evidence is sampled, no content-bearing capture frame in the exhibited window below 8069 is unexplained (including only the two individually byte-pinned allowances), and the replay reaches the scripted end. Frame order and complete interior coverage are not claimed; the 27 reported unexhibited port frames are not ratcheted. The mode-0x09/0x12 states are evidenced, but the finisher reactions and all pixel content from capture 8069 onward are not claimed. Full `make verify` was not run per the task brief.
+
+## §J10 Closeout index and remeasurement (Task 10, 2026-10-22)
+
+Capture index: §J4 is U12 ENDURANCE (team pass and modes 0x30/0x31); §J5 is U13 BLIZZARD's ending (30/30 milestones, pixel claim stops at capture 4248); §J6 is the U14 live-win R1 named gap (no completed capture, no pin); §J7 is U15's mid-round join; §J8 is U16's extended two-human capture (R2 finisher named gap). §J9 records the raw joystick verdict.
+
+Task 10 re-ran each available oracle and a report-only replay using `make gp-report scenario=<scenario> GP_REPORT_MAX=0`. All four reports exited 0 and reproduced their recorded comparison results (U15 has no unexplained frame within its compared end); the oracle pins and capture identities also matched. No pin or oracle line was changed:
+
+| Scenario | Oracle | Report-only measurement |
+|---|---|---|
+| `gp-u15-join` | PASS; `MIN_FIRST=805`, `TRACE_MIN_FIRST=2158`, `MAX_START=90`, `MIN_REACH=590`, 805 frames and pinned poll hash | `0 unexplained through 804`; trace and moves `0 differing through 2157`; window starts at 90, reaches port 590 |
+| `gp-u12-endurance` | PASS; `MIN_FIRST=732`, `TRACE_MIN_FIRST=1931`, `MAX_START=100`, `MIN_REACH=490`, 772 frames and pinned poll hash | first unexplained capture 732; trace and moves `0 differing through 1930`; report enumerates the post-script tail 732–771, outside the claim |
+| `gp-u13-ending2` | PASS; `MIN_FIRST=4248`, `TRACE_MIN_FIRST=10014`, `WIN_MIN_FIRST=10014`, `MAX_START=96`, `MIN_REACH=3549`, 30 milestones and 5904 frames | first unexplained capture 4248; trace/moves/win fields agree through f=10013; later pixels are not claimed |
+| `gp-u16-twop2` | PASS; `MIN_FIRST=8069`, trace/moves `8637`, `MAX_START=100`, `MIN_REACH=6817`, 8091 frames and pinned poll hash | first unexplained capture 8069; trace/moves agree through f=8636; finisher effect remains unproved |
+
+`make gp-u14-oracle` ran its 24 tests and skipped because `data/k11-captures/gp-u14-win-live` is absent; all eight `GP_U14_*` pins remain empty, consistent with §J6. The report passes are remeasurements, not broader claims: U12's post-script tail, U13 from frame 4248 onward, U16's finisher and tail, and U14's live win remain uncovered as stated above.
