@@ -608,6 +608,7 @@ class TestLiveWin(unittest.TestCase):
         anchors = [st for st in steps if st[0] == 'after_entry']
         self.assertEqual([(a[1], a[2], a[3]) for a in anchors], [(0x06, 1, 10), (0x06, 2, 10)])
         self.assertEqual(anchors[0][-1], ('pad', gs.U14_PUNCH, 4))
+        self.assertEqual(anchors[1][-1], ('pad', gs.U14_PUNCH, 4))
         i = steps.index(anchors[0])
         j = steps.index(anchors[1])
         block = steps[i + 1:j]

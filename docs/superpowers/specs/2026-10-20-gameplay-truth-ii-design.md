@@ -140,13 +140,13 @@ character may also exercise a different death stream, which feeds W1.
 
 Script enough landed hits, from `gp-u6-moves-b`'s move knowledge, to win a
 match without the WIN_MENU pokes. Goal: kill §W.9's "what a poke replaced is
-not claimed" for one match — the fought KO, the death animation and `0x37FF2`.
+not claimed" for one match — the fought KO, the death animation and `0x37FF6`.
 
 The builder check narrowed what this proves: U10 4113 is SAURON's stream
 (character 0, the fourth final opponent), while a win-live first match is
 CHAOS's (character 6, stage 5's P2), a different one of the seven stream copies.
 They share the death-animation machinery (`0x37EA0`, the remains actor, the
-`rng(0x10)` draw, `0x37FF2`) but not the stream data. So W5 is a **shared-code**
+`rng(0x10)` draw, `0x37FF6`) but not the stream data. So W5 is a **shared-code**
 test, not a same-stream test: it can confirm the machinery and the state
 transition, not that SAURON's stream content is right. W1's B verdict is limited
 the same way and must say so.
@@ -155,7 +155,7 @@ The death-animation frames come at or after the round-end mode-8 entry, where a
 new capture's frame claim stops at the three-frame scan-out unless a measured
 `SCAN3_ALLOWED` entry is added. After the replay is measured: add the allowance
 if the scan-out recurs, then compare the frames; otherwise the evidence is the
-`0x37FF2` state transition and the trace, and the claim says so.
+`0x37FF6` state transition and the trace, and the claim says so.
 
 Risk: CPU determinism against a frame-keyed script. The capture may need the
 §G.19 pick re-alignment. If a deterministic script cannot be made, record the

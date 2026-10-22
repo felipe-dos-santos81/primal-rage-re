@@ -395,7 +395,7 @@ SCENARIOS['gp-u12-endurance'] = dict(time_limit=70, steps=(
 # W records; the port replays them as `poke` lines at F. WIN_EXTRA: the S fields both scenarios
 # add (record §W.2): the stage word (0x25848), the match result (0x27BA4), the round wins
 # (0x27C48), the round index, the final's KO count (0x274FC), the final flag (0x25C88), the
-# death-done byte (0x37FF2), the lands-held bytes and the seven land marks (0x41C28, 0x286BC),
+# death-done byte (0x37FF6), the lands-held bytes and the seven land marks (0x41C28, 0x286BC),
 # slot 0's score (+0x3C) and its world-domination count (+0x82, 0x416C2).
 WIN_EXTRA = (('afc', 0x104AFC, 2), ('ad4', 0x104AD4, 4), ('w2', 0x104AF2, 1), ('w3', 0x104AF3, 1),
              ('b1e', 0x104B1E, 1), ('b21', 0x104B21, 1), ('b14', 0x104B14, 1), ('b0c', 0x104B0C, 1),
@@ -405,7 +405,7 @@ WIN_FIELDS = tuple(n for n, _, _ in WIN_EXTRA)
 # P2's +0x5A damage byte (DS_0010789E) at 0x78: the KO the round-end checks test
 # (0x27FA8 `cmp 0x78`, 0x272DC's DS_00104B12 side), record §W.3.
 KO_P2 = ('poke', ((0x10789E, b'\x78'),))
-# The byte 0x37EA0 sets at 0x37FF2 when a KO'd fighter's death animation ends; mode
+# The byte 0x37EA0 sets at 0x37FF6 when a KO'd fighter's death animation ends; mode
 # 0xD (0x274FC) waits for it, and a poked KO never starts that animation (record §W.5).
 DEATH_DONE = ('poke', ((0x104B0C, b'\x01'),))
 

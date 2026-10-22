@@ -14397,7 +14397,7 @@ void fighter_37ea0(u32 rec)
         u32 r = rng_next(0x10u);                            /* 0x37FD4/0x37FD9 0x5D7DC */
         DSW(DSD(UPD9_REC) + 0x38u) = (u16)(r + 0x20u);      /* 0x37FDE..0x37FE9 */
     }
-    DSB(DS_00104B0C) = 1u;                                  /* 0x37FF2/0x37FF6 */
+    DSB(DS_00104B0C) = 1u;                                  /* 0x37FF6 */
     DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 2u);         /* 0x37FED..0x37FFC */
 }
 

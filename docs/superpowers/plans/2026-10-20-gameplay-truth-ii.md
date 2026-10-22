@@ -58,7 +58,7 @@ the plan argues from it.
    writes that sentence, and `gp_compare`'s existing "improved: raise N" test covers the
    ratchet direction.
 4. **The win-live death animation stopping at the mode-8 scan-out.** Task 11 must measure
-   a `SCAN3_ALLOWED` entry and compare the frames, or narrow the claim to the `0x37FF2`
+   a `SCAN3_ALLOWED` entry and compare the frames, or narrow the claim to the `0x37FF6`
    state and the trace. The `Scan3Allowance` mutation test in
    `tools/tests/test_gp_compare.py` is the pattern.
 5. **The ending2 cursor selecting the wrong character.** Task 5 must pin the ending row
@@ -748,7 +748,7 @@ start, the reach, the sha256 and the frame count.
 Fill `GP_U14_*` and run `make gp-u14-oracle`; expected PASS. Raise one pin by 1; expected
 FAIL; restore it. If the death-animation frames stop at a mode-8 scan-out, add the measured
 `SCAN3_ALLOWED['gp-u14-win-live']` entry and its mutation test, or narrow the claim to
-`0x37FF2` and the trace — say which in the record.
+`0x37FF6` and the trace — say which in the record.
 
 - [ ] **Step 5: Record and commit**
 

@@ -158,6 +158,12 @@ class TestU10(unittest.TestCase):
 
 
 class TestEvidence(unittest.TestCase):
+    def test_u13_ending_is_blizzard(self):
+        rows = gw.MILESTONES['gp-u13-ending2']
+        label, mode, k, pred = next(r for r in rows if r[1] == 0x1F)
+        self.assertIn('BLIZZARD', label)
+        self.assertIn('c0=1', label)
+
     def test_the_u9_path_passes(self):
         out = io.StringIO()
         self.assertEqual(gw.evidence('gp-u9-win', _log(U9), lambda s: out.write(s + '\n')), 0)
@@ -213,10 +219,15 @@ class TestLiveWin(unittest.TestCase):
         self.assertIn('no S record with b0c = 1 at or after the round-2 KO', text)
 
     def test_the_game_must_set_the_death_done_byte_after_the_ko(self):
-        # b0c set only before the mode-9 entry (0x85E) does not count: the rule anchors on
-        # the match-end screen's own byte (its f >= ko window).
-        before = _log(U9, change=lambda f, m, k: dict(k, b0c=1) if f < 0x85E else k)
-        rc, text = self.run_check(before)
+        # b0c set before mode 0x24's 0x2703D clear does not count: the rule anchors on the
+        # match-end screen's own byte (its f >= ko window), not the stale pre-clear value.
+        cleared_at_raw_writer = _log(U9, change=lambda f, m, k: dict(k, b0c=1) if f < 0x85E else k)
+        cleared_at_raw_writer = [
+            l.replace('mode=0009', 'mode=0024')
+            if l.startswith('S ') and gs.parse(l)['f'] == 0x85E else l
+            for l in cleared_at_raw_writer
+        ]
+        rc, text = self.run_check(cleared_at_raw_writer)
         self.assertEqual(rc, 1)
         self.assertIn('no S record with b0c = 1 at or after the round-2 KO', text)
         after = _log(U9, change=lambda f, m, k: dict(k, b0c=1) if f >= 0x85E else k)

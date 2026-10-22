@@ -10,6 +10,9 @@ record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
                                     (0x28E75), so the check is the join's evidence
                                     (mode 6 -> 0x17, the joining side's start mask,
                                     b1f, no debit), not the two-human fight claim
+  gp_twop.py check --finisher --capture DIR
+                                    the two-human check plus the U16 finisher reaction
+                                    and mode-0x09/mode-0x12 evidence
   gp_twop.py check --trace FILE     the same over a port trace.txt (T records)
                                     (a trace is converted only when the file is named
                                     trace.txt; any other name is read as a poll.log
@@ -154,6 +157,25 @@ def two_human(lines, join_only=False):
     return out
 
 
+def finisher(lines):
+    """The U16 finisher evidence: a two-human log reached modes 0x09 and 0x12 and
+    contains a finisher reaction (0x32..0x34) in either S record move field."""
+    records = [gs.parse(line) for line in lines]
+    snapshots = [r for r in records if r and r['kind'] == 'S']
+    mode9 = any(r['mode'] == 0x09 for r in snapshots)
+    mode12 = any(r['mode'] == 0x12 for r in snapshots)
+    reactions = [r[field] for r in snapshots for field in ('r0', 'r1')
+                 if r.get(field) in (0x32, 0x33, 0x34)]
+    fail = []
+    if not reactions:
+        fail.append('no finisher reaction 0x32..0x34 in any S record')
+    if not mode9:
+        fail.append('mode 0x09 not reached')
+    if not mode12:
+        fail.append('mode 0x12 not reached')
+    return dict(mode9=mode9, mode12=mode12, reactions=reactions, fail=fail)
+
+
 def mode_path(lines):
     """[(line number, f, mode, b1f, cred, e0, e2)] at the first S record of each
     mode change (a P record may see the change earlier, without these fields)."""
@@ -172,8 +194,11 @@ def main():
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument('--capture')
     src.add_argument('--trace')
-    ap.add_argument('--join', action='store_true',
-                    help="check the mid-round join only (0x28CC8/0x28DA4); the capture ends inside the join's mode-0x17 window")
+    check = ap.add_mutually_exclusive_group()
+    check.add_argument('--join', action='store_true',
+                       help="check the mid-round join only (0x28CC8/0x28DA4); the capture ends inside the join's mode-0x17 window")
+    check.add_argument('--finisher', action='store_true',
+                       help='check the U16 finisher reactions and match-end modes, as well as the two-human match')
     a = ap.parse_args()
     path = os.path.join(a.capture, 'poll.log') if a.capture else a.trace
     lines = load(path)
@@ -183,6 +208,31 @@ def main():
             print('%s:%d f=%X mode=%X b1f=%X cred=%X e0=%04X e2=%04X'
                   % (os.path.basename(path), n, f, m, b1f, cred, e0, e2))
         return 0
+    if a.finisher:
+        human = two_human(lines)
+        if human['join'] is not None:
+            print('gp_twop: %s: join f=%X (cred %s -> %X); %d S records from the join to %s; '
+                  'side 0 %s, side 1 %s; fight presses %d/%d'
+                  % (name, human['join'], '?' if human['cred_before'] is None else '%X' % human['cred_before'],
+                     human['cred_join'], human['frames'],
+                     'the end' if human['end'] is None else 'X f=%X' % human['end'],
+                     sorted(human['counts'][0].items()), sorted(human['counts'][1].items()),
+                     human['pressed'][0], human['pressed'][1]))
+        for x in human['fail']:
+            print('gp_twop: %s: FAIL: %s' % (name, x))
+        print('gp_twop: %s: two-human match: %s'
+              % (name, 'FAIL' if human['fail'] else 'ok'))
+
+        result = finisher(lines)
+        print('gp_twop: %s: finisher: %s; mode 0x09 %s, mode 0x12 %s, reactions %s'
+              % (name, 'FAIL' if result['fail'] else 'ok',
+                 'reached' if result['mode9'] else 'missing',
+                 'reached' if result['mode12'] else 'missing',
+                 ['%02X' % r for r in result['reactions']]))
+        for x in result['fail']:
+            print('gp_twop: %s: FAIL: %s' % (name, x))
+        return 1 if human['fail'] or result['fail'] else 0
+
     r = two_human(lines, join_only=a.join)
     if r['join'] is not None:
         print('gp_twop: %s: join f=%X (cred %s -> %X); %d S records from the join to %s; '

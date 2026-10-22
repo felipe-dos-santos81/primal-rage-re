@@ -1,5 +1,6 @@
 # tools/tests/test_gp_twop.py (gameplay U7: the gp-twop scenario and the two-human check)
-import os, sys, tempfile, unittest
+import contextlib, io, os, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
@@ -7,10 +8,11 @@ import gp_session as gs
 import gp_twop as gt
 
 
-def _s(f, mode=6, b1f=3, cred=4, new=0, held=0, e0=None, e2=None):
+def _s(f, mode=6, b1f=3, cred=4, new=0, held=0, e0=None, e2=None, r0=0, r1=0):
     vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
     vals.update(f=f, mode=mode, b1f=b1f, cred=cred, new=new, held=held, t508=1, t50c=2,
                 e0=gt.pad_word(new, held, 0) if e0 is None else e0,
+                r0=r0, r1=r1,
                 e2=gt.pad_word(new, held, 1) if e2 is None else e2)
     return gs.format_s(0, vals, 0, 0x1E, 0x1E)
 
@@ -168,6 +170,63 @@ class TestTwoHuman(unittest.TestCase):
         p = gt.mode_path(_match())
         self.assertEqual([(f, m, b1f, cred) for _, f, m, b1f, cred, _, _ in p],
                          [(0x2F0, 0x10, 1, 4), (0x400, 5, 3, 4), (0x500, 6, 3, 4)])
+
+
+class TestFinisher(unittest.TestCase):
+    def lines(self, reaction=0x32, mode12=True):
+        tail = [_s(0x508, mode=0x09, r0=reaction)]
+        if mode12:
+            tail.append(_s(0x509, mode=0x12))
+        return _match()[:-1] + tail + _match()[-1:]
+
+    def test_finisher_requires_a_reaction_and_the_end(self):
+        lines = self.lines()
+        r = gt.finisher(lines)
+        self.assertEqual(r['fail'], [])
+        self.assertEqual(r['reactions'], [0x32])
+        self.assertTrue(r['mode9'])
+        self.assertTrue(r['mode12'])
+        no_react = [l for l in lines if 'r0=32' not in l and 'r1=32' not in l]
+        r = gt.finisher(no_react)
+        self.assertIn('no finisher reaction 0x32..0x34 in any S record', r['fail'])
+
+    def test_finisher_requires_mode_0x12(self):
+        r = gt.finisher(self.lines(mode12=False))
+        self.assertTrue(r['mode9'])
+        self.assertFalse(r['mode12'])
+        self.assertIn('mode 0x12 not reached', r['fail'])
+
+    def test_finisher_requires_mode_0x09(self):
+        lines = [_s(0x508, mode=0x12, r0=0x32), 'X ms=0 f=0510 step=11 end']
+        r = gt.finisher(lines)
+        self.assertFalse(r['mode9'])
+        self.assertIn('mode 0x09 not reached', r['fail'])
+
+    def test_finisher_accepts_a_reaction_in_r1(self):
+        lines = [_s(0x508, mode=0x09, r1=0x34), _s(0x509, mode=0x12)]
+        self.assertEqual(gt.finisher(lines)['reactions'], [0x34])
+
+    def test_cli_finisher_runs_both_checks_and_returns_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(self.lines(reaction=0)) + '\n')
+            stdout = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', d, '--finisher']):
+                with contextlib.redirect_stdout(stdout):
+                    rc = gt.main()
+        self.assertEqual(rc, 1)
+        self.assertIn('two-human match: ok', stdout.getvalue())
+        self.assertIn('no finisher reaction 0x32..0x34 in any S record', stdout.getvalue())
+
+    def test_cli_join_and_finisher_are_mutually_exclusive(self):
+        stderr = io.StringIO()
+        with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', 'capture',
+                                             '--join', '--finisher']):
+            with contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as cm:
+                    gt.main()
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn('not allowed with argument', stderr.getvalue())
 
 
 if __name__ == '__main__':
