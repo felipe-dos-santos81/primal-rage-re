@@ -1042,11 +1042,13 @@ Task 4 routines now answer through it with their raw masks — `host_port_poll_b
 `PR_SEAM` lines, so the sampler's differential row is unchanged (its four presence stubs are still
 stubs: the routines stay host-owned, `tools/port_classification.txt` rows 62-67).
 
-**The clear sites**, by the sampler's presence arm: the both-player arm clears P1 at `0x1BC6F` then
-P2 at `0x1BCE1`; the P1-only arm clears P1 at `0x1BCBF` when `+0x2D6 == 0` (`0x1BCA8/0x1BCAF`) and
-P2 at `0x1BCB4` otherwise; the P2-only arm clears P2 at `0x1BCE6`. `gp-u17-device2`'s selection is
-dev1 = 2 / dev2 = 0, which takes the **P1-only** arm, so its clear is `0x1BCBF` — not
-`0x1BC6F`, which needs both players selected.
+**The clear sites**, by the sampler's presence arm: the both-player arm clears P1 at `0x1BC6F`
+(`0x1BC6A` re-reads the base) and P2 at `0x1BCE6` (`0x1BC8A jmp 0x1BCE1` re-reads the base first —
+`0x1BCE1` is that reload, `0x1BCE6` the store); the P1-only arm clears P1 at `0x1BCBF`
+(`mov word [edx+0x2d4],bx` with BX = 0 from the `+0x2D6 == 0` branch, `0x1BCA8/0x1BCB2`) and P2 at
+`0x1BCB4` otherwise; the P2-only arm shares the both-player arm's tail — `0x1BCE1`/`0x1BCE6` — for
+its P2 clear. `gp-u17-device2`'s selection is dev1 = 2 / dev2 = 0, which takes the **P1-only** arm,
+so its clear is `0x1BCBF` — not `0x1BC6F`, which needs both players selected.
 `host_set_port_present_override` still wins while armed (the Task 4/5 unit tests).
 
 **The no-pad game-port byte.** `host_port_buttons()` answers 0 with no pad, which the active-low
@@ -1199,7 +1201,7 @@ Named limit: `host_pad_open`'s connect-time capture, `host_pad_poll`'s SDL path 
 driving `config_screen_wait` presents a frame); they are thin wiring over the tested function, and
 the flow.c site is tested. The SDL pad's own answer is the windowed run's (§H5.4).
 
-### §H6.6 The `gp-u17-device2` scenario (capture pending)
+### §H6.6 The `gp-u17-device2` scenario (captured 2026-10-22)
 
 `gp_session.SCENARIOS['gp-u17-device2']` (rewritten after the failed run, §H6.9): the K11 walk's
 own keys (`k11_session.WALK[2:24]`, after the boot Enter and the START MENU Enter — scans `0x50`
@@ -1246,16 +1248,36 @@ remain for a frame-paced capture. The unit tests (`tools/tests/test_gp_u17.py`, 
 pass and fail on synthetic logs, the `--device` parameter, the wall-scenario row, the pin, the
 identity pins, the CLI exit codes and the scenario's steps.
 
-The pins are **empty** in `Makefile`'s `GP_U17_*` block until the capture is taken (user-gated):
-`GP_U17_CLEAR_FRAME` (the tool's measured clear frame) and the capture identity
-(`GP_U17_CAPTURE_SHA256`, `GP_U17_CAPTURE_FRAMES`, checked by `gp_u17.py`), because the frame-keyed
-replay cannot follow a wall-paced walk yet (§H6.9): `MIN_FIRST`, `TRACE_MIN_FIRST`, `MAX_START` and
-`MIN_REACH` stay empty and unused until the driver has the tick-based path (its actions applied
-from a pump hook, the K11 driver's model) — a named gap, not a passing claim. `gp-u17-oracle` runs
-the tool's unit tests always, then skips without the capture directory, and with the capture present
-runs the evidence and the identity pins. The claim is narrow: no game-port axis or button is
-injected (the harness cannot), so the arms' evidence is the unit tests and the differential rows;
-the capture pins the **clear**, not the pad's answer.
+**The capture (2026-10-22):** `data/k11-captures/gp-u17-device2`, 155 frames, raw window
+1373..3669, wall 55.5 s, `rc=0`; every CHECK green — `steps fired 27/27`, `end frame reached`,
+`mode 0x27 after the Enter`, `snapshots kb == raw (0 differ)`, `frames written 155/155`,
+`port script v2 (deferred: wall-paced steps...)`, `no unscripted input`, `pokes written 0/0`,
+`stopped at the end (SIGTERM at f=038A)`. `gp_capture.py check-input` is clean.
+
+**The measured pins** (all from this capture; `gp_u17.py check --device 2` prints them):
+
+| pin | value | provenance |
+|---|---|---|
+| `GP_U17_DEVICE` | 2 | the derivation's one +2 step (0x320ED's Down arm, `U17_HOLD` 5 frames under the 0x0C-tick gate) — a data point, not a fitted constant |
+| `GP_U17_CLEAR_FRAME` | 761 (f=0x2F9) | the first S record after the last injected key (the OPTIONS MENU leave at f=0x2F7) whose dev1 is 0; the master loop resumes on that leave and the sampler's no-pad clear has already run |
+| `GP_U17_CAPTURE_SHA256` | `5c0a3b56…1d6d5d` | poll.log's sha256 |
+| `GP_U17_CAPTURE_FRAMES` | 155 | the `frame_*.raw.gz` count |
+| `GP_U17_MIN_FIRST` / `TRACE_MIN_FIRST` / `MAX_START` / `MIN_REACH` | empty | the frame/trace ratchets need a replay that can follow the wall-paced walk — none yet (§H6.9's named gap), so they are left empty and unused, and `gp-u17-oracle` says so |
+
+The evidence rows: the three joystick device words stay 0 in all 897 S records (dev1 and dev2 —
+`gp_u17.py path` prints one line, `f=5 dev1=0 dev2=0`); the selection's write is not sampled (no S
+record while a menu is open), so the dev1 = 0 of every record *after* the leaves is the clear's
+end state — a port whose presence answer kept the word would show dev1 = 2 from f=0x2F9 on. The mode
+stays 0x27 from f=0x13B to the end; the X record is at f=0x34E (the wall end's moment) and the tail's
+S records run to f=0x38A. Each pin was seen to fail when moved: `--clear-frame 762`, a wrong sha256
+and `--capture-frames 156` each print their FAIL.
+
+`make gp-u17-oracle` runs the tool's unit tests always, then the evidence and identity pins (with
+`--device "$(GP_U17_DEVICE)"`); the frame/trace ratchets stay out of the recipe until the driver has
+the tick-based path (its actions applied from a pump hook, the K11 driver's model) — a named gap,
+not a passing claim. The claim is narrow: no game-port axis or button is injected (the harness
+cannot), so the arms' evidence is the unit tests and the differential rows; the capture pins the
+**clear**, not the pad's answer.
 
 ### §H6.7 Counters and gates run (the code half)
 
@@ -1309,8 +1331,9 @@ half (not an amend of `954ddad3`):
     6" is superseded).
 
 Re-run after the fixes: `PR_ORACLE_REQUIRED=1 ./build/run_tests` -> `all checks passed`; the four
-gp tool test modules -> 164 tests OK including the new `--dev-words` CLI case and `--device`
-(`test_gp_u17` now 15); the fresh mutation sweep's line numbers are the table's above;
+gp tool test modules -> 165 tests OK including the new `--dev-words` CLI case and `--device`
+(`test_gp_u17` then 15; the capture half's later suite is 172 with `test_gp_u17` 17); the fresh
+mutation sweep's line numbers are the table's above;
 `make gp-oracle` (N 7559, trace 8320) and `make frontend-oracle` (1325 frames, 2 named) keep their
 pins; `make gp-u17-oracle` still skips on the absent capture.
 
@@ -1375,5 +1398,5 @@ are `test_after_wall_fires_on_the_poller_clock`, `test_a_wall_step_never_fires_d
 `test_the_wall_deadline_releases_a_key_with_no_frame_change` (and that a frame-keyed injector keeps
 the frame rule), `test_a_wall_end_stops_tail_frames_later`,
 `test_the_port_script_is_deferred_not_broken`, `test_a_wall_paced_capture_does_not_sample_the_selection`
-and the scenario's key/hold/end derivation; `make gp-u17-oracle` still skips (no
-`data/k11-captures/gp-u17-device2`). No capture was re-run and `data/` was not written.
+and the scenario's key/hold/end derivation. No capture was re-run and `data/` was not written;
+the next capture (2026-10-22, §H6.6) succeeded with those steps, which is the wall path's proof.

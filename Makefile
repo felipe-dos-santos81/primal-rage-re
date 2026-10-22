@@ -1420,22 +1420,34 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 # The pins are EMPTY until data/k11-captures/gp-u17-device2 is captured and measured (the
 # user-gated capture half): the target skips on the absent capture directory (`[ ! -d ]`), and a
 # present capture with an empty identity pin passes/FAILs only on the measured evidence rows.
-# Provenance goes here with the measured values: CLEAR_FRAME the first S record after the leaves
-# whose dev1 is 0 (gp_u17.py's `clear frame`), and the capture identity (poll.log sha256 and the
-# frame_*.raw.gz count, gp_u17.py's --capture-sha256/--capture-frames). A re-capture invalidates
-# every pin (record §G.24).
-GP_U17_CLEAR_FRAME =
+# The measured pins (capture 2026-10-22, 155 frames, raw 1373..3669, wall 55.5 s):
+#   DEVICE 2      the derived one +2 step (argv: gp_u17.py --device; a data point of
+#                 the derivation, not a fitted constant -- 0x320ED's Down arm, held
+#                 5 frames under the 0x0C-tick repeat gate)
+#   CLEAR_FRAME 761 (f=0x2F9): the first S record after the last injected key (the
+#                 OPTIONS MENU leave at f=0x2F7) whose dev1 is 0 -- the master loop
+#                 resumes on that leave and the sampler's no-pad clear (0x1BCBF) has
+#                 already run, so dev1/dev2 read 0 in every S record (the selection's
+#                 write is not sampled: no S record while a menu is open, §H6.9)
+#   SHA256       5c0a3b56.. of poll.log; FRAMES 155 (frame_*.raw.gz)
+# The frame/trace ratchets stay EMPTY and unused: the wall-paced walk's replay needs
+# the tick-keyed driver path (named gap, record §H6.9), so this oracle pins the
+# capture-side evidence and the capture identity only -- not the frames or the trace.
+# A re-capture invalidates every pin (record §G.24).
+GP_U17_DEVICE = 2
+GP_U17_CLEAR_FRAME = 761
 GP_U17_MIN_FIRST =
 GP_U17_TRACE_MIN_FIRST =
 GP_U17_MAX_START =
 GP_U17_MIN_REACH =
-GP_U17_CAPTURE_SHA256 =
-GP_U17_CAPTURE_FRAMES =
+GP_U17_CAPTURE_SHA256 = 5c0a3b5610535f9b28739ea7a436104aabc3e2c740c97d40400080b5c41d6d5d
+GP_U17_CAPTURE_FRAMES = 155
 gp-u17-oracle: build ## Host input truth U17 oracle: the device-2 selection's no-pad clear and the capture identity on gp-u17-device2 (skips without it)
 	@echo "== gameplay oracle: gp-u17-device2 (the device-2 selection and the no-pad clear) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_u17
 	@if [ ! -d $(K11_CAPTURES)/gp-u17-device2 ]; then echo "gp-u17-oracle: no capture at $(K11_CAPTURES)/gp-u17-device2 (skipped)"; else \
 		$(PYTHON) tools/gp_u17.py check --capture $(K11_CAPTURES)/gp-u17-device2 \
+			--device "$(GP_U17_DEVICE)" \
 			--clear-frame "$(GP_U17_CLEAR_FRAME)" \
 			--capture-sha256 "$(GP_U17_CAPTURE_SHA256)" \
 			--capture-frames "$(GP_U17_CAPTURE_FRAMES)"; \
