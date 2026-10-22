@@ -434,7 +434,7 @@ consolidation gate).
    row` (`0x24C5C` has ten rows); host input truth re-pinned it at **`1019/1019 functions VERIFIED;
    14956/14956 mutants detected; 0 named gaps; 774/833 rows with callees closed (186 have none);
    768/833 closed on full rows; 8 ported functions with no row`** — +12 functions and +56 mutants (26 the
-   six keyboard readers and the two F readers, 12 the three game-port readers, 18 the two axis readers and
+   six keyboard readers — two of them the F readers, 12 the three game-port readers, 18 the two axis readers and
    the sampler), +1 row with callees and +11 callee-less, and the named gap `host_1b890` (its `in al,dx` at
    `0x1B899`) became a row once track H's `E.Machine.in` answered it (record
    `2026-10-21-host-input-truth-derivations.md` §H2.6, §H3, §H4.5).

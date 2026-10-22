@@ -133,9 +133,13 @@ def check(lines, clear_frame=None, unseen_ok=False, device=None, cap_dir=None, p
     elif not unseen_ok:
         out.append(('the selection is seen: dev1 = %d (one Down from KEYBOARD)' % device, sel_ok,
                     'frames %s' % (['%X' % f for f, _ in sel] or 'none: the poll never sampled it')))
-    elif not sel_ok:
+    elif not sel:
         out.append(('the selection was not sampled: the clear is pinned by the end state only', True,
                     'unseen (accepted by --unseen-selection-ok)'))
+    elif not sel_ok:
+        out.append(('the selection is wrong: dev1 sampled %s, expected %d'
+                    % (', '.join('%X' % v for _, v in sel), device), False,
+                    'seen but not the expected device; --unseen-selection-ok covers an unseen write only'))
 
     # The leave: the last injected key's frame (an action fires in the spin of
     # F - 1, so the menu consumes it in iteration F = f + 1).
@@ -289,6 +293,10 @@ def main():
             y0, y1 = (int(v, 0) for v in a.device_rows.split(':'))
         except ValueError:
             print('gp_u17: --device-rows must be Y0:Y1 (e.g. 40:46)')
+            return 2
+        if not (0 <= y0 < y1 <= FRAME_H):
+            print('gp_u17: --device-rows must satisfy 0 <= Y0 < Y1 <= %d (got %d:%d)'
+                  % (FRAME_H, y0, y1))
             return 2
         proof = dict(before=int(a.device_before, 0), frame=int(a.device_frame, 0),
                      rows=(y0, y1), before_sha=a.device_before_sha, frame_sha=a.device_frame_sha)

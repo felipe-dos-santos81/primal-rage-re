@@ -929,13 +929,17 @@ selector.
   `DS_000E1C38` latch. `0x4F644` (`input_state_update`) builds the newly-pressed
   mask `DS_001088E4` (the `0xFF00FF00` family) and the held mask `DS_001088D8`
   (the `0x00FF00FF` family) plus the two packed cursors `DS_001088E0/2`.
-  **Host binding:** `game_loop` fills the key bitmap from `host_key_bits()`
-  (through `host_kb_bit`, the binding the sampler `0x1BBAC` reads — the
-  key-config block at `[DS_00101514]`+`0x2DE..0x2ED`, the default binding when
-  the block is empty, host.c; there is no coin bit) immediately before `input_pump`;
-  `game_frame` calls `input_state_update()` at the `0x24C6E` site as its first
-  action — the raw's `0x4F644` precedes the frame counter and the process
-  tables — so the masks are fresh for `game_state_step`.
+  **Host binding:** `game_loop` runs the host input pipeline
+  `host_input_fill_keyboard()` -> `host_input_fill_axes()` -> `input_sampler()` ->
+  `input_pump()` (`flow.c:7164-7168`). The host fills the BIOS key-state table
+  from `host_key_bits()` (through `host_kb_bit`, the key-config block at
+  `[DS_00101514]`+`0x2DE..0x2ED`, the default binding when the block is empty,
+  host.c; there is no coin bit) and the four axis words; the sampler `0x1BBAC` —
+  the sole writer of `+0x2D8/+0x2D9` — builds both players' key bytes from the
+  device words, and `input_pump` reads them. `game_frame` calls
+  `input_state_update()` at the `0x24C6E` site as its first action — the raw's
+  `0x4F644` precedes the frame counter and the process tables — so the masks are
+  fresh for `game_state_step`.
   `0x50146`'s repeat-timer setter is `input_repeat_set` (record §49-X); its one
   caller is mode `0x27`'s arm, which Enter in mode 3 enters (below).
 * **The int 16h keyboard loop** — `0x24CFE..0x24EE7`, inside `0x24C5C` after

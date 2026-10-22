@@ -713,7 +713,7 @@ a, b, port, poll, probe)`: the key-config block `H4_BIOS = 0x109000` with `[0x10
 it, the 16 H2 slot scans, the table (all break, `pressed` make, F1/F2 at `+0x28F/+0x290`), the
 device words `+0x2D4/+0x2D6`, the four axis words (centers 0), the sentinels `+0x2D8=0xA5`,
 `+0x2D9=0x5A`, and the game-port byte as the machine's `in 0x201 NN` (the §H3 channel; the byte is
-listed twice because a 2/2 or 4/4 case reads the port once per player's arm). Sixteen cases:
+listed twice because a 2/2 or 4/4 case reads the port once per player's arm). Seventeen cases:
 
 | case | devices | what it pins |
 |---|---|---|
@@ -727,6 +727,7 @@ listed twice because a 2/2 or 4/4 case reads the port once per player's arm). Si
 | c2 | 4/0 poll 0 | P1-only, `+0x2D6 == 0` -> clear P1 (0x1BCBF) |
 | c3 | 4/1 poll 0 | P1-only, `+0x2D6 != 0` -> clear P2 (0x1BCB4) |
 | c4 | 0/4 poll 0 | P2-only -> clear P2 (0x1BCE6) |
+| c5 | 2/2 poll 0 probe 1 | the both-player probe answers nonzero: no device word is cleared (the `0x1BC5C`/`0x1BC78` skip) |
 | x1/x2/x3 | 1/1, 7/7, 1/7 | no presence call and no write (the sentinels) |
 
 All **48/48 blocks** are hit and the row has no pokes, no unhit block and no terminal difference,
@@ -737,7 +738,9 @@ host-owned (record §49-V) and Task 6 models them. Six mutants: `@axesb` (P2 dev
 `@p1f1`/`@p2f2` (F2 in P1's byte / F1 in P2's), `@arm6` (P1 device 6 reads the game-port buttons),
 `@clear` (the P1-only arm always clears P1) and `@nonport` (a device that is not 0/2/4/6 writes the
 keyboard byte). All six are detected, measured kinds and case sets in `H4_KINDS`/`H4_CASES`
-(`@arm6` and `@clear` change which reader an arm calls as well as the byte).
+(`@arm6` and `@clear` change which reader an arm calls as well as the byte). `c5` (poll 0, probe 1)
+runs the both-player arms behind the presence block's poll and two probes, so it catches `@axesb`
+by the shifted `call #6` (a new kind) and joins `@p1f1`/`@p2f2`'s case sets without adding a kind.
 
 RED before the port side existed: the three rows against `db8862f6`'s predecessor
 `build/diffrun` (the Task 3 binding table) print `port: unknown binding input_axes_a` (and
@@ -952,6 +955,15 @@ the same sample):
   0x0001 is shared with F1/F2 in the seam's packed word) so bit 0 can only come from the fixed
   `0x1B850`/`0x1B870` entries; and one check calls the sampler with the seam armed but no explicit
   `host_pad_fill()`, pinning the per-frame hook.
+- `test_host_pad_invalid_base_clears_port_byte`: the fill's invalid-base guard (base 0, the
+  no-key-config-block state) zeroes `g_port_buttons` rather than leaving the previous frame's byte,
+  matching the no-pad arm.
+
+**Named coverage gap (the axis scale).** `HOST_PAD_AXIS_SCALE`'s division (`host_pad_poll`,
+`v / 64`) is not unit-tested: it runs only with a real SDL gamepad, and the seam
+`host_set_pad_override` supplies already-normalized `s8` axes, so no assertion reaches it (the
+extremes would be `32767/64 = 0x1FF`, `-32768/64 = -0x200`). The scale is host policy (§H5.2),
+declared not fitted; `test_platform.c` carries the same note.
 
 Each assertion was seen to fail under a mutation, applied alone, rebuilt and reverted (the suite's
 only FAILs were the listed ones; `3495`/`3496` are `sampler_bytes`' p1/p2 assertions, so a mutation

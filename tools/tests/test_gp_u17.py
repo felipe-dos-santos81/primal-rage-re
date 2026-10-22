@@ -78,6 +78,14 @@ class TestCheck(unittest.TestCase):
         rows = _rows(_log(dev1_at={0x120: 4}))
         self.assertFalse([r for r in rows if r[0].startswith('the selection is seen')][0][1])
 
+    def test_unseen_selection_ok_does_not_cover_a_wrong_sample(self):
+        # --unseen-selection-ok accepts an *unseen* write only; a sampled-but-wrong
+        # selection (dev1 = 4, expected 2) must still FAIL
+        rows = _rows(_log(dev1_at={0x120: 4}), device=2, unseen_ok=True)
+        wrong = [r for r in rows if r[0].startswith('the selection is wrong')]
+        self.assertEqual(len(wrong), 1)
+        self.assertFalse(wrong[0][1])
+
     def test_the_expected_device_is_a_parameter(self):
         # one press is one +2 step by the 0x0C-tick repeat gate (module docstring); a
         # measured capture that disagrees passes its value, and the label names it
@@ -239,6 +247,20 @@ class TestDeviceProof(unittest.TestCase):
         self.assertIn('needs --device-before, --device-frame', r.stdout)
         r = run('--device', '')                            # an empty device: the default
         self.assertIn('check=ok', r.stdout)
+
+    def test_a_degenerate_device_rows_band_is_refused(self):
+        d = self._cap()
+
+        def run(rows):
+            return subprocess.run([sys.executable, TOOL, 'check', '--capture', d,
+                                   '--device-before', '149', '--device-frame', '150',
+                                   '--device-rows=%s' % rows,
+                                   '--device-before-sha', '0' * 64, '--device-frame-sha', '0' * 64],
+                                  capture_output=True, text=True)
+        for rows in ('46:40', '40:201', '-1:46'):
+            r = run(rows)
+            self.assertEqual(r.returncode, 2, (rows, r.stdout + r.stderr))
+            self.assertIn('--device-rows', r.stdout)
 
 
 class TestPath(unittest.TestCase):

@@ -3764,6 +3764,12 @@ int test_input_axes_dead_band(void)
 
 /* ---- test_host_pad_*: Host Input Truth §H5 (the SDL gamepad model) ---- */
 
+/* Named coverage gap (record §H5.2): HOST_PAD_AXIS_SCALE (host.c) divides SDL's
+ * int16 axis in host_pad_poll(), which the headless suite never reaches -- it
+ * needs a real SDL gamepad. The seam host_set_pad_override() supplies already
+ * normalized s8 axes, so no unit assertion can exercise the 32767/64 -> 0x1FF,
+ * -32768/64 -> -0x200 mapping. The scale is host policy, declared not fitted. */
+
 /* The pad fixture: the sampler's fixture with the two device words set and no
  * keyboard bits, so only the pad's axes/buttons can set a game bit. The pad
  * seam supplies four normalized axes (s8: X1 Y1 X2 Y2) and four game-button
@@ -4087,6 +4093,27 @@ int test_host_pad_f1f2(void)
 
     pad_disarm();
     sampler_axes_restore(saved_axes);
+    DSD(DS_00101514) = saved_base;
+    return g_failures - before;
+}
+
+/* The fill's invalid-base guard (no key-config block yet, base 0) must clear the
+ * port byte the same way the no-pad arm does: a pad-present fill that returns
+ * early on the guard would otherwise leave the previous frame's byte for the
+ * readers the same sample. */
+int test_host_pad_invalid_base_clears_port_byte(void)
+{
+    int before = g_failures;
+    const u32 saved_base = DSD(DS_00101514);
+    static const u8 axes[4] = { 0, 0, 0, 0 };
+    static const u8 none[4] = { 0, 0, 0, 0 };
+    pad_fixture(2u, 2u);
+    pad_override(axes, none, 1);                 /* released: the byte is 0xF0 */
+    CHECK_EQ_INT((int)host_port_buttons(), 0xF0);
+    DSD(DS_00101514) = 0u;                       /* no key-config block yet */
+    pad_override(axes, none, 1);                 /* the guard must zero, not keep 0xF0 */
+    CHECK_EQ_INT((int)host_port_buttons(), 0x00);
+    pad_disarm();
     DSD(DS_00101514) = saved_base;
     return g_failures - before;
 }

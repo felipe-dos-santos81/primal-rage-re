@@ -12043,8 +12043,9 @@ D1I_SPECS = [
     # dev 2 axes A + both-player game-port bits, dev 4 P1 axes A + bits 4/5 and P2 axes B + bits 6/7,
     # dev 6 axes A/B + the keyboard button scans; F1/F2 join bit 0 of P1/P2 (0x1BD53/0x1BDE0).
     # k1/k2 are the device-0 keyboard path (the default), b2/b4/b6 the four (0,2,4,6) arms, o1/o2/o3
-    # the single-port presence arms, c1/c2/c3 the three clears (0x1BC6F/0x1BCB4/0x1BCBF/0x1BCE6),
-    # x1/x2 the non-port devices, which must leave the byte alone. eax_mask 0: the function is void.
+    # the single-port presence arms, c1/c2/c3/c4 the four clears (0x1BC6F/0x1BCB4/0x1BCBF/0x1BCE6), c5
+    # the probe-nonzero no-clear (0x1BC5C/0x1BC78 answered 1), x1/x2/x3 the non-port devices, which must
+    # leave the byte alone. eax_mask 0: the function is void.
     Spec("input_sampler", 0x1BBAC, [
         h4_sampler_case("k1", 0, 0, pressed=(0x48, 0x40, 0x4D, 0x47), f1=1, f2=1),
         h4_sampler_case("k2", 0, 0, f1=0, f2=0),
@@ -12069,6 +12070,7 @@ D1I_SPECS = [
         h4_sampler_case("c3", 4, 1, pressed=(0x4D, 0x47), f1=1, f2=1, a=(0x001E, 0x0000),
                         poll=0),
         h4_sampler_case("c4", 0, 4, pressed=(0x48,), f1=1, f2=1, b=(0x001E, 0x0000), poll=0),
+        h4_sampler_case("c5", 2, 2, poll=0, probe=1),
         h4_sampler_case("x1", 1, 1),
         h4_sampler_case("x2", 7, 7),
         h4_sampler_case("x3", 1, 7),

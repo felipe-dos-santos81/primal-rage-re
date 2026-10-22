@@ -455,7 +455,10 @@ void host_pad_fill(void)
         return;
     }
     const u32 base = DSD(DS_00101514);
-    if (base == 0u || base > MEM_SIZE - 0x2EEu) return;
+    if (base == 0u || base > MEM_SIZE - 0x2EEu) {
+        g_port_buttons = 0u;
+        return;
+    }
     const u16 dev1 = DSW(base + 0x2D4u);
     const u16 dev2 = DSW(base + 0x2D6u);
     /* Axes A: P1's arms 2/4/6, and P2's device-2 arm, which the raw's switch
