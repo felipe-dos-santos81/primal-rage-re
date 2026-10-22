@@ -994,18 +994,16 @@ GP_U12_CAPTURE_SHA256 = 2edcc088d26162d0fd288c8a5caf17500ac4b7f4a974f57b6f780be0
 GP_U12_CAPTURE_FRAMES = 772
 gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fight (skips without data/k11-captures/gp-u12-endurance)
 	@echo "== gameplay oracle: gp-u12-endurance (team pass and modes 0x30/0x31) =="
-	@if [ -d $(K11_CAPTURES)/gp-u12-endurance ]; then \
-		$(PYTHON) -m unittest tools.tests.test_gp_modes && \
-		$(PYTHON) tools/gp_modes.py check --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance; \
-	else \
-		echo "gp-u12-oracle: no capture at $(K11_CAPTURES)/gp-u12-endurance (skipped)"; \
-	fi
-	@$(MAKE) --no-print-directory gp-replay scenario=gp-u12-endurance GP_OPTIONAL=1
-	@$(PYTHON) tools/gp_compare.py --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance \
+	@$(PYTHON) -m unittest tools.tests.test_gp_modes
+	@if [ ! -d $(K11_CAPTURES)/gp-u12-endurance ]; then echo "gp-u12-oracle: no capture at $(K11_CAPTURES)/gp-u12-endurance (skipped)"; else \
+		$(PYTHON) tools/gp_modes.py check --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u12-endurance GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance \
 		--port $(GP_DUMP)/gp-u12-endurance --min-first "$(GP_U12_MIN_FIRST)" \
 		--trace-min-first "$(GP_U12_TRACE_MIN_FIRST)" --max-start "$(GP_U12_MAX_START)" \
 		--min-reach "$(GP_U12_MIN_REACH)" \
-		--capture-sha256 "$(GP_U12_CAPTURE_SHA256)" --capture-frames "$(GP_U12_CAPTURE_FRAMES)"
+		--capture-sha256 "$(GP_U12_CAPTURE_SHA256)" --capture-frames "$(GP_U12_CAPTURE_FRAMES)"; \
+	fi
 
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path

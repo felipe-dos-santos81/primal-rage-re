@@ -268,9 +268,11 @@ true original, and ported the divergence. Two pieces:
 
 ### Remaining work (2026-10-22)
 
-- The five held gameplay captures (`gp-u12-endurance`, `gp-u13-ending2`,
-  `gp-u14-win-live`, `gp-u15-join`, `gp-u16-twop2`). Their oracles exist
-  (`make gp-u12-oracle` … `gp-u16-oracle`) and skip until each capture is taken.
+- The captures `gp-u12-endurance`, `gp-u13-ending2`, `gp-u15-join` and
+  `gp-u16-twop2` are captured and pinned; their `gp-u1x-oracle` targets skip
+  only on a checkout without the git-ignored captures. The remaining open
+  gameplay-evidence gaps are the U14 live win (R1, §J6), the U16 finisher
+  reaction (R2, §J8) and the U13 pixel claim from capture 4248 onward (R3, §J5).
 - The differential audit: 59 of the 833 rows stay open, and 8 ported functions
   have no differential row (the counter in `AGENTS.md`; `make diff-verify`).
 - Host and product work: audio audibility (no device-recording oracle), CI and

@@ -932,7 +932,7 @@ The first `gp_compare --report` exposed capture 4089 (raw 6792), 24 unexplained 
 The final report command is `python3 tools/gp_compare.py --report --scenario gp-u16-twop2 --capture data/k11-captures/gp-u16-twop2 --port /tmp/pr_gp_dump/gp-u16-twop2 --max-unexplained 0` (report-only, exit 0). Its measured lines:
 
 ```
-frames: window from capture 100 (raw 1743); 7958 classified: 5128 clean, 2823 splice, 4 transition, 0 band-allowed, 1 scan3-allowed, 1 overlay-allowed, 1 unexplained, 12 all-black
+frames: window from capture 100 (raw 1743); 7979 classified: 5128 clean, 2823 splice, 4 transition, 0 band-allowed, 1 scan3-allowed, 1 overlay-allowed, 22 unexplained, 12 all-black
 frames: FIRST UNEXPLAINED capture 8069 (raw 11594): nearest port 6816, rows 73..173, x 56..255 (6391 px)
 frames: coverage (reported, not ratcheted): 27 non-black port frame(s) up to port 6817 not exhibited by any classified capture frame: [9, 11, 176, 217, 218, 219, 221, 222, 3334, 3423, 3713, 5420, 5447, 5454, 5458, 5845, 5858, 5928, 5953, 5962] ...
 trace: 8308 frames compared (f 13A..), 15 without a capture snapshot; first tick difference f=13B (reported, not ratcheted)
