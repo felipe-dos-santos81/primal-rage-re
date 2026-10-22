@@ -121,6 +121,19 @@ class TestCheck(unittest.TestCase):
         L2 = L[:-1] + [_s(0x15E, 0x1A, b1d=3, b1f=3), 'X ms=2 f=015F step=4 end']
         self.assertIn('still in mode 0x10 at the end', _failed(gm.check('gp-u8-endurance', L2)))
 
+    def test_u12_row_reaches_the_fight_and_reports_0x31(self):
+        self.assertEqual(gm.ROWS['gp-u12-endurance']['reach'], 0x30)
+        L = _row_log(0x2B, 3, 3, 0, reach=0x30)
+        rows = dict((label, ok) for label, ok, _ in gm.check('gp-u12-endurance', L))
+        self.assertTrue(rows['the row mode 0x2B appears'])
+        self.assertTrue(rows['mode 0x30 reached'])
+        self.assertTrue(rows['the scenario end (X record)'])
+        self.assertIn('mode 0x31 reached (report)', rows)
+        self.assertTrue(rows['mode 0x31 reached (report)'])
+        L = [l for l in L if not (l.startswith('S ') and gs.parse(l)['mode'] == 0x30)]
+        rows = dict((label, ok) for label, ok, _ in gm.check('gp-u12-endurance', L))
+        self.assertFalse(rows['mode 0x30 reached'])
+
     def test_attract_start(self):
         self.assertEqual(_failed(gm.check('gp-u8-attract-start', _attract_log())), [])
         L = [l.replace('raw=01000000', 'raw=00000000') for l in _attract_log()]
@@ -144,11 +157,13 @@ class TestScenarios(unittest.TestCase):
             if name == 'gp-idle-loss' or w['mode'] is None:
                 continue
             steps = gs.SCENARIOS[name]['steps']
+            self.assertEqual(steps[-1], ('until_mode', w['reach'], 300), name)
+            if name == 'gp-u12-endurance':      # its steps go on into the team pass (test_gp_session pins them)
+                continue
             acts = [st[-1] for st in steps if isinstance(st[-1], tuple)]
             want = [('pad', ('p1.up',), 4)] if w['row'] == 6 else [('pad', ('p1.down',), 4)] * w['row']
             self.assertEqual([a for a in acts if a[0] == 'pad'], want, name)
             self.assertEqual([a for a in acts if a[0] == 'key'], [('key', 'enter')] * 3, name)
-            self.assertEqual(steps[-1], ('until_mode', w['reach'], 300), name)
 
     def test_row_schedule_fires_the_walk(self):
         s = gs.Schedule(gs.SCENARIOS['gp-u8-tug-of-war']['steps'])

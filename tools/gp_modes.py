@@ -30,7 +30,8 @@ CHARSEL_MODE = 0x10              # 0x257A4: 0x2580B mov eax,0x10; 0x25816 call 0
 # scenario -> the raw's expectation. mode: the setter's mode (None: the attract
 # start); b1d: the setter's DS_00104B1D; b1f: 0x257A4's argument; spend: the
 # credits 0x2CA7C/0x11F28 take; reach: the mode the scenario ends in; stay: the
-# scenario must end still in `reach` (ENDURANCE's team select has no time-out).
+# scenario must end still in `reach` (ENDURANCE's team select has no time-out);
+# report: modes the record names that are reported, never a FAIL (U12's 0x31).
 ROWS = {
     'gp-idle-loss': dict(row=0, mode=0x2D, b1d=0, b1f=1, spend=1, reach=6, stay=False),   # U4's, the reference
     'gp-u8-right-arcade': dict(row=1, mode=0x2E, b1d=0, b1f=2, spend=1, reach=6, stay=False),
@@ -38,6 +39,8 @@ ROWS = {
     'gp-u8-right-training': dict(row=3, mode=0x29, b1d=1, b1f=3, spend=0, reach=6, stay=False),
     'gp-u8-tug-of-war': dict(row=4, mode=0x2A, b1d=2, b1f=3, spend=0, reach=6, stay=False),
     'gp-u8-endurance': dict(row=5, mode=0x2B, b1d=3, b1f=3, spend=0, reach=0x10, stay=True),
+    'gp-u12-endurance': dict(row=5, mode=0x2B, b1d=3, b1f=3, spend=0,
+                             reach=0x30, stay=False, report=(0x31,)),
     'gp-u8-handicap': dict(row=6, mode=0x2C, b1d=4, b1f=3, spend=0, reach=6, stay=False),
     'gp-u8-attract-start': dict(row=None, mode=None, b1d=0, b1f=1, spend=1, reach=6, stay=False),
 }
@@ -85,6 +88,10 @@ def check(name, lines):
     reached = next((r for i, r in ms if sel is not None and i > sel and r['mode'] == want['reach']), None)
     out.append(('mode 0x%X reached' % want['reach'], reached is not None,
                 '' if reached is None else 'f=%X' % reached['f']))
+    for m in want.get('report', ()):
+        r2 = next((r for i, r in ms if sel is not None and i > sel and r['mode'] == m), None)
+        out.append(('mode 0x%X reached (report)' % m, True,
+                    'not reached' if r2 is None else 'f=%X' % r2['f']))
     xrec = next((r for r in recs if r['kind'] == 'X'), None)
     out.append(('the scenario end (X record)', xrec is not None, '' if xrec is None else 'f=%X' % xrec['f']))
     if want['stay']:

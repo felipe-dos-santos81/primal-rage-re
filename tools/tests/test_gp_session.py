@@ -543,8 +543,11 @@ class TestEnduranceFight(unittest.TestCase):
 
     def test_the_endurance_fight_scenario_reaches_the_team_pass(self):
         scn = gs.SCENARIOS['gp-u12-endurance']
-        self.assertGreater(scn['time_limit'], 46)
-        self.assertTrue(any(s[0] == 'until_mode' and s[1] in (0x10, 0x30) for s in scn['steps']))
+        steps = scn['steps']
+        self.assertEqual(scn['time_limit'], 70)
+        self.assertEqual(steps, gs.SCENARIOS['gp-u8-endurance']['steps'][:-1]
+                         + gs.ENDURANCE_PICKS + (('until_mode', 0x30, 300),))
+        self.assertTrue(any(s[0] == 'until_mode' and s[1] in (0x10, 0x30) for s in steps))
         self.assertTrue(any(s[0] in ('after', 'after_mode', 'after_entry') for s in scn['steps']))
 
     def test_the_capture_stops_at_the_scenarios_end(self):
