@@ -103,7 +103,9 @@ int sprite_render_rle_clipped(const u8 *src, u8 *dst, int width, int rows,
  * unclipped raw type 0x02 (called with clip_l = clip_r = clip_t = 0) and the
  * clipped type 0x12 (RAW|CLIP). `vis = width - clip_l - clip_r` bytes are
  * copied per drawn row from src + clip_t*width + clip_l, with the bank offset
- * added byte-wise to every pixel; src advances a whole `width` per row (the
+ * added as a dword over each four-pixel group (a carry chains within the
+ * group and restarts every four pixels, record §W1, `sprite.c:116-129`); src
+ * advances a whole `width` per row (the
  * clip_l/clip_r overhangs) and dst by `stride`. The original maps both types to
  * 0x58CBD and the renderer itself reads the node's clip fields. Returns 0
  * (including the vis <= 0 / rows - clip_t <= 0 no-draw paths), or -1 if

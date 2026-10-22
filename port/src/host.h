@@ -128,7 +128,8 @@ const char *host_audio_error(void);
 
 /* PORT: the 16 input bits the game's bitfield carries, packed as the two key
  * bytes at DAT_00101514 + 0x2d8/0x2d9 (kb word (+0x2D8 << 8) | +0x2D9): the
- * SDL keys pressed, through host_kb_bit. */
+ * SDL keys pressed under the configured binding (`host_key_scans`, host.c);
+ * `host_kb_bit` is the per-scan key-config binding helper. */
 u16 host_key_bits(void);
 
 /* PORT: one set-1 scan's kb bit under the binding the game's sampler 0x1BBAC

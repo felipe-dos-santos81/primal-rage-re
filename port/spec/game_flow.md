@@ -661,8 +661,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     call with **no zero-guard** (unlike cases 8/9's `DS_00104AF8`
     countdown). At or below zero it plays voice `0x2B`, clears a bit on
     the established winner-side macro `DS_0010810D`'s slot, awards
-    `0x41310(DS_00104AD4, 0x30D40)`, runs the deferred audit `0x32B94` and
-    run-clock `0x32970` (both no-ops here) and `config_play_time_close(1,
+    `0x41310(DS_00104AD4, 0x30D40)`, runs the audit `0x32B94`
+    (`audit_add_if_bit0`) and run-clock `0x32970` (`config_run_clock`), both ported
+    and called here, and `config_play_time_close(1,
     DS_00104B19)` (`0x32A3C`, already ported), then installs
     `frontend_darken_all` (`0x29B74`) under mode `0x17` — the same hook
     case 9's results-close path installs. `0x4DEF4`'s own per-entry state
@@ -707,7 +708,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `w`'s start mask `0x9ACBC[w]` newly pressed: one credit is spent through
     `0x2CA7C(1)` (while `DS_00104B1F` is still 0, so it debits) and
     `DS_00105C04 = 1`. Then `DS_00104B1F = w + 1`, the `0x2DAE4` audit
-    (deferred, spec §7), `0x2791C` (`flow_continue_take`: rows `0xA`,
+    (`audit_add`, ported), `0x2791C` (`flow_continue_take`: rows `0xA`,
     `0xC`, `0xE` and `0xF` erased, both `0x27254` snapshots restored through
     `0x33B00`, `0x1D764` on `w`, `w`'s `+0x5B = DS_00104B0B`,
     `0x46534(DS_00104B12, -2)`, mode `0xC` and `w`'s `+0x41 &= 0xE7`) and
@@ -792,8 +793,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     (`flow_no_continue_screen`) or the join prompt `0x271E0`
     (`flow_join_prompt_draw`) followed by the play-time audit close and
     the audit add `0x2DAE4(0x10, 1)` (`0x42420 mov eax,0x10; 0x42425 call
-    0x2DAE4`, EDX = 1 from `0x42415`): a plain call, not a longjmp, deferred
-    with the audit layer (spec §7; record named-gaps-b §B.6a item 9); 8 a
+    0x2DAE4`, EDX = 1 from `0x42415`): a plain call, not a longjmp, into the
+    ported `audit_add` (`config.c`) (record named-gaps-b §B.6a item 9); 8 a
     countdown (`DS_00104AFE`) that restores `DS_00104B25` from
     `DS_00104B23` at zero, reused as the "wait N frames" tail of nearly
     every other state. `0x416D4`'s own dead call `0x32BAC` (its target
@@ -862,8 +863,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   file's `0x8915C` bytes, just as `0x3E688` is index 0 (`s16slabs.gra`). Both
   halves are ported and both are live. `0x41578` also calls `0x32A3C`
   (`config_play_time_close`), which zeroes `DS_0010746C[mode & 3]`; its
-  `0x32970` run clock and its `0x2DAE4` audit adds are out of scope (spec
-  §7), and `0x41578`'s voice `0x2C3FC(0x33)` is wired since K12 (`0x415DC`, record `2026-09-29-k7-k12-derivations.md`). No shipped path spawns types
+  `0x32970` run clock and its `0x2DAE4` audit adds are ported and run inside it (`config_run_clock`, `audit_add`), and `0x41578`'s voice `0x2C3FC(0x33)` is wired since K12 (`0x415DC`, record `2026-09-29-k7-k12-derivations.md`). No shipped path spawns types
   0/2/4 yet (`0x13D4C`'s callers `0x29B74`/`0x41578` are not reached; `0x13B3C` is
   dead — see the producer-set bullet above); type 6 (`0x13E28`) **is** spawned
   from the ported select state (`flow.c:367`). The remaining producers
@@ -887,9 +887,13 @@ Full record: `../../docs/superpowers/plans/2026-09-17-actor-system-report.md`.
 (`config_validate`). The 63-entry descriptor table (obj-0 `0x2D300`) and the
 config byte region (`DS_00105D88`) are read out of the loaded image; no table or
 value is transcribed. With the storage layer (`0x2E990`, `0x2D638`, the `0x80CE4`
-image, `0x2D4EC`) declared a no-op, validate always takes the defaults path, as on
-a fresh machine, writing field `0x29 = 0x142095`, fields `0x35`/`0x37 = 0xA0`,
-field `0x2A`'s low two bits `= 3`, and the `0x9C94D2C4` magic.
+image, `0x2D4EC`) ported (`config_file_load`/`config_file_save` through the host save
+calls, `config_image_store` for the `0x100CE4..0x1014DB` image, and the kind-0 counters
+and high-score tables), validate reads the stored image and takes the defaults path
+when the `0x9C94D2C4` magic is absent or the read fails below -1, as on a fresh
+machine: it writes field `0x29 = 0x142095`, fields `0x35`/`0x37 = 0xA0`, field `0x2A`'s
+low two bits `= 3`, and the `0x9C94D2C4` magic. `make save-reload-oracle` pins the
+write and the load.
 
 **Consumers (`flow.c` `game_master_init`, `game_init_resume`).** `config_validate()`
 is called by the master init `0x2F9CC` (`0x20C15`), before `0x20C10`'s `setjmp`:
@@ -909,8 +913,9 @@ the save file, `0x13ADC`, `0x4F1E4`, `0x2BAF4(1)`, `0x4F1D0`,
 post-setjmp tail `0x20C24..0x20DE3` is `game_init_resume` (see "The soft
 restart"), and `game_state_init` is `0x10E80` whole (record §46-F).
 
-**Declared gaps.** No storage I/O (the save/load path and the `0x80CE4` image)
-and the deferred module taps `0x1AE20`/`0x2EA78` (screen setup, storage write).
+**Storage taps.** The save/load path above is ported, and so are the two taps the
+module once deferred: `0x1AE20` (`config_keys_apply`) and `0x2EA78` (`config_screen_wait`),
+both in `config.c`.
 The credit layer (`0x2CA48`/`0x2CA7C`/`0x2C060`/`0x2C06C`/`0x2BF00`) and its
 caller `0x11F28` are ported in 4b-B (see "Front-end input, credits and the
 select state"). Full record:
@@ -932,9 +937,11 @@ selector.
   **Host binding:** `game_loop` runs the host input pipeline
   `host_input_fill_keyboard()` -> `host_input_fill_axes()` -> `input_sampler()` ->
   `input_pump()` (`flow.c:7164-7168`). The host fills the BIOS key-state table
-  from `host_key_bits()` (through `host_kb_bit`, the key-config block at
+  from the host's own key state, which `host_input_fill_keyboard()` reads via
+  `host_key_bits()` (SDL's keys under the key-config block at
   `[DS_00101514]`+`0x2DE..0x2ED`, the default binding when the block is empty,
-  host.c; there is no coin bit) and the four axis words; the sampler `0x1BBAC` —
+  host.c; `host_kb_bit` is the per-scan binding helper; there is no coin bit)
+  and the four axis words; the sampler `0x1BBAC` —
   the sole writer of `+0x2D8/+0x2D9` — builds both players' key bytes from the
   device words, and `input_pump` reads them. `game_frame` calls
   `input_state_update()` at the `0x24C6E` site as its first action — the raw's
@@ -955,7 +962,8 @@ selector.
     quit flag `DS_000A81A8`); mode `0x27` nothing; any other mode asks
     `ABANDON CONQUEST? Y/N` (`0x249F0(1)`); its yes resumes the sound
     (`0x24A9C 0x1D270`), calls the config writer `0x1B084` (`0x24AA1`,
-    deferred in the port, record §50-C) and jumps `0x24AB0 jmp 0x65431`,
+    `config_file_save`, record §50-C; `svc_options_menu`'s leave and
+    `game_shutdown` call it too) and jumps `0x24AB0 jmp 0x65431`,
     `longjmp(0x1044F4, 1)`: the soft restart (see "The soft restart" under the
     frame loop). The port jumps too (`game_restart_longjmp`, record
     named-gaps-b §B.3); it no longer sets the quit flag there;
@@ -967,7 +975,8 @@ selector.
   - an extended key (ascii 0), in every mode: scan `0x10` (Alt-Q)
     `0x249F0(0)`, `0x1F` (Alt-S) the sample pause toggle `0x1D220`, `0x32`
     (Alt-M) the music pause toggle `0x1D1B0`, `0x24` (Alt-J) the joystick
-    calibration `0x5004A` (host-owned: PIT and game-port timing, not ported).
+    calibration `0x5004A` (`host_pad_center()`, `flow.c:7430-7433`; the six
+    PIT/game-port routines stay host-owned).
   Every other key only latches. `game_loop` no longer tests ESC; a window
   close still quits there, and ends a blocking prompt or pause.
 * **Credit layer** — `port/src/game/config.c` ports `0x2CAA8`
@@ -983,8 +992,8 @@ selector.
   `accepted |= 1`) and 1 (`0x11D28`, `accepted |= 2`). **The raw returns from
   `0x11D04` when either is accepted** — it calls `0x32970(0)` then
   `0x257a4(accepted)` and skips the state dispatch for that frame. `0x32970`
-  is unported (4b carve-out); it pushes and pops EDX, so `0x11D3F mov
-  eax,edx` passes the accepted mask on. The port calls `0x257A4` as
+  is ported as `config_run_clock` and wired at its call sites; it pushes and
+  pops EDX, so `0x11D3F mov eax,edx` passes the accepted mask on. The port calls `0x257A4` as
   `game_coin_divert(accepted)` and returns (record §48-W). `0x257A4` is
   record §47-C's: `0x2BAF4` with EAX = 0, five byte resets, `DS_00104B1F` =
   the argument, `0x33C18` per side, `0x46594`, the seven bytes from
@@ -1031,7 +1040,7 @@ states 6/7 section below). Each state is a phase machine driven by its own
   order: `DS_000F0A6F` (`0x11E11`), `DS_000F0A72` (`0x11E17`), `DS_000F0A6A`
   (`0x11E1D`), `DS_000F0A6C` (`0x11E2E`), `DS_000F0A64` (`0x11E35`). The `0x2C3FC`
   voice (`0x11DF2`, id `0x100`) is wired since K12 (record `2026-09-29-k7-k12-derivations.md`); the
-  `0x32970` run clock is out of scope and skipped.
+  `0x32970` run clock is `config_run_clock(0)` (`0x11E07`, `flow.c:7882`), ported and called here.
 
 **Gaps this section leaves.** `frontend_match_start` (`0x1EA08`) is the
 attract's high-score screen and is ported whole (record §46-A): `0x2DBC4`/
