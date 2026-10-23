@@ -300,6 +300,14 @@ static const fnm_pair k_miss_gp_u16_twop2[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u23-u16-finisher (endgame truth Task 2, record §E2), measured on its full
+ * replay to the X record: the same two wipe hooks of §G.24, 0x29D60 (bare `ret`)
+ * and 0x5D812 (runtime stub), both from frontend_mode_1b_step, hits=1 each. */
+static const fnm_pair k_miss_gp_u23_u16_finisher[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -358,6 +366,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u12-endurance", 0, k_miss_gp_u12_endurance, FNM_N(k_miss_gp_u12_endurance) },
     { "gp-u13-ending2", 0, k_miss_gp_u13_ending2, FNM_N(k_miss_gp_u13_ending2) },
     { "gp-u16-twop2", 0, k_miss_gp_u16_twop2, FNM_N(k_miss_gp_u16_twop2) },
+    { "gp-u23-u16-finisher", 0, k_miss_gp_u23_u16_finisher, FNM_N(k_miss_gp_u23_u16_finisher) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

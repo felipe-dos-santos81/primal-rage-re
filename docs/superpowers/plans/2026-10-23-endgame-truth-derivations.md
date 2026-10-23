@@ -728,3 +728,110 @@ own mode; `0x36F10` has no `b0c` write at all; the "190 frames" is measured
 from the mode-`0x0F` entry (`f=0x1544`); the corner-ornament handle is
 unsupported; the `0x1CFFF`/`0x3C` citation is the call, the push is
 `0x1CFFA`; and the `gp_session` guard's lines are `967-973`.
+
+---
+
+## §E2 The U23 finisher capture (Task 2)
+
+### The scenario and the labelled fallback
+
+`SCENARIOS['gp-u23-u16-finisher']` (`tools/gp_session.py`) is gp-twop's
+two-human start and a 32-attempt first round (`U16_FINISHER`'s prefix, unchanged),
+then the plan's **labelled fallback** for the second round:
+
+```text
+after_entry 0x06,2,10  poke 0x10789E = 0x77      P2's +0x5A damage byte (record §W.3)
+after 8,  ...          12 real 1A/1B attempts    16 frames apart, a p1.right every eight
+after_entry 0x09,1,100 TALON's 0x15/0x16/0x17    reactions 0x32/0x33/0x34
+until_mode 0x12,0                               the conquered-lands screen
+```
+
+The poked damage is not the claim: the game's own hit takes `0x77` to the KO value
+`0x78`, and only the reaction in an S record's `r0`/`r1` is claimed.
+`gp_twop.py check --finisher` runs **without** `--allow-missing-reaction`.
+
+**Why the fallback (both live-KO attempts failed a session check).**
+
+- **The brief's formula** (`_u16_round(160, 10, anchor=(0x06, 2))`, captured
+  2026-10-23): P2 was KO'd by round 2's **88th** attempt (step 143 at `f=0x19F0`)
+  and mode 9 began at `f=0x19F8`; the other 72 attempts then ran on the result
+  screen, so the finisher group's `after_entry 0x09` anchor was late and all 15 of
+  its steps fired at `f=0x1F24`, after mode 9's `0x1EB`-frame hold (mode `0x17` at
+  `0x1BE3`). The capture failed its own checks: `end frame reached` FAIL, `port
+  script v2` FAIL (`key 433 (p1.b0) at f=1F24 was not queued: the BIOS ring was
+  full`), and `unscripted input` FAIL (2 pad releases from `f=0x1F27`). 12,796
+  frames, 300.4 s; not published.
+- **An 88-attempt live-KO retry** (the measured KO attempt): mode 9 at `f=0x19E0`
+  and the reaction `r0=0x33` did appear, but the last attempt and the finisher's
+  first `p1.b0`+`p1.b2` landed in one frame; the first attempt's release restored
+  the key-state byte while the second hold was active, so `unscripted input` FAILed
+  (1 pad release at `f=0x19F5`, `p1.b2`). 7,039 frames, 145.2 s; not published.
+  The KOs land at different attempts because the damage RNG differs between runs
+  (round 1's P2 damage was `0x38` in the first run and `0x41` in the second), so a
+  fixed live-KO attempt count cannot be made robust against the leftovers.
+
+**Why 12 attempts and the 100-frame anchor.** Round 1's first hit landed
+`0x81` frames into the round (P2 `s1_5a` `00 -> 0C` at `f=0x5A5`, the mode-6
+entry at `f=0x524`), so 12 attempts starting 8 frames after the poke (then 16
+apart, a `p1.right` walk every eight) cover the first landing hit. The
+`after_entry 0x09,1,100` anchor lets at most 11 leftover attempts
+(11 x 16 = 176 frames) end well before the finisher group, whose own span is 212
+frames, so no two holds of one scan overlap. Both values are harness values.
+
+### The capture (2026-10-23)
+
+`make gp-capture scenario=gp-u23-u16-finisher` under `xvfb-run -a` (this host has
+no X display; the original renders to an AVI). Every session check is `ok`:
+
+```text
+snapshots 6087, f 5..17DC, 17 frames missed
+CHECK base / steps fired 75/75 / end frame reached / mode 0x27 after the Enter /
+      snapshots kb == raw (0 differ) / frames written 5272/5272 / port script v2 /
+      no unscripted input / pokes written 1/1, 0 raced / stopped at the end
+      (SIGTERM at f=17DC, rc=0): ok
+wrote 5272 frames (raw 1376..8561), wall 122.9 s
+```
+
+Measured in its `poll.log` (6,087 S records):
+
+| Fact | Value |
+|---|---|
+| the poke | `W f=13B8 addr=0010789E was=00 now=77 late=0 race=0` |
+| round 2's mode-6 entry | `f=0x13AF` |
+| the match result (mode 9) | `f=0x1485`, `s1_5a=0x78` (P2 KO'd) |
+| the reaction | `r0=0x33` first at `f=0x155A`, held to the capture end |
+| which entry | the second attempted entry, TALON's `0x16` (reaction `0x33`; the first, `0x15`/`0x32`, did not appear) |
+| the result screen's exit | mode `0x17` at `f=0x16AF` (554 frames of mode 9) |
+| the conquered lands | mode `0x12` at `f=0x17A0` |
+| the X record | `f=0x17DC` |
+
+`gp_twop.py check --finisher` (no allowance): two-human match ok, mode 9 reached,
+mode 0x12 reached, reactions `['33', ...]`; exit 0.
+
+### The pins and the port divergence
+
+`gp_compare.py --report --max-unexplained 0` on the 4,419-frame port dump:
+
+- **window** from capture 104 (raw 1749); 5,156 classified: 2,796 clean, 1,690
+  splice, 1 transition, 669 unexplained, 12 all-black.
+- **first unexplained** capture **3842** (raw 6790), nearest port 3216, rows
+  0..94, x 0..319, 14,096 px. It is neither a loader overlay nor a scan-out (the
+  loader's 166-px six-row strip is capture 5269, after the pin), so no allowance is
+  added; the capture tail from 3842 is not claimed.
+- **reach** 3213 port frames before the first unexplained.
+- **trace** first difference `f=0x1548` (5448) in `rng` (capture `DAEA44A4`, port
+  `D8B91D2D`); the first tick difference `f=0x145` is reported apart.
+- **moves** first difference `f=0x155A` (5466) in `r0`: capture `0x33` (the
+  applied TALON finisher reaction), port `0x27`. **The port's replay applies a
+  different reaction at the finisher entry**: the capture's claim is the
+  game's reaction, and the moves ratchet stops below it. This is a measured port
+  divergence, named here and not fixed by Task 2.
+
+The `gp-u23-oracle` pins: `GP_U23_MIN_FIRST=3842`, `TRACE_MIN_FIRST=5448`,
+`MOVES_MIN_FIRST=5466`, `MAX_START=104`, `MIN_REACH=3213`,
+`CAPTURE_SHA256=e8451fe4d237f8a1e45111a202cc3513f0a7253016abfc65d03211973cac6c88`,
+`CAPTURE_FRAMES=5272`. Each one-step move was run and fails: N+1 (3843), F+1
+(5449), M+1 (5467), start-1 (103), reach+1 (3214), one sha byte, and frames 5273.
+
+The old `gp-u16-twop2` scenario, its pins and its `--allow-missing-reaction`
+target are unchanged; `tools/gp_twop.py` is unchanged.

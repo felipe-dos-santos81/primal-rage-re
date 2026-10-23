@@ -68,7 +68,7 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
-        gp-u17-oracle \
+        gp-u17-oracle gp-u23-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1442,6 +1442,59 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 			--capture-sha256 "$(GP_U16_CAPTURE_SHA256)" --capture-frames "$(GP_U16_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u16-twop2; exit $$rc; fi
 
+# Endgame truth U23 (plan docs/superpowers/plans/2026-10-23-endgame-truth.md Task 2;
+# gp_session.SCENARIOS['gp-u23-u16-finisher'], record §E2): the U16 finisher reaction captured
+# under the plan's LABELLED FALLBACK. gp-twop's two-human start and a 32-attempt first round are
+# gp-u16-twop2's; the second round pokes P2's damage byte 0x10789E to 0x77 at the second mode-6
+# entry and lands 12 real 1A/1B attempts (the game's own damage takes it to the KO value 0x78). The
+# poked damage is not the claim; the claim is at least one of the three finisher reactions 0x32..0x34
+# in an S record's r0/r1, which `gp_twop.py check --finisher` (WITHOUT --allow-missing-reaction)
+# enforces. The brief's 160-attempt live-KO round was captured and then retried at 88 attempts; each
+# failed a session check: the KO attempt is RNG-dependent (88 then 87), the leftover attempts ran on
+# the result screen, delaying the finisher group past mode 9's hold (160), or the last attempt and
+# the finisher's first b0+b2 overlapped one scan (88, an unscripted pad release). TALON's three
+# finisher entries (0x15/0x16/0x17 -> 0x32/0x33/0x34, the starters 0x37640/0x37774/0x37898) are
+# pressed 100 frames into the match result (the anchor waits out at most 11 x 16 = 176 frames of
+# leftover attempts; the group spans 212, inside mode 9's hold). The raw +0x42/+0x43
+# gate bits are decomp evidence (record §E1.2), not S fields, so they are not claimed. The capture
+# stops at the conquered-lands screen (mode 0x12, STOP_AT_END).
+# Provenance (2026-10-23, capture 5272 frames, raw 1376..8561, wall 122.9 s):
+#   MIN_FIRST 3842: the report's first unexplained capture frame (raw 6790, nearest port 3216,
+#     rows 0..94, 14096 px). It is not a loader overlay or a scan-out (the loader's 166-px
+#     six-row strip is capture 5269, after the pin), so no allowance is added; the capture tail
+#     from here is not claimed.
+#   TRACE_MIN_FIRST 5448: the first differing trace f, in rng (capture DAEA44A4, port D8B91D2D);
+#     first tick difference f=145 is reported apart (host-timed).
+#   MOVES_MIN_FIRST 5466: the first differing move frame, f=0x155A in r0 (capture 0x33, the applied
+#     TALON finisher reaction, port 0x27). The capture-side reaction claim is gp_twop's; this pin
+#     says only that the move fields agree below 5466, so the port's reaction divergence is named
+#     and not claimed.
+#   MAX_START 104: the report's window start (raw 1749).
+#   MIN_REACH 3213: the highest port frame exhibited before the first unexplained capture frame.
+#   CAPTURE_SHA256 / CAPTURE_FRAMES: this capture's poll.log sha256 and its 5272 frame_*.raw.gz.
+# Raising a ratchet by one, lowering MAX_START by one, or changing the sha must fail; a
+# re-capture invalidates every pin (record §G.24).
+GP_U23_MIN_FIRST = 3842
+GP_U23_TRACE_MIN_FIRST = 5448
+GP_U23_MOVES_MIN_FIRST = 5466
+GP_U23_MAX_START = 104
+GP_U23_MIN_REACH = 3213
+GP_U23_CAPTURE_SHA256 = e8451fe4d237f8a1e45111a202cc3513f0a7253016abfc65d03211973cac6c88
+GP_U23_CAPTURE_FRAMES = 5272
+gp-u23-oracle: build ## Endgame truth U23 oracle: the U16 finisher reaction (labelled poked-damage fallback) on gp-u23-u16-finisher (skips without its capture)
+	@echo "== gameplay oracle: gp-u23-u16-finisher (the U16 finisher reaction; labelled fallback) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_twop
+	@if [ ! -d $(K11_CAPTURES)/gp-u23-u16-finisher ]; then echo "gp-u23-oracle: no capture at $(K11_CAPTURES)/gp-u23-u16-finisher (skipped)"; else \
+		$(PYTHON) tools/gp_twop.py check --finisher --capture $(K11_CAPTURES)/gp-u23-u16-finisher && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u23-u16-finisher GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u23-u16-finisher --capture $(K11_CAPTURES)/gp-u23-u16-finisher \
+			--port $(GP_DUMP)/gp-u23-u16-finisher --min-first "$(GP_U23_MIN_FIRST)" \
+			--trace-min-first "$(GP_U23_TRACE_MIN_FIRST)" --max-start "$(GP_U23_MAX_START)" \
+			--moves-min-first "$(GP_U23_MOVES_MIN_FIRST)" \
+			--min-reach "$(GP_U23_MIN_REACH)" \
+			--capture-sha256 "$(GP_U23_CAPTURE_SHA256)" --capture-frames "$(GP_U23_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u23-u16-finisher; exit $$rc; fi
+
 # Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
 # gp_session.SCENARIOS['gp-u17-device2'], record §H6.6/§H6.9): the K11 service-menu walk to MODIFY
 # CONTROLS (0x31F24) with the K11 walk's own keys, one 5-frame Down, Esc (leave MODIFY CONTROLS) and
@@ -1606,6 +1659,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u16-oracle
 	@echo "== host input truth U17: the device-2 selection and the no-pad clear; skips without its capture =="
 	@$(MAKE) --no-print-directory gp-u17-oracle
+	@echo "== endgame truth U23: the U16 finisher reaction (labelled fallback); skips without its capture =="
+	@$(MAKE) --no-print-directory gp-u23-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify

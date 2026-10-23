@@ -629,6 +629,43 @@ SCENARIOS['gp-u16-twop2'] = dict(time_limit=240, steps=(
 ))
 
 
+# Endgame truth U23 (plan 2026-10-23-endgame-truth Task 2; record §E2): the U16
+# finisher captured under the plan's labelled fallback. gp-u16-twop2's 32-attempt
+# first round ended the round with the wrong side KO'd, so its match-result screen
+# had no defeated-side gate and no reaction appeared (R2, record gameplay-truth-ii
+# §J8).
+#
+# The brief's second round (`_u16_round(160, 10, anchor=(0x06, 2))`) was captured
+# once and cannot reach the result: the KO attempt is RNG-dependent (attempt 88) and
+# the attempts after the KO ran on the result screen, so the finisher group's
+# after_entry 0x09 anchor fired after mode 9's hold (f=0x1F24), its 15 steps collapsed
+# into one frame and the BIOS ring overflowed. The capture failed its own checks (end
+# frame absent, two unscripted pad releases). An 88-attempt live-KO retry reached mode
+# 9 with the reaction 0x33, but it failed on one unscripted pad release when the last
+# attempt and the finisher's first b0+b2 overlapped one scan. The plan's fallback is
+# used and labelled: P2's +0x5A damage byte 0x10789E is poked to 0x77 at the second
+# mode-6 entry and the game's own 1A/1B hits take it to the KO value 0x78 (record
+# §W.3). The poked damage is not the claim; the claim is the reaction (r0/r1
+# 0x32..0x34), which `gp_twop.py check --finisher` (no allowance) enforces. Round 1's
+# first hit landed 0x81 frames into the round (f=0x5A5 vs 0x524), so 12 attempts (the
+# first 8 frames after the poke, then 16 apart, a p1.right walk every eight) cover
+# the first hit; mode 9's finisher anchor waits 100 frames so the leftover attempts
+# (at most 11 x 16 = 176 frames) cannot overlap the finisher group, whose own span
+# is 212 frames. The three TALON entries (0x15/0x16/0x17 -> reactions
+# 0x32/0x33/0x34, the starters 0x37640/0x37774/0x37898) are attempted on the match
+# result. time_limit 300 is the backstop. The raw +0x42/+0x43 gate bits are decomp
+# evidence (record §E1.2), not S fields.
+U23_POKED_DAMAGE = ('poke', ((0x10789E, b'\x77'),))   # P2 at 0x77: one real hit KOs
+SCENARIOS['gp-u23-u16-finisher'] = dict(time_limit=300, steps=(
+    steps_before_end(SCENARIOS['gp-twop']['steps']) +  # the start, the walk-in and both presses
+    _u16_round(32, 30) +                           # round 1's attempts
+    (('after_entry', 0x06, 2, 10, U23_POKED_DAMAGE),) +  # round 2: the labelled fallback
+    _u16_round(12, 8) +                            # the real 1A/1B hits: one KOs
+    (('after_entry', 0x09, 1, 100, U16_FINISHER[0][-1]),) + U16_FINISHER[1:] +
+    (('until_mode', 0x12, 0),)                     # the conquered-lands screen
+))
+
+
 # Host input truth U17 (plan 2026-10-21-host-input-truth Task 6; record §H6.6,
 # §H6.9): the K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first
 # 24 keys -- the mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the
@@ -858,12 +895,16 @@ class Schedule:
 # 240 s limit would run on through mode 0x12.
 # gp-u17-device2 (host input truth U17) stops too: it ends 60 frames after the
 # MODIFY CONTROLS leave, and nothing past the clear is compared.
+# gp-u23-u16-finisher (endgame truth U23) stops too: its end is the conquered-lands
+# screen (mode 0x12) after the match-result screen's finisher attempts, and nothing
+# past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
                          'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
                          'gp-u13-ending2', 'gp-u12-endurance', 'gp-u14-win-live',
-                         'gp-u15-join', 'gp-u16-twop2', 'gp-u17-device2'})
+                         'gp-u15-join', 'gp-u16-twop2', 'gp-u17-device2',
+                         'gp-u23-u16-finisher'})
 
 
 class ScriptError(Exception):

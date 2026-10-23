@@ -708,6 +708,51 @@ class TestExtendedTwop(unittest.TestCase):
         self.assertEqual(gs.U16_FINISHER, tuple(steps))
 
 
+class TestU23Finisher(unittest.TestCase):
+    """gp-u23-u16-finisher (plan 2026-10-23-endgame-truth Task 2; record §E2): the
+    U16 finisher reaction captured live. gp-twop's start and a 32-attempt first
+    round are the same as gp-u16-twop2; the second round is the plan's labelled
+    fallback (P2's damage byte poked to 0x77, then 12 real 1A/1B hits, one of
+    which KOs), then TALON's three finisher entries on the match result. The
+    reaction is the claim: gp_twop.finisher runs without its allowance."""
+
+    def test_the_scenario_stops_at_the_conquered_lands_screen(self):
+        scn = gs.SCENARIOS['gp-u23-u16-finisher']
+        self.assertIn('gp-u23-u16-finisher', gs.STOP_AT_END)
+        self.assertEqual(scn['time_limit'], 300)
+        self.assertEqual(scn['steps'][-1], ('until_mode', 0x12, 0))
+
+    def test_the_second_round_is_the_labelled_poked_damage_fallback(self):
+        steps = gs.SCENARIOS['gp-u23-u16-finisher']['steps']
+        prefix = gs.steps_before_end(gs.SCENARIOS['gp-twop']['steps'])
+        self.assertEqual(steps[:len(prefix)], prefix)
+        i06 = next(k for k, s in enumerate(steps)
+                   if s[0] == 'after_entry' and s[1] == 0x06 and s[2] == 2)
+        self.assertEqual(steps[i06][:4], ('after_entry', 0x06, 2, 10))
+        self.assertEqual(steps[i06][-1], gs.U23_POKED_DAMAGE)
+        self.assertEqual(gs.U23_POKED_DAMAGE, ('poke', ((0x10789E, b'\x77'),)))
+        self.assertEqual(steps[i06 + 1], ('after', 8, ('pad', gs.U14_PUNCH, 4)))  # a real hit
+        # round 1 stays gp-u16-twop2's 32 attempts; round 2 has 12 real hits after the
+        # poke (record §E2: round 1's first hit landed at f=0x5A5, 0x81 into the round).
+        self.assertEqual(len([s for s in steps[len(prefix):i06]
+                              if isinstance(s[-1], tuple) and s[-1][0] == 'pad'
+                              and s[-1][1] in (gs.U14_PUNCH, gs.U14_KICK)]), 32)
+        i09 = next(k for k, s in enumerate(steps) if s[0] == 'after_entry' and s[1] == 0x09)
+        self.assertEqual(len([s for s in steps[i06 + 1:i09]
+                              if isinstance(s[-1], tuple) and s[-1][0] == 'pad'
+                              and s[-1][1] in (gs.U14_PUNCH, gs.U14_KICK)]), 12)
+        self.assertEqual(steps[i09][:4], ('after_entry', 0x09, 1, 100))
+
+    def test_the_finisher_entries_follow_the_match_result(self):
+        steps = gs.SCENARIOS['gp-u23-u16-finisher']['steps']
+        i = next(k for k, s in enumerate(steps) if s[0] == 'after_entry' and s[1] == 0x09)
+        want = (('after_entry', 0x09, 1, 100, gs.U16_FINISHER[0][-1]),) + gs.U16_FINISHER[1:]
+        self.assertEqual(steps[i:-1], want)
+        self.assertEqual(len(steps[i:-1]), 15)                         # the anchor + 14 steps
+        self.assertEqual([s[-1][2] for s in steps[i:-1] if s[-1][1] == ('p1.b0', 'p1.b2')],
+                         [16, 16, 16])
+
+
 class TestPokeScript(unittest.TestCase):
     def setUp(self):
         gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())
