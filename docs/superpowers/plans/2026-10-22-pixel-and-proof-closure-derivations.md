@@ -201,7 +201,7 @@ are negative for all three. The individual tests, as measured:
 |---|---|---|---|---:|
 | 4248 | no | no — pair N=3550 (3550,3551), 24005 differing bytes | no — 103 rows at N=3550 (needs 199) | no — the intersection over all 22923 differing pixels is empty; 2810 px have no offset in ±64; the largest per-`k` coverage is +1 at 1393/22923 (6.1 %) |
 | 4320 | no | no — pair N=3614 (3614,3615), 347 differing bytes | no — 96 rows at N=3614 | no — the intersection is empty; 55 px have no offset in ±64; the largest per-`k` coverage is −7 at 15/273 (5.5 %) |
-| 5120 | no | no — pair N=4316 (4316,4317), 13 differing bytes | no — 196 rows at N=4316 | **yes — the intersection is {−29, +14, +29}, each covering 13/13** |
+| 5120 | no | no — pair N=4316 (4316,4317), 13 differing bytes | no — 196 rows at N=4316 | **yes — the intersection is {−29, +14, +29}, each covering 13/13** — **superseded by §P3.3**: the intersection is a DAC alias (both colours recur at several entries); frame-wide, `k = 0` has 13 mismatching pixels |
 
 The DAC-index test is the U10 precedent's test (record
 `2026-10-20-gameplay-truth-ii-derivations.md`, Run 1: "every differing pixel of
@@ -226,9 +226,17 @@ smallest match is −64 also match −29, +14 and +29.)
   its Task 3 identified the cause as the RLE span writers' dword bank add (a
   real port divergence). This record measures the signature for 5120; it does
   not name the writer or decide that 5120 is the same defect — Task 2 does.
+  **Superseded by §P3.3** (2026-10-23 review): the `{−29, +14, +29}`
+  intersection is a **DAC alias** — `00001c` occurs at five entries (0x15,
+  0x40, 0x42, 0x43, 0x4F) and black at 207 — so it does not distinguish a
+  palette shift from content. Frame-wide the same test picks `k = 0` (13
+  mismatching pixels of 64000) over every other offset (best non-zero 11282),
+  so the 4113 signature is **not** present and 5120 is not a palette shift.
 
 So the frame model (clean, splice, transition) explains none of the three, and
-the DAC-index test is negative for 4248 and 4320 but **positive for 5120**.
+the DAC-index test is negative for 4248 and 4320 but **positive for 5120** as
+measured over the differing pixels only; §P3.3 supersedes that 5120 verdict
+(frame-wide `k = 0` is the only fit, and the intersection is an alias).
 The first version's sentences "A palette shift would show one `k` covering all
 differing pixels; none does", "the pixels are different *content*, not a
 different index mapping of the same content" and "Negative result for all
@@ -303,7 +311,12 @@ holders are elided and printed in full by §P1.8's script.)
 - split `r1=88`, `r2=108`: the adjacent pair is `(3614, 3615)` (unique), but
   the SCAN3 shape fails its top condition — **no single port frame holds all of
   rows 0..87** (`scan3_explain` reports "no port frame before 3614 holds its
-  named top rows"), and `band_pair(88, 108)` is `None`;
+  named top rows"), and `band_pair(88, 108)` is `None`. **§P3.2 corrects this
+  split to `18/108`, which the bytes force** (3614 does not hold rows 14..17
+  and 3613 does not hold row 18, so `r1 = 18`; 3615 does not hold rows 88..107
+  and 3614 does not hold rows 108..189, so `r2 = 108`): the maximal runs of
+  identical holder sets are not the segment boundaries here, because the static
+  background gives rows 18..87 many different holder sets;
 - the 273 differing pixels' holder counts against the whole dump: 59 are held
   only by port 3614, 16 by 2..10 frames, 54 by 11..100, 144 by more than 100,
   and **0 by no frame**. No single dumped frame holds the frame's 200 rows (the
@@ -607,6 +620,11 @@ Makefile changed.
    index mapping" and "Negative result for all three" sentences were false for
    5120. 4248's and 4320's negatives stand (their intersections are empty;
    2810/22923 and 55/273 pixels have no offset in ±64).
+   **Superseded by §P3.3 (2026-10-23 review): the "positive" is a DAC alias,
+   not a signature.** `00001c` occurs at five DAC entries and black at 207, so
+   an offset that "covers" 13 pixels proves nothing; measured frame-wide (all
+   64000 pixels) `k = 0` mismatches 13 and every non-zero offset mismatches
+   11282 or more, so 5120 is not a palette shift and the 4113 class is absent.
 2. **The 4320 row block was an intersection, not the runs.** "Rows 0..87 held
    by no dumped frame" was the whole-block holder check; per-row, rows 0..2 are
    held by 59 frames, etc. §P1.5 now lists the 27 maximal runs and says "no
@@ -896,8 +914,9 @@ earlier holder (also unique here, unlike 4248's). `scan3_explain` returns
 `([3613, 3614, 3615], None)`.
 
 The 273 differing pixels are exactly the two bands where the three presents
-differ: rows 4..17 hold 120 of them (1, 6, 6, 9, 11, 5, 1, 9, 18, 25, 29 by
-row) and rows 88..107 hold 153 (4, 7, 4, 4, 3, 4, 8, 5, 5, 4, 2, 8, 16, 8, 6,
+differ: rows 4..17 hold 120 of them (1, 6, 6, 9, 11, 5, 1, 9, 18, 25, 29 for
+rows 4, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17 — rows 5, 12 and 13 hold none) and
+rows 88..107 hold 153 (4, 7, 4, 4, 3, 4, 8, 5, 5, 4, 2, 8, 16, 8, 6,
 11, 9, 16, 12, 17); no differing pixel lies outside those two bands, and none
 of them is unheld (§P1.5's holder buckets: 0 unheld). The DAC-index test is
 negative as §P1.4 measured (`∩K` empty; 55 of 273 pixels have no offset in
@@ -944,8 +963,12 @@ rows 139..199   every holder set contains 4317; rows 142..144, 146..152, 157,
 so the unique adjacent pair is **(4316, 4317)**: `band_pair(c, 1, 5)` = 4316
 (one hit over the dump, i.e. no other frame holds all 195 rows 5..199) and the
 band is the unheld run's ends, rows 1..4
-(1280 bytes, sha256 `56b900b1…`). The unheld rows are *only* 1..4, which is why
-the band is 1..4 and not wider.
+(1280 pixels, 3840 bytes; sha256 `56b900b1…`). The unheld rows are *only* 1..4,
+which is why the band is 1..4 and not wider. The bounds are still
+**capture-pinned, not machine-forced**: the shape itself also accepts wider
+bands (`band_pair` returns 4316 for `(0, 6)`, `(0, 7)`, … as well), so the
+`1/5` choice follows the unheld run's ends exactly as the U11 entry's `81/92`
+does — a named limit, not an enforced property.
 
 The 13 differing pixels, with port 4317's own index and DAC entry:
 
@@ -958,7 +981,7 @@ The 13 differing pixels, with port 4317's own index and DAC entry:
 **Correction to §P1.4/§P1.9's DAC reading (raw wins).** The intersection of the
 per-pixel offset sets over the *differing* pixels is `{-29, +14, +29}`, but that
 is a DAC **alias**, not a palette shift: `00001c` occurs at five entries
-(0x15, 0x40, 0x42, 0x43, 0x4F) and black at two hundred. The discriminating
+(0x15, 0x40, 0x42, 0x43, 0x4F) and black at 207. The discriminating
 measure is frame-wide, over all 64000 pixels:
 
 | offset `k` | differing pixels of 64000 |
@@ -971,6 +994,10 @@ measure is frame-wide, over all 64000 pixels:
 | −29 (covers the 13) | 19159 |
 | +14 (covers the 13) | 17685 |
 | +29 (covers the 13) | 23552 |
+
+(the table is the ±64 domain of §P1.4's test; over **all 256** offsets the best
+non-zero is `k = +109` at 11282, then +81 at 11372, +82 at 11497 and +80/+90 at
+11594, so the conclusion does not depend on the domain.)
 
 `k = 0` wins by three orders of magnitude, so the frame is **not** a
 palette-index shift of port 4317's index buffer; the three covering offsets do

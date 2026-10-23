@@ -627,9 +627,9 @@ class BandAllowance(Dirs):
         # mode-0x15 fade. Rows 1..4 are the 4940-frame dump's ONLY unheld rows,
         # row 0 is port 4316/4317/4318's (identical there) and the whole range
         # rows 5..199 is port 4317's alone, so the pair (4316, 4317) is the
-        # unique match. The band is the unheld run's ends (1..4), 1280 bytes of
-        # which exactly 13 pixels differ from port 4317's rows; its cause is a
-        # named gap (§P3).
+        # unique match. The band is the unheld run's ends (1..4), 1280 pixels
+        # (3840 bytes) of which exactly 13 pixels differ from port 4317's rows;
+        # its cause is a named gap (§P3).
         self.assertEqual(gc.BANDS_ALLOWED['gp-u13-ending2'],
                          ((5120, 1, 5,
                            '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),))
@@ -759,6 +759,11 @@ class Scan3Allowance(Dirs):
         # class 72 capture frames later: rows 0..17 to port 3613, 18..107 to
         # 3614, 108..199 to 3615, the split forced by the bytes (3614 does not
         # hold rows 14..17, 3615 does not hold 88..107) and the pair unique.
+        # This test PINS the two tuples only: the recipe's mutations are proved
+        # on the fixture by the sub-tests below, and on the real dump by the
+        # manual mutation run that record §P3.5 reports (the dump is
+        # git-ignored, so it cannot be a unit case) — the name does not claim a
+        # dump test.
         self.assertEqual(gc.SCAN3_ALLOWED['gp-u13-ending2'],
                          ((4248, 46, 97,
                            'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),
