@@ -633,6 +633,38 @@ class TestTalonEnding(unittest.TestCase):
                                               (0x10789E, b'\x78'))))
 
 
+class TestVertigoEnding(unittest.TestCase):
+    """gp-u19-vertigo-ending (endgame truth Task 4; record §E1.1/§E4): P1 confirms the
+    character-select cell 2, which 0xC8882 = 00 02 03 01 06 04 05 (0x43D6E/0x43D74) maps
+    to class 3 VERTIGO, whose ending is DS_0010782A[DS_00104AD4 * 0x94] = 3 (title id
+    0xE1, THE PALACE OF VERTIGO). ending_menu(2) is two p1.right presses from cell 0, so
+    the walk is cell 2's own; the scene is otherwise Task 3's TALON arrangement."""
+
+    def test_the_walk_is_two_rights_from_cell_zero(self):
+        menu, steps = gs.WIN_MENU, gs.SCENARIOS['gp-u19-vertigo-ending']['steps']
+        self.assertEqual(steps[:len(menu) - 1], menu[:-1])        # the same menu path
+        self.assertEqual(steps[3:6], (
+            ('after_mode', 0x10, 60, ('pad', ('p1.right',), 4)),  # cell 0 -> 1
+            ('after', 30, ('pad', ('p1.right',), 4)),             # 1 -> 2 (class 3)
+            ('after', 30, ('pad', ('p1.start',), 6)),             # confirm cursor 2
+        ))
+
+    def test_the_scenario_marks_vertigos_lands_and_clones_u10s_tail(self):
+        scn = gs.SCENARIOS['gp-u19-vertigo-ending']
+        self.assertIn('gp-u19-vertigo-ending', gs.STOP_AT_END)
+        self.assertEqual((scn['time_limit'], scn['memsize'], scn['extra']),
+                         (240, 64, gs.WIN_EXTRA))
+        steps, u10 = scn['steps'], gs.SCENARIOS['gp-u10-ending']['steps']
+        i = next(k for k, st in enumerate(steps) if st[0] == 'after_entry' and st[1] == 0x06)
+        k = next(k for k, st in enumerate(u10) if st[0] == 'after_entry' and st[1] == 0x06)
+        self.assertEqual(steps[i], ('after_entry', 0x06, 1, 10,
+                                    ('poke', ((0x108106, gs.lands_marked(0, 3)),
+                                              (0x10789E, b'\x78')))))
+        self.assertEqual(gs.lands_marked(0, 3), b'\x83' * 7)      # 0x80 | side 0 | class 3
+        self.assertEqual(steps[i + 1:], u10[k + 1:])              # the rest is u10's
+        self.assertEqual(len(u10), 21)                            # u10 itself, not extended
+
+
 class TestLiveWin(unittest.TestCase):
     """gp-u14-win-live (plan 2026-10-20-gameplay-truth-ii Task 6; spec W5): a match won
     by fought hits, without the WIN_MENU pokes. The hit sequence is the builder's and

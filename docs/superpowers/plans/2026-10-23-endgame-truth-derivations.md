@@ -979,3 +979,139 @@ correction (2026-10-23): `gp_win.py`'s shared `_ENDING_LABEL` said `0x20900..0x2
 where §E1 measured the load at `0x20914..0x2091A`; it now names the whole read,
 `0x20900..0x2091A`. The label is shared by every ending scenario, so each ending
 oracle's printed label names the full range; no pin compares the label text.
+
+---
+
+## §E4 The VERTIGO ending capture (Task 4)
+
+### The scenario and the milestones
+
+`SCENARIOS['gp-u19-vertigo-ending']` (in `STOP_AT_END`) is P1's confirm of
+character-select cell 2 — `ending_menu(2)`, Task 3's helper: two `p1.right` presses
+(the first at mode 0x10 + 60, the second 30 later, hold 4) and the confirm — which
+`0xC8882 = 00 02 03 01 06 04 05`, indexed by the cursor at `0x43D6E`/`0x43D74`,
+maps to class 3 VERTIGO (§E1.1). The first poke is
+`(0x108106, lands_marked(0, 3))` = `0x83 x 7` and `0x10789E = 0x78` at
+`after_entry 0x06, 1, 10`; the rest is `SCENARIOS['gp-u10-ending']['steps']`
+from index `len(WIN_MENU) + 1` (the round-2 KO, the final's 14 pokes and the
+`until_mode 0x03` end). `time_limit=240`, `WIN_EXTRA` and `memsize=64` are u10's
+(record §W.13); neither `WIN_MENU` nor u10's steps are mutated.
+
+`MILESTONES['gp-u19-vertigo-ending']` is `start_char(3, 2)` (the label names
+character 3 / cursor 2, the predicate `_all(c0=3, b1e=1)`), the round-1 KO row
+whose seven-lands predicate is `[0x80 | r['c0']] * 7` (measured `0x83` on the
+capture), `_MATCH1[1:]` and `_ending_tail(3, 'VERTIGO')`. The seventh-land row is
+the inherited `0x41C28 state 3` row (`r['t104'] & 0xFF == 7`), not the mark row.
+The mode-0x1F row is `_all(ad4=0, c0=3)` under the label `VERTIGO's ending`; the
+title is a `0xA80E4` fact — id `0xE1`, THE PALACE OF VERTIGO (§E1.1) — and the
+compared frames' content, not a WIN/S field.
+
+### The capture (2026-10-23)
+
+`xvfb-run -a make gp-capture scenario=gp-u19-vertigo-ending` (this host has no X
+display). Every session check is `ok`:
+
+```text
+snapshots 10023, f 4..2753, 41 frames missed
+CHECK base / steps fired 22/22 / end frame reached / mode 0x27 after the Enter /
+      snapshots kb == raw (0 differ) / frames written 6004/6004 / port script v2 /
+      no unscripted input / pokes written 17/17, 0 raced / stopped at the end
+      (SIGTERM at f=2753, rc=0): ok
+wrote 6004 frames (raw 1391..14418), wall 206.1 s
+```
+
+`python3 tools/gp_capture.py check-input` prints `check=ok no unscripted input`.
+The 22 fired steps are the 7 menu actions (4 `WIN_MENU` steps, the two `p1.right`
+presses and the confirm) plus the 15 cloned u10 actions (the trailing
+`until_mode` is not an action).
+
+Measured in its `poll.log` (10,023 S records):
+
+| Fact | Value |
+|---|---|
+| the first poke | `W f=04C2 step=6 addr=00108106 was=..00 now=83838383838383 late=0 race=0` and `0x0010789E was=00 now=78` |
+| round 1's mode-6 entry | `f=0x4B9`, `c0=3 b1e=1` |
+| round 1's KO (mode 8) | `f=0x4C6`, the seven `0x83` marks |
+| the conquered lands | mode `0x12` at `f=0xBDD`; the seventh land (`t104=7`) at `f=0xC7D` |
+| WORLD DOMINATION | `c82=1` at `f=0xCC9` |
+| mode 0xF | `f=0x157A` |
+| the ending | mode `0x1F` at `f=0x184C` with `ad4=0 c0=3`; state 3 at `f=0x1DEE` |
+| the high-score entry | mode `0x1E` at `f=0x21B4` |
+| back in mode 3 | `f=0x271B` (the X record) |
+
+`gp_win.py check` prints every row `ok` and `30/30 milestones ok`, including
+`VERTIGO's ending (mode 0x1F, 0x208F8): ... is character c0=3 at f=184C`.
+
+### The report and the allowances
+
+`gp_compare.py --report --max-unexplained 0` on the 4,990-frame port dump:
+
+- **window** from capture 85 (raw 1750); 5,897 classified: 3,384 clean, 2,487
+  splice, 9 transition, 3 scan3-allowed, 1 overlay-allowed, 13 unexplained, and
+  22 all-black (the enforced run stops at the first unexplained, hence its 5,885).
+- **first unexplained** capture **5991** (raw 14362), nearest port 0: 5991..6003
+  are the post-script tail (the replay's dump ends at port frame 4989, f=0x271A,
+  and its trace at f=0x271B, where the capture's X record sits) and are NOT
+  claimed.
+- **reach** port 4989 (the dump's last frame).
+- **trace / win / moves**: 9,660 frames compared from `f=0x137`, 41 without a
+  capture snapshot, **0 differing through 10011**; the first tick difference is
+  `f=0x138` (reported apart); the normalised `ent` 0 of 9,660 differ and `t508`
+  6,849 of 9,660 (port = capture + 1), both reported.
+
+Four named per-frame allowances, each its own byte recipe (`tools/gp_compare.py`):
+
+| capture (raw) | class | recipe (measured from the dump's `frames.txt`) |
+|---|---|---|
+| 2312 (5021) | overlay | port 1872's (`f=0BDA tick=C2B mode=17`) 166 glyph px, rows 192..197 x 0..85, over port 1873's (`f=0BDA tick=C31 mode=12`) mode-0x12 screen; the mask from port 1871 (`f=0BDA tick=C2B mode=17`, the stale-palette twin). The §G7 loader presentation at the mode-0x17 -> 0x12 entry; 2311 is clean at 1872 and 2313 clean at 1873. T1 1872/T2 1871 is the only pair at mask 166 reproducing the frame's pixels. |
+| 2478 (5662) | scan3 | rows 0..32 held by port 177 and 2020..2022 (not uniquely bound, the §G6 named limit), rows 33..147 port 2023's (`f=0DFC tick=E56 mode=23`), rows 148..199 port 2024's (`f=0DFD tick=E57 mode=23`); pair (2023, 2024) unique; neighbours 2477 clean at 2022 and 2479 clean at 2024. The health-bonus screen's three-present scan. |
+| 4362 (7863) | scan3 | rows 0..52 port 3577's (`f=1516 tick=15B3 mode=D`, its only holder), rows 53..117 port 3578's (`f=1516 tick=15B7 mode=C`), rows 118..199 port 3579's (`f=1517 tick=15B8 mode=C`); pair (3578, 3579) unique; neighbours 4361 clean at 3577 and a (3579, ...) splice at 4363. The final's mode-0x0D -> 0x0C transition (the U13/U18 class). |
+| 4430 (7961) | scan3 | rows 0..11 port 3640's (`f=1552 tick=160B mode=C`, its only holder), rows 12..145 port 3641's (`f=1552 tick=160D mode=C`), rows 146..199 port 3642's (`f=1553 tick=160E mode=C`); pair (3641, 3642) unique; neighbours 4429 clean at 3640 and a (3642, ...) splice at 4431. No mode change here: the replacement screen's next three-present scan. |
+
+In every scan3 recipe the `r2` split is forced by the bytes (the first row below
+it exists only in the bottom frame, and `r2 + 1` fails to bind); the top rows are
+byte-pinned by the hash and required only to have an earlier holder (uniqueness is
+not claimed — `2478` has four).
+
+Mutation runs on the real dump (`gp_compare.overlay_explain` / `scan3_explain`
+called on the loaded frames): changing S 1873's pixel (0,0) fails ("its pixel row
+0 x 0 is 010203, not port 1873's 000000"); swapping T1/T2 fails ("its glyph
+pixels are 43fead2f4cfc.."); naming S as the mask fails ("its glyph pixels are
+a2bc55c0b71a.."); changing a T1 glyph pixel fails ("its pixel row 192 x 0 is
+010203, not port 1872's 41b2d3"). For each scan3 recipe, changing the top row 0,
+a middle row (`r1`), a bottom row (`r2`) or moving the `r2` split one row each
+fails (the top by hash, the rest by "no unique adjacent port pair binds ...");
+moving `r1` one row up fails by the top hash. All 19 mutations are caught.
+
+### The pins
+
+`GP_U19_MIN_FIRST=5991`, `GP_U19_TRACE_MIN_FIRST=10012`,
+`GP_U19_MAX_START=85`, `GP_U19_MIN_REACH=4989`,
+`GP_U19_CAPTURE_SHA256=31da347f1e637e3d384936e7b9473cfba7734f8a4216af00236e74d0c730fd69`,
+`GP_U19_CAPTURE_FRAMES=6004`, `GP_U19_MILESTONES=30`,
+`GP_U19_WIN_MIN_FIRST=10012`. Each one-step move fails:
+
+| move | failure |
+|---|---|
+| MIN_FIRST 5992 | `FAIL: first unexplained 5991 < ratchet N 5992` |
+| TRACE_MIN_FIRST 10013 | `FAIL: N 10013 > end 10012: N is unreachable` |
+| WIN_MIN_FIRST 10013 | `FAIL: win: N 10013 > end 10012: N is unreachable` |
+| MAX_START 84 | `FAIL: window starts at capture 85 (raw 1750) > pinned start 84` |
+| MIN_REACH 4990 | `FAIL: window reach port 4989 < pinned reach 4990` |
+| sha (last nibble) | `FAIL: poll.log sha256 ... != the pinned ...: re-measure, then re-pin` |
+| CAPTURE_FRAMES 6005 | `FAIL: ... (6004 frames) != the pinned ... (6005 frames)` |
+| MILESTONES 31 | `FAIL: path: N 31 > end 30: N is unreachable` |
+
+`make gp-u19-oracle` passes at the pins (30/30 milestones, the four allowance
+lines, first unexplained 5991, reach 4989, `0 differing through 10011`) and its
+run without `GP_WIN_KEEP` removes the dump; a run with `GP_U19_MIN_FIRST=5992`
+exits 2 at the frames FAIL. It is wired into `make verify` after
+`gp-u18-oracle`. The `PR_GP_DUMP` miss set for the new scenario is the measured
+§G.24 pair `0x29D60` (one hit) / `0x5D812` (three hits) from
+`frontend_mode_1b_step`, pinned in `port/tests/test_platform.c`, and
+`test_gp_capture`'s poked-final list gains the scenario (`memsize=64`).
+
+No conflict with §E1 was found: cell 2 is class 3 VERTIGO, the mark is `0x83`,
+the title id is `0xE1` (THE PALACE OF VERTIGO) and the label is the character
+name. The old scenarios, `WIN_MENU1`, the U13/U18 recipes and every existing pin
+are unchanged.

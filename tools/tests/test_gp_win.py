@@ -305,6 +305,56 @@ class TestTalonEnding(unittest.TestCase):
         self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
 
 
+class TestVertigoEnding(unittest.TestCase):
+    """gp-u19-vertigo-ending (endgame truth Task 4; record §E1.1/§E4): VERTIGO is
+    character 3, character-select cell 2, title id 0xE1 (THE PALACE OF VERTIGO). The
+    mode-0x1F row's label is the character name, not the title; the land mark is
+    0x80 | side 0 | 3 = 0x83."""
+
+    def test_start_char_labels_the_character_and_cell(self):
+        rows = gw.start_char(3, 2)
+        self.assertEqual([(r[1], r[2]) for r in rows], [(0x10, 1), (0x06, 1)])
+        self.assertIn('character 3', rows[1][0])
+        self.assertIn('cursor 2', rows[1][0])
+        self.assertTrue(rows[1][3](dict(c0=3, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=2, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=3, b1e=2)))
+
+    def test_the_milestones_end_with_vertigos_ending(self):
+        rows = gw.MILESTONES['gp-u19-vertigo-ending']
+        self.assertEqual(len(rows), 30)
+        self.assertEqual([r[:3] for r in rows[:2]], [r[:3] for r in gw.start_char(3, 2)])
+        ending = [r for r in rows if (r[1], r[2]) == (0x1F, 1)]
+        self.assertEqual(len(ending), 1)
+        label, _, _, pred = ending[0]
+        self.assertTrue(label.startswith("VERTIGO's ending"), label)
+        self.assertIn('c0=3', label)
+        self.assertNotIn('PALACE', label)         # the title is a 0xA80E4 fact, not the label
+        self.assertTrue(pred(dict(ad4=0, c0=3)))
+        self.assertFalse(pred(dict(ad4=0, c0=2)))
+        self.assertFalse(pred(dict(ad4=1, c0=3)))
+
+    def test_the_round_1_row_expects_vertigos_land_marks(self):
+        rows = gw.MILESTONES['gp-u19-vertigo-ending']
+        round1 = [r for r in rows if (r[1], r[2]) == (0x08, 1)]
+        self.assertEqual(len(round1), 1)
+        marks83 = _marks(l0=0x83, l1=0x83, l2=0x83, l3=0x83, l4=0x83, l5=0x83, l6=0x83)
+        self.assertTrue(round1[0][3](dict(c0=3, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                          **marks83)))
+        self.assertFalse(round1[0][3](dict(c0=3, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                           **_marks(l0=0x82, l1=0x82, l2=0x82, l3=0x82,
+                                                    l4=0x82, l5=0x82, l6=0x82))))
+
+    def test_the_seventh_land_row_is_the_t104_tally(self):
+        rows = gw.MILESTONES['gp-u19-vertigo-ending']
+        seventh = [r for r in rows if (r[1], r[2]) == (0x12, 1)
+                   and r[0].startswith('0x41C28 state 3')]
+        self.assertEqual(len(seventh), 1)
+        self.assertEqual(seventh[0][3](dict(t104=7)), True)
+        self.assertEqual(seventh[0][3](dict(t104=6)), False)
+        self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
+
+
 class TestPath(unittest.TestCase):
     def test_a_capture_without_mode_27_fails_cleanly(self):
         cap = _log([(0x100, 0x140, 0x03, {}), (0x141, 0x150, 0x10, {})])
@@ -333,11 +383,12 @@ class TestPath(unittest.TestCase):
     def test_rows_cover_all_scenarios_in_order(self):
         self.assertEqual(sorted(gw.MILESTONES),
                          ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live',
-                          'gp-u18-talon-ending', 'gp-u9-win'])
+                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():
             for label, mode, k, pred in rows:
                 self.assertTrue(0 < mode < 0x40 and k >= 1, (name, label))
-        for name in ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending'):
+        for name in ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
+                     'gp-u19-vertigo-ending'):
             rows = [(m, k) for _, m, k, _ in gw.MILESTONES[name]]
             self.assertEqual(len(rows), 30)
             self.assertEqual(rows.count((0x0D, 7)), 1)

@@ -241,6 +241,33 @@ SCAN3_ALLOWED = {
         # 3474 (capture 4146) and a (3476, ...) splice (4148).
         (4147, 46, 169, 'bc171866bbf274469cf629a494a4f948527c292bb9cb87d9b9906d0f8d963704'),
     ),
+    'gp-u19-vertigo-ending': (
+        # Capture 2478 (raw 5662): the health-bonus screen's three-present scan 166
+        # capture frames after the loader overlay (record §E4; mode 0x23). Rows 0..32
+        # are held by port 177 and 2020..2022 (not uniquely bound — the named limit),
+        # rows 33..147 are port 2023's (f=0DFC tick=00000E56 mode=0023) and rows
+        # 148..199 are port 2024's (f=0DFD tick=00000E57 mode=0023); (2023, 2024) is
+        # the 4990-frame dump's unique adjacent-pair bind, and the r2 split is forced
+        # by the bytes (row 148 exists only in 2024; r2 147 fails to bind). The
+        # neighbours are clean at 2022 (capture 2477) and 2024 (2479).
+        (2478, 33, 148, '70d994ab367ffc4c077db8b677ae23029f85bb358b43a67efe3badd180e8bc0e'),
+        # Capture 4362 (raw 7863): the final's mode-0x0D -> 0x0C transition, the same
+        # three-present scan as U13's 4248/4320 and U18's 4099/4147. Rows 0..52 are
+        # port 3577's (f=1516 tick=000015B3 mode=000D, its only holder), rows 53..117
+        # are port 3578's (f=1516 tick=000015B7 mode=000C) and rows 118..199 are port
+        # 3579's (f=1517 tick=000015B8 mode=000C); (3578, 3579) is the dump's unique
+        # bind and the r2 split is forced (row 118 exists only in 3579). The
+        # neighbours are clean at 3577 (capture 4361) and a (3579, ...) splice (4363).
+        (4362, 53, 118, '7b1d3e43b68a309a87c71f991a28f9aaf0597d789a50fe82c20deb8eaf0d66b0'),
+        # Capture 4430 (raw 7961): the final's mode-0x0C replacement screen's next
+        # three-present scan (no mode change here). Rows 0..11 are port 3640's
+        # (f=1552 tick=0000160B mode=000C, its only holder), rows 12..145 are port
+        # 3641's (f=1552 tick=0000160D mode=000C) and rows 146..199 are port 3642's
+        # (f=1553 tick=0000160E mode=000C); (3641, 3642) is the dump's unique bind
+        # and the r2 split is forced (row 146 exists only in 3642). The neighbours
+        # are clean at 3640 (capture 4429) and a (3642, ...) splice (4431).
+        (4430, 12, 146, '83ca9cdcfbc340ebe24f6331d6ebdb6871ec07704108fc1e3bf139704adefdf9'),
+    ),
 }
 
 
@@ -328,6 +355,21 @@ OVERLAY_ALLOWED = {
         # splice expresses it (2228 is clean at port 1811). The glyph
         # fingerprint is the loader string's (de1c1bb2..), measured on this dump.
         (2227, 1810, 1809, 1811,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
+    'gp-u19-vertigo-ending': (
+        # Capture 2312 (raw 5021): VERTIGO's own loader presentation at the
+        # mode-0x17 -> 0x12 entry, the same §G7 composition as U9/U10/U13/U18: port
+        # 1872's (f=0BDA tick=00000C2B mode=0017) 166 glyph pixels at rows 192..197,
+        # x 0..85 over port 1873's (f=0BDA tick=00000C31 mode=0012) screen; port 1871
+        # (f=0BDA tick=00000C2B mode=0017) is the same indices under the stale black
+        # palette (the mask's source). The capture shows the composition over the new
+        # screen, where the replay's own presentation 1872 is over the stale one: no
+        # clean match or two-frame splice expresses it (2311 is clean at 1872, 2313
+        # clean at 1873). The glyph fingerprint is the loader string's (de1c1bb2..),
+        # measured on this dump; T1 1872/T2 1871 are the only pair at mask 166 that
+        # reproduces the frame's pixels.
+        (2312, 1872, 1871, 1873,
          'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
     ),
 }

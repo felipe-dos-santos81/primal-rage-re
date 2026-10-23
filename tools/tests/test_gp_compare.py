@@ -813,6 +813,20 @@ class Scan3Allowance(Dirs):
                            '2fb5ec8f9b74cc393b7619ad560c9771ff75d987dc1bcdd46c2d751c87c15772'),
                           (4147, 46, 169,
                            'bc171866bbf274469cf629a494a4f948527c292bb9cb87d9b9906d0f8d963704')))
+        # endgame truth Task 4 (record §E4): VERTIGO's ending's three scans — 2478 is
+        # the health-bonus screen's (rows 0..32 held by 177/2020..2022, 33..147 port
+        # 2023's, 148..199 port 2024's) and 4362/4430 are the final's (0..52 port
+        # 3577's / 53..117 3578's / 118..199 3579's; and 0..11 port 3640's / 12..145
+        # 3641's / 146..199 3642's). PIN only, as the U18 entry: the recipe's mutations
+        # are proved on the fixture by this class's sub-tests and on the real dump by
+        # the manual run record §E4 reports; the dump is not retained.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u19-vertigo-ending'],
+                         ((2478, 33, 148,
+                           '70d994ab367ffc4c077db8b677ae23029f85bb358b43a67efe3badd180e8bc0e'),
+                          (4362, 53, 118,
+                           '7b1d3e43b68a309a87c71f991a28f9aaf0597d789a50fe82c20deb8eaf0d66b0'),
+                          (4430, 12, 146,
+                           '83ca9cdcfbc340ebe24f6331d6ebdb6871ec07704108fc1e3bf139704adefdf9')))
 
 
 class OverlayAllowance(Dirs):
@@ -1008,6 +1022,15 @@ class OverlayAllowance(Dirs):
         # does not run a dump test.
         self.assertEqual(gc.OVERLAY_ALLOWED['gp-u18-talon-ending'],
                          ((2227, 1810, 1809, 1811,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+        # endgame truth Task 4 (record §E4): VERTIGO's ending's own loader presentation
+        # at capture 2312 (raw 5021), port 1872's 166 glyph pixels over port 1873's
+        # mode-0x12 screen, the mask from port 1871 (both mode 0x17 at tick 00000C2B).
+        # PIN only, as the U18 entry: the recipe's mutations are proved on the fixture by
+        # this class's sub-tests and on the real dump by the manual run record §E4
+        # reports; the dump is not retained, so this case does not run a dump test.
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u19-vertigo-ending'],
+                         ((2312, 1872, 1871, 1873,
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
 
 

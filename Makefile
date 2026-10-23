@@ -68,7 +68,7 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
-        gp-u17-oracle gp-u23-oracle gp-u18-oracle \
+        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1549,6 +1549,59 @@ gp-u18-oracle: build ## Endgame truth U18 oracle: TALON's ending (character 2, c
 			--win-min-first "$(GP_U18_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U18_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u18-talon-ending; exit $$rc; fi
 
+# Endgame truth Task 4 (plan docs/superpowers/plans/2026-10-23-endgame-truth.md; record §E1.1,
+# §E4): gp-u19-vertigo-ending is VERTIGO's ending. P1 confirms character-select cell 2
+# (ending_menu(2): two p1.right presses), which 0xC8882 = 00 02 03 01 06 04 05 maps to class 3
+# VERTIGO (0x43D6E/0x43D74), whose ending is DS_0010782A[DS_00104AD4 * 0x94] = 3 (title id 0xE1,
+# THE PALACE OF VERTIGO — a 0xA80E4 fact and the compared frames' content, not a WIN/S field).
+# Its first poke writes VERTIGO's seven land marks (0x83, not u10's SAURON 0x80: 0x41C28 state 1
+# tallies (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C), and the rest are
+# gp-u10-ending's from its second poke on. `gp_win.py check` finds 30/30 milestones including the
+# mode-0x1F row's ad4=0,c0=3 under the label "VERTIGO's ending".
+# Measured on the 2026-10-23 capture (6,004 frames, raw 1391..14418, wall 206.1 s, memsize=64):
+# the window starts at capture 85 (raw 1750); every content-bearing capture frame through 5990 is
+# explained (3,384 clean, 2,487 splice, 9 transition) plus four named per-frame allowances, each
+# its own byte recipe (tools/gp_compare.py): 2312 is the loader's 166-px glyph strip at the
+# mode-0x17 -> 0x12 entry over port 1873's mode-0x12 screen (OVERLAY_ALLOWED, the §G7
+# composition), 2478 is the health-bonus screen's (mode 0x23) three-present scan (port
+# 2022/2023/2024) and 4362/4430 are the final's three-present scans (ports 3577/3578/3579 and
+# 3640/3641/3642; SCAN3_ALLOWED, the §G6 shape U13's 4248/4320 have). The first unexplained is
+# 5991 (raw 14362): 5991..6003 are the post-script tail (the replay's dump ends at port frame 4989,
+# f=0x271A, and its trace at f=0x271B, where the capture's X record sits) and are NOT claimed;
+# MIN_FIRST = 5991, and 5992 fails (the ratchet fails only when the first unexplained precedes N).
+# The comparison's window reach is port 4989 (the dump's last frame), so MIN_REACH = 4989 and 4990
+# fails as unreachable beyond the dump. Trace and WIN fields agree through f=0x271B (10011), so
+# their end pins are 10012; the moves comparison is reported by gp_compare (0 differing through
+# 10011) and is not pinned. The capture has 6,004 frames with this poll.log sha256
+# (31da347f..c730fd69).
+# An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
+# capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
+# WIN_MIN_FIRST when they improve.
+GP_U19_MIN_FIRST = 5991
+GP_U19_TRACE_MIN_FIRST = 10012
+GP_U19_MAX_START = 85
+GP_U19_MIN_REACH = 4989
+GP_U19_CAPTURE_SHA256 = 31da347f1e637e3d384936e7b9473cfba7734f8a4216af00236e74d0c730fd69
+GP_U19_CAPTURE_FRAMES = 6004
+GP_U19_MILESTONES = 30
+GP_U19_WIN_MIN_FIRST = 10012
+gp-u19-oracle: build ## Endgame truth U19 oracle: VERTIGO's ending (character 3, cell 2; skips without data/k11-captures/gp-u19-vertigo-ending)
+	@echo "== gameplay oracle: gp-u19-vertigo-ending (VERTIGO's ending under pokes) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u19-vertigo-ending ]; then echo "gp-u19-oracle: no capture at $(K11_CAPTURES)/gp-u19-vertigo-ending (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u19-vertigo-ending --capture $(K11_CAPTURES)/gp-u19-vertigo-ending \
+			--capture-sha256 "$(GP_U19_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u19-vertigo-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u19-vertigo-ending --capture $(K11_CAPTURES)/gp-u19-vertigo-ending \
+			--port $(GP_DUMP)/gp-u19-vertigo-ending --min-first "$(GP_U19_MIN_FIRST)" \
+			--trace-min-first "$(GP_U19_TRACE_MIN_FIRST)" --max-start "$(GP_U19_MAX_START)" \
+			--min-reach "$(GP_U19_MIN_REACH)" \
+			--capture-sha256 "$(GP_U19_CAPTURE_SHA256)" --capture-frames "$(GP_U19_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u19-vertigo-ending --capture $(K11_CAPTURES)/gp-u19-vertigo-ending \
+			--port $(GP_DUMP)/gp-u19-vertigo-ending --min-milestones "$(GP_U19_MILESTONES)" \
+			--win-min-first "$(GP_U19_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U19_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u19-vertigo-ending; exit $$rc; fi
+
 # Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
 # gp_session.SCENARIOS['gp-u17-device2'], record §H6.6/§H6.9): the K11 service-menu walk to MODIFY
 # CONTROLS (0x31F24) with the K11 walk's own keys, one 5-frame Down, Esc (leave MODIFY CONTROLS) and
@@ -1717,6 +1770,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u23-oracle
 	@echo "== endgame truth U18: TALON's ending (character 2, cell 1); skips without its capture =="
 	@$(MAKE) --no-print-directory gp-u18-oracle
+	@echo "== endgame truth U19: VERTIGO's ending (character 3, cell 2); skips without its capture =="
+	@$(MAKE) --no-print-directory gp-u19-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify

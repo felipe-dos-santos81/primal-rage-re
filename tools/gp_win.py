@@ -154,6 +154,20 @@ MILESTONES['gp-u18-talon-ending'] = start_char(2, 1) + (
      and r['ad4'] == NO_RESULT and lands(r) == [0x80 | r['c0']] * 7),
 ) + _MATCH1[1:] + _ending_tail(2, 'TALON')
 
+# Endgame truth Task 4 (record §E1.1): VERTIGO is character 3, character-select cell 2
+# (0xC8882 = 00 02 03 01 06 04 05 -> class 3), whose ending title id is 0xE1 (THE PALACE
+# OF VERTIGO, a 0xA80E4 fact and the compared frames' content, not a WIN/S field). The
+# seven land marks are 0x80 | side 0 | 3 = 0x83 (0x41C28 state 1 compares
+# (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C); another character's
+# bytes would count no land for P1 and never reach the seventh-land row. The rest is
+# gp-u10-ending's from its second poke on (_ending_tail's seventh-land row on), and
+# time_limit 240, WIN_EXTRA and memsize 64 are its (record §W.13).
+MILESTONES['gp-u19-vertigo-ending'] = start_char(3, 2) + (
+    ('round 1 KO with the seven lands poked P1\'s', 0x08, 1,
+     lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['w3'] == 0
+     and r['ad4'] == NO_RESULT and lands(r) == [0x80 | r['c0']] * 7),
+) + _MATCH1[1:] + _ending_tail(3, 'VERTIGO')
+
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec W5): a match won
 # by fought hits (gp_session's gp-u14-win-live, no pokes). The rows are the shared start and
 # match-1 rows unchanged: the KO the game reaches is the same mode-8 entry with P2's +0x5A at
