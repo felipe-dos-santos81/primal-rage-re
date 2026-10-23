@@ -61,6 +61,21 @@ _START = (
     ('character select (mode 0x10)', 0x10, 1, None),
     ('round 1: P1 is character 0 (cursor 0 confirmed, 0x43CAD)', 0x06, 1, _all(c0=0, b1e=1)),
 )
+
+
+def start_char(char, cell):
+    """The character-select and round-1 rows for a winner of character `char` confirmed on
+    character-select `cell`: 0xC8882 = 00 02 03 01 06 04 05 maps the cursor cell to the
+    class at 0x43D6E/0x43D74 (record §E1.1), so cell 1 is class 2 TALON and cell 3 class 1
+    BLIZZARD. The label names the character and the cell; the predicate is
+    _all(c0=char, b1e=1), exactly _START's."""
+    return (
+        ('character select (mode 0x10)', 0x10, 1, None),
+        ('round 1: P1 is character %d (cursor %d confirmed, 0x43CAD)' % (char, cell),
+         0x06, 1, _all(c0=char, b1e=1)),
+    )
+
+
 _MATCH1 = (
     ('round 1 KO: 0x27C48 counts P1, 0x27BA4 leaves the match open, 0x27FA8 -> mode 8',
      0x08, 1, _all(s1_5a=0x78, w2=1, w3=0, ad4=NO_RESULT)),
@@ -123,6 +138,20 @@ MILESTONES['gp-u13-ending2'] = _START1 + (
      lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['w3'] == 0 and r['ad4'] == NO_RESULT
      and lands(r) == [0x80 | r['c0']] * 7),
 ) + _MATCH1[1:] + _ending_tail(1, 'BLIZZARD')
+
+# Endgame truth Task 3 (record §E1.1): TALON is character 2, character-select cell 1
+# (0xC8882 = 00 02 03 01 06 04 05 -> class 2), whose ending title id is 0xE0 (TALON'S
+# DREAM, a 0xA80E4 fact and the compared frames' content, not a WIN/S field). The seven
+# land marks are 0x80 | side 0 | 2 = 0x82 (0x41C28 state 1 compares
+# (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C); SAURON's 0x80 bytes
+# would count no land for P1 and never reach the seventh-land row. The rest is
+# gp-u10-ending's from its second poke on (_ending_tail's seventh-land row on), and
+# time_limit 240, WIN_EXTRA and memsize 64 are its (record §W.13).
+MILESTONES['gp-u18-talon-ending'] = start_char(2, 1) + (
+    ('round 1 KO with the seven lands poked P1\'s', 0x08, 1,
+     lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['w3'] == 0
+     and r['ad4'] == NO_RESULT and lands(r) == [0x80 | r['c0']] * 7),
+) + _MATCH1[1:] + _ending_tail(2, 'TALON')
 
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec W5): a match won
 # by fought hits (gp_session's gp-u14-win-live, no pokes). The rows are the shared start and

@@ -220,6 +220,27 @@ SCAN3_ALLOWED = {
         # binding. The one-row top's non-unique holder is the named limit (§J8).
         (4089, 1, 66, '8eeaad13ee80ed904df9a8d600d3972f34959d6d5a0692cdbd319003b80376f6'),
     ),
+    'gp-u18-talon-ending': (
+        # Capture 4099 (raw 7759): the final's mode-0x0D -> 0x0C transition (record
+        # §E3), the same three-present scan as U13's 4248/4320: rows 0..63 are port
+        # 3430's (f=14CC tick=0000155B mode=000D; also 3428's f=14CB and 3429's
+        # f=14CC tick=00001549, identical there), rows 64..167 are port 3431's
+        # (f=14CC tick=0000155F mode=000C) and rows 168..199 are port 3432's
+        # (f=14CD tick=00001560 mode=000C); (3431, 3432) is the 4865-frame dump's
+        # unique adjacent-pair bind, rows 64..134 are 3431's alone (so r1 <= 64)
+        # and 3430 does not hold row 64 (so r1 = 64). The neighbours are clean at
+        # 3429 (capture 4098) and 3432 (4100).
+        (4099, 64, 168, '2fb5ec8f9b74cc393b7619ad560c9771ff75d987dc1bcdd46c2d751c87c15772'),
+        # Capture 4147 (raw 7856): the next poked KO's three-present scan (the
+        # report's nearest port is 3474). Rows 0..45 are port 3474's (f=14F4
+        # tick=000015B3 mode=000D), rows 46..168 are port 3475's (f=14F4
+        # tick=000015B6 mode=000C) and rows 169..199 are port 3476's (f=14F5
+        # tick=000015B7 mode=000C); 3474 holds rows 0..45 only and 3476 rows
+        # 169..199 only, so the split 46/169 is forced by the bytes and the pair
+        # (3475, 3476) is the dump's unique bind. The neighbours are clean at
+        # 3474 (capture 4146) and a (3476, ...) splice (4148).
+        (4147, 46, 169, 'bc171866bbf274469cf629a494a4f948527c292bb9cb87d9b9906d0f8d963704'),
+    ),
 }
 
 
@@ -293,6 +314,20 @@ OVERLAY_ALLOWED = {
         # port 6816's screen; port 6814 is the mask source. Independently
         # measured for U16, with the same glyph-byte fingerprint (§J8).
         (8066, 6815, 6814, 6816,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
+    'gp-u18-talon-ending': (
+        # Capture 2227 (raw 4988): U18's own loader presentation at the
+        # mode-0x17 -> 0x12 entry, the same §G7 composition as U9/U10/U13: port
+        # 1810's (f=0BBC tick=00000C12 mode=0017) 166 glyph pixels at rows
+        # 192..197, x 0..85 over port 1811's (f=0BBC tick=00000C18 mode=0012)
+        # screen; port 1809 (f=0BBC tick=00000C12 mode=0017) is the same indices
+        # under the stale black palette (the mask's source). The capture shows
+        # the composition over the new screen, where the replay's own
+        # presentation 1810 is over the stale one: no clean match or two-frame
+        # splice expresses it (2228 is clean at port 1811). The glyph
+        # fingerprint is the loader string's (de1c1bb2..), measured on this dump.
+        (2227, 1810, 1809, 1811,
          'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
     ),
 }

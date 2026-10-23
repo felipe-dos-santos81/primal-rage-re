@@ -426,6 +426,21 @@ WIN_MENU = (
     ('after', 150, ('key', 'enter')),                 # LEFT PLAYER ARCADE: mode 0x2D
     ('after_mode', 0x10, 60, ('pad', ('p1.start',), 6)),   # confirm cursor 0: character 0
 )
+
+
+def ending_menu(cell):
+    """WIN_MENU's prefix, then `cell` right presses (the first at mode 0x10 + 60, the
+    rest 30 apart, hold 4) and the confirm. cell 0 is WIN_MENU's own confirm; cell 1 is
+    class 2 TALON and cell 3 class 1 BLIZZARD (0xC8882 = 00 02 03 01 06 04 05, indexed by
+    the cursor at 0x43D6E/0x43D74; record §E1.1), so ending_menu(3) is WIN_MENU1."""
+    if cell == 0:
+        return WIN_MENU
+    steps = [('after_mode', 0x10, 60, ('pad', ('p1.right',), 4))]
+    steps += [('after', 30, ('pad', ('p1.right',), 4)) for _ in range(cell - 1)]
+    steps.append(('after', 30, ('pad', ('p1.start',), 6)))
+    return WIN_MENU[:-1] + tuple(steps)
+
+
 # U9 (record §W.6): two poked KOs win match 1 (0x27BA4: 2 wins of 3), the conquered-lands
 # screen (mode 0x12) and the next opponent's wipe, to 60 frames into match 2's round 1.
 # 110 s: 1.4x the port-predicted end at 78 s (record §W.7), a harness value.
@@ -478,6 +493,21 @@ SCENARIOS['gp-u13-ending2'] = dict(
     steps=WIN_MENU1 + (
         ('after_entry', 0x06, 1, 10,
          ('poke', ((0x108106, lands_marked(0, 1)), (0x10789E, b'\x78')))),
+    ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
+
+# Endgame truth Task 3 (record §E1.1): TALON's ending, character 2 on character-select
+# cell 1 (ending_menu(1): one p1.right from cell 0, then the confirm). The land marks are
+# TALON's (0x80 | side 0 | 2 = 0x82), not u10's SAURON 0x80: 0x41C28 state 1 tallies a
+# mark only when (mark & 0x7F) == DS_0010782A[side] | side << 6 (0x41D39/0x41D5C). The
+# rest is gp-u10-ending's from its second poke on (a new tuple: neither WIN_MENU nor
+# u10's steps are mutated); time_limit 240, WIN_EXTRA and memsize 64 are its (record
+# §W.13: the poked final OOMs at 16 MB). The ending title id 0xE0 is TALON'S DREAM
+# (0xA80E4; a compared-frames fact, not a WIN/S field).
+SCENARIOS['gp-u18-talon-ending'] = dict(
+    time_limit=240, extra=WIN_EXTRA, memsize=64,
+    steps=ending_menu(1) + (
+        ('after_entry', 0x06, 1, 10,
+         ('poke', ((0x108106, lands_marked(0, 2)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
 
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec §W5): a match
@@ -907,13 +937,15 @@ class Schedule:
 # gp-u23-u16-finisher (endgame truth U23) stops too: its end is the conquered-lands
 # screen (mode 0x12) after the match-result screen's finisher attempts, and nothing
 # past it is compared.
+# gp-u18-talon-ending (endgame truth Task 3) stops too: its end is mode 3 after the
+# high-score entry (u10's until_mode), and nothing past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
                          'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending',
                          'gp-u13-ending2', 'gp-u12-endurance', 'gp-u14-win-live',
                          'gp-u15-join', 'gp-u16-twop2', 'gp-u17-device2',
-                         'gp-u23-u16-finisher'})
+                         'gp-u18-talon-ending', 'gp-u23-u16-finisher'})
 
 
 class ScriptError(Exception):

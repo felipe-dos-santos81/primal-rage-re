@@ -250,6 +250,60 @@ class TestLiveWin(unittest.TestCase):
         self.assertIn('(b0c = 1 at f=10, no DEATH_DONE poke)', out.getvalue())
 
 
+class TestTalonEnding(unittest.TestCase):
+    """gp-u18-talon-ending (endgame truth Task 3; record §E1.1): TALON is character 2,
+    character-select cell 1, title id 0xE0 (TALON'S DREAM). The mode-0x1F row's label
+    is the character name, not the title; the land mark is 0x80 | side 0 | 2 = 0x82."""
+
+    def test_start_char_labels_the_character_and_cell(self):
+        rows = gw.start_char(2, 1)
+        self.assertEqual([(r[1], r[2]) for r in rows], [(0x10, 1), (0x06, 1)])
+        self.assertIn('character 2', rows[1][0])
+        self.assertIn('cursor 1', rows[1][0])
+        self.assertTrue(rows[1][3](dict(c0=2, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=1, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=2, b1e=2)))
+        # the label and the predicate follow the arguments (cell 3 is character 1)
+        blizzard = gw.start_char(1, 3)
+        self.assertIn('character 1', blizzard[1][0])
+        self.assertIn('cursor 3', blizzard[1][0])
+        self.assertTrue(blizzard[1][3](dict(c0=1, b1e=1)))
+        self.assertFalse(blizzard[1][3](dict(c0=2, b1e=1)))
+
+    def test_the_milestones_end_with_talons_ending(self):
+        rows = gw.MILESTONES['gp-u18-talon-ending']
+        self.assertEqual(len(rows), 30)
+        self.assertEqual([r[:3] for r in rows[:2]], [r[:3] for r in gw.start_char(2, 1)])
+        ending = [r for r in rows if (r[1], r[2]) == (0x1F, 1)]
+        self.assertEqual(len(ending), 1)
+        label, _, _, pred = ending[0]
+        self.assertTrue(label.startswith("TALON's ending"), label)
+        self.assertIn('c0=2', label)
+        self.assertNotIn('DREAM', label)          # the title is a 0xA80E4 fact, not the label
+        self.assertTrue(pred(dict(ad4=0, c0=2)))
+        self.assertFalse(pred(dict(ad4=0, c0=1)))
+
+    def test_the_round_1_row_expects_talons_land_marks(self):
+        rows = gw.MILESTONES['gp-u18-talon-ending']
+        round1 = [r for r in rows if (r[1], r[2]) == (0x08, 1)]
+        self.assertEqual(len(round1), 1)
+        marks82 = _marks(l0=0x82, l1=0x82, l2=0x82, l3=0x82, l4=0x82, l5=0x82, l6=0x82)
+        self.assertTrue(round1[0][3](dict(c0=2, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                          **marks82)))
+        self.assertFalse(round1[0][3](dict(c0=2, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                           **ALL7)))       # SAURON's 0x80 is not TALON's
+
+    def test_the_seventh_land_row_is_the_t104_tally(self):
+        rows = gw.MILESTONES['gp-u18-talon-ending']
+        seventh = [r for r in rows if (r[1], r[2]) == (0x12, 1)
+                   and r[0].startswith('0x41C28 state 3')]
+        self.assertEqual(len(seventh), 1)
+        self.assertEqual(seventh[0][3](dict(t104=7)), True)
+        self.assertEqual(seventh[0][3](dict(t104=6)), False)
+        # the 0x82 marks are the mode-8 row's; the seventh land counts DS_00108104[0]
+        self.assertNotEqual(seventh[0][3](dict(t104=6)), True)
+
+
 class TestPath(unittest.TestCase):
     def test_a_capture_without_mode_27_fails_cleanly(self):
         cap = _log([(0x100, 0x140, 0x03, {}), (0x141, 0x150, 0x10, {})])
@@ -277,11 +331,12 @@ class TestPath(unittest.TestCase):
 
     def test_rows_cover_all_scenarios_in_order(self):
         self.assertEqual(sorted(gw.MILESTONES),
-                         ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live', 'gp-u9-win'])
+                         ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live',
+                          'gp-u18-talon-ending', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():
             for label, mode, k, pred in rows:
                 self.assertTrue(0 < mode < 0x40 and k >= 1, (name, label))
-        for name in ('gp-u10-ending', 'gp-u13-ending2'):
+        for name in ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending'):
             rows = [(m, k) for _, m, k, _ in gw.MILESTONES[name]]
             self.assertEqual(len(rows), 30)
             self.assertEqual(rows.count((0x0D, 7)), 1)

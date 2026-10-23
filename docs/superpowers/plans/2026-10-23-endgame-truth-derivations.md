@@ -838,3 +838,141 @@ The `gp-u23-oracle` pins: `GP_U23_MIN_FIRST=4095`, `TRACE_MIN_FIRST=5449`,
 
 The old `gp-u16-twop2` scenario, its pins and its `--allow-missing-reaction`
 target are unchanged; `tools/gp_twop.py` is unchanged.
+
+---
+
+## §E3 The TALON ending capture (Task 3)
+
+### The helpers and the scenario
+
+`gp_session.ending_menu(cell)` returns `WIN_MENU`'s prefix, then `cell` `p1.right`
+presses (the first at mode 0x10 + 60 frames, the rest 30 apart, hold 4 — `WIN_MENU1`'s
+harness values) and the confirm. `cell == 0` is `WIN_MENU` itself and `cell == 3` is
+`WIN_MENU1` step for step; both equalities are unit-tested, and `WIN_MENU1` and
+`SCENARIOS['gp-u13-ending2']` are untouched. `gp_win.start_char(char, cell)` builds the
+character-select and round-1 rows with the character and the cursor in the label and
+`_all(c0=char, b1e=1)`; it is `_START` for `(0, 0)` and `_START1` for `(1, 3)` when
+compared row-wise (each call builds a new lambda, so tuple identity is not comparable).
+
+`SCENARIOS['gp-u18-talon-ending']` is `ending_menu(1)` (one `p1.right` from cell 0),
+then 10 frames into the first mode-6 entry the poke `0x108106 = 0x82 x 7` and
+`0x10789E = 0x78`, then `SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:]` —
+the round-2 KO, the final's 14 pokes and the `until_mode 0x03` end: the U13
+arrangement with cell 1. It is in `STOP_AT_END`; `time_limit` 240, `WIN_EXTRA` and
+`memsize=64` are u10's (record §W.13).
+
+`MILESTONES['gp-u18-talon-ending']` is `start_char(2, 1)`, the round-1 KO row that
+expects the seven `0x82` marks, `_MATCH1[1:]` and `_ending_tail(2, 'TALON')`. The
+seventh-land row is the existing `0x41C28 state 3` row (`t104 & 0xFF == 7`), not the
+mark row; the mode-0x1F row is `_all(ad4=0, c0=2)` under the label `TALON's ending`
+(the character name). The title is a `0xA80E4` fact — id `0xE0`, TALON'S DREAM
+(§E1.1) — and the compared frames' content, not a WIN/S field.
+
+### The capture (2026-10-23)
+
+`xvfb-run -a make gp-capture scenario=gp-u18-talon-ending` (this host has no X
+display). Every session check is `ok`:
+
+```text
+snapshots 9972, f 4..271D, 38 frames missed
+CHECK base / steps fired 21/21 / end frame reached / mode 0x27 after the Enter /
+      snapshots kb == raw (0 differ) / frames written 5749/5749 / port script v2 /
+      no unscripted input / pokes written 17/17, 0 raced / stopped at the end
+      (SIGTERM at f=271D, rc=0): ok
+wrote 5749 frames (raw 1389..14354), wall 205.2 s
+```
+
+`python3 tools/gp_capture.py check-input` prints `check=ok no unscripted input`. The
+21 fired steps are the 5 menu steps plus the 16 cloned u10 steps (the trailing
+`until_mode` is not an action).
+
+Measured in its `poll.log` (9,972 S records):
+
+| Fact | Value |
+|---|---|
+| the first poke | `W f=04A4 step=5 addr=00108106 was=..00 now=82828282828282 late=0 race=0` and `0x0010789E was=00 now=78` |
+| round 1's mode-6 entry | `f=0x49B`, `c0=2 b1e=1` |
+| round 1's KO (mode 8) | `f=0x4A7`, `m106=82828282 m10a=00828282` (TALON's marks) |
+| the conquered lands | mode `0x12` at `f=0xBBE`; the seventh land (`t104=7`) at `f=0xC5F` |
+| WORLD DOMINATION | `c82=1` at `f=0xCAB` |
+| mode 0xF | `f=0x1544` |
+| the ending | mode `0x1F` at `f=0x1816` with `ad4=0 c0=2`; state 3 at `f=0x1DB8` |
+| the high-score entry | mode `0x1E` at `f=0x217E` |
+| back in mode 3 / the X record | `f=0x26E6` |
+
+`gp_win.py check` prints every row `ok` and `30/30 milestones ok`, including
+`TALON's ending (mode 0x1F, 0x208F8): ... is character c0=2 at f=1816`.
+
+### The report and the allowances
+
+`gp_compare.py --report --max-unexplained 0` on the 4,865-frame port dump:
+
+- **window** from capture 85 (raw 1748); 5,642 classified: 3,681 clean, 1,935
+  splice, 9 transition, 2 scan3-allowed, 1 overlay-allowed, 14 unexplained,
+  and 22 all-black.
+- **first unexplained** capture **5735** (raw 14294), nearest port 0: 5735..5748
+  are the post-script tail (the capture's last frame; the dump's last frame is
+  `f=0x26E4` and the trace's and the capture's X `f=0x26E6`) and are NOT claimed.
+- **reach** port 4864 (the dump's last frame).
+- **trace / win / moves**: 9,610 frames compared from `f=0x137`, 38 without a
+  capture snapshot, **0 differing through 9958**; the first tick difference is
+  `f=0x138` (reported apart); the normalised `ent` 0 of 9,610 differ and `t508`
+  7,713 of 9,610 (port = capture + 1), both reported.
+- the mode-0x1F frames are inside the window: the ending's S records map to
+  capture ≈5014 (`f=0x1816`) and ≈5245 (`f=0x1DB8`) by the capture's own clock
+  (`ms * 70.09 / 1000`), both below 5735.
+
+Three named per-frame allowances, each its own byte recipe (`tools/gp_compare.py`)
+and none for a frame with a possible port divergence — the neighbours are clean at
+the bound port frames in every case:
+
+| capture (raw) | class | recipe (measured from the dump's `frames.txt`) |
+|---|---|---|
+| 2227 (4988) | overlay | port 1810's (`f=0BBC tick=C12 mode=17`) 166 glyph px, rows 192..197 x 0..85, over port 1811's (`f=0BBC tick=C18 mode=12`) mode-0x12 screen; the mask from port 1809 (`f=0BBC tick=C12 mode=17`, the stale-palette twin). The §G7 loader presentation at the mode-0x17 -> 0x12 entry. |
+| 4099 (7759) | scan3 | rows 0..63 port 3430's (`f=14CC tick=155B mode=D`; 3428 `f=14CB` and 3429 identical), rows 64..167 port 3431's (`f=14CC tick=155F mode=C`), rows 168..199 port 3432's (`f=14CD tick=1560 mode=C`); pair (3431, 3432) unique. The final's mode-0x0D -> 0x0C transition (the U13 4248 class). |
+| 4147 (7856) | scan3 | rows 0..45 port 3474's (`f=14F4 tick=15B3 mode=D`), rows 46..168 port 3475's (`f=14F4 tick=15B6 mode=C`), rows 169..199 port 3476's (`f=14F5 tick=15B7 mode=C`); pair (3475, 3476) unique; the split forced by the bytes. |
+
+The port frame indices are the dump's (`frames.txt`), not the trace's records: the
+two differ because the driver dumps one frame per present.
+
+Mutation runs on the real dump (`gp_compare.overlay_explain` / `scan3_explain`
+called on the loaded frames): changing S 1811's pixel (0,0) fails ("its pixel row 0
+x 0 is 000000, not port 1811's 010203"); changing T1 1810's glyph pixel fails ("its
+glyph pixels are b1f9319c813a.."); naming S as T2 fails ("its glyph pixels are
+a2bc55c0b71a.."); changing the mid-bind frame's row (3431 row 64, 3475 row 46) or
+the bottom frame's first row (3432 row 168, 3476 row 169) fails ("no unique adjacent
+port pair binds ..."); changing every earlier top holder's row 0 fails ("no port
+frame before 3431/3475 holds its named top rows"); a wrong top hash fails ("its top
+rows 0..63 are 2fb5ec8f9b74.."). The only surviving edit is a T2 byte *inside* the
+mask with the `!=` relation intact — the documented named limit of §G7 (T2 is only
+the mask's indicator).
+
+### The pins
+
+`GP_U18_MIN_FIRST=5735`, `TRACE_MIN_FIRST=9959`, `MAX_START=85`, `MIN_REACH=4864`,
+`CAPTURE_SHA256=b3279414514aee07d2d4cddada0b63c7ec90f68d905f6509deb3e5c955d2fcf1`,
+`CAPTURE_FRAMES=5749`, `MILESTONES=30`, `WIN_MIN_FIRST=9959`. Each one-step move was
+run through `make gp-u18-oracle` and fails:
+
+| move | failure |
+|---|---|
+| MIN_FIRST 5736 | `FAIL: first unexplained 5735 < ratchet N 5736` |
+| TRACE_MIN_FIRST 9960 | `FAIL: N 9960 > end 9959: N is unreachable` |
+| WIN_MIN_FIRST 9960 | `FAIL: win: N 9960 > end 9959: N is unreachable` |
+| MAX_START 84 | `FAIL: window starts at capture 85 (raw 1748) > pinned start 84` |
+| MIN_REACH 4865 | `FAIL: window reach port 4864 < pinned reach 4865` |
+| sha (last nibble) | `FAIL: poll.log sha256 ... != the pinned ...: re-measure, then re-pin` |
+| CAPTURE_FRAMES 5750 | `FAIL: poll.log sha256 ... (5749 frames) != the pinned ... (5750 frames)` |
+| MILESTONES 31 | `FAIL: path: N 31 > end 30: N is unreachable` |
+
+`make gp-u18-oracle` passes at the pins (30/30 milestones, the three allowance lines,
+first unexplained 5735, reach 4864, 0 differing through 9958) and is wired into
+`make verify` after `gp-u23-oracle`. The `PR_GP_DUMP` miss set for the new scenario is
+the same §G.24 pair `0x29D60`/`0x5D812` from `frontend_mode_1b_step` (hits 1 and 3),
+pinned in `port/tests/test_platform.c`.
+
+No conflict with §E1 was found: cell 1 is class 2 TALON, the mark is `0x82`, the
+title id is `0xE0` (TALON'S DREAM) and the label is the character name. One citation
+is left as it was: `gp_win.py`'s shared `_ENDING_LABEL` still says `0x20900..0x20914`
+where §E1 measured the load at `0x20914..0x2091A` — a label shared by every ending
+scenario, not a Task 3 claim, and out of this task's file list.
