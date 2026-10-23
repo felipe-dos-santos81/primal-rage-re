@@ -34680,7 +34680,8 @@ P8C_MENU_STEP = E.Call(0x2FFC4, ("eax", "edx", "ecx"), clobbers=("ebx", "ecx", "
 # the draw); 0x4DBB4 has no PR_SEAM, so it runs on both sides (allow) and its own row proves it; its
 # +0x5B store is the compared byte. Mask 0: the render walk reloads EAX (`mov eax,ebx` 0x25621)
 # before the next entry, so no caller reads the return (the raw leaves the idiv quotient on the two
-# early arms and 0x4DBB4's sum on the body); the port returns.
+# early arms and 0x4DBB4's sum on the body); the port returns. No case uses a zero divisor: the raw's
+# `idiv` would fault at 0x4F5E0 and the port returns, the documented deviation, as 0x4F4E8's.
 P8C_TICK, P8C_DIV, P8C_COUNT, P8C_SIDE = 0x00104AF4, 0x001088D0, 0x00104AC4, 0x00104B1A
 P8C_SLOT0, P8C_SLOT1 = 0x001077B0, 0x00107844          # +0x5B: 0x10780B / 0x10789F
 P8C_BUF = 0x0010AC00                                   # zero BSS of the image: the memset's target
@@ -34717,6 +34718,9 @@ P8C_SPECS = [
     Spec("svc_2cb74", 0x2CB74, [
         Case("m0", {"eax": 0x00C0FFEE}, {}, {0x2FFC4: 5}),
     ], calls=(P8C_MENU_STEP,), mutants=("@entry",)),
+    # 0x4F5C8's five cases; `@zext` is the historical name (Task 11 pins it): the raw zero-extends
+    # the tick word (`xor edx,edx; mov dx` 0x4F5CC..0x4F5CE), so the mutant flips that to a
+    # sign-extension (`(s32)(s16)DSW(0x104AF4)`), catching w0's 0xFFFF.
     Spec("flow_4f5c8", 0x4F5C8, P8C_LOOP_CASES,
          allow_calls=(0x4DBB4,), calls=(D2C_NUMDRAW2,), eax_mask=0, mutants=("@zext",)),
     # 0x61A70, the runtime memset (file offset 0xB48C4): `push eax; push ecx; mov dh,dl;

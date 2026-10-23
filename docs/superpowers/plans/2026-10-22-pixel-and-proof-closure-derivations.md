@@ -2314,8 +2314,10 @@ three new rows close themselves) = `804 + 7 = 811`, full +3 (the three of the fo
 closed row that is not full, so the full increase (+6) is one below the closed one (+7); the absolute
 `closed - full = 7` is the previous six closed `WEAKER` rows plus `game_loop`. The plan's `797 -> 801`
 closed and `791 -> 794` full count only the four unblocked rows (its three new rows as callee-less),
-so the measured figures are exactly `+3` above both, one per new row; the baseline is seven above the
-plan's 797/791 (the Task 5-7 measured corrections, §P5.4/§P6.5/§P7.5).
+so the measured *increases* are `+3` above the plan's (`+7` vs `+4`, `+6` vs `+3`, one per new row);
+the baseline is seven above the plan's 797/791 (the Task 5-7 measured corrections,
+§P5.4/§P6.5/§P7.5), so the absolute final is **ten** above the plan's 801/794
+(`811 - 801 = 804 - 794 = 10`).
 
 Table size `16005 -> 16011` entries = the six new lines (3 real + 3 mutants); of the 1027 shared real
 rows **none** changed its entry, case count, blocks or verdict. The callee-status column flips 563

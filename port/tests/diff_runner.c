@@ -43518,8 +43518,9 @@ static void m_p8c_2cb74_entry(const u32 *r, u32 *eax)   { *eax = menu_step(r[R_E
 /* 0x4F5C8 flow_bonus_count_step (flow.c:2745): void. Reads the divisor dword 0x1088D0, the
  * zero-extended tick word 0x104AF4 (`xor edx,edx; mov dx,[...]`), the count 0x104AC4 and the side
  * byte 0x104B1A; stores n = count - 1 before the 0x2F528 draw, then 0x4DBB4(slot, 1). Mask 0: the
- * render walk reloads EAX (`mov eax,ebx` 0x25621). @zext sign-extends the tick word, so w0's
- * 0xFFFF % 3 is -1 % 3 = -1 and the mutant returns instead of decrementing, drawing and adding. */
+ * render walk reloads EAX (`mov eax,ebx` 0x25621). @zext is the historical name (Task 11 pins it):
+ * the raw zero-extends the tick word, so the mutant flips that to a sign-extension; w0's 0xFFFF % 3
+ * is then -1 % 3 = -1 and the mutant returns instead of decrementing, drawing and adding. */
 static void b_p8c_4f5c8(const u32 *r, u32 *eax)         { (void)r; flow_bonus_count_step(); *eax = 0u; }
 static void m_p8c_4f5c8_zext(const u32 *r, u32 *eax)
 {
