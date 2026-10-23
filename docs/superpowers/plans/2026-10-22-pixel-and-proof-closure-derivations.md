@@ -1568,3 +1568,279 @@ bytes at `0x104AE4`, and the 0x5D812 row writes nothing.
 concatenation), this record. No `port/src` header or `fn_register`, no `data/`, no Makefile,
 no `tools/tests/` change. Commit `diff: row the frontend stub and 0x28D68`. The task report is the
 git-ignored ledger.
+
+## §P6 The fighter callback entries: `0x3E484`, `0x29D04` and `0x3E4C4`
+
+Task 6 of the plan: three rows, no `port/src` change. The three addresses are the E2-class handler
+entries `port/src/game/actors.c` `fn_register`s (`0x3E4C4` at 294, `0x3E484` at 362, `0x29D04` at
+457) and the decomp index never lists; the closure rule (`NonPortable.excused`, record J §J1) cannot
+excuse them because the port tree implements them (the port-code check keeps an `e2-field` address
+blocking when `port/src` has a body for it), so the seven rows that name them stay open until each
+has a row of its own. Everything below was measured at base commit
+`c5f3812f` in the worktree `pixel-and-proof-closure`, with the plan's driver command:
+
+```bash
+python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE \
+  --image /tmp/pr_diff_image.bin --table /tmp/pr_diff_table_p6.md --self-check
+```
+
+### §P6.1 The baseline line
+
+```text
+diff-verify: 1021/1021 functions VERIFIED; 14960/14960 mutants detected; 0 named gaps; 783/834 rows with callees closed (187 have none); 777/834 closed on full rows; 8 ported functions with no row. ...
+```
+
+(15981 table entries = 1021 real + 14960 mutants; the baseline table is
+`/tmp/pr_diff_table_baseline.md`.) The 51 open rows are `834 − 783`; the seven this task closes name
+the three addresses, exactly the §P5.5 census rows: `0x3E484 allow` ×3 (`fighter_19020`,
+`fighter_pass_a`, `fighter_pass_a_al`), `0x29D04 allow` ×2 (`fighter_35050`, `fighter_think_side`),
+`0x29D04 stub` ×2 (`fighter_state_350d0`, `fighter_winner_body`) and `0x3E4C4 allow` ×1
+(`fighter_winner_body`).
+
+### §P6.2 `0x3E484` — the slot +0x18 hook
+
+The raw bytes at file offset `0x912D8` (VA + `0x52E54`) are
+`53 51 52 83 EC 28 89 C2 89 E0 31 C9 E8 BB 54 FF FF 8D 44 24 18 31 DB E8 34 A7 FD FF 30 D2 B4 01 88
+54 24 19 88 54 24 20 8D 54 24 18 88 64 24 18 8B 04 24 E8 58 A7 FD FF 83 C4 28 5A 59 5B C3`:
+`push ebx; push ecx; push edx; sub esp,0x28; mov edx,eax; mov eax,esp; xor ecx,ecx; call 0x33950;
+lea eax,[esp+0x18]; xor ebx,ebx; call 0x18BD4; xor dl,dl; mov ah,1; mov [esp+0x19],dl; mov
+[esp+0x20],dl; lea edx,[esp+0x18]; mov [esp+0x18],ah; mov eax,[esp]; call 0x18C14; add esp,0x28;
+pop edx; pop ecx; pop ebx; ret`. No fixup record touches it (the image's bytes at `0x3E484` are the
+file's). EAX = side; 0x33950 fills the six-dword context, 0x18BD4 fills 16 flag bytes with 2, then
+flag 0 = 1, flags 1 and 8 = 0 and the two box tables are 0 (`xor ecx,ecx`/`xor ebx,ebx`), and
+0x18C14's result is returned. The port's `fighter_3e484` (`fighter.c:8331`) is that body.
+
+The spec (`P6C_SPECS`):
+
+```python
+Spec("fighter_3e484", 0x3E484, [
+    Case("k0", {"eax": 0}, SLOT_PTRS),
+    Case("k1", {"eax": 1}, SLOT_PTRS, {0x18C14: 1}),
+    Case("k2", {"eax": 0}, SLOT_PTRS, {0x18C14: 0x100}),
+], allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,),
+   mutants=("@flag0", "@flag1", "@flag8", "@ret")),
+```
+
+Mask full: the hook's one caller 0x19020 tests the whole EAX (`test eax,eax` 0x19048). 0x33950 and
+0x18BD4 are allow-mode and run on both sides; 0x18C14 is the existing `CHECKS` stub (its EAX is
+returned as is, and the four flag dwords are compared by value, §P2.7). k0's stub EAX is 0 and
+k1/k2's are 1 and 0x100, so the side 1 case and the non-zero case are both present. The binding is
+`b_p6_3e484`; the four mutants restate the port's body with one change each (`@ret` makes the call
+and returns 0).
+
+Measured, `--function fighter_3e484 --self-check`:
+
+```text
+| fighter_3e484 | 0x3E484 | 3 | 1/1 | VERIFIED | 18BD4 allow unverified, 18C14 stub unverified, 33950 allow unverified |
+| fighter_3e484@flag0 | 0x3E484 | 3 | 1/1 | MISMATCH | ... |
+| fighter_3e484@flag1 | 0x3E484 | 3 | 1/1 | MISMATCH | ... |
+| fighter_3e484@flag8 | 0x3E484 | 3 | 1/1 | MISMATCH | ... |
+| fighter_3e484@ret | 0x3E484 | 3 | 1/1 | MISMATCH | ... |
+```
+
+(the callee column reads `unverified` in a `--function` run by design: the callee's own row is not
+run.) The mutant discrimination (each one case kind, all three cases for the flags):
+
+```text
+fighter_3e484@flag0  k0..k2: call #0: original 0x18C14(0x0, 0x2020001, ...), port ... 0x2020002 ...
+fighter_3e484@flag1  k0..k2: call #0: original 0x18C14(0x0, 0x2020001, ...), port ... 0x2020201 ...
+fighter_3e484@flag8  k0..k2: call #0: original ... 0x2020200, ...), port ... 0x2020202, ...)
+fighter_3e484@ret    k1: eax (mask 0xFFFFFFFF): original 0x1, port 0x0
+                     k2: eax (mask 0xFFFFFFFF): original 0x100, port 0x0
+```
+
+The four flag dwords are the values `0x18BD4` leaves after the three stores: `0x02020001,
+0x02020202, 0x02020200, 0x02020202`. `@ret` is caught only by k1/k2 — with k0's stub EAX 0 a
+constant return would agree by accident, which is why the case set is not k0 alone. The mutants are
+caught by the call arguments (`call #0`), which `mutant_detection` counts as a difference.
+
+### §P6.3 `0x29D04` — the slot +0x14 callback
+
+The raw bytes at file offset `0x7CB58` are `53 51 52 80 3D 3D AF 01 00 00 74 06 31 C0 5A 59 5B C3 8B
+18 8A 5B 51 81 E3 FF 00 00 00 31 C9 89 DA 8A 48 7A 8D 04 DD 00 00 00 00 01 D8 C1 E0 02 31 DA 01 D8 8B
+0C 8D 98 8A 02 00 8A 93 34 5B 08 00 8B 04 85 B0 77 08 00 8B 1C 91 31 D2 E8 26 04 00 00 B8 01 00 00 00
+5A 59 5B 8B C0 C3`: `push ebx; push ecx; push edx; cmp byte [0x9AF3D],0; je 0x29D16; xor eax,eax;
+pop edx; pop ecx; pop ebx; ret`, then `mov ebx,[eax]; mov bl,[ebx+0x51]; and ebx,0xff; xor ecx,ecx;
+mov edx,ebx; mov cl,[eax+0x7a]; lea eax,[ebx*8]; add eax,ebx; shl eax,2; xor edx,ebx; add eax,ebx;
+mov ecx,[ecx*4+0xA8A98]; mov dl,[ebx+0x105B34]; mov eax,[eax*4+0x1077B0]; mov ebx,[ecx+edx*4]; xor
+edx,edx; call 0x2A17C; mov eax,1; pop edx; pop ecx; pop ebx; mov eax,eax; ret`. The four absolute
+operands are pre-fixup in the file (`0x1AF3D`, `0x28A98`, `0x85B34`, `0x877B0`); `mem_load_le_fixups`
+writes `+0x80000`, the values `0x9AF3D`, `0xA8A98`, `0x105B34`, `0x1077B0` the harness runs. EAX =
+the slot (the callers pass `0x1077B0 + side*0x94`): `DSD(slot)`'s `+0x51` is the side (zero-extended),
+`slot + 0x7A` the character, `0xA8A98[character]` the handle row, `0x105B34[side]` its index,
+`0x1077B0[side]` the record 0x2A17C is called on with EDX = 0 and EBX = the handle. The port's
+`fighter_29d04` (`fighter.c:6588`) is that body, including the gate.
+
+The spec:
+
+```python
+Spec("fighter_29d04", 0x29D04, [
+    Case("q0", {"eax": DS_SLOTS}, p6c_29d04_pokes(0, gate=0xFF)),
+    Case("q1", {"eax": DS_SLOTS}, p6c_29d04_pokes(0)),
+    Case("q2", {"eax": DS_SLOTS + 0x94}, p6c_29d04_pokes(1, ch=3)),
+], calls=(PALETTE,), mutants=("@gate", "@side", "@handle")),
+```
+
+`p6c_29d04_pokes` seeds the argument slot's record through `SLOT_PTRS` (so `DSD(slot)` is `0x10A300`
+for side 0 and `0x10A400` for side 1), the record's `+0x51`, the slot's `+0x7A` character, the
+character's row pointer at `0xA8A98 + ch*4` (the next character's points at `P6C_HANDLE2`, whose two
+dwords are the first row's XOR `0x5A5A5A5A`), the row's two dwords (`0x33330000`/`0x44440000`), the
+`0x105B34` index pair `(1, 0)` and the gate byte. q0's gate is `0xFF` (not 1: a signed or `== 1`
+test differs), q1 is side 0 (handle `0x44440000`), q2 side 1 with character 3 (handle `0x33330000`).
+Mask full: the three call sites test the whole EAX (`0x350BB`, `0x3514F`, `0x1953A`). 0x2A17C is the
+existing `PALETTE` stub, recorded with its three arguments and its own row proving the body. The
+binding is `b_p6_29d04`; `@gate` drops the `0x9AF3D` test, `@side` uses `1 - side` for both the
+handle index and the palette record, `@handle` reads the row's other dword.
+
+Measured, `--function fighter_29d04 --self-check`:
+
+```text
+| fighter_29d04 | 0x29D04 | 3 | 3/3 | VERIFIED | 2A17C stub unverified |
+| fighter_29d04@gate | 0x29D04 | 3 | 3/3 | MISMATCH | 2A17C stub unverified |
+| fighter_29d04@side | 0x29D04 | 3 | 3/3 | MISMATCH | 2A17C stub unverified |
+| fighter_29d04@handle | 0x29D04 | 3 | 3/3 | MISMATCH | 2A17C stub unverified |
+```
+
+```text
+fighter_29d04@gate    q0: eax (mask 0xFFFFFFFF): original 0x0, port 0x1
+                      q0: call #0: original none, port 0x2A17C(0x10A300, 0x0, 0x44440000)
+fighter_29d04@side    q1: call #0: original 0x2A17C(0x10A300, 0x0, 0x44440000), port 0x2A17C(0x10A400, 0x0, 0x33330000)
+                      q2: call #0: original 0x2A17C(0x10A400, 0x0, 0x33330000), port 0x2A17C(0x10A300, 0x0, 0x44440000)
+fighter_29d04@handle  q1: call #0: original ... (0x10A300, 0x0, 0x44440000), port ... (0x10A300, 0x0, 0x33330000)
+                      q2: call #0: original ... (0x10A400, 0x0, 0x33330000), port ... (0x10A400, 0x0, 0x44440000)
+```
+
+Every one of the three arms of the original is exercised (3/3 blocks: the gate's return, the lookup
+and the return 1).
+
+### §P6.4 `0x3E4C4` — the slot +0x1C callback
+
+The raw bytes at file offset `0x91318` are `52 83 EC 18 89 C2 89 E0 E8 7F 54 FF FF 8B 54 24 08 8B 44
+24 0C E8 36 D2 FF FF 83 C4 18 5A C3`: `push edx; sub esp,0x18; mov edx,eax; mov eax,esp; call
+0x33950; mov edx,[esp+8]; mov eax,[esp+0xc]; call 0x3B714; add esp,0x18; pop edx; ret` (no fixup
+touches it). 0x33950's context is `[out0..out5]`; `[esp+8]` is `ctx[2]` (the side's slot) and
+`[esp+0xc]` is `ctx[3]` (the other slot), so 0x3B714 is called `(ctx[3], ctx[2])`. The port's
+`fighter_3e4c4` (`fighter.c:4686`) is that body.
+
+The spec:
+
+```python
+Spec("fighter_3e4c4", 0x3E4C4, [
+    Case("c0", {"eax": 0}, SLOT_PTRS),
+    Case("c1", {"eax": 1}, SLOT_PTRS),
+], allow_calls=(0x33950,), calls=(REACT,), eax_mask=0, mutants=("@swap", "@arg")),
+```
+
+Mask 0: the one caller 0x193B0 overwrites EAX at once (`mov eax,[esp+8]` 0x19508), so the row is the
+recorded call and its two arguments. 0x33950 runs on both sides (allowed); 0x3B714 is the existing
+`REACT` stub (its own row proves the applier). c0 calls `0x3B714(0x107844, 0x1077B0)` and c1
+`(0x1077B0, 0x107844)` — the two slot addresses, swapped with the side. The binding is
+`b_p6_3e4c4`; `@swap` inverts the pair, `@arg` passes the side where the side's slot belongs.
+
+Measured, `--function fighter_3e4c4 --self-check`:
+
+```text
+| fighter_3e4c4 | 0x3E4C4 | 2 | 1/1 | VERIFIED | 33950 allow unverified, 3B714 stub unverified |
+| fighter_3e4c4@swap | 0x3E4C4 | 2 | 1/1 | MISMATCH | 33950 allow unverified, 3B714 stub unverified |
+| fighter_3e4c4@arg | 0x3E4C4 | 2 | 1/1 | MISMATCH | 33950 allow unverified, 3B714 stub unverified |
+```
+
+```text
+fighter_3e4c4@swap  c0: call #0: original 0x3B714(0x107844, 0x1077B0), port 0x3B714(0x1077B0, 0x107844)
+                    c1: call #0: original 0x3B714(0x1077B0, 0x107844), port 0x3B714(0x107844, 0x1077B0)
+fighter_3e4c4@arg   c0: call #0: original 0x3B714(0x107844, 0x1077B0), port 0x3B714(0x107844, 0x0)
+                    c1: call #0: original 0x3B714(0x1077B0, 0x107844), port 0x3B714(0x1077B0, 0x1)
+```
+
+### §P6.5 The final line and the seven closed rows
+
+```text
+diff-verify: 1024/1024 functions VERIFIED; 14969/14969 mutants detected; 0 named gaps; 793/837 rows with callees closed (187 have none); 787/837 closed on full rows; 8 ported functions with no row. ...
+```
+
+Functions `1021 → 1024` and mutants `14960 → 14969` are exactly the plan's `+3` and `+9`. The seven
+rows the task names close:
+
+```text
+fighter_19020       before: 3E484 allow unverified                      after: 3E484 allow VERIFIED
+fighter_pass_a      before: 3E484 allow unverified                      after: 3E484 allow VERIFIED
+fighter_pass_a_al   before: 3E484 allow unverified                      after: 3E484 allow VERIFIED
+fighter_35050       before: 29D04 allow unverified                      after: 29D04 allow VERIFIED
+fighter_think_side  before: 29D04 allow unverified                      after: 29D04 allow VERIFIED
+fighter_state_350d0 before: 29D04 stub unverified                       after: 29D04 stub VERIFIED
+fighter_winner_body before: 29D04 stub unverified, 3E4C4 allow unverified
+                    after:  29D04 stub VERIFIED, 3E4C4 allow VERIFIED
+```
+
+No other real row moved: comparing the baseline and final tables row by row, 15981 → 15993 entries
+(the 12 new ones: 3 real + 9 mutants), and of the 218 lines whose callee column changed **none**
+changed any other field (entry, cases, blocks, verdict). The callee statuses flip `3E484 allow` ×57,
+`29D04 allow` ×51, `29D04 stub` ×110 and `3E4C4 allow` ×53 lines (mutants included; the rows that
+carry these callees).
+
+**The measured closed/full denominators are one higher per new row than the plan's `789/833` and
+`783/833`**, exactly as Task 5's §P5.4 warned for its own batch: the plan counted the three new rows
+as callee-less, but each records at least one callee whose own row is VERIFIED (0x18C14, 0x2A17C,
+0x3B714) and is therefore itself a closed row with a callee. Hence `with_callees` 834 → 837,
+`closed` 783 + 7 + 3 = 793 and `full` 777 + 7 + 3 = 787; `837 − 793 = 44`, the plan's open count, the
+same 44 open rows as `833 − 789`. The `full` figure equals `closed` because none of the ten is in
+`WEAKER`.
+
+### §P6.6 The 44-row blocker census
+
+Measured from the final table with the §J1 rule (`closed_rows`/`non_portable`); the same script
+reproduces §P5.5's 51 rows on the baseline table. A row can name more than one blocker, so the counts
+sum above 44; every blocker is a recorded stub (no allow-mode address is left), and the three this
+task removed (`0x29D04`, `0x3E484`, `0x3E4C4`) carried 8 of the 51 rows' incidences:
+
+| blocker | mode | rows |
+|---|---|---|
+| `0x65431` | stub | 11 (`game_frame_*` ×10, `game_quit_prompt`) |
+| `0x5DD03` | stub | 10 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `snd_sample_*` ×4, `sound_sfx_volume`, `sound_shutdown`) |
+| `0x40CB0` | stub | 8 (`game_mode_05_step` ×2, `game_mode_0d_step*` ×3, `game_mode_32_step*` ×3) |
+| `0x24568` | stub | 7 (`game_mode_05_step` ×2, `game_mode_0d_step*` ×2, `game_mode_32_step*` ×3) |
+| `0x5DEED` | stub | 7 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `snd_music_playing`, `sound_music_volume`, `sound_shutdown`) |
+| `0x24804` | stub | 6 (`game_mode_05_step` ×2, `game_mode_0d_step*` ×2, `game_mode_32_step*` ×2) |
+| `0x5DCC5` | stub | 6 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `sound_sample_start`, `sound_sfx_volume`) |
+| `0x5DECA` | stub | 5 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `sound_music_volume`) |
+| `0x5DC0F` | stub | 4 (`snd_sample_queue`, `snd_sample_stop`, `snd_samples_stop_all`, `sound_sample_start`) |
+| `0x5DC8B` | stub | 4 (`snd_sample_queue`, `snd_sample_stop`, `snd_samples_stop_all`, `sound_shutdown`) |
+| `0x5DEAF` | stub | 3 (`snd_music_stop`, `sound_music_pause_toggle`, `sound_shutdown`) |
+| `0x2CB74` | stub | 2 (`menu_run`, `menu_step`) |
+| `0x6C4CF` | stub | 2 (`config_file_load`, `menu_fatal_error`) |
+| `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCE4`, `0x61A70`, `0x65546` | stub | 1 each |
+
+Against §P5.5 this is the same table with the four `0x29D04`, three `0x3E484` and one `0x3E4C4`
+incidences gone and nothing else changed. The 8 ported functions with no row (`UNROWED`) are
+unmoved.
+
+### §P6.7 The harness pins, the full-scan check and `port_progress`
+
+The harness suite (`python3 -m unittest tools.tests.test_diff_verify`) is **not run here** by
+instruction (its exhaustive pins are Task 11's, and §P5.6 already recorded the four that the plan's
+new specs move). Task 11 needs, for the same four pins: `fighter_3e484` mask `0xFFFFFFFF`,
+`fighter_29d04` mask `0xFFFFFFFF`, `fighter_3e4c4` mask `0`; mutants `@flag0`/`@flag1`/`@flag8`
+(`call #0`, every case), `@ret` (`eax`, k1/k2), `@gate` (`eax` + `call #0`, q0), `@side` and
+`@handle` (`call #0`, q1/q2), `@swap` and `@arg` (`call #0`, c0/c1).
+
+`PR_DIFF_FULLSCAN=1` on each row (the plan's risk 4: no new binding or mutant writes outside
+`mem[]`) is green: `1/1 functions VERIFIED; 4/4 mutants detected` (0x3E484), `1/1; 3/3` (0x29D04)
+and `1/1; 2/2` (0x3E4C4). The rows' only writes are the pokes' seeded fields, read back by both
+sides; no `reads outside the image` note is printed on any of the three.
+
+`python3 tools/port_progress.py` is unmoved, as required (no `port/src` header, no `fn_register`):
+
+```text
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+```
+
+### §P6.8 Files and commit
+
+`port/tests/diff_runner.c` (the `p6` binding block: `p6_3e484_core`, `p6_29d04_core`,
+`b_p6_3e484`/`m_p6_3e484_{flag0,flag1,flag8,ret}`, `b_p6_29d04`/`m_p6_29d04_{gate,side,handle}`,
+`b_p6_3e4c4`/`m_p6_3e4c4_{swap,arg}` and their twelve `k_bindings` entries), `tools/diff_verify.py`
+(`P6C_SPECS`, `p6c_29d04_pokes`, `P6C_HANDLE`/`P6C_HANDLE2`, and the place of `P6C_SPECS` in the
+`SPECS` concatenation — the variable is `P6C_SPECS` because `P6_SPECS` already names track P batch
+6), this record. No `port/src` header or `fn_register`, no `data/`, no Makefile, no `tools/tests/`
+change. Commit `diff: row the fighter callback entries`. The task report is the git-ignored ledger.

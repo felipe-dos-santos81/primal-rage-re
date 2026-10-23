@@ -34457,6 +34457,67 @@ P5_SPECS = [
     ], calls=(E.Call(0x4F980, ("eax",)),), eax_mask=0,
        mutants=("@hook", "@wipearg", "@nowipe")),
 ]
+
+
+# ---- track P closure batch P6 (record 2026-10-22-pixel-and-proof-closure §P6): the fighter callback
+# entries 0x3E484, 0x29D04 and 0x3E4C4. The three are the E2-class handlers port/src/game/actors.c
+# fn_register's and the decomp index never lists (record J §J1): the closure rule cannot excuse them,
+# so the seven rows that call them stay open until each has a row of its own. No port/src change. ----
+P6C_HANDLE = 0x0010AC00         # zero BSS of the image: the palette handle row 0x29D04's lookup reads
+P6C_HANDLE2 = 0x0010AC10        # the other character's row (the same lookup's wrong-index answer)
+
+
+def p6c_29d04_pokes(side, gate=0, ch=2, index=(1, 0), entry0=0x33330000, entry1=0x44440000):
+    """0x29D04: the argument slot 0x1077B0 + side * 0x94 (its record comes from SLOT_PTRS), the
+    record's +0x51 side byte, the slot's +0x7A character, the character's handle-row pointer at
+    0xA8A98 + ch*4 (the next character's points at P6C_HANDLE2), P6C_HANDLE's two dwords
+    (`entry0`/`entry1`, P6C_HANDLE2's the same two XOR 0x5A5A5A5A so a wrong row shows), the
+    0x105B34 per-side index pair and the 0x9AF3D gate byte. With `index` (1, 0) side 0 reads
+    `entry1` and side 1 `entry0`."""
+    so = DS_SLOTS + side * 0x94
+    rec = (E3_REC, E3_REC2)[side]
+    return {**SLOT_PTRS, so + 0x7A: bytes([ch]), rec + 0x51: bytes([side]),
+            0x000A8A98 + ch * 4: le32(P6C_HANDLE),
+            0x000A8A98 + ((ch + 1) & 7) * 4: le32(P6C_HANDLE2),
+            P6C_HANDLE: le32(entry0) + le32(entry1),
+            P6C_HANDLE2: le32(entry0 ^ 0x5A5A5A5A) + le32(entry1 ^ 0x5A5A5A5A),
+            0x00105B34: bytes([index[0], index[1]]),
+            0x0009AF3D: bytes([gate])}
+
+
+P6C_SPECS = [
+    # 0x3E484 fighter_3e484: EAX = side. The slot +0x18 hook 0x19020 calls at 0x1903F; 0x19048
+    # (`test eax,eax`) tests the whole EAX, so mask full and the 0x18C14 stub's EAX (returned as is)
+    # varies per case. 0x33950 and 0x18BD4 run on both sides (allowed; 0x18BD4 fills the 16 flag
+    # bytes with 2), 0x18C14 is the CHECKS stub. k0's zero and k1/k2's non-zero stubs make a
+    # constant return fail; `@ret` is that error, the three `@flag*` mutants one changed flag byte.
+    Spec("fighter_3e484", 0x3E484, [
+        Case("k0", {"eax": 0}, SLOT_PTRS),
+        Case("k1", {"eax": 1}, SLOT_PTRS, {0x18C14: 1}),
+        Case("k2", {"eax": 0}, SLOT_PTRS, {0x18C14: 0x100}),
+    ], allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,),
+       mutants=("@flag0", "@flag1", "@flag8", "@ret")),
+    # 0x29D04 fighter_29d04: EAX = the slot. The gate byte 0x9AF3D non-zero returns 0 without a call
+    # (q0's 0xFF also refuses a signed or `== 1` test); else the record's +0x51 side picks the
+    # 0x105B34 handle-row index and the palette record, the slot's +0x7A character picks the
+    # 0xA8A98 row, and 0x2A17C(rec, 0, handle) is the PALETTE stub (its own row proves it). The
+    # callers test the whole EAX (0x350BB/0x3514F/0x1953A), so mask full. `@gate` drops the gate,
+    # `@side` uses the other side, `@handle` the row's other dword.
+    Spec("fighter_29d04", 0x29D04, [
+        Case("q0", {"eax": DS_SLOTS}, p6c_29d04_pokes(0, gate=0xFF)),
+        Case("q1", {"eax": DS_SLOTS}, p6c_29d04_pokes(0)),
+        Case("q2", {"eax": DS_SLOTS + 0x94}, p6c_29d04_pokes(1, ch=3)),
+    ], calls=(PALETTE,), mutants=("@gate", "@side", "@handle")),
+    # 0x3E4C4 fighter_3e4c4: EAX = side. The slot +0x1C callback 0x193B0 calls at 0x19505 and
+    # 0x19508 overwrites EAX at once, so mask 0: the row is the recorded call. 0x33950 runs on both
+    # sides (allowed); 0x3B714 is the REACT stub, called (ctx[3], ctx[2]) = (the other slot, the
+    # side's slot), whose own row proves the applier. `@swap` inverts the pair, `@arg` passes the
+    # side where the side's slot belongs.
+    Spec("fighter_3e4c4", 0x3E4C4, [
+        Case("c0", {"eax": 0}, SLOT_PTRS),
+        Case("c1", {"eax": 1}, SLOT_PTRS),
+    ], allow_calls=(0x33950,), calls=(REACT,), eax_mask=0, mutants=("@swap", "@arg")),
+]
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -34499,7 +34560,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P6C_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

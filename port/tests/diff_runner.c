@@ -43295,6 +43295,78 @@ static void m_p5_28d68_nowipe(const u32 *r, u32 *eax)
 { (void)r; DSD(0x00104AE4u) = 0x00043738u; *eax = 0u; }
 /* ---- p5 bindings end ---- */
 
+/* ---- track P closure batch P6 (record 2026-10-22-pixel-and-proof-closure §P6): the three fighter
+ * callback entries, the E2-class handlers fn_register'd by actors.c that the decomp index never lists
+ * and the closure rule therefore cannot excuse (record J §J1) ---- */
+
+/* 0x3E484: the slot +0x18 hook 0x19020 calls at 0x1903F (EAX = side; 0x19048 `test eax,eax` tests the
+ * whole EAX, so mask full). 0x33950 and 0x18BD4 run on both sides (allowed); 0x18C14 is the CHECKS
+ * stub, whose EAX is this row's return. 0x18BD4 fills the 16 flag bytes with 2, so each mutant's one
+ * flip differs from its sentinel; @ret keeps the flags and returns 0, which k1/k2's non-zero stub EAX
+ * catches (k0's stub is 0 and would agree by accident). */
+static u32 p6_3e484_core(const u32 *r, u32 mut)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    fighter_ctx_same(ctx, r[R_EAX]);
+    fighter_18bd4(flags);
+    if (!(mut & 1u)) flags[0] = 1u;                     /* @flag0 */
+    if (!(mut & 2u)) flags[1] = 0u;                     /* @flag1 */
+    if (!(mut & 4u)) flags[8] = 0u;                     /* @flag8 */
+    return (u32)fighter_18c14(ctx[0], flags, 0u, 0u);
+}
+static void b_p6_3e484(const u32 *r, u32 *eax)          { *eax = fighter_3e484(r[R_EAX]); }
+static void m_p6_3e484_flag0(const u32 *r, u32 *eax)    { *eax = p6_3e484_core(r, 1u); }
+static void m_p6_3e484_flag1(const u32 *r, u32 *eax)    { *eax = p6_3e484_core(r, 2u); }
+static void m_p6_3e484_flag8(const u32 *r, u32 *eax)    { *eax = p6_3e484_core(r, 4u); }
+static void m_p6_3e484_ret(const u32 *r, u32 *eax)      { (void)p6_3e484_core(r, 0u); *eax = 0u; }
+
+/* 0x29D04: the slot +0x14 callback 0x22B28 stores (EAX = slot; the callers 0x350B8/0x3514C/0x19537
+ * test the whole EAX, 0x350BB/0x3514F/0x1953A). The gate byte 0x9AF3D non-zero returns 0 without the
+ * lookup; else the record's +0x51 side picks 0x105B34's handle-row index and the palette record
+ * 0x1077B0 + side*0x94, the slot's +0x7A character picks the 0xA8A98 row pointer, and 0x2A17C(rec, 0,
+ * handle) is the PALETTE stub (its own row proves it). @gate ignores the gate, @side uses the other
+ * side, @handle the row's other dword. */
+static u32 p6_29d04_core(const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX];
+    u32 side, row, handle;
+    if (!(mut & 1u) && DSB(DS_0009AF3D) != 0u) return 0u;                     /* @gate */
+    side = (u32)DSB(DSD(slot) + 0x51u);
+    if (mut & 2u) side ^= 1u;                                                 /* @side */
+    row = DSD(DS_000A8A98 + (u32)DSB(slot + 0x7Au) * 4u);
+    handle = DSD(row + (u32)DSB(DS_00105B34 + side) * 4u);
+    if (mut & 4u)                                                             /* @handle */
+        handle = DSD(row + ((u32)DSB(DS_00105B34 + side) ^ 1u) * 4u);
+    actor_pset_palette(DSD(DS_001077B0 + side * 0x94u), 0u, handle);
+    return 1u;
+}
+static void b_p6_29d04(const u32 *r, u32 *eax)          { *eax = fighter_29d04(r[R_EAX]); }
+static void m_p6_29d04_gate(const u32 *r, u32 *eax)     { *eax = p6_29d04_core(r, 1u); }
+static void m_p6_29d04_side(const u32 *r, u32 *eax)     { *eax = p6_29d04_core(r, 2u); }
+static void m_p6_29d04_handle(const u32 *r, u32 *eax)   { *eax = p6_29d04_core(r, 4u); }
+
+/* 0x3E4C4: the slot +0x1C callback 0x3E62C stores; 0x193B0 calls it at 0x19505 with EAX = side, and
+ * 0x19508 overwrites EAX at once (mask 0). 0x33950 runs on both sides (allowed); 0x3B714 is the REACT
+ * stub, called (ctx[3], ctx[2]) = (the other slot, the side's slot). @swap inverts the pair and @arg
+ * passes the side where the side's slot belongs. */
+static void b_p6_3e4c4(const u32 *r, u32 *eax)          { fighter_3e4c4(r[R_EAX]); *eax = 0u; }
+static void m_p6_3e4c4_swap(const u32 *r, u32 *eax)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, r[R_EAX]);
+    fighter_reaction(ctx[2], ctx[3]);
+    *eax = 0u;
+}
+static void m_p6_3e4c4_arg(const u32 *r, u32 *eax)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, r[R_EAX]);
+    fighter_reaction(ctx[3], r[R_EAX]);
+    *eax = 0u;
+}
+/* ---- p6 bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -58932,6 +59004,20 @@ static const binding_t k_bindings[] = {
     { "frontend_28d68@wipearg", m_p5_28d68_wipearg, 0x00000000u },
     { "frontend_28d68@nowipe", m_p5_28d68_nowipe,  0x00000000u },
     /* track P batch P5 end */
+    /* track P closure batch P6 */
+    { "fighter_3e484",         b_p6_3e484,          0xFFFFFFFFu },
+    { "fighter_3e484@flag0",   m_p6_3e484_flag0,    0xFFFFFFFFu },
+    { "fighter_3e484@flag1",   m_p6_3e484_flag1,    0xFFFFFFFFu },
+    { "fighter_3e484@flag8",   m_p6_3e484_flag8,    0xFFFFFFFFu },
+    { "fighter_3e484@ret",     m_p6_3e484_ret,      0xFFFFFFFFu },
+    { "fighter_29d04",         b_p6_29d04,          0xFFFFFFFFu },
+    { "fighter_29d04@gate",    m_p6_29d04_gate,     0xFFFFFFFFu },
+    { "fighter_29d04@side",    m_p6_29d04_side,     0xFFFFFFFFu },
+    { "fighter_29d04@handle",  m_p6_29d04_handle,   0xFFFFFFFFu },
+    { "fighter_3e4c4",         b_p6_3e4c4,          0x00000000u },
+    { "fighter_3e4c4@swap",    m_p6_3e4c4_swap,     0x00000000u },
+    { "fighter_3e4c4@arg",     m_p6_3e4c4_arg,      0x00000000u },
+    /* track P closure batch P6 end */
 };
 
 static const binding_t *find_binding(const char *name)
