@@ -1257,14 +1257,15 @@ gp-win-one: build
 # (raw 1739), and every content-bearing capture frame through 5890 is explained by name —
 # 2188 by the loader's glyph overlay, 4248 (raw 7887) and 4320 (raw 8019) as three-present
 # scan-outs, 5120 (raw 8839) as a four-row band (record 2026-10-22-pixel-and-proof-closure
-# §P1, §P3). The first unexplained is 5891 (raw 14361); 5891..5903 are the post-script tail
-# (the replay ends at f=0x26E1, record §P1.6) and are NOT claimed: MIN_FIRST = 5891, and 5892
-# fails. The enforced comparison's window reach is port 4939 (the highest port frame any
-# classified capture frame exhibits through capture 5890; report mode's reach is the same
-# because the unexplained tail is the capture's last frames), so MIN_REACH = 4939 and 4940
-# fails. Trace and win fields agree through f=10013, so their end pins are 10014. gp_win.py
-# finds 30/30 milestones including BLIZZARD c0=1, and the capture has 5904 frames with this
-# poll.log sha256 (unchanged since the capture: e581916f..2b69c6).
+# §P1, §P2, §P3). The first unexplained is 5891 (raw 14361); 5891..5903 are the post-script
+# tail (the replay's dump ends at f=0x271B and its trace at f=0x271D, X f=10013; record §P1.6)
+# and are NOT claimed: MIN_FIRST = 5891, and 5892 fails. The enforced comparison's window
+# reach is port 4939 (the highest port frame any classified capture frame exhibits through
+# capture 5890; report mode's reach is the same because the unexplained tail is the capture's
+# last frames), so MIN_REACH = 4939 and 4940 fails. Trace and win fields agree through
+# f=10013, so their end pins are 10014. gp_win.py finds 30/30 milestones including BLIZZARD
+# c0=1, and the capture has 5904 frames with this poll.log sha256 (unchanged since the
+# capture: e581916f..2b69c6).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.

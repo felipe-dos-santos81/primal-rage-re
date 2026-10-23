@@ -1230,8 +1230,10 @@ frames) is unchanged from the capture and from §J5: this task opens no capture.
 
 **(a) `MIN_FIRST` one above the measured value** — `make gp-u13-oracle
 GP_U13_MIN_FIRST=5892`, rc 2 from make (the recipe's compare is rc 1). The
-comparison's lines, verbatim (the four allowance lines and the path lines it
-also printed are §P4.4's and unchanged):
+comparison's lines, verbatim (the four allowance lines it also printed are
+§P4.4's and unchanged, and its `gp_win.py check` evidence lines are the
+scenario's fixed 30-milestone block; the failing `gp_compare` short-circuits
+the recipe's `&&` chain, so no `gp_win.py path` or `win` line is printed):
 
 ```text
 gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5774 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 1 unexplained, 22 all-black
@@ -1246,7 +1248,8 @@ make: *** [Makefile:1282: gp-u13-oracle] Error 1
 
 **(b) `MIN_REACH` one above the measured value** — `make gp-u13-oracle
 GP_U13_MIN_REACH=4940`, rc 2 from make. The comparison lines, verbatim (the
-omitted ones are §P4.4's):
+four allowance lines, the coverage line and the two reported trace lines it
+printed are elided; the four allowance lines are §P4.4's, unchanged):
 
 ```text
 gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5774 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 1 unexplained, 22 all-black
@@ -1317,14 +1320,15 @@ The U13 block's measurement paragraph now reads (addresses and numbers as
 measured above): the window starts at capture 96 (raw 1739); every
 content-bearing capture frame through 5890 is explained by name — 2188 by the
 loader's glyph overlay, 4248 (raw 7887) and 4320 (raw 8019) as three-present
-scan-outs, 5120 (raw 8839) as a four-row band (record §P1, §P3); the first
+scan-outs, 5120 (raw 8839) as a four-row band (record §P1, §P2, §P3); the first
 unexplained is 5891 (raw 14361) and 5891..5903 are the post-script tail (the
-replay ends at f=0x26E1, §P1.6) and are not claimed, so `MIN_FIRST = 5891` and
-5892 fails; the enforced comparison's window reach is port 4939, so
-`MIN_REACH = 4939` and 4940 fails; trace and win fields agree through f=10013,
-so their end pins are 10014; 30/30 milestones; the capture has 5904 frames with
-this poll.log sha256 (unchanged since the capture). The old
-`4248`/`port 3549`/`report mode` provenance is gone.
+replay's dump ends at f=0x271B and its trace at f=0x271D, X f=10013; §P1.6) and
+are not claimed, so `MIN_FIRST = 5891` and 5892 fails; the enforced
+comparison's window reach is port 4939, so `MIN_REACH = 4939` and 4940 fails;
+trace and win fields agree through f=10013, so their end pins are 10014; 30/30
+milestones; the capture has 5904 frames with this poll.log sha256 (unchanged
+since the capture). The old `4248`/`port 3549`/`report mode` provenance is
+gone.
 
 ### §P4.7 Files and commit
 
