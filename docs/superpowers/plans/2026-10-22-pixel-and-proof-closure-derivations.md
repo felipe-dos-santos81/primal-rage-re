@@ -2894,3 +2894,316 @@ Verification after the fix: the guard test alone passes; the five mutation proof
 as quoted; the 17 classes that do not run the real build (95 tests) pass; the direct driver's
 line is the §P10.5 one (`1031/1031`, `14983/14983`, `813/844`, `806/844`, 31 open);
 `port_progress.py` unchanged. Fix commit `diff: count the declared 45 in the unrowed figure`.
+
+## §P11 The phase gate, the final counter and the handoff
+
+Task 12 of the plan, and the phase's last section. The plan calls this record section
+§P6; the record's §P6 is the fighter callbacks (`0x3E484`, `0x29D04`, `0x3E4C4`),
+because Track A's four tasks took §P1–§P4 and the differential tasks then took §P5–§P10
+one apiece (the record keeps the measured section number, not the plan's). Everything
+below was measured on the phase tree at `4a9b46cc` (branch `pixel-and-proof-closure`,
+base `2cd2ab0d`); it touches this record and `docs/PROGRESS.md` and no `port/`, `tools/`,
+`data/` or Makefile file.
+
+### §P11.1 The full gate
+
+```bash
+PR_DIFF_FULLSCAN=1 make verify        # rc 0
+```
+
+`PR_DIFF_FULLSCAN=1` runs each `diffrun` binding's outside-the-image scan over the whole
+63 MB instead of the write-fault pages — the form AGENTS.md asks for before a push, and
+the one this phase's review focus #4 names (every new binding and mutant inside `mem[]`).
+One uninterrupted invocation, about 58 minutes on this host, with `EXIT=0`. Every stage
+it reaches passes:
+
+| stage | result line (verbatim) |
+|---|---|
+| the game dir's `CMOS` | `cmos=zero` |
+| headless `--check 820` | `fn-miss check distinct=2 dropped=0` |
+| tests (oracle-required) | `all checks passed` |
+| restart driver | `test_restart_drive: restart after 1198 menu iterations (stamp 3E, clock 4EF)`; `all checks passed` |
+| smacker | `smk_compare: 120/120 frames match`; `smk_compare: 41/41 frames match` |
+| title | both captures `111 frames in window` with `0 unexplained`; `port frames exhibited 95/96; missing [0]; endpoints OK`; `determinism: clean samples of 54 port frame(s) agree, 0 disagree` |
+| front-end | `1325 frames in window: 517 clean, 801 splice, 3 transition, 2 unexplained`; `2 unexplained captured frame(s) allowed by name: [(832, 3671), (833, 3740)]; no other unexplained frame in the window.`; `port frames exhibited 1145/1382 … endpoints OK` |
+| demo-fight | `0 unexplained in the fight window`; `fully explained; the window claim is now exact` |
+| attract cycle-2 | `1732 frames in region: 1078 clean, 630 splice, 17 transition, 1 unexplained, 6 all-black` (3545 allowed by name); `0 unexplained in the region` |
+| attract prefix | both captures `215/216 capture frames explained; port attract frames exhibited 173/690`; `expected divergence at capture frame 215` |
+| K11 walk | `81 frames in window: 47 clean, 2 splice, 0 transition, 2 unexplained, 30 all-black` (138, 151 allowed by name); `settled screens exhibited 38/38`; `non-black port frames exhibited 48/48`; `0 unexplained in the window` |
+| K11 menuesc | `283 frames in window: 184 clean, 92 splice, 3 transition, 0 unexplained, 4 all-black`; `2/2`; `184/184`; `END 388 must be >= 388: ok` |
+| save-reload | `the replay wrote 2040 bytes identical to the capture's CMOS (sha256 dad3b1f6…)`; `the port holds the capture's five ranges at f=01EB and every later dumped frame (3 compared)` |
+| gp-pads replay | `all checks passed` |
+| differential | `Ran 217 tests in 565.452s` / `OK` (the harness suite), then the counter line in §P11.2 |
+| E2 triage | `Ran 44 tests in 6.739s` / `OK`; `579 candidates (575 by U0's rule)`; `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; `voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere`; the committed table is byte-identical (`--check` exits 0) |
+| k11/gp tool tests | `Ran 295 tests in 2.912s` / `OK` |
+| title_compare tests | `Ran 12 tests in 0.097s` / `OK` |
+| asset extractor | `Ran 33 tests in 1.024s` / `OK` (oracle-required) |
+| `symbols.h` | `1304 globals, 1206 functions -> port/src/symbols.h`; regenerates byte-identically (`git diff --quiet` passes) |
+
+The gate's tail, verbatim (the last line is the wrapper's `echo "EXIT=$?"`, not make's):
+
+```text
+== symbols.h must regenerate byte-identically ==
+python3 tools/gen_symbols.py port/decomp port/src/symbols.h
+1304 globals, 1206 functions -> port/src/symbols.h
+  dropped 11 globals, 1 functions outside the LE objects
+all checks passed
+EXIT=0
+```
+
+The gameplay oracles, each at its pin with no `improved` suffix and no FAIL (`first
+unexplained` | trace | the scenario's other ratchets):
+
+| scenario | frames | trace | other |
+|---|---:|---:|---|
+| `gp-idle-loss` | 7559 | 8320 | — |
+| `gp-u5-charsel` | 516 | 1513 | — |
+| `gp-u6-moves-b` | 2139 | 3248 | moves 3248 |
+| `gp-keys-fight` | 1136 | 2164 | effects 11; `gp_win` evidence ok |
+| `gp-twop` | 612 | 1506 | moves 1506 |
+| `gp-u8-right-arcade` | 1072 | 2274 | — |
+| `gp-u8-left-training` | 1076 | 2338 | — |
+| `gp-u8-right-training` | 1098 | 2402 | — |
+| `gp-u8-tug-of-war` | 1107 | 2466 | — |
+| `gp-u8-handicap` | 1022 | 2274 | — |
+| `gp-u8-endurance` | 278 | 1174 | — |
+| `gp-u8-attract-start` | 1087 | 2018 | — |
+| `gp-u12-endurance` | 732 | 1931 | — |
+| `gp-u13-ending2` | 5891 | 10014 | reach 4939, win 10014, milestones 30/30 |
+| `gp-u14-win-live` | — | — | `no capture … (skipped)`, rc 0 by design (§J6) |
+| `gp-u15-join` | 805 | 2158 | — |
+| `gp-u16-twop2` | 8069 | 8637 | moves 8637 |
+| `gp-u17-device2` | — | — | evidence ok; the frame/trace ratchets are empty by name (§H6.9) |
+| `gp-u9-win` | 2452 | 3503 | win 3503, path 8 |
+| `gp-u10-ending` | 5437 | 9954 | win 9954, path 30 |
+
+Every capture identity line matches its pin (`… matches the pin`; U17's evidence block says
+`the capture identity matches the pin`), U13's `poll.log sha256 e581916f..2b69c6, 5904
+frames` among them, so no capture file changed.
+
+### §P11.2 The counter, the census and the unrowed measure
+
+The gate's differential line is Task 11's pin, byte for byte:
+
+```text
+diff-verify: 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps; 813/844 rows with callees closed (187 have none); 806/844 closed on full rows; 8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37). The closure rule (record J §J1): an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an address the decomp index never lists as a function - does not keep a row open, provided the port tree does not implement the address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a recorded stub or real callee and a ported function without a row do. Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+```
+
+The arithmetic, each term measured (§P5–§P9 and Task 11's report carry the derivations):
+`833 + 11 = 844` rows with callees (11 of the 12 rows have callees; `runtime_5d812` and
+`runtime_61a70` have none), `1019 + 12 = 1031` functions, `14956 + 27 = 14983` mutants,
+`774 + 11 + 28 = 813` closed, `768 + 11 + 27 = 806` full, `59 - 28 = 31` open. The twelve
+rows of this phase:
+
+| row | entry | cases | mutants | plan task |
+|---|---|---:|---:|---|
+| `runtime_5d812` | `0x5D812` | 2 | 1 | 5 |
+| `frontend_28d68` | `0x28D68` | 1 | 3 | 5 |
+| `fighter_3e484` | `0x3E484` | 3 | 4 | 6 |
+| `fighter_29d04` | `0x29D04` | 3 | 3 | 6 |
+| `fighter_3e4c4` | `0x3E4C4` | 2 | 2 | 6 |
+| `fighter_24568` | `0x24568` | 8 | 3 | 7 |
+| `fighter_24804` | `0x24804` | 8 | 3 | 7 |
+| `fighter_40cb0` | `0x40CB0` | 8 | 3 | 7 |
+| `svc_2cb74` | `0x2CB74` | 1 | 1 | 8 |
+| `flow_4f5c8` | `0x4F5C8` | 5 | 1 | 8 |
+| `runtime_61a70` | `0x61A70` | 4 | 1 | 8 |
+| `fighter_3a6d4` | `0x3A6D4` | 6 | 2 | 9 |
+
+51 cases and 27 mutants together. Two of the twelve (`0x5D812`, `0x61A70`) are
+binding-only rows: the port registers no address for them (the plan forbids a header or
+`fn_register`), so `port_progress.py` cannot move — and it did not (§P11.6).
+
+**The open-row census.** Re-measured from the gate's own table (`--table`, the same
+`closed_rows`/`non_portable` rule as §P9.6): 1031 rows, 844 with callees, 813 closed, 806
+closed on full rows, **31 open**, blocked by **23 distinct `(address, mode)` pairs, 66
+incidences**. Every blocker is a recorded `stub`; by class they are 16 runtime
+(≥ `0x5D000`), 5 host-owned (`0x1C308`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`) and 2
+addresses the decomp index never lists as functions (`0x25FAC`, `0x26194`). The block is
+by design: a recorded stub's declaration is exactly what a row of its own would verify,
+so the row stays open, and none of the 23 is in the portable set (no row can exist) — the
+closure rule's two-sided condition (§J1).
+
+| blocker | mode | rows | names |
+|---|---|---|---|
+| `0x65431` | stub | 11 | `game_frame_keys`, `game_frame_keys2`, `game_frame_head`, `game_frame_fight`, `game_frame_tails`, `game_frame_m25`, `game_frame_match`, `game_frame_front`, `game_frame_start`, `game_frame_rr`, `game_quit_prompt` |
+| `0x5DD03` | stub | 10 | `snd_sample_playing`, `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DEED` | stub | 7 | `snd_music_playing`, `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DCC5` | stub | 6 | `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `sound_sample_start`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DECA` | stub | 5 | `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DC0F` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sample_start` |
+| `0x5DC8B` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_shutdown` |
+| `0x5DEAF` | stub | 3 | `snd_music_stop`, `sound_music_pause_toggle`, `sound_shutdown` |
+| `0x6C4CF` | stub | 2 | `config_file_load`, `menu_fatal_error` |
+| `0x1C308`, `0x25FAC`, `0x26194`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCE4`, `0x65546` | stub | 1 each | (14 rows: `sound_buffers_alloc`, `game_frame_head` ×2, `input_sampler` ×4, `sound_shutdown`, `sound_sample_start` ×5, `text_number_core`) |
+
+The 31 open rows, in table order: `snd_music_stop`, `snd_sample_playing`,
+`snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `snd_music_playing`,
+`text_number_core`, `input_sampler`, `sound_music_pause_toggle`, `sound_music_volume`,
+`sound_sfx_volume`, `sound_buffers_alloc`, `attract_config_volumes_unscaled`,
+`attract_config_volumes`, `sound_sample_start`, `fight_char_screen_open`,
+`fight_char_screen_open_both`, the ten `0x24C5C` rows (`game_frame_keys`,
+`game_frame_keys2`, `game_frame_head`, `game_frame_fight`, `game_frame_tails`,
+`game_frame_m25`, `game_frame_match`, `game_frame_front`, `game_frame_start`,
+`game_frame_rr`), `game_quit_prompt`, `config_file_load`, `menu_fatal_error` and
+`sound_shutdown`. No row is open on a portable-set function by accident: every blocker is
+outside the portable set, and the only ported functions with no row at all are the
+declared unrowed set below.
+
+**The unrowed measure** (Task 10, corrected in §P10.9): the counter prints `8 ported
+functions with no row` (still `UNROWED`'s literal) followed by the computed `45 FN_
+ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37 runtime;
+the scan-visible subset is 42 = 5 + 37`. The three header-shape exceptions are `0x1B120`,
+`0x20C10` and `0x4FBA2` (implemented, but named only inside a comment that does not start
+with `/* 0xADDR`, so the strict scan cannot see them); the guard test
+`test_the_unrowed_figure_measures_the_frontier` fails on a new `FN_` port without a row,
+on a stale declaration, and on an exception that became scan-visible (§P10.6).
+
+**The weaker rows** (a row that runs the original under a code poke, leaves a reachable
+block out, or declares a terminal difference; it can still be closed). Twelve functions
+carry one: `0x1AFE8` (`config_file_load`, the l6 short-read exit difference), `0x1B084`
+(`config_file_save`, the exit block a memory-backed file cannot reach), `0x1B544`
+(`res_resolve`, the resident arm only), `0x1BE30` (`game_shutdown`, `int 0x10` poked),
+`0x1C740` (`movie_play`, the keyboard poll poked), `0x24C5C` (`game_frame_*`, two named
+unhits and 18/20 blocks), `0x255CC` (`game_loop`, two named unhits `0x25680`/`0x256D4`
+and its RNG a recorded stub), `0x2CADC`, `0x2EA30`, `0x2EA68`, `0x2EA74`, `0x2EA78`.
+Seven of their rows are closed (so `806 = 813 - 7`); the other five entries are among the
+31 open rows above; `0x1B544` and `0x2EA30` have callee-less rows, so they never enter
+the closed/full arithmetic. On the function scale the docs keep, 12 of the 751 portable
+rowed functions are weaker and 739 are full.
+
+### §P11.3 The final U13 pins and their failing direction
+
+| pin | value | provenance |
+|---|---:|---|
+| `GP_U13_MIN_FIRST` | **5891** | the first unexplained capture frame, raw 14361; 5891..5903 are the post-script tail (§P1.6) |
+| `GP_U13_MIN_REACH` | **4939** | the enforced comparison's window reach at that frame (§P4.1) |
+| `GP_U13_TRACE_MIN_FIRST` | 10014 | 0 differing through 10013 |
+| `GP_U13_WIN_MIN_FIRST` | 10014 | 0 differing through 10013 |
+| `GP_U13_MAX_START` | 96 | the run prints `window from capture 96` |
+| `GP_U13_MILESTONES` | 30 | 30/30, the BLIZZARD row's `ad4=0, c0=1` included |
+| `GP_U13_CAPTURE_SHA256` | `e581916f…2b69c6` | the capture identity line matches |
+| `GP_U13_CAPTURE_FRAMES` | 5904 | matches |
+
+The gate's enforced run at these pins prints `first unexplained 5891, ratchet N 5891 ok`
+(no `improved` suffix) and `trace: 0 differing through 10013; ratchet N 10014 ok`,
+`path: 0 not reproduced through 29; ratchet N 30 ok`, `win: 0 differing through 10013;
+ratchet N 10014 ok`, and the four allowance lines (§P4.4). Each pin fails one step above
+(§P4.3, measured on this tree; the pins are Makefile assignments, so the override must be
+on the command line — the environment form runs at the pin and passes, §P4.1):
+
+```text
+$ make gp-u13-oracle GP_U13_MIN_FIRST=5892
+gp_compare: gp-u13-ending2: frames: FAIL: first unexplained 5891 < ratchet N 5892
+make: *** [Makefile:1282: gp-u13-oracle] Error 1
+
+$ make gp-u13-oracle GP_U13_MIN_REACH=4940
+gp_compare: gp-u13-ending2: frames: FAIL: window reach port 4939 < pinned reach 4940 (the port exhibited fewer port frames)
+make: *** [Makefile:1282: gp-u13-oracle] Error 1
+```
+
+The three in-replay allowances that moved the first unexplained from 4248 to 5891 are
+§P2's and §P3's: capture 4248 (raw 7887) and 4320 (raw 8019) as three-present scan-outs,
+5120 (raw 8839) as a four-row band, each a named per-frame byte recipe bound to the
+port's own frames and mutation-tested (a changed port byte un-explains the frame). The
+window's claim is as narrow as the other gp scenarios': no content-bearing capture frame
+through 5890 is unexplained and the window reaches its end; port-frame order,
+under-rendering inside the window, and the 5891..5903 tail are not claimed.
+
+### §P11.4 The raw correction: `0x3D0BC` is padding, not a function
+
+The plan's Task 9 carried a correction: `0x3D0BC` — the address `fighter_state_3531c`'s
+old `d15` case poked into its scratch slot's `+0x10` hook — is four zero bytes of the
+five-byte alignment pad after `0x3D004`'s `ret` (`0x3D0BA`), not a function (§P9.2). The
+decomp index has no entry there; the real entry is `0x3D0C0`, which already had a row
+(`fighter_3d0c0`). The slot `+0x10` hooks the pose setters store are `0x3A6D4`
+(`0x3A7D2`) and `0x3A588` (`0x3A686`), and the only call through the dword is
+`0x354DA..0x354E2` in `0x3531C` case 10. The old case compared the address alone (the
+port reports an unregistered address with no arguments), so it could not notice; the row
+`fighter_3a6d4` (6 cases, 2 mutants, 3 recorded calls) runs the real function, and the
+stub-clobber pin moved from `0x3D0BC: ("edx",)` to `0x3A6D4: ("ebx", "ecx", "edx")`,
+re-derived from the bytes (`E.callee_clobbers`).
+
+### §P11.5 The named limits
+
+The phase closes the two offline weaknesses it set out to close (U13's in-replay pixels
+through capture 5890, and the differential's rowable frontier) and leaves these limits,
+each with its evidence:
+
+- **U13's post-script tail.** 5891..5903 (raw 14361..14417) is the 13-frame tail after the
+  scenario's `X` record (f=10013); the port's dump ends at frame 4939 (f=0x271B) and its
+  trace at f=0x271D, so no frame exists for those states and the pin stops there (§P1.6).
+- **U14's fought live win.** `gp-u14-win-live` has no capture and all `GP_U14_*` pins stay
+  empty (`make gp-u14-oracle` skips, rc 0); the two permitted attempts failed the session
+  checks (§J6). The poked `DEATH_DONE` wins of U9/U10 are not a substitute and are not
+  claimed for U14.
+- **U16's finisher.** The three finisher entries were attempted but no `r0`/`r1` reaction
+  in `0x32..0x34` appears, so `make gp-u16-oracle` omits `--finisher` (R2, §J8).
+- **The other endings.** `gp-u13-ending2` covers character 1's BLIZZARD ending; character
+  0's is the U10 path under `DEATH_DONE` pokes (`gp-u10-ending`, first unexplained 5437,
+  the replay's post-script tail) and what the pokes replaced — the KO by hits and the six
+  earlier won matches — is not claimed (§W.9). No other character's ending has a capture.
+- **The runtime/host blockers.** All 31 open rows block on recorded stubs outside the
+  portable set — 16 runtime addresses, 5 host-owned routines (the AIL/presence family),
+  2 addresses the decomp index never lists. None can have a row, so those rows keep their
+  place in the counter by design (§J1, §P11.2).
+- **The weaker rows.** The 12 ways above (pokes, unhit blocks, terminal differences) are
+  declared, not proved away; `game_loop`'s and `0x24C5C`'s named unhits are the largest,
+  and the counter's headline does not distinguish a weaker row from a full one — only its
+  `closed on full rows` figure does.
+- **`flow_4f5c8`'s zero divisor.** No case uses divisor 0: the raw's `idiv` would fault at
+  `0x4F5E0`, and the port returns 0 instead — a documented deviation (`flow.c`'s PORT
+  comment, the same form as `0x4F4E8`'s), so that path is unverified on both sides by
+  construction.
+- **The oracles' claim width.** Each gameplay oracle proves only that no content-bearing
+  capture frame in its pinned window is unexplained and that the window reaches its end
+  (plus the state-field ratchets); port-frame order, under-rendering inside a window and
+  full interior coverage are not claimed for any of them (AGENTS.md's gp-oracle note).
+
+### §P11.6 The `port_progress` lines, the PROGRESS paragraph and the commit
+
+`python3 tools/port_progress.py` is unmoved, as required (no `port/src` file changed):
+
+```text
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+```
+
+`docs/PROGRESS.md`'s phase paragraph:
+
+> **Pixel and proof closure, Tasks 5-12: the differential last mile, the unrowed measure
+> and the phase gate (plan `2026-10-22-pixel-and-proof-closure.md`, record §P5-§P11).**
+> The phase's differential half rowed twelve more functions — the frontend stub pair
+> `0x5D812`/`0x28D68`, the fighter callbacks `0x3E484`/`0x29D04`/`0x3E4C4`, the actor
+> entrances `0x24568`/`0x24804`/`0x40CB0`, the menu, loop and memset entries
+> `0x2CB74`/`0x4F5C8`/`0x61A70` and the real `+0x10` hook `0x3A6D4` — in 51 cases and 27
+> mutants, so `make diff-verify` reads `1031/1031 functions VERIFIED; 14983/14983 mutants
+> detected; 0 named gaps; 813/844 rows with callees closed (187 have none); 806/844
+> closed on full rows; 8 ported functions with no row (45 FN_ ported-unrowed: 8 portable
+> [5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset
+> is 42 = 5 + 37)`. The open rows fall 59 -> 31 (23 blockers, 66 incidences; record
+> §P11.2), all on recorded stubs outside the portable set (16 runtime, 5 host-owned, 2
+> not in the decomp index), and the unrowed figure now measures the frontier instead of
+> restating a hand-maintained set (the guard test fails on a new `FN_` port without a
+> row). The `0x3D0BC` spec was corrected: it is four zero bytes of alignment padding, not
+> a function, and the real hook is `0x3A6D4`. Six pins in
+> `tools/tests/test_diff_verify.py` were re-measured from the driver's own line — the
+> counter string, the EAX-mask dict, the real-spec-name list, the mutant-name list, the
+> stub-clobber dict, and Task 10's frontier guard test (already green) — and no row,
+> closure rule or port code changed with them. The pixel half re-pinned U13: with the
+> named per-frame recipes for capture 4248, 4320 and 5120, `gp-u13-ending2`'s first
+> unexplained capture frame is 5891 (the post-script tail 5891..5903) and the enforced
+> reach is port 4939 (`GP_U13_MIN_FIRST` 4248 -> 5891, `GP_U13_MIN_REACH` 3549 -> 4939,
+> each proved to fail one step above; trace/WIN stay 10014, start 96, milestones 30/30,
+> the capture sha and 5904 frames unchanged). `PR_DIFF_FULLSCAN=1 make verify` is green on
+> the phase tip, `port_progress.py` is unmoved (`799 1203 66` / `759 759 100`) and no
+> existing pin moved. **Remaining (capture-gated or by design):** U14's fought live win
+> (R1, no capture; all `GP_U14_*` pins empty), U16's finisher (R2), the other endings
+> beyond character 1's BLIZZARD and character 0's poked U10 path, U13's 5891..5903 tail,
+> the 31 open rows' runtime/host stubs (no row can exist), the 12 weaker rows and
+> `flow_4f5c8`'s documented zero-divisor deviation.
+
+Files: this record and `docs/PROGRESS.md` only. No `data/` file changed (the gate's
+`cmos=zero` and every capture identity line) and no capture was taken. Commit
+`docs: close the pixel and proof phase` (a commit cannot cite its own hash; the task
+report carries it).
