@@ -35035,6 +35035,27 @@ def non_portable(root=ROOT):
     return NonPortable(classified, functions, frozenset(ported))
 
 
+@dataclass(frozen=True)
+class PortedUnrowed:
+    """The ported-unrowed frontier (record §P10). `scan_portable` is what the strict registry scan
+    sees below RUNTIME_BASE, `runtime` what it sees at/above, and `declared_portable` is
+    `scan_portable | UNROWED_HEADER_SHAPE` — the true portable population, because the scan cannot
+    see the three functions whose port/src mention is mid-comment. The counter prints the declared
+    figures; the scan-visible one is kept as the subset that the 42 arithmetic names."""
+
+    scan_portable: frozenset
+    runtime: frozenset
+    declared_portable: frozenset
+
+    @property
+    def total(self):
+        return len(self.declared_portable) + len(self.runtime)
+
+    @property
+    def scan_total(self):
+        return len(self.scan_portable) + len(self.runtime)
+
+
 def fn_addresses(root=ROOT):
     """The symbols.h `FN_` function addresses (record §P10): the generated `#define FN_<8 hex>`
     names, the same parse tools/port_progress.py uses. Three `#define FN_` lines name switch-case
@@ -35047,18 +35068,20 @@ def fn_addresses(root=ROOT):
 
 
 def ported_unrowed(root=ROOT, specs=None, outside=None):
-    """(portable, runtime): the computed ported-unrowed frontier (record §P10). The members are
-    the symbols.h `FN_` addresses the port tree implements — `NonPortable.ported`, the same strict
-    `fn_register`/column-0-header scan `non_portable()` uses — minus every SPECS entry, split at
-    RUNTIME_BASE. `portable` is the figure `UNROWED` describes (plus `UNROWED_HEADER_SHAPE`, whose
-    three functions the strict scan cannot see); `runtime` is `RUNTIME_UNROWED`. `specs` and
-    `outside` exist so the guard test can vary the tables; the counter calls it with neither."""
+    """The ported-unrowed frontier (record §P10). The members are the symbols.h `FN_` addresses
+    the port tree implements — `NonPortable.ported`, the same strict `fn_register`/column-0-header
+    scan `non_portable()` uses — minus every SPECS entry, split at RUNTIME_BASE, with
+    `UNROWED_HEADER_SHAPE` added to the portable half (those three are `FN_` ported-unrowed
+    addresses the scan cannot see). `scan_portable` is the scan-visible subset, `declared_portable`
+    the true portable figure, and `total` the declared portable + runtime: 45 = 8 + 37, of which
+    the scan-visible subset is 42 = 5 + 37. `specs` and `outside` let the guard test pass the
+    snapshots it already read; the counter calls it with neither."""
     outside = non_portable(root) if outside is None else outside
     rowed = {s.entry for s in (SPECS if specs is None else specs)}
-    implemented = fn_addresses(root) & outside.ported
-    unrowed = implemented - rowed
-    return (frozenset(a for a in unrowed if a < RUNTIME_BASE),
-            frozenset(a for a in unrowed if a >= RUNTIME_BASE))
+    unrowed = (fn_addresses(root) & outside.ported) - rowed
+    scan_portable = frozenset(a for a in unrowed if a < RUNTIME_BASE)
+    runtime = frozenset(a for a in unrowed if a >= RUNTIME_BASE)
+    return PortedUnrowed(scan_portable, runtime, scan_portable | UNROWED_HEADER_SHAPE)
 
 
 def closed_rows(funcs, verdicts, outside=None):
@@ -35148,7 +35171,7 @@ def main(argv=None):
     missed = [(r, why) for r in mutants for ok, why in [mutant_detection(r)] if not ok]
     verdicts = {r.entry: r.verdict for r in real}
     closed, with_callees = closed_rows(funcs, verdicts)
-    portable_unrowed, runtime_unrowed = ported_unrowed()
+    frontier = ported_unrowed()
 
     rows = [TABLE_HEAD] + [table_row(r, verdicts) for r in real + mutants]
     print("\n".join(rows))
@@ -35164,9 +35187,9 @@ def main(argv=None):
             f.write("\n".join(rows) + "\n")
     full = full_rows(closed)
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
-          "none); %d/%d closed on full rows; %d ported functions with no row (%d computed FN_ ported-unrowed: "
-          "%d portable + %d runtime; the %d = %d from the registry scan + %d header-shape exceptions). "
-          "The closure rule (record J §J1): "
+          "none); %d/%d closed on full rows; %d ported functions with no row (%d FN_ ported-unrowed: "
+          "%d portable [%d registry-visible + %d header-shape exceptions] + %d runtime; the scan-visible "
+          "subset is %d = %d + %d). The closure rule (record J §J1): "
           "an allow-mode callee outside the portable set - runtime "
           ">= 0x%X, host-owned/deferred in tools/port_classification.txt, or an address the decomp index "
           "never lists as a function - does not keep a row open, provided the port tree does not implement "
@@ -35177,8 +35200,9 @@ def main(argv=None):
               "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants)) if args.self_check else "",
               len(gaps), len(closed), len(with_callees), len(funcs) - len(with_callees),
               len(full), len(with_callees), len(UNROWED),
-              len(portable_unrowed) + len(runtime_unrowed), len(portable_unrowed), len(runtime_unrowed),
-              len(UNROWED), len(portable_unrowed), len(UNROWED_HEADER_SHAPE), RUNTIME_BASE))
+              frontier.total, len(frontier.declared_portable), len(frontier.scan_portable),
+              len(UNROWED_HEADER_SHAPE), len(frontier.runtime),
+              frontier.scan_total, len(frontier.scan_portable), len(frontier.runtime), RUNTIME_BASE))
     return 1 if bad or missed else 0
 
 
