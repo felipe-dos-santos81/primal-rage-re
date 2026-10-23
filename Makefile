@@ -1449,38 +1449,40 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 # entry and lands 12 real 1A/1B attempts (the game's own damage takes it to the KO value 0x78). The
 # poked damage is not the claim; the claim is at least one of the three finisher reactions 0x32..0x34
 # in an S record's r0/r1, which `gp_twop.py check --finisher` (WITHOUT --allow-missing-reaction)
-# enforces. The brief's 160-attempt live-KO round was captured and then retried at 88 attempts; each
-# failed a session check: the KO attempt is RNG-dependent (88 then 87), the leftover attempts ran on
-# the result screen, delaying the finisher group past mode 9's hold (160), or the last attempt and
-# the finisher's first b0+b2 overlapped one scan (88, an unscripted pad release). TALON's three
-# finisher entries (0x15/0x16/0x17 -> 0x32/0x33/0x34, the starters 0x37640/0x37774/0x37898) are
-# pressed 100 frames into the match result (the anchor waits out at most 11 x 16 = 176 frames of
-# leftover attempts; the group spans 212, inside mode 9's hold). The raw +0x42/+0x43
-# gate bits are decomp evidence (record §E1.2), not S fields, so they are not claimed. The capture
-# stops at the conquered-lands screen (mode 0x12, STOP_AT_END).
-# Provenance (2026-10-23, capture 5272 frames, raw 1376..8561, wall 122.9 s):
-#   MIN_FIRST 3842: the report's first unexplained capture frame (raw 6790, nearest port 3216,
-#     rows 0..94, 14096 px). It is not a loader overlay or a scan-out (the loader's 166-px
-#     six-row strip is capture 5269, after the pin), so no allowance is added; the capture tail
-#     from here is not claimed.
-#   TRACE_MIN_FIRST 5448: the first differing trace f, in rng (capture DAEA44A4, port D8B91D2D);
-#     first tick difference f=145 is reported apart (host-timed).
-#   MOVES_MIN_FIRST 5466: the first differing move frame, f=0x155A in r0 (capture 0x33, the applied
+# enforces. The live KO was reached in six attempts (record §E2): 160 attempts/anchor 10 overran the
+# result (ring full, no end frame); 88/anchor 10 applied 0x33 but collided one scan; 96/anchor 200
+# KO'd but missed the gate window (0x27, no 0x33) and had an unpinned pad change; 88/anchor 100 had
+# no KO; 92/anchor 100 applied 0x33 but collided one scan; 92/anchor 160 reached no end frame. The KO
+# attempt is RNG-dependent (85-88), so the leftover attempts (up to 11 x 16 = 176 frames at
+# 96-85) and the gate window both cannot be met by one anchor; the fallback is the remaining path.
+# TALON's three finisher entries (0x15/0x16/0x17 -> 0x32/0x33/0x34, the starters
+# 0x37640/0x37774/0x37898) are pressed at an anchor of 100 frames: the capture's second entry applies
+# 0x33 at mode 9 + 213, so that is the measured gate window; the anchor is a harness value tuned to
+# it, not a claim that the 176-frame leftover bound is met (the group can start after the leftovers).
+# The raw +0x42/+0x43 gate bits are decomp evidence (record §E1.2), not S fields, so they are not
+# claimed. The capture stops at the conquered-lands screen (mode 0x12, STOP_AT_END).
+# Provenance (2026-10-23 fallback re-capture, 5464 frames, raw 1371..8555, wall 122.8 s):
+#   MIN_FIRST 4095: the report's first unexplained capture frame (raw 6783, nearest port 3442,
+#     rows 0..2, 510 px). It is not a loader overlay or a scan-out (the loader's 166-px six-row
+#     strip is capture 5523, after the pin), so no allowance is added; the tail is not claimed.
+#   TRACE_MIN_FIRST 5449: the first differing trace f, in rng (capture 75B49A54, port BA99085D);
+#     first tick difference f=147 is reported apart (host-timed).
+#   MOVES_MIN_FIRST 5467: the first differing move frame, f=0x155B in r0 (capture 0x33, the applied
 #     TALON finisher reaction, port 0x27). The capture-side reaction claim is gp_twop's; this pin
-#     says only that the move fields agree below 5466, so the port's reaction divergence is named
+#     says only that the move fields agree below 5467, so the port's reaction divergence is named
 #     and not claimed.
-#   MAX_START 104: the report's window start (raw 1749).
-#   MIN_REACH 3213: the highest port frame exhibited before the first unexplained capture frame.
-#   CAPTURE_SHA256 / CAPTURE_FRAMES: this capture's poll.log sha256 and its 5272 frame_*.raw.gz.
+#   MAX_START 106: the report's window start (raw 1749).
+#   MIN_REACH 3439: the highest port frame exhibited before the first unexplained capture frame.
+#   CAPTURE_SHA256 / CAPTURE_FRAMES: this capture's poll.log sha256 and its 5464 frame_*.raw.gz.
 # Raising a ratchet by one, lowering MAX_START by one, or changing the sha must fail; a
 # re-capture invalidates every pin (record §G.24).
-GP_U23_MIN_FIRST = 3842
-GP_U23_TRACE_MIN_FIRST = 5448
-GP_U23_MOVES_MIN_FIRST = 5466
-GP_U23_MAX_START = 104
-GP_U23_MIN_REACH = 3213
-GP_U23_CAPTURE_SHA256 = e8451fe4d237f8a1e45111a202cc3513f0a7253016abfc65d03211973cac6c88
-GP_U23_CAPTURE_FRAMES = 5272
+GP_U23_MIN_FIRST = 4095
+GP_U23_TRACE_MIN_FIRST = 5449
+GP_U23_MOVES_MIN_FIRST = 5467
+GP_U23_MAX_START = 106
+GP_U23_MIN_REACH = 3439
+GP_U23_CAPTURE_SHA256 = 6684d3cbb8cfabeed190b1139fa9cc93d69944c6d2b3ef9f9f56db2e0cb34446
+GP_U23_CAPTURE_FRAMES = 5464
 gp-u23-oracle: build ## Endgame truth U23 oracle: the U16 finisher reaction (labelled poked-damage fallback) on gp-u23-u16-finisher (skips without its capture)
 	@echo "== gameplay oracle: gp-u23-u16-finisher (the U16 finisher reaction; labelled fallback) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_twop

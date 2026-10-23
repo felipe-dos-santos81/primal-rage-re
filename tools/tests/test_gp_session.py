@@ -733,7 +733,8 @@ class TestU23Finisher(unittest.TestCase):
         self.assertEqual(gs.U23_POKED_DAMAGE, ('poke', ((0x10789E, b'\x77'),)))
         self.assertEqual(steps[i06 + 1], ('after', 8, ('pad', gs.U14_PUNCH, 4)))  # a real hit
         # round 1 stays gp-u16-twop2's 32 attempts; round 2 has 12 real hits after the
-        # poke (record §E2: round 1's first hit landed at f=0x5A5, 0x81 into the round).
+        # poke (record §E2: the published capture's mode-6 entry is f=0x51F and its
+        # first s1_5a change f=0x5A4, 0x85 into the round).
         self.assertEqual(len([s for s in steps[len(prefix):i06]
                               if isinstance(s[-1], tuple) and s[-1][0] == 'pad'
                               and s[-1][1] in (gs.U14_PUNCH, gs.U14_KICK)]), 32)

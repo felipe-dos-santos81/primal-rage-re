@@ -630,28 +630,37 @@ SCENARIOS['gp-u16-twop2'] = dict(time_limit=240, steps=(
 
 
 # Endgame truth U23 (plan 2026-10-23-endgame-truth Task 2; record §E2): the U16
-# finisher captured under the plan's labelled fallback. gp-u16-twop2's 32-attempt
-# first round ended the round with the wrong side KO'd, so its match-result screen
-# had no defeated-side gate and no reaction appeared (R2, record gameplay-truth-ii
-# §J8).
+# finisher captured under the plan's labelled fallback. gp-u16-twop2's two-human
+# start and 32-attempt first round ended round 1 with the wrong side KO'd, so its
+# match-result screen had no defeated-side gate and no reaction (R2, record
+# gameplay-truth-ii §J8).
 #
-# The brief's second round (`_u16_round(160, 10, anchor=(0x06, 2))`) was captured
-# once and cannot reach the result: the KO attempt is RNG-dependent (attempt 88) and
-# the attempts after the KO ran on the result screen, so the finisher group's
-# after_entry 0x09 anchor fired after mode 9's hold (f=0x1F24), its 15 steps collapsed
-# into one frame and the BIOS ring overflowed. The capture failed its own checks (end
-# frame absent, two unscripted pad releases). An 88-attempt live-KO retry reached mode
-# 9 with the reaction 0x33, but it failed on one unscripted pad release when the last
-# attempt and the finisher's first b0+b2 overlapped one scan. The plan's fallback is
-# used and labelled: P2's +0x5A damage byte 0x10789E is poked to 0x77 at the second
-# mode-6 entry and the game's own 1A/1B hits take it to the KO value 0x78 (record
+# The live KO was reached but never with a clean finisher: six attempts are measured
+# in §E2. The brief's 160-attempt, anchor-10 round KO'd P2 by attempt 88 (mode 9 at
+# f=0x19F8) and the 72 leftover attempts overran the result screen (the finisher group
+# fired at f=0x1F24 after mode 9's hold; the BIOS ring overflowed and the end frame
+# was not reached). An 88-attempt/anchor-10 retry reached mode 9 with r0=0x33, but its
+# last attempt and the finisher's first b0+b2 shared a frame (one unscripted pad
+# release at f=0x19F5). A 96-attempt/anchor-200 run KO'd P2 (0x78) but missed the gate
+# window (its first entry applied 0x27, no 0x33) and its pad change at 0x19F8 was
+# unpinned. An 88-attempt/anchor-100 run had no KO (P2 0x68 at the time-up). A
+# 92-attempt/anchor-100 run KO'd P2 and applied 0x33 at f=0x1AB7, but its last leftover
+# collided with the finisher's first b0+b2 (one pad release at f=0x1A49). A
+# 92-attempt/anchor-160 run reached no end frame (the match returned to the attract).
+# The KO attempt is RNG-dependent (85-88 across runs), so the leftover attempts and
+# the gate window cannot both be met by one fixed anchor; the fallback is the
+# remaining path.
+#
+# The fallback (labelled): P2's +0x5A damage byte 0x10789E is poked to 0x77 at the
+# second mode-6 entry and 12 real 1A/1B hits take it to the KO value 0x78 (record
 # §W.3). The poked damage is not the claim; the claim is the reaction (r0/r1
-# 0x32..0x34), which `gp_twop.py check --finisher` (no allowance) enforces. Round 1's
-# first hit landed 0x81 frames into the round (f=0x5A5 vs 0x524), so 12 attempts (the
-# first 8 frames after the poke, then 16 apart, a p1.right walk every eight) cover
-# the first hit; mode 9's finisher anchor waits 100 frames so the leftover attempts
-# (at most 11 x 16 = 176 frames) cannot overlap the finisher group, whose own span
-# is 212 frames. The three TALON entries (0x15/0x16/0x17 -> reactions
+# 0x32..0x34), which `gp_twop.py check --finisher` (no allowance) enforces. The
+# published capture's first mode-6 S is f=0x523 and its first s1_5a change is
+# f=0x5A4 (0x81 into the round), so the 12 attempts cover the first hit; the 100-frame
+# mode-9 anchor is the window the capture measures (its reaction 0x33 at +213, the
+# second entry). The leftover bound is up to 11 attempts (176 frames), so the anchor is
+# tuned to the captured window, not a guarantee against that bound; the group's own
+# span is 212 frames. TALON's three entries (0x15/0x16/0x17 -> reactions
 # 0x32/0x33/0x34, the starters 0x37640/0x37774/0x37898) are attempted on the match
 # result. time_limit 300 is the backstop. The raw +0x42/+0x43 gate bits are decomp
 # evidence (record §E1.2), not S fields.
