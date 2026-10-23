@@ -1897,31 +1897,35 @@ Spec("fighter_24568", 0x24568, p7c_cases(1, True),
      eax_mask=0, mutants=("@a5", "@stream", "@no64")),
 ```
 
-`P7C_ENT_CASES` is seven cases, chosen so the four control-flow arms of the placement and both blink
-arms are all exercised (`l0` left success, `l1` the same on side 1/sel 1, `r0` right success, `r1` the
-right arm failing into the `left = 1` back-edge, `f0` the left arm failing into the right arm, `m0`
-sel 1 with side 0 for the mask/select split, `p0` a poked bound `0x4000` for the back-edge). The
+`P7C_ENT_CASES` is eight cases, chosen so each row's four control-flow arms of the placement and
+both blink arms are all exercised. The width makes the arms case-specific: `l0` (left success) and
+`l1` (the same on side 1/sel 1), `r0` (right success), `r1` (the 0x5000 rows' right arm fails into
+the `left = 1` back-edge; at 0x40CB0's 0x3000 it is a right success), `f0` (the 0x5000 left test's
+`jl` fails into the right arm; at 0x3000 the left arm succeeds), `g0` (at 0x40CB0's 0x3000 the left
+test fails into the right arm; at 0x5000 the left arm also fails and the right succeeds), `m0`
+(sel 1 with side 0 for the mask/select split), `p0` (a poked bound `0x4000` for the back-edge). The
 records `0x10A800`/`0x10A900` are zero BSS of the image; the record blob sets `+0x14` (the slot),
 `+0x18` (x), `+0x1C`, `+0x28` (REC has bit 14, REC2 not, so `0x2372C`'s two speed/a5 arms both run),
 `+0x30`, `+0x3C` and `+0x51` (the side), every other byte its own sentinel. The slots' `+0x40` dword
 is `0x80008000` (so the blink store flips its `+0x41` byte 0x80 -> 0x81 and the `| 0x81000` shows);
 `+0x52..+0x64` carry 0x52..0x64. `0x10810D` is the case's `sel`, `0xBD898` is poked to `0x5A5A`
 (the spawn's ECX argument) and the character's blink byte (`0x104B03` here) to the case's `blink`.
-Mask 0: the three dispatchers (`0x25F27`, `0x27732`, `0x2989C`) reload the side from a byte and read
-none of EAX. `0x1A570` is the `BIT15` stub with the case's AL (the entrance's only such call passes
-`DSB(0x10810D)`); `0x33C78` is the existing `D4C_33C78` stub (EBX = 0 and the stack a5
-0x4000/0, its own row proving the body); `0x2BC30`/`0x39A10`/`0x2C3FC` are `ANIM_BEGIN`/`TIMER`/
-`VOICE`; `0x2372C` is the port's unseamed projectile target, so it runs on both sides (allow) and the
-`0x2AE14` it calls is the `SPAWN` stub returning `P7C_CHILD` (0x10AA00), whose `+0x14/+0x2E/+0x4E/
-+0x34/+0x36/+0x59` the body writes are seeded.
+Mask 0: the three dispatchers read none of EAX — `0x25F27 -> 0x25F2E` reloads the entering side
+from `0x104B12`, `0x27732 -> 0x27739` reads the selected side `0x10810D`, and `0x2989C -> 0x298A3`
+loads BL from `0x104B09`. `0x1A570` is the `BIT15` stub with the case's AL (the entrance's only
+such call passes `DSB(0x10810D)`); `0x33C78` is the existing `D4C_33C78` stub (EBX = 0 and the
+stack a5 0x4000/0, its own row proving the body); `0x2BC30`/`0x39A10`/`0x2C3FC` are
+`ANIM_BEGIN`/`TIMER`/`VOICE`; `0x2372C` is the port's unseamed projectile target, so it runs on both
+sides (allow) and the `0x2AE14` it calls is the `SPAWN` stub returning `P7C_CHILD` (0x10AA00), whose
+`+0x14/+0x2E/+0x4E/+0x34/+0x36/+0x59` the body writes are seeded.
 
 Measured, `--function fighter_24568 --self-check`:
 
 ```text
-| fighter_24568 | 0x24568 | 7 | 11/11 | VERIFIED | 1A570 stub unverified, 2372C allow unverified, 2AE14 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33C78 stub unverified, 39A10 stub unverified |
-| fighter_24568@a5 | 0x24568 | 7 | 11/11 | MISMATCH | ... |
-| fighter_24568@stream | 0x24568 | 7 | 11/11 | MISMATCH | ... |
-| fighter_24568@no64 | 0x24568 | 7 | 11/11 | MISMATCH | ... |
+| fighter_24568 | 0x24568 | 8 | 11/11 | VERIFIED | 1A570 stub unverified, 2372C allow unverified, 2AE14 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33C78 stub unverified, 39A10 stub unverified |
+| fighter_24568@a5 | 0x24568 | 8 | 11/11 | MISMATCH | ... |
+| fighter_24568@stream | 0x24568 | 8 | 11/11 | MISMATCH | ... |
+| fighter_24568@no64 | 0x24568 | 8 | 11/11 | MISMATCH | ... |
 ```
 
 The original's six recorded calls and the placement, per case (the `--self-check` evidence):
@@ -1933,14 +1937,15 @@ l1  1A570(0x1) 33C78(0x1,0xFFFFC800,0x5A5A,0x0,0x4000) ... 2AE14(...,0xC00,0x30,
     (18 bytes: 0x2372C's side-1 +0x2E/+0x4E arm)
 r0  33C78(0x0,0x6000,0x5A5A,0x0,0x0)      r1  ... 0xFFFFE000 ... 0x4000   (the back-edge)
 f0  1A570(0x0) ... 33C78(0x0,0x2000,...)  (the left arm's `jl` to the right arm)
+g0  33C78(0x0,0x0,0x5A5A,0x0,0x0)         (left 0xFFFF6000 < -0x7C00; right 0x0 succeeds)
 m0  1A570(0x1) ... 33C78(0x0,0x6000,...)  sel 1, side 0: the mask is 0x40, the store happens
 p0  bound 0x4000: 33C78(0x1,0xFFFFD000,...,0x4000)
 ```
 
 The three mutants are caught by the call arguments and one store: `@a5` (`0x33C78`'s stack word 0
-against the original's 0x4000; l0, l1, r1 and p0 — the four cases whose left arm passes a5),
-`@stream` (`0x2BC30`'s EDX 0xE790A against 0xE453A; all seven), `@no64` (`+0x64` left at the seed 0x64
-instead of 0x2A; all seven). No case reads EAX.
+against the original's 0x4000; l0, l1, r1 and p0 — the four cases whose original a5 is 0x4000),
+`@stream` (`0x2BC30`'s EDX 0xE790A against 0xE453A; all eight), `@no64` (`+0x64` left at the seed
+0x64 instead of 0x2A; all eight). No case reads EAX.
 
 ### §P7.3 `0x40CB0` — entry 0, character 0's entrance
 
@@ -1959,18 +1964,22 @@ No allow call and no `0x2AE14`: every callee is seamed. Measured, `--function fi
 --self-check`:
 
 ```text
-| fighter_40cb0 | 0x40CB0 | 7 | 11/11 | VERIFIED | 1A570 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33C78 stub unverified, 39A10 stub unverified |
-| fighter_40cb0@y | 0x40CB0 | 7 | 11/11 | MISMATCH | ... |
-| fighter_40cb0@place | 0x40CB0 | 7 | 11/11 | MISMATCH | ... |
-| fighter_40cb0@stream | 0x40CB0 | 7 | 11/11 | MISMATCH | ... |
+| fighter_40cb0 | 0x40CB0 | 8 | 11/11 | VERIFIED | 1A570 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33C78 stub unverified, 39A10 stub unverified |
+| fighter_40cb0@y | 0x40CB0 | 8 | 11/11 | MISMATCH | ... |
+| fighter_40cb0@place | 0x40CB0 | 8 | 11/11 | MISMATCH | ... |
+| fighter_40cb0@stream | 0x40CB0 | 8 | 11/11 | MISMATCH | ... |
 ```
 
-The placement per case: `l0` `0xFFFFF000`, `l1` `0xFFFFE800`, `r0` `0x4000`, `r1` `0x6000` after the
-right arm fails (`0x8000 > 0x7C00`) and the back-edge computes `0x2000`; `f0` starts at `0xFFFFA000`
-(left `0xFFFF7000 < -0x7C00`) and takes the right arm to `0xFFFFD000`; `m0` sel 1/side 0 stores the
-blink bit with mask 0x40; `p0` (bound 0x4000) back-edges to `0xFFFFF000`. `@y` changes the spawn's
-EBX (0x4C00 -> 0; all seven), `@place` the width (0x3000 -> 0x5000; all seven), `@stream` the anim
-stream (all seven).
+The placement per case (width 0x3000): `l0` `0xFFFFF000` and `l1` `0xFFFFE800` (left success);
+`r0` `0x4000` and `r1` `0x6000` (right success — 0x6000 is inside the 0x7C00 bound, so 0x40CB0
+takes no `jg` back-edge on `r1`); `f0` `0xFFFFA000` (x0 `0xFFFFD000`: the left arm succeeds,
+`0xFFFFA000 >= -0x7C00`); `g0` `0xFFFFE000` (x0 `0xFFFFB000` is below the left floor `0xFFFFB400`:
+the left test's `jl` at `0x40CF5` falls into `0x40CFE` and the right arm succeeds); `m0` `0x4000`
+(sel 1/side 0 stores the blink bit with mask 0x40); `p0` (bound 0x4000) the `jg` back-edge to
+`0xFFFFF000` (right `0x5000 > 0x4000`, left `0xFFFFF000 >= -0x4000`). So `0x40CB0`'s left-test
+`jl` edge (`0x40CF5 -> 0x40CFE`) is `g0`'s alone and its `jg` back-edge (`0x40D2B`) `p0`'s alone.
+`@y` changes the spawn's EBX (0x4C00 -> 0; all eight), `@place` the width (0x3000 -> 0x5000; all
+eight), `@stream` the anim stream (all eight).
 
 ### §P7.4 `0x24804` — entry 6, character 6's entrance
 
@@ -1992,15 +2001,17 @@ other slot's record x (`ctx[5] + 0x18 - ctx[5] + 0x3C` when AL, else `0x5400 - +
 a3 (`+0x30 sar 16`), y = 0x1A00 and a5 = 0. Measured, `--function fighter_24804 --self-check`:
 
 ```text
-| fighter_24804 | 0x24804 | 7 | 11/11 | VERIFIED | 1A570 stub unverified, 24754 allow unverified, 2AE14 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33950 allow unverified, 33C78 stub unverified, 39A10 stub unverified |
-| fighter_24804@24754 | 0x24804 | 7 | 11/11 | MISMATCH | ... |
-| fighter_24804@a5 | 0x24804 | 7 | 11/11 | MISMATCH | ... |
-| fighter_24804@no64 | 0x24804 | 7 | 11/11 | MISMATCH | ... |
+| fighter_24804 | 0x24804 | 8 | 11/11 | VERIFIED | 1A570 stub unverified, 24754 allow unverified, 2AE14 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33950 allow unverified, 33C78 stub unverified, 39A10 stub unverified |
+| fighter_24804@24754 | 0x24804 | 8 | 11/11 | MISMATCH | ... |
+| fighter_24804@a5 | 0x24804 | 8 | 11/11 | MISMATCH | ... |
+| fighter_24804@no64 | 0x24804 | 8 | 11/11 | MISMATCH | ... |
 ```
 
 `@24754` calls it on `side ^ 1` and is caught by the second `0x1A570` argument, the `0x2AE14` x and
-the target-slot store (`0x1077B8`/`0x10784C`); `@a5` and `@no64` as on `0x24568`. The base row's
-call list for `l0` is `1A570(0x0) 33C78(0x0,0xFFFFD000,...) 2BC30(0x10A800,0xE1174,...)
+the target-slot store (`0x1077B8`/`0x10784C`) on all eight cases (104 diffs); `@a5` on l0/l1/r1/p0
+and `@no64` on all eight, as on `0x24568`. The placement is `0x24568`'s (0x5000): `g0`'s x0
+`0xFFFFB000` fails the left test (`0xFFFF6000 < -0x7C00`) and the right arm succeeds at `0x0`. The
+base row's call list for `l0` is `1A570(0x0) 33C78(0x0,0xFFFFD000,...) 2BC30(0x10A800,0xE1174,...)
 39A10(0x10A800,0x309) 1A570(0x0) 2AE14(0xA8614,0x10D4FFAF,0x30,0x1A00,0x0) 2C3FC(0xA8)` (19 bytes
 changed).
 
@@ -2032,17 +2043,18 @@ game_mode_0d_step_rr    before: 24568/24804/40CB0 stub unverified   after: all t
 
 No other real row moved: comparing the baseline and final tables row by row, 15993 -> 16005 entries
 (the 12 new ones: 3 real + 9 mutants) and **none** of the 1024 shared real rows changed entry, case
-count, blocks or verdict. The callee column flips `24568 stub` x372, `24804 stub` x333 and `40CB0
-stub` x425 lines (mutants included; the mode stays `stub`).
+count, blocks or verdict. The callee column flips 1130 callee-status entries over 425 unique rows
+(`24568 stub` x372, `24804 stub` x333, `40CB0 stub` x425; mutants included, the mode stays `stub`).
 
-**The measured closed/full figures are `804/840` and `798/840`, one higher per new row than the
-plan's `797/791`**, the same correction Task 5's §P5.4 and Task 6's §P6.5 recorded: the plan counted
-the three new rows as callee-less, but each records VERIFIED callees (`0x24568`: six stubs and the
-allow-mode `0x2372C`; `0x40CB0`: five stubs; `0x24804`: six stubs and the allow-mode `0x33950`/
-`0x24754`) and is therefore itself a closed row with callees. Hence
-`with_callees` 837 -> 840, `closed` 793 + 8 + 3 = 804, `full` 787 + 8 + 3 = 798 and
-`840 - 804 = 36 = 44 - 8` open. The `full` figure equals `closed` because none of the eleven is in
-`WEAKER`.
+**The measured closed/full figures are `804/840` and `798/840`, 7 above the plan's `797/791`**: the
+plan's baseline `789/783` is four below the measured baseline `793/787` (Task 5's and Task 6's rows
+that already closed themselves, §P5.4/§P6.5) and each of the three new rows also closes itself (+3).
+The plan counted them as callee-less, but each records VERIFIED callees (`0x24568`: six stubs and
+the allow-mode `0x2372C`; `0x40CB0`: five stubs; `0x24804`: six stubs and the allow-mode `0x33950`/
+`0x24754`). Hence `with_callees` 837 -> 840, `closed` 793 + 8 + 3 = 804, `full` 787 + 8 + 3 = 798
+and `840 - 804 = 36 = 44 - 8` open. The full *increase* equals the closed one (+11) because none of
+the eleven is in `WEAKER`; the absolute `closed - full = 6` is the same six closed `WEAKER` rows as
+on the baseline.
 
 ### §P7.6 The 36-row blocker census
 
@@ -2072,9 +2084,9 @@ are unmoved.
 
 The harness suite (`python3 -m unittest tools.tests.test_diff_verify`) is **not run here** by
 instruction (its exhaustive pins are Task 11's). Task 11 needs, for the three new specs: masks all
-`0`; `@a5`/`@no64` (and `@y`, `@place`) caught as call-argument/byte differences on all seven cases;
-`@stream` on `0x2BC30`'s EDX on all seven; `@24754` on the second `0x1A570` argument and the
-`0x2AE14` x.
+`0`; `@a5` caught on `l0`/`l1`/`r1`/`p0` only (both `0x24568` and `0x24804`; the other four cases'
+original a5 is already 0); `@no64`, `@y`, `@place`, `@stream` and `@24754` on all eight cases;
+`@stream` on `0x2BC30`'s EDX, `@24754` on the second `0x1A570` argument and the `0x2AE14` x.
 
 `PR_DIFF_FULLSCAN=1 --function <row> --self-check` is green on all three:
 `1/1 functions VERIFIED; 3/3 mutants detected` for `fighter_24568`, `fighter_40cb0` and

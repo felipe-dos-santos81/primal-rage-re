@@ -34594,10 +34594,17 @@ P7C_ENT_CASES = [
     ("l1", 1, 1, 0x1800, 0x22220000, 1, 0x40, None),
     # right arm: AL = 0 and x + the width <= bound (a5 = 0, the blink byte clear: no store)
     ("r0", 0, 0, 0x1000, 0x33330000, 0, 0x00, None),
-    # right arm fails and the loop's `jg` back-edge (0x245E3/0x40D2B/0x2487F) retests the left arm
+    # right arm fails for the 0x5000 entrances (0x8000 > 0x7C00) and the loop's `jg` back-edge
+    # (0x245E3/0x2487F) retests the left arm, which succeeds; at 0x40CB0's 0x3000 the right arm
+    # succeeds (0x6000), so that row's back-edge is p0's alone
     ("r1", 1, 1, 0x3000, 0x44440000, 0, 0x80, None),
-    # AL = 1, the left test's `jl` fails into the right arm (0x245B6/0x40CFE/0x24852), which succeeds
+    # AL = 1, x0 = 0xFFFFD000: the 0x5000 left test's `jl` fails into the right arm, which succeeds
+    # (x = 0x2000, 0x245B6/0x24852); at 0x40CB0's 0x3000 the left arm succeeds (x = 0xFFFFA000)
     ("f0", 0, 0, 0xFFFFD000, 0x55550000, 1, 0x80, None),
+    # AL = 1, x0 = 0xFFFFB000 below 0x40CB0's left floor 0xFFFFB400: its `jl` (0x40CF3) falls into
+    # the right arm, which succeeds (x = 0xFFFFE000); at 0x5000 the left arm also fails
+    # (x = 0xFFFF6000) and the right succeeds (x = 0x0)
+    ("g0", 0, 0, 0xFFFFB000, 0x88880000, 1, 0x00, None),
     # sel 1 != side 0: the mask comes from 0x10810D, not the side (0x40 & 0x40 stores)
     ("m0", 0, 1, 0x1000, 0x66660000, 0, 0x40, None),
     # a poked bound (0x4000): the right arm fails and the back-edge's left arm succeeds

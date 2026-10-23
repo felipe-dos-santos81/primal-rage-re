@@ -43371,13 +43371,14 @@ static void m_p6_3e4c4_arg(const u32 *r, u32 *eax)
  * entries 0, 1 and 6 of the per-character table 0xA8628 ---- */
 /* Record §P7: the three are the stubs that keep the eight game_mode_05/0d/32 rows open. Each is a
  * `void (*)(u32)` the dispatcher calls with EAX = the entering side; the 0xA8628 callers read none of
- * EAX (0x25F27 -> 0x25F2E reloads the side from 0x104B12, 0x27732 -> 0x27739 the same, 0x2989C ->
- * 0x298A3 from 0x104B09), so every binding's mask is 0. The three bodies are the same shape:
- * 0x1A570(0x10810D) picks the placement's first arm, the loop places x 0x5000 (0x24568, 0x24804) or
- * 0x3000 (0x40CB0) from the record the byte 0x10810D names, 0x33C78 is the spawn (0x40CB0's y =
- * 0x4C00, the others' 0), 0x2BC30 starts the entrance stream (0xE453A / 0xE790A / 0xE1174, the
- * streams whose 0xD500 targets are 0x246D4 / 0x40C34 / 0x24964), 0x39A10 runs its 0x309, and the
- * blink byte 0x104B03/02/08 sets the slot's +0x41 bit with the 0x40/0x80 mask 0x10810D chooses. */
+ * EAX (0x25F27 -> 0x25F2E reloads the side from 0x104B12, 0x27732 -> 0x27739 reads 0x10810D, 0x2989C
+ * -> 0x298A3 loads BL from 0x104B09), so every binding's mask is 0. The three bodies are the same
+ * shape: 0x1A570(0x10810D) picks the placement's first arm, the loop places x 0x5000 (0x24568,
+ * 0x24804) or 0x3000 (0x40CB0) from the record the byte 0x10810D names, 0x33C78 is the spawn
+ * (0x40CB0's y = 0x4C00, the others' 0), 0x2BC30 starts the entrance stream (0xE453A / 0xE790A /
+ * 0xE1174, the streams whose 0xD500 targets are 0x246D4 / 0x40C34 / 0x24964), 0x39A10 runs its
+ * 0x309, and the blink byte 0x104B03/02/08 sets the slot's +0x41 bit with the 0x40/0x80 mask
+ * 0x10810D chooses. */
 static void b_p7c_24568(const u32 *r, u32 *eax)          { fighter_24568(r[R_EAX]); *eax = 0u; }
 static void b_p7c_40cb0(const u32 *r, u32 *eax)          { fighter_40cb0(r[R_EAX]); *eax = 0u; }
 static void b_p7c_24804(const u32 *r, u32 *eax)          { fighter_24804(r[R_EAX]); *eax = 0u; }
