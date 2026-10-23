@@ -629,3 +629,207 @@ Makefile changed.
    (112802−112474). The neighbour rows 4246/4250 are now printed by the script
    (it checks `j−2 .. j+2`), and the splice/transition counts are computed by
    it. The dump contents list includes `gp.log`.
+
+## §P2 4248: class C (a measured three-segment scan-out)
+
+### §P2.1 The decision
+
+**C — a capture/comparison-model artefact, not a port divergence.** Capture
+4248 (raw 7887) is byte-equal, row for row, to three *consecutive port
+presents*: rows 0..45 to port 3549, rows 46..96 to port 3550 and rows 97..199
+to port 3551. No pixel of the capture frame is unaccounted for by the port's
+own output, and the oldest screen is at the top. That is the two-frame splice
+class (the repo's model of a 70.09 Hz capture against the 60.05 Hz game) one
+present wider: the capture scan raced three presents at the ending's
+mode-`0x0D` → `0x0C` transition.
+
+The measured tests, re-run against the kept 4940-frame dump
+(`GP_WIN_KEEP=1 make gp-u13-oracle`; the `§P1.8` loaders):
+
+| test | result |
+|---|---|
+| every row byte-equal to its segment frame | **yes** — 0 rows differ from {3549 for 0..45, 3550 for 46..96, 3551 for 97..199} |
+| differing bytes held by no port frame | **none** |
+| clean (whole frame) | no |
+| best adjacent-pair splice | no — 24005 differing bytes at N=3550 (pair 3550/3551); best prefix+suffix 103 of 199 rows at N=3550 |
+| transition (prefix + one row + suffix) | no |
+| DAC-index constant offset | no — `∩K` EMPTY over all 22923 differing px; 2810 px have no offset in ±64; best single `k` is +1 at 1393/22923 (6.1 %) |
+| a poke replacement (class B) | no — the nearest `W` is `W ms=112474 f=152A step=14 addr=00104B0C len=1 was=00 now=01`, the scenario's one-byte step write (the same address at f=1502, 1516, 152A, 153E, …), replayed by the port at `W.f+1`; the three screens are the port's own |
+| port state at the frame | trace 0 differing through 10013; win 0 differing; path 30/30 (the `f=152B` milestone is "final opponent 3 replaced (0x274FC, count 3)") |
+
+The DAC test is §P1.4's measure re-run to the stated values (intersection
+empty, 2810/22923 pixels with no offset, +1 at 1393/22923); it rules out the
+§W1 palette-bank dword-carry signature, whose fingerprint is one constant
+offset covering every differing pixel. The byte-ownership row is the decisive
+one: a real divergence (class A) would put bytes on the capture's screen that
+none of the port's own frames holds; 4248 holds none. Class B is out because
+the frame's bytes are the port's own presents and the only nearby `W` is
+replayed on both sides.
+
+The neighbours make the shape visible:
+
+| capture | raw | class | nearest port (`frames.txt`) |
+|---|---:|---|---|
+| 4246 | 7865 | clean | 3548 (`f=152B tick=000015B4 mode=000D`) |
+| 4247 | 7886 | clean | 3549 (`f=152B tick=000015C7 mode=000D`) |
+| **4248** | **7887** | **unexplained → the recipe** | 3551 (`f=152C tick=000015CB mode=000C`) |
+| 4249 | 7888 | splice of (3551, 3552) at byte 179520 (row 187) | 3551 |
+| 4250 | 7889 | clean | 3552 (`f=152D tick=000015CC mode=000C`) |
+| 4251 | 7890 | clean | 3553 (`f=152E tick=000015CD mode=000C`) |
+| 4252 | 7891 | splice of (3553, 3554) at bytes 15243..16182 | 3554 (`f=152F tick=000015CE mode=000C`) |
+
+So the capture's raws 7865..7891 walk the port's presents in order — 4246
+clean at 3548, 4247 clean at 3549, 4248 = 3549/3550/3551, 4249 =
+3551/3552, 4250 clean at 3552, 4251 clean at 3553, 4252 = 3553/3554 — so
+each AVI frame is a scan over the presents that landed during it, and 4248 is
+the one that spans two changes. The port logs 3549 and 3550 under the same game
+frame `f=152B` (and 3548 before them, also `f=152B`, tick `000015B4`); the
+poll's records bracket them at `S ms=112474 f=152A mode=000D`,
+`P ms=112802 f=152B`, `S ms=112803 f=152B mode=000C`,
+`S ms=112806 f=152C mode=000C`. The capture's top-to-bottom order matches the
+port's presentation order. The recipe binds only that order and the three
+screens' bytes; it does not claim the presents' timing or the AVI frame's scan
+rate (§P2.3).
+
+### §P2.2 The recipe (exact)
+
+`tools/gp_compare.py`'s `SCAN3_ALLOWED['gp-u13-ending2']` is
+
+```python
+((4248, 46, 97,
+  'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),)
+```
+
+and `scan3_explain(capture 4248, dump, entry)` returns `([3549, 3550, 3551],
+None)`.
+
+| segment | rows | bytes | bound by | port holders |
+|---|---:|---:|---|---|
+| top | 0..45 | 44160 | sha256 `fc1044a6…` and `scan3_top`: at least one port frame `A < B` holds it | 3549 only (measured) |
+| middle | 46..96 | 48960 | the unique adjacent pair `(B, B+1) = (3550, 3551)`: rows 46..96 = port 3550's | 3550 only |
+| bottom | 97..199 | 98880 | the same pair: rows 97..199 = port 3551's | 3551 only |
+
+Measured details:
+
+- the maximal runs of identical holder sets are exactly the three segments
+  (rows 0..45 `[3549]`, 46..96 `[3550]`, 97..199 `[3551]`); the split is
+  derived from the runs, not chosen;
+- `scan3_bind(c, dump, 46, 97)` is `3550` — one hit over the 4940-frame dump,
+  so the pair is unique;
+- `scan3_top(c, dump, 3550, 46)` is `[3549]` — one earlier holder. Port 3548
+  (also `f=152B`, tick `000015B4`, mode `000D`, the clean match of capture
+  4246) differs from 3549 in 152 rows (13335 px), so the top segment is not a
+  repeat of 3548;
+- `band_pair(c, dump, 46, 97)` is `None` (the BANDS shape does not apply: no
+  single adjacent pair holds rows 0..45 and 97..199);
+- `frames.txt` for the three bound frames: `03549 f=152B tick=000015C7
+  mode=000D`, `03550 f=152B tick=000015CA mode=000C`, `03551 f=152C
+  tick=000015CB mode=000C`; the capture frame's nearest port by row hash is
+  3551 with diff rows 0..96, x 0..319 (22923 px).
+
+### §P2.3 The named limits
+
+Stated exactly as the existing SCAN3 entries' and §G6's limit:
+
+- **The top is not uniquely bound.** The recipe binds rows 0..45 by their
+  sha256 *and* by the existence of one earlier holder `A < B`
+  (`scan3_top`), not by its identity. Measured here, 3549 is the only holder,
+  but the recipe would also accept a port that renders those 44160 bytes in
+  another earlier frame; the top's 46 rows are capture-pinned bytes with no
+  port-side uniqueness claim. (The whole screen the top belongs to is claimed
+  by capture 4247, clean at 3549, as the other entries' old screens are claimed
+  by their own captures.)
+- **The row splits 46/97 are capture-pinned.** The recipe binds them as the
+  boundaries where the capture's bytes change holder; it says nothing about
+  the presents' timing, the scan-out's row rate, or why three presents landed
+  inside one capture frame. A port that presents the same three screens in the
+  same order at a different cadence passes the recipe (the same limit §G6
+  records).
+- **The middle and bottom are bound byte-for-byte to the current dump**:
+  mutating port 3550's rows 46..96 or port 3551's rows 97..199 (or adding a
+  second pair that binds them) un-explains the frame. The middle range is not
+  vacuous (`r1 < r2`), so both `B` and `B+1` are exhibited.
+- **The recipe is for capture 4248 only** and claims nothing about 4320, 5120
+  or the post-script tail — they are Task 3's and §P1.6's.
+
+### §P2.4 The test
+
+`tools/tests/test_gp_compare.py`'s
+`Scan3Allowance.test_u13_scan3_recipe_is_pinned_and_mutations_fail`:
+
+1. pins the table tuple exactly (capture 4248, r1 46, r2 97, top sha
+   `fc1044a6…`), so a silent re-measurement of the claim fails the test;
+2. runs the fixture with the class's own entry `(1, 2, 4, sha(rgb(1)[:2 rows]))`
+   and asserts it is explained (the table tuple above stays pinned separately);
+3. re-runs it with `(1, 2, 4, '0'*64)` — a different top — and asserts the
+   recipe refuses with `its top rows 0..1 are …` and the frame is unexplained
+   (rc 1, first 1);
+4. re-runs it with `(1, 2, 3, self.sha)` — a split the unique pair does not
+   bind (`r2` moved) — and asserts `no unique adjacent port pair …` and the
+   same un-explanation.
+
+The fixture's own three-segment mutation (`test_a_mutated_bound_pair_frame_
+unexplains_it_again`, port 1's bytes changed) and the top-holder mutation
+(`test_a_mutated_top_holder_is_named`) already prove the port-side and top-side
+sensitivity of the same code path; they run with the fixture entry, so this
+test adds the pinned U13 tuple and the tuple mutations without duplicating
+them.
+
+### §P2.5 Commands, output, and no pin moved
+
+```bash
+GP_WIN_KEEP=1 make gp-u13-oracle
+python3 tools/gp_compare.py --report --scenario gp-u13-ending2 \
+  --capture data/k11-captures/gp-u13-ending2 \
+  --port /tmp/pr_gp_dump/gp-u13-ending2 --max-unexplained 0
+python3 -m unittest tools.tests.test_gp_compare
+```
+
+`make gp-u13-oracle` exited 0 (PASS) at the unchanged pins; the new allowance
+line and the verdicts:
+
+```text
+gp_compare: gp-u13-ending2: frames: captured frame 4248 (raw 7887) allowed by name as a three-frame scan-out: top rows 0..45 held by port 3549, port 3550 rows 46..96, port 3551 rows 97..199 the named bytes
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 4211 classified: 2600 clean, 1605 splice, 3 transition, 0 band-allowed, 1 scan3-allowed, 1 overlay-allowed, 1 unexplained, 14 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 4320 (raw 8019): nearest port 3615, rows 4..107, x 42..280 (273 px)
+gp_compare: gp-u13-ending2: frames: first unexplained 4320, ratchet N 4248 ok (improved: raise N)
+gp_compare: gp-u13-ending2: frames: window reach port 3613 > pinned reach 3549 (improved: raise the pin)
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013; ratchet N 10014 ok
+gp_compare: gp-u13-ending2: path: 0 not reproduced through 29; ratchet N 30 ok
+gp_compare: gp-u13-ending2: win: 0 differing through 10013; ratchet N 10014 ok
+gp_win: gp-u13-ending2: evidence: 30/30 milestones ok
+```
+
+The uncapped report exited 0 with 4248 explained and 4320 as the first
+unexplained; 5120 is still listed (Task 3):
+
+```text
+gp_compare: gp-u13-ending2: frames: captured frame 4248 (raw 7887) allowed by name as a three-frame scan-out: ...
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5786 classified: 3492 clean, 2270 splice, 7 transition, 0 band-allowed, 1 scan3-allowed, 1 overlay-allowed, 15 unexplained, 22 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 4320 (raw 8019): nearest port 3615, rows 4..107, x 42..280 (273 px)
+gp_compare: gp-u13-ending2: frames: UNEXPLAINED capture 5120 (raw 8839): nearest port 4317, rows 1..4, x 21..298 (13 px)
+gp_compare: gp-u13-ending2: frames: UNEXPLAINED capture 5891 (raw 14361): nearest port 0, rows 0..199, x 0..319 (55510 px)
+... 5892..5903 ...
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013
+gp_compare: gp-u13-ending2: moves: 0 differing through 10013
+```
+
+(Before this task the same command printed 16 unexplained with `FIRST
+UNEXPLAINED capture 4248 … 22923 px` and `0 scan3-allowed`; now 15, first 4320,
+`1 scan3-allowed`.)
+
+`python3 -m unittest tools.tests.test_gp_compare` ran 64 tests: `OK`.
+
+**No pin moved.** `GP_U13_MIN_FIRST` stays 4248 (the oracle now says
+"improved: raise N"; Task 4 re-pins after 4320/5120), `GP_U13_MAX_START` stays
+96, `GP_U13_TRACE_MIN_FIRST`/`GP_U13_WIN_MIN_FIRST` stay 10014,
+`GP_U13_MIN_REACH` stays 3549 (reported 3613; Task 4 re-pins), and the capture
+identity pins (`e581916f…2b69c6`, 5904 frames) are unchanged. The Makefile is
+not touched.
+
+### §P2.6 Files and commit
+
+`tools/gp_compare.py` (the new `SCAN3_ALLOWED` entry and its comment),
+`tools/tests/test_gp_compare.py` (the new test), this record. No `port/` code,
+no `data/`, no Makefile, no `docs/PROGRESS.md` (Task 4 owns the U13 line). The
+task report is the git-ignored ledger.

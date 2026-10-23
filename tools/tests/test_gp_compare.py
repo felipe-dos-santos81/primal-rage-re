@@ -655,7 +655,7 @@ class Scan3Allowance(Dirs):
         out = []
         rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n,
                                       kw.get('report', False), out.append,
-                                      kw.get('max_start', 0), None, self.s3)
+                                      kw.get('max_start', 0), None, kw.get('s3', self.s3))
         return rc, first, out
 
     def test_the_named_scan_out_is_explained(self):
@@ -738,6 +738,26 @@ class Scan3Allowance(Dirs):
         rc, first, out = self.run_scan3()
         self.assertEqual((rc, first), (0, None), out)
         self.assertTrue(any('retire the name' in l for l in out), out)
+
+    def test_u13_scan3_recipe_is_pinned_and_mutations_fail(self):
+        # Task 2 (record §P2): U13's capture 4248 is its own three-segment
+        # recipe — rows 0..45 to port 3549, 46..96 to 3550, 97..199 to 3551,
+        # the pair (3550, 3551) unique in the 4940-frame dump — not another
+        # scenario's frame or pair.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u13-ending2'],
+                         ((4248, 46, 97,
+                           'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),))
+
+        # The fixture's named frame is bound by its top hash and by the unique
+        # adjacent pair; changing either un-explains it (and names which bind).
+        self.write_fixture()
+        self.assertEqual(self.run_scan3()[0], 0)
+        for changed, why in (((1, 2, 4, '0' * 64), 'its top rows 0..1 are'),
+                             ((1, 2, 3, self.sha), 'no unique adjacent port pair')):
+            with self.subTest(changed=changed):
+                rc, first, out = self.run_scan3(s3=(changed,))
+                self.assertEqual((rc, first), (1, 1), out)
+                self.assertTrue(any('FAIL: allowed capture 1' in l and why in l for l in out), out)
 
     def test_the_table_names_the_measured_scanouts(self):
         # the pinned recipes of record §G6: gp-idle-loss 2064 (ports 1666/1669/

@@ -141,6 +141,24 @@ SCAN3_ALLOWED = {
         # was never blitted.
         (331, 2, 64, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
     ),
+    'gp-u13-ending2': (
+        # Capture 4248 (raw 7887) at the ending's mode-0x0D -> 0x0C transition
+        # (record §P2; the poll's S records f=152A mode=000D at ms=112474,
+        # f=152B mode=000C at ms=112803 and f=152C at ms=112806). Rows 0..45
+        # are port 3549's (f=152B tick=000015C7 mode=000D, the still-scanned old
+        # screen), rows 46..96 are port 3550's (f=152B tick=000015CA
+        # mode=000C) and rows 97..199 are port 3551's (f=152C tick=000015CB
+        # mode=000C); the pair (3550, 3551) is the 4940-frame dump's unique
+        # match for the two lower ranges, and port 3549 is the only frame
+        # before it holding rows 0..45. The capture's neighbours show the same
+        # scan: 4247 is clean at 3549 and 4249 is a two-frame splice of
+        # (3551, 3552) at row 187 — the capture scan raced three presents.
+        # Named limit (as the other entries and §G6): the top rows are bound by
+        # hash and by the EXISTENCE of an earlier holder, not by its uniqueness
+        # (measured: 3549 alone), and the row splits 46/97 are capture-pinned
+        # bytes — the recipe claims nothing about the presents' timing.
+        (4248, 46, 97, 'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),
+    ),
     'gp-u16-twop2': (
         # Capture 4089 (raw 6792): row 0 is byte-pinned by the hash and is held
         # by 314 earlier port frames; rows 1..65 are port 3424's, and rows
