@@ -2689,3 +2689,155 @@ seam is inert outside `build/diffrun`.
 requires), this record. No new `port/src` header or `fn_register`, no `data/`, no Makefile, no
 `tools/tests/` change. Commit `fix: correct the 0x3D0BC spec to the real 0x3A6D4 hook`. The task
 report is the git-ignored ledger.
+
+## §P10 The unrowed figure measures the frontier
+
+### §P10.1 What the literal could not say
+
+The counter's clause read `8 ported functions with no row`, and the 8 was the literal set
+`UNROWED` (track J j1, record §J1:26). A literal cannot move when a new `FN_` function is ported
+without a row: `diffrun` would keep printing 8 while the frontier grew. This task computes the
+frontier from the repo's own tables and prints both figures. The closure rule is untouched.
+
+### §P10.2 The computation
+
+`tools/diff_verify.py` gains two functions next to `non_portable()`:
+
+- `fn_addresses()` reads `port/src/symbols.h` for `^#define FN_([0-9A-F]{8}) `, the parse
+  `tools/port_progress.py` uses. The file has 1206 `#define FN_` lines; 1203 name a function by
+  its 8-hex-digit address (`FN_0001B120`). The other three are switch-case label rows in the
+  decomp index — `caseD_0`/`caseD_40`/`caseD_3` at 0x6FE85/0x7068E/0x70D1B — which the generator
+  emits as `FN_CASED_0`/`FN_CASED_40`/`FN_CASED_3`; they are not function entries, and a loose
+  `FN_` prefix would count them. 1203 is also `port_progress.py`'s denominator and AGENTS.md's
+  real-function count.
+- `ported_unrowed()` intersects `fn_addresses()` with `NonPortable.ported` (the strict
+  `fn_register`/column-0 `/* 0xADDR` scan the closure rule already uses), subtracts every `SPECS`
+  entry, and splits at `RUNTIME_BASE` (0x5D000). `specs` and `outside` are parameters so the
+  guard test can vary the tables; the counter passes neither.
+
+Measured on this tree (d642ba86, 1031 rows over 905 distinct entries): `FN_` 1203, `ported` 1262
+addresses (all classes), `FN_ ∩ ported` 784, of which 42 have no row — 5 portable + 37 runtime.
+
+### §P10.3 The two declared sets, and the three header-shape exceptions
+
+`UNROWED` stays the 8 (no row changed in this task). The computation explains its shape:
+
+| address | in the registry scan? | where port/src names it |
+|---|---|---|
+| 0x1B3AC | yes | `port/src/platform/res.c:57` (`/* 0x1B3AC's presentation head`) |
+| 0x1BEC4 | yes | `port/src/game/flow.h:19` (`/* 0x1BEC4's init chain ...`) |
+| 0x1C930 | yes | `port/src/game/flow.c:6170` |
+| 0x1CF40 | yes | `port/src/game/flow.c:6051` |
+| 0x47370 | yes | `port/src/game/flow.c:295` |
+| 0x1B120 | **no** | `port/src/platform/res.c:180`, `res.h:1` (mid-comment) |
+| 0x20C10 | **no** | `port/src/game/flow.c:6835` (`game_init`; mid-comment at 2, 121, 6896) |
+| 0x4FBA2 | **no** | `port/src/game/flow.c:110` (`int10h_query`; `/* PORT: 0x4FBA2 ...`) |
+
+The three are `UNROWED_HEADER_SHAPE`. Their implementations are real — `0x1B120` is the INDEX
+walk in `res_load_index`, `0x20C10` is `game_init`, `0x4FBA2` is `int10h_query` — but each
+mention is inside a comment that does not start with `/* 0xADDR`, so the strict scan misses it.
+That is a named limit of the measure: it reports the registry (`fn_register`/column-0 header),
+not a semantic "implements" relation, and a port added in that shape is invisible to it. The
+exceptions are declared so the difference between the scan's 5 and the 8 is arithmetic, not
+silence. (`0x1B3AC`, the fifth, is matched through the possessive `0x1B3AC's` at `res.c:57`:
+the scan's `\b` accepts the apostrophe, and the comment heads that function's presentation half.)
+
+The runtime set is named too, `RUNTIME_UNROWED` (37 addresses): the `FN_` functions port/src
+implements at/above 0x5D000 with no row — WATCOM libc / DOS-4GW code the port serves from the
+host libc, so a row of its own is not a porting target. It is a declaration, not a count: the
+guard test compares it as a set.
+
+### §P10.4 Plan-vs-raw: the 12 new rows do not move the frontier
+
+The plan's Step 1 says the new rows reduce the computed total by the rows that were in it, and
+the task brief names 10 of the 12 as `FN_` addresses. The raw says otherwise. Measured at the
+plan's base 2cd2ab0d (1019 rows, 893 entries) the computed set is 42 addresses (5 portable + 37
+runtime); measured at d642ba86 (1031 rows, 905 entries, after the 12 rows of Tasks 5-9) it is the
+**same 42-address set** (set equality checked: no address added or removed). None of the 12 can
+move it:
+
+- ten of the 12 — `0x28D68`, `0x3E484`, `0x29D04`, `0x3E4C4`, `0x24568`, `0x24804`, `0x40CB0`,
+  `0x2CB74`, `0x4F5C8`, `0x3A6D4` — are not `FN_` addresses at all: they are E2-class entries the
+  decomp index never lists as functions, so symbols.h has no define for them;
+- the two that are `FN_` functions, `0x5D812` and `0x61A70`, are binding-only rows
+  (`port/tests/diff_runner.c`), so they were never in `NonPortable.ported` and never in the 42;
+  their rows remove nothing either.
+
+The brief's parenthetical is inverted (the ten are the non-`FN_` entries; the two are the runtime
+bindings), and the plan's "reduces the computed total" is true in general but had no effect here.
+The frontier is 42 before and after; what the guard test now catches is the next `FN_` port
+without a row.
+
+Method: `git archive 2cd2ab0d tools port/src tools/port_classification.txt
+port/decomp/prage.functions.csv | tar -x -C "$tmp"`, load that tree's `tools/diff_verify.py`
+with its `ROOT` on the extracted tree, and compute
+`(V.fn_addresses() & V.non_portable().ported) - {s.entry for s in V.SPECS}`; the same expression
+on this tree gives a frozenset equal to it (`==`).
+
+### §P10.5 The counter line
+
+Before (d642ba86), from §P9.5:
+
+```text
+...; 8 ported functions with no row. The closure rule (record J §J1): ...
+```
+
+After (`python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE
+--image /tmp/opencode/p10image.bin --self-check`, exit 0):
+
+```text
+diff-verify: 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps; 813/844 rows with callees closed (187 have none); 806/844 closed on full rows; 8 ported functions with no row (42 computed FN_ ported-unrowed: 5 portable + 37 runtime; the 8 = 5 from the registry scan + 3 header-shape exceptions). The closure rule (record J §J1): an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an address the decomp index never lists as a function - does not keep a row open, provided the port tree does not implement the address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a recorded stub or real callee and a ported function without a row do. Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+```
+
+The old 8 is still the first figure and the closure rule's wording is unchanged. The new clause
+is the only counter change; the four other pinned harness values are Task 11's.
+
+### §P10.6 The guard test and its mutation proof
+
+`tools/tests/test_diff_verify.py` (`CallParseTests.test_the_unrowed_figure_measures_the_frontier`)
+asserts:
+
+1. `UNROWED_HEADER_SHAPE` is a subset of the `FN_` addresses and of `UNROWED`, and none of the
+   three has a row;
+2. the computed portable set plus the three exceptions equals `UNROWED`, and the computed
+   runtime set equals `RUNTIME_UNROWED` — set equality in both cases, so a new port (added) and a
+   stale declaration (removed) both fail;
+3. `ported_unrowed()` returns exactly the independently computed below/above sets, so a wrong
+   split boundary or rowed set inside the function cannot pass.
+
+Mutation proofs, each run alone and reverted:
+
+- a fake column-0 header `/* 0x10024 ... */` in `port/src/mem.c` (an `FN_` function with no row)
+  failed with `FN_ ported-unrowed below 0x5D000 moved: new with no row: 0x10024 (port one or
+  declare it in diff_verify.UNROWED); declared but rowed or unported now: none (shrink UNROWED)`;
+- a fake header for `0x5F758` (an `FN_` runtime address with no row) failed with `FN_
+  ported-unrowed at/above 0x5D000 moved: new with no row: 0x5F758 (port one or declare it in
+  diff_verify.RUNTIME_UNROWED); declared but rowed or unported now: none (shrink the set)`;
+- an in-process spec row for `0x1B120` (a declared exception) failed with `a header-shape
+  exception gained a row (shrink UNROWED_HEADER_SHAPE and UNROWED): 0x1B120`;
+- an in-process spec row for `0x1B3AC` (a declared portable address) failed with `declared but
+  rowed or unported now: 0x1B3AC (shrink UNROWED)`.
+
+`port/src/mem.c` was byte-restored (`git status --short port/src` empty). The last two mutations
+appended a `V.Spec` to `V.SPECS` in the test process, so no file changed.
+
+### §P10.7 Verification
+
+- `python3 -m unittest tools.tests.test_diff_verify -k test_the_unrowed_figure_measures_the_frontier`
+  — 1 test, OK.
+- the 17 classes that do not run the real build (`ParseTests` ... `H2DeclaredTests`) — 95 tests,
+  OK.
+- the direct driver line above — exit 0, `1031/1031` functions and `14983/14983` mutants; the
+  closed/full counts are unmoved (`813/844`, `806/844`).
+- `python3 tools/port_progress.py` — `799 1203 66` / `759 759 100`, unmoved (no `port/src`
+  change).
+- The pinned counter unittest (`test_the_self_check_counts_functions_mutants_gaps_and_closed_rows`)
+  is expected red until Task 11 re-pins the string; it was not run to completion here (it re-runs
+  the whole driver). No other `tools.tests` case moved.
+
+### §P10.8 Files and commit
+
+`tools/diff_verify.py` (`UNROWED_HEADER_SHAPE`, `RUNTIME_UNROWED`, `fn_addresses()`,
+`ported_unrowed()`, the counter clause), `tools/tests/test_diff_verify.py` (the one guard test),
+this record. No `port/src` change, no row, no `data/`, no Makefile, no pinned harness value.
+Commit `diff: measure the ported-unrowed frontier`.

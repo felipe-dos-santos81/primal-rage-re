@@ -404,8 +404,23 @@ WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1BE30, 0x1C740,
                     0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30})
 # The 8 ported functions with no differential row at all (record §J1:26;
 # AGENTS.md:385-386): "1 named gaps" is the spec NAMED_GAP count and never named these.
+# Track P batch 10 (record §P10): 5 of the 8 are visible to `non_portable()`'s strict registry
+# scan (a `fn_register` call or a column-0 `/* 0xADDR` header); the other 3 are mentioned in
+# port/src only mid-comment (res.c, flow.c), so the scan cannot see them. They are named here so
+# the counter's 8 stays derived from a set whose shape the guard test can check.
 UNROWED = frozenset({0x1B120, 0x1B3AC, 0x1BEC4, 0x1C930, 0x1CF40, 0x20C10,
                      0x47370, 0x4FBA2})
+UNROWED_HEADER_SHAPE = frozenset({0x1B120, 0x20C10, 0x4FBA2})
+# The computed frontier's runtime half (record §P10): the symbols.h `FN_` functions port/src
+# implements (`NonPortable.ported`) that no SPECS entry rows and that lie at or above
+# RUNTIME_BASE. They are WATCOM libc / DOS-4GW code the port serves from the host libc, so a row
+# of their own is not a porting target; naming them here (instead of only counting them) is what
+# makes a new FN_ port at that level fail the guard test until it is rowed or declared.
+RUNTIME_UNROWED = frozenset({
+    0x5D808, 0x5D851, 0x5D86A, 0x5D87E, 0x5DA12, 0x5DA87, 0x5DAA6, 0x5DADC, 0x5DB7C, 0x5DB9E,
+    0x5DBCB, 0x5DBF4, 0x5DC0F, 0x5DC2A, 0x5DC4D, 0x5DC70, 0x5DC8B, 0x5DCA6, 0x5DCC5, 0x5DCE4,
+    0x5DD03, 0x5DD2C, 0x5DD5D, 0x5DD86, 0x5DDAD, 0x5DDD0, 0x5DE1F, 0x5DE48, 0x5DE79, 0x5DEAF,
+    0x5DECA, 0x5DEED, 0x5DFDC, 0x5DFEB, 0x65431, 0x69320, 0x6A8D0})
 
 
 @dataclass
@@ -35020,6 +35035,32 @@ def non_portable(root=ROOT):
     return NonPortable(classified, functions, frozenset(ported))
 
 
+def fn_addresses(root=ROOT):
+    """The symbols.h `FN_` function addresses (record §P10): the generated `#define FN_<8 hex>`
+    names, the same parse tools/port_progress.py uses. Three `#define FN_` lines name switch-case
+    labels, not functions (`FN_CASED_0`/`FN_CASED_40`/`FN_CASED_3`, the decomp index's `caseD_*`
+    rows at 0x6FE85/0x7068E/0x70D1B), so the 8-hex-digit name prefix is what selects the 1203
+    real functions, not every `#define FN_` line."""
+    with open(os.path.join(root, "port", "src", "symbols.h")) as f:
+        text = f.read()
+    return frozenset(int(m, 16) for m in re.findall(r"^#define FN_([0-9A-F]{8}) ", text, re.M))
+
+
+def ported_unrowed(root=ROOT, specs=None, outside=None):
+    """(portable, runtime): the computed ported-unrowed frontier (record §P10). The members are
+    the symbols.h `FN_` addresses the port tree implements — `NonPortable.ported`, the same strict
+    `fn_register`/column-0-header scan `non_portable()` uses — minus every SPECS entry, split at
+    RUNTIME_BASE. `portable` is the figure `UNROWED` describes (plus `UNROWED_HEADER_SHAPE`, whose
+    three functions the strict scan cannot see); `runtime` is `RUNTIME_UNROWED`. `specs` and
+    `outside` exist so the guard test can vary the tables; the counter calls it with neither."""
+    outside = non_portable(root) if outside is None else outside
+    rowed = {s.entry for s in (SPECS if specs is None else specs)}
+    implemented = fn_addresses(root) & outside.ported
+    unrowed = implemented - rowed
+    return (frozenset(a for a in unrowed if a < RUNTIME_BASE),
+            frozenset(a for a in unrowed if a >= RUNTIME_BASE))
+
+
 def closed_rows(funcs, verdicts, outside=None):
     """(closed, with_callees): the rows that have callees, and those of them that are closed. A row
     is closed when it is VERIFIED and every callee is VERIFIED by its own row or excused (one level
@@ -35107,6 +35148,7 @@ def main(argv=None):
     missed = [(r, why) for r in mutants for ok, why in [mutant_detection(r)] if not ok]
     verdicts = {r.entry: r.verdict for r in real}
     closed, with_callees = closed_rows(funcs, verdicts)
+    portable_unrowed, runtime_unrowed = ported_unrowed()
 
     rows = [TABLE_HEAD] + [table_row(r, verdicts) for r in real + mutants]
     print("\n".join(rows))
@@ -35122,7 +35164,9 @@ def main(argv=None):
             f.write("\n".join(rows) + "\n")
     full = full_rows(closed)
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
-          "none); %d/%d closed on full rows; %d ported functions with no row. The closure rule (record J §J1): "
+          "none); %d/%d closed on full rows; %d ported functions with no row (%d computed FN_ ported-unrowed: "
+          "%d portable + %d runtime; the %d = %d from the registry scan + %d header-shape exceptions). "
+          "The closure rule (record J §J1): "
           "an allow-mode callee outside the portable set - runtime "
           ">= 0x%X, host-owned/deferred in tools/port_classification.txt, or an address the decomp index "
           "never lists as a function - does not keep a row open, provided the port tree does not implement "
@@ -35132,7 +35176,9 @@ def main(argv=None):
               len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
               "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants)) if args.self_check else "",
               len(gaps), len(closed), len(with_callees), len(funcs) - len(with_callees),
-              len(full), len(with_callees), len(UNROWED), RUNTIME_BASE))
+              len(full), len(with_callees), len(UNROWED),
+              len(portable_unrowed) + len(runtime_unrowed), len(portable_unrowed), len(runtime_unrowed),
+              len(UNROWED), len(portable_unrowed), len(UNROWED_HEADER_SHAPE), RUNTIME_BASE))
     return 1 if bad or missed else 0
 
 

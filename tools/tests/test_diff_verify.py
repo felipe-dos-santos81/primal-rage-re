@@ -32513,6 +32513,46 @@ class CallParseTests(unittest.TestCase):
                                   {0x10004: "VERIFIED"}, outside)
         self.assertEqual([r.entry for r in closed], [])
 
+    def test_the_unrowed_figure_measures_the_frontier(self):
+        # record §P10: the counter's 8 (UNROWED) is the declared portable figure; the computed
+        # frontier is every symbols.h FN_ function port/src implements (outside.ported: the same
+        # strict fn_register/column-0 scan non_portable() uses) that no SPECS entry rows, split at
+        # RUNTIME_BASE. Three of the 8 are mentioned in port/src only mid-comment (0x1B120 in
+        # res.c, 0x20C10 and 0x4FBA2 in flow.c), so the strict scan cannot see them: 5 + 3 = 8.
+        def addrs(s):
+            return ", ".join("0x%05X" % a for a in sorted(s)) or "none"
+        fns = V.fn_addresses()
+        outside = V.non_portable()
+        rowed = {s.entry for s in V.SPECS}
+        implemented = fns & outside.ported
+        portable, runtime = V.ported_unrowed()
+        below = {a for a in implemented if a < V.RUNTIME_BASE} - rowed
+        above = {a for a in implemented if a >= V.RUNTIME_BASE} - rowed
+        self.assertTrue(set(V.UNROWED_HEADER_SHAPE) <= set(fns))          # named FN_ functions
+        self.assertTrue(set(V.UNROWED_HEADER_SHAPE) <= set(V.UNROWED))    # and declared there
+        self.assertEqual(set(V.UNROWED_HEADER_SHAPE) & rowed, set(),
+                         "a header-shape exception gained a row (shrink UNROWED_HEADER_SHAPE and "
+                         "UNROWED): %s" % addrs(set(V.UNROWED_HEADER_SHAPE) & rowed))
+        # every FN_ function port/src implements below 0x5D000 is rowed or declared: the computed
+        # portable set plus the header-shape exceptions is UNROWED. A new FN_ port with no row
+        # lands in `below`, so this fails and names it.
+        added, gone = set(below - V.UNROWED), set(V.UNROWED - below - V.UNROWED_HEADER_SHAPE)
+        self.assertEqual(
+            (added, gone), (set(), set()),
+            "FN_ ported-unrowed below 0x5D000 moved: new with no row: %s (port one or declare it in "
+            "diff_verify.UNROWED); declared but rowed or unported now: %s (shrink UNROWED)"
+            % (addrs(added), addrs(gone)))
+        self.assertEqual(set(portable) | set(V.UNROWED_HEADER_SHAPE), set(V.UNROWED))
+        # ... and at/above 0x5D000 every FN_ port is rowed or in the named runtime set (host libc
+        # code: a row of its own is not a porting target)
+        added, gone = set(above - V.RUNTIME_UNROWED), set(V.RUNTIME_UNROWED - above)
+        self.assertEqual(
+            (added, gone), (set(), set()),
+            "FN_ ported-unrowed at/above 0x5D000 moved: new with no row: %s (port one or declare it "
+            "in diff_verify.RUNTIME_UNROWED); declared but rowed or unported now: %s (shrink the set)"
+            % (addrs(added), addrs(gone)))
+        self.assertEqual((portable, runtime), (frozenset(below), frozenset(above)))
+
     def test_a_call_line_after_the_result_is_rejected(self):
         with self.assertRaises(ValueError):
             V.parse_port_output("case a\nret eax 0x0 mask 0x0\nc 0x10020\nend\n")
