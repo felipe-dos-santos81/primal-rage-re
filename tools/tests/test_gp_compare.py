@@ -622,6 +622,18 @@ class BandAllowance(Dirs):
                          ((835, 81, 92,
                            'd9c0ac62f7e0c0d4082fba8d195eae4f767c56a7887bdf7346450511f998cad8'),))
 
+    def test_the_table_names_the_measured_u13_frame(self):
+        # Task 3 (record §P3): U13's capture 5120 (raw 8839) at the ending's
+        # mode-0x15 fade. Rows 1..4 are the 4940-frame dump's ONLY unheld rows,
+        # row 0 is port 4316/4317/4318's (identical there) and the whole range
+        # rows 5..199 is port 4317's alone, so the pair (4316, 4317) is the
+        # unique match. The band is the unheld run's ends (1..4), 1280 bytes of
+        # which exactly 13 pixels differ from port 4317's rows; its cause is a
+        # named gap (§P3).
+        self.assertEqual(gc.BANDS_ALLOWED['gp-u13-ending2'],
+                         ((5120, 1, 5,
+                           '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),))
+
 
 class Scan3Allowance(Dirs):
     # Track G task 6 (record §G6): the named three-frame scan-out allowance, the
@@ -743,10 +755,15 @@ class Scan3Allowance(Dirs):
         # Task 2 (record §P2): U13's capture 4248 is its own three-segment
         # recipe — rows 0..45 to port 3549, 46..96 to 3550, 97..199 to 3551,
         # the pair (3550, 3551) unique in the 4940-frame dump — not another
-        # scenario's frame or pair.
+        # scenario's frame or pair. Task 3 (§P3) adds capture 4320, the same
+        # class 72 capture frames later: rows 0..17 to port 3613, 18..107 to
+        # 3614, 108..199 to 3615, the split forced by the bytes (3614 does not
+        # hold rows 14..17, 3615 does not hold 88..107) and the pair unique.
         self.assertEqual(gc.SCAN3_ALLOWED['gp-u13-ending2'],
                          ((4248, 46, 97,
-                           'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),))
+                           'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),
+                          (4320, 18, 108,
+                           'c8fa5b9305b132f09d1853594b40429750636f08da70c5e154dc5945ce4b8cb4')))
 
         # The fixture's named frame is bound by its top hash and by the unique
         # adjacent pair; changing either un-explains it (and names which bind).

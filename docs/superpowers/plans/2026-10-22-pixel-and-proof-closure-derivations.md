@@ -833,3 +833,295 @@ not touched.
 `tools/tests/test_gp_compare.py` (the new test), this record. No `port/` code,
 no `data/`, no Makefile, no `docs/PROGRESS.md` (Task 4 owns the U13 line). The
 task report is the git-ignored ledger.
+
+## §P3 4320 and 5120: 4248's class, and a four-row top band
+
+### §P3.1 The report after Task 2 (Step 1)
+
+```bash
+GP_WIN_KEEP=1 make gp-u13-oracle
+python3 tools/gp_compare.py --report --scenario gp-u13-ending2 \
+  --capture data/k11-captures/gp-u13-ending2 \
+  --port /tmp/pr_gp_dump/gp-u13-ending2 --max-unexplained 0
+```
+
+At Task 2's tree the report was 15 unexplained: `4320`, `5120` and
+`5891..5903` (the tail), with 4248 explained by name. Both frames are single
+anomalies whose neighbours are clean or splices (§P1.3's table), the trace and
+WIN fields agree through 10013 and the path is 30/30, so neither is a state
+difference. They are classified below from the bytes, not from the state.
+
+### §P3.2 4320 — class C, the same three-present scan-out as 4248, split forced
+
+Capture 4320 (raw 8019) sits at the ending's *second* mode-`0x0D` → `0x0C`
+transition: `S ms=114172 f=1566 mode=000D` (poll line 5534) →
+`S ms=114683 f=1567 mode=000C` (line 5537). The nearest port by row hash is
+3615 (`f=1568 tick=00001641 mode=000C`), 273 differing pixels in rows 4..107,
+x 42..280.
+
+The capture's rows are byte-equal to three *consecutive* port presents:
+
+| segment | rows | bytes | held by | `frames.txt` |
+|---|---|---:|---|---|
+| top | 0..17 | 17280 | port 3613 **only** before 3614 | `03613 f=1567 tick=0000163C mode=000D` |
+| middle | 18..107 | 86400 | port 3614 (the whole range is 3614's alone) | `03614 f=1567 tick=00001640 mode=000C` |
+| bottom | 108..199 | 88320 | port 3615 (the whole range is 3615's alone) | `03615 f=1568 tick=00001641 mode=000C` |
+
+Row-holder evidence (per-row holders over 3600..3700; the full dump's
+`scan3_bind`/`scan3_top` agree):
+
+```text
+rows  0.. 2  48 holders incl. 3613          (the old and new screens agree)
+rows  3, 5   22 holders incl. 3613, 3614    (both agree)
+row   4      12 holders incl. 3613, not 3614
+rows  6.. 8  {3611, 3612, 3613, 3633}       (3614 NOT a holder: old content)
+row   9      {3611, 3612, 3613}
+rows 10..11  {3606..3613} / {3613}
+rows 12..13  7 holders incl. 3613, 3614     (both agree)
+rows 14..17  {3613, 3692, 3693, 3694}       (3613 only among the three presents)
+rows 18..32  {3614, 3615, 3616, 3695..3697} (3613 NOT a holder: new content)
+rows 33..87  8..59 holders incl. 3614, 3615
+rows 88..107 {3614} only
+rows 108..189 {3615} only
+rows 190..199 {3614, 3615}
+```
+
+**The split is forced by the bytes, not chosen.** For `(B, B+1) = (3614,
+3615)`: 3614 does not hold rows 14..17, so `r1 >= 18`; 3613 does not hold row
+18, so no single frame holds rows 0..18 and `r1 <= 18` — hence `r1 = 18`.
+3615 does not hold rows 88..107, so `r2 >= 108`; 3614 does not hold rows
+108..189, so `r2 <= 108` — hence `r2 = 108`. `scan3_bind(c, 18, 108)` is 3614,
+one hit over the 4940-frame dump, and `scan3_top(c, 3614, 18)` is `[3613]`, one
+earlier holder (also unique here, unlike 4248's). `scan3_explain` returns
+`([3613, 3614, 3615], None)`.
+
+The 273 differing pixels are exactly the two bands where the three presents
+differ: rows 4..17 hold 120 of them (1, 6, 6, 9, 11, 5, 1, 9, 18, 25, 29 by
+row) and rows 88..107 hold 153 (4, 7, 4, 4, 3, 4, 8, 5, 5, 4, 2, 8, 16, 8, 6,
+11, 9, 16, 12, 17); no differing pixel lies outside those two bands, and none
+of them is unheld (§P1.5's holder buckets: 0 unheld). The DAC-index test is
+negative as §P1.4 measured (`∩K` empty; 55 of 273 pixels have no offset in
+±64), so this is content, not a palette shift.
+
+The neighbours walk the presents in order, so the capture scan raced three
+presents across this transition as it did at 4248: 4319 clean at 3613, **4320 =
+3613/3614/3615**, 4321 a splice of (3615, 3616) at bytes 129600..129711 (row
+135), 4322 clean at 3616.
+
+**Correction to §P1.5's derivation method (raw wins).** §P1.5 derived 4320's
+split as `(88, 108)` from the *maximal runs of identical holder sets* and then
+reported that the top condition fails. The runs are not the segments here: the
+background is static, so rows 18..87 recur with many different holder sets
+(6, 47, 8, 58, 59 holders, §P1.5's list) and the run that ends at 87 is not the
+present's boundary. The segment boundary is where the *present's bytes* change
+(rows 14..17 vs 18), which is what the forced-split inequalities above use.
+`(88, 108)` remains a valid *pair* binding (the middle is a sub-range of 3614's
+rows) but there is no single top holder; `(18, 108)` is the only split with one.
+
+### §P3.3 5120 — class C, a four-row band at the top of the raster
+
+Capture 5120 (raw 8839) is inside the ending's mode-`0x15` fade: `S
+ms=126110 f=1815 mode=0015` (line 6228) / `S ms=126125 f=1816` (line 6229) on
+the raw clock, and `S ms=126360 f=1824` (line 6243) / `S ms=126383 f=1825`
+(line 6244) after §P1.2's +269 ms lead — the fade's step. Its neighbours:
+5119 clean at port 4315 (`f=1824 tick=000018FD mode=0015`), 5121 a splice of
+(4317, 4318) at bytes 142614..143174, 5122 clean at 4318. The
+nearest is 4317 (`f=1826 tick=000018FF mode=0015`), 13 differing pixels in
+rows 1..4, x 21..298.
+
+Row-holder evidence over the whole 4940-frame dump:
+
+```text
+rows with NO holder (measured over all frames): 1, 2, 3, 4  (and no other row)
+row 0           held by 4316, 4317, 4318 (identical there)
+rows 5..114     held by exactly 4316, 4317, 4318
+rows 116..138   held by exactly 4316, 4317, 4318
+row 115         a blank row, 120 holders incl. 4317
+rows 139..199   every holder set contains 4317; rows 142..144, 146..152, 157,
+                159..168, 170..171, 173..193, 195..199 are 4317's alone
+```
+
+so the unique adjacent pair is **(4316, 4317)**: `band_pair(c, 1, 5)` = 4316
+(one hit over the dump, i.e. no other frame holds all 195 rows 5..199) and the
+band is the unheld run's ends, rows 1..4
+(1280 bytes, sha256 `56b900b1…`). The unheld rows are *only* 1..4, which is why
+the band is 1..4 and not wider.
+
+The 13 differing pixels, with port 4317's own index and DAC entry:
+
+| pixel | capture | port RGB | port index | DAC entry | count of that index in the frame |
+|---|---|---|---:|---|---:|
+| (1,23) (1,24) (1,295) (1,296) (2,22) (2,297) (3,21) (3,298) | `00001c` | `000000` | `0x32` | `000000` | 101 (93 black in the capture) |
+| (3,74) | `000000` | `100000` | `0x2E` | `100000` | 96 (95 match) |
+| (4,27) (4,28) (4,291) (4,292) | `000000` | `00000c` | `0x4D` | `00000c` | 54 (50 match) |
+
+**Correction to §P1.4/§P1.9's DAC reading (raw wins).** The intersection of the
+per-pixel offset sets over the *differing* pixels is `{-29, +14, +29}`, but that
+is a DAC **alias**, not a palette shift: `00001c` occurs at five entries
+(0x15, 0x40, 0x42, 0x43, 0x4F) and black at two hundred. The discriminating
+measure is frame-wide, over all 64000 pixels:
+
+| offset `k` | differing pixels of 64000 |
+|---|---:|
+| **0** | **13** |
+| +3 | 12651 |
+| +1 | 13451 |
+| −1 | 13504 |
+| +23 | 14445 |
+| −29 (covers the 13) | 19159 |
+| +14 (covers the 13) | 17685 |
+| +29 (covers the 13) | 23552 |
+
+`k = 0` wins by three orders of magnitude, so the frame is **not** a
+palette-index shift of port 4317's index buffer; the three covering offsets do
+not survive the frame. §P1.9's "positive" verdict was the alias, and the U10
+4113 signature it was read as is **not** present here (4113's offset was unique
+and frame-wide).
+
+The per-index check of the whole frame finds exactly three indices with outlier
+pixels (0x2E 1 of 96, 0x32 8 of 101, 0x4D 4 of 54); every other index of the
+frame matches its DAC entry. And the band is not a palette state either: no
+dumped frame's DAC renders index 0x32 as `00001c` (0 of 4940), 93 other pixels
+with index 0x32 are black in this very capture frame, and rotating 4317's whole
+DAC by +29 (the alias that fits the 13) breaks 156/174/170/189/192 pixels of
+rows 0..4.
+
+What the band is *not* is a content difference the port draws: the port's
+content at the 13 pixels is corroborated on both sides by the neighbours' own
+trajectories — capture 5119 (clean at 4315) shows exactly
+`DAC_4315[0x32]/[0x2E]/[0x4D] = 000000/180000/000014` at those pixels and
+capture 5122 (clean at 4318) shows `000000/100000/00000c`, while 5120's band
+shows `00001c`/black/black. So rows 1..4 were captured in a state no present
+holds, sitting between two presents the capture matches exactly.
+
+**The named gap.** The *cause* of the four-row state is not isolated by the
+available artifacts: it is either a sub-raster transient of the original's top
+four rows (the palette entries 0x2E/0x32/0x4D are the three the band's pixels
+use; the fade steps between 4315 and 4316) or a present state the replay never
+dumped (§K.10 item 2's class). No dumped DAC, no dumped present and no
+whole-frame offset reproduces it, so the record names the gap instead of
+choosing a mechanism. The allowance below therefore binds the band's bytes,
+not a cause.
+
+### §P3.4 The recipes (exact)
+
+`tools/gp_compare.py`:
+
+```python
+BANDS_ALLOWED['gp-u13-ending2'] = (
+    (5120, 1, 5,
+     '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),)
+SCAN3_ALLOWED['gp-u13-ending2'] = (
+    (4248, 46, 97,
+     'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),
+    (4320, 18, 108,
+     'c8fa5b9305b132f09d1853594b40429750636f08da70c5e154dc5945ce4b8cb4'))
+```
+
+| capture | class | top bound by | pair | bottom |
+|---|---|---|---|---|
+| 4320 | three-frame scan-out | rows 0..17 sha `c8fa5b93…` **and** the unique earlier holder 3613 (`scan3_top`) | (3614, 3615), `scan3_bind` one hit | rows 108..199 = 3615, byte-verified |
+| 5120 | band splice | rows 0..0 = port 4316, byte-verified | (4316, 4317), `band_pair` one hit | rows 5..199 = port 4317, byte-verified |
+
+No class is extended and no byte is fitted: 4320 uses the existing
+`SCAN3_ALLOWED` shape (a pinned top hash plus a unique adjacent pair, with the
+earlier-holder condition), 5120 uses the existing `BANDS_ALLOWED` shape (a
+pinned band hash plus a unique adjacent pair). Both entries are per-frame and
+per-bytes.
+
+### §P3.5 The tests and the mutation proofs
+
+`tools/tests/test_gp_compare.py`:
+
+- `Scan3Allowance.test_u13_scan3_recipe_is_pinned_and_mutations_fail` now pins
+  **both** U13 tuples (4248 and 4320), with the split-forcing argument in its
+  comment; the fixture sub-tests already prove the mechanism (a changed top
+  hash, a changed split and a mutated bound frame each un-explain the fixture).
+- `BandAllowance.test_the_table_names_the_measured_u13_frame` is new: it pins
+  the 5120 tuple exactly (frame 5120, top_row 1, band_hi 5, band sha
+  `56b900b1…`), so a silent re-measurement fails. The class's existing
+  fixture sub-tests prove the mechanism (a mutated band byte, a mutated bound
+  frame and an ambiguous pair each un-explain the fixture).
+
+`python3 -m unittest tools.tests.test_gp_compare` ran 65 tests (Task 2's tree:
+64): `OK`.
+
+Mutation proof on the real dump (in memory, no file writes; the same calls the
+claim makes):
+
+```text
+4320 unmutated: ([3613, 3614, 3615], None)
+4320 with port 3614 row 50 mutated:   no unique adjacent port pair binds its rows [18,108) and [108,200)
+4320 with port 3615 row 150 mutated:  no unique adjacent port pair binds its rows [18,108) and [108,200)
+4320 with port 3613 row 6 mutated:    no port frame before 3614 holds its named top rows
+4320 with the capture top rows mutated: its top rows 0..17 are ed49ff290d46.., not the named c8fa5b9305b1..
+5120 unmutated: (4316, None)
+5120 with port 4317 row 50 mutated:   no unique adjacent port pair binds its rows [0,1)/[5,200)
+5120 with port 4316 row 0 mutated:    no unique adjacent port pair binds its rows [0,1)/[5,200)
+5120 with a capture band byte mutated: its band rows 1..4 are 9bf67ed38238.., not the named 56b900b1562b..
+```
+
+### §P3.6 Commands, output, and no pin moved
+
+```bash
+GP_WIN_KEEP=1 make gp-u13-oracle            # rc 0
+python3 -m unittest tools.tests.test_gp_compare
+python3 tools/gp_compare.py --report --scenario gp-u13-ending2 \
+  --capture data/k11-captures/gp-u13-ending2 \
+  --port /tmp/pr_gp_dump/gp-u13-ending2 --max-unexplained 0
+```
+
+The oracle's frame lines (the enforced run, `rc=0`):
+
+```text
+gp_compare: gp-u13-ending2: frames: captured frame 4248 (raw 7887) allowed by name as a three-frame scan-out: top rows 0..45 held by port 3549, port 3550 rows 46..96, port 3551 rows 97..199 the named bytes
+gp_compare: gp-u13-ending2: frames: captured frame 4320 (raw 8019) allowed by name as a three-frame scan-out: top rows 0..17 held by port 3613, port 3614 rows 18..107, port 3615 rows 108..199 the named bytes
+gp_compare: gp-u13-ending2: frames: captured frame 5120 (raw 8839) allowed by name as a band splice: port 4316/4317 rows 0..0/5..199, band rows 1..4 the named bytes
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5774 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 1 unexplained, 22 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 5891 (raw 14361): nearest port 0, rows 0..199, x 0..319 (55510 px)
+gp_compare: gp-u13-ending2: frames: first unexplained 5891, ratchet N 4248 ok (improved: raise N)
+gp_compare: gp-u13-ending2: frames: window reach port 4939 > pinned reach 3549 (improved: raise the pin)
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013; ratchet N 10014 ok
+gp_compare: gp-u13-ending2: win: 0 differing through 10013; ratchet N 10014 ok
+gp_win: gp-u13-ending2: evidence: 30/30 milestones ok
+```
+
+The uncapped report (`--max-unexplained 0`, exit 0) now lists **13**
+unexplained — `5891..5903` only, the post-script tail §P1.6 records — and
+first-unexplained 5891:
+
+```text
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5786 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 13 unexplained, 22 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 5891 (raw 14361): nearest port 0, rows 0..199, x 0..319 (55510 px)
+...
+gp_compare: gp-u13-ending2: frames: UNEXPLAINED capture 5903 (raw 14417): nearest port 0, rows 0..199, x 0..319 (32421 px)
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013
+gp_compare: gp-u13-ending2: moves: 0 differing through 10013
+```
+
+(Before this task the same command printed 15 unexplained with `FIRST
+UNEXPLAINED capture 4320 … 273 px` and `UNEXPLAINED capture 5120 … 13 px`; now
+13, first 5891, `1 band-allowed`, `2 scan3-allowed`.) 5891..5903 are not
+claimed: they start after the replay's end (§P1.6).
+
+**No pin moved.** The Makefile's U13 values are untouched and the enforced run
+passes at them:
+
+```text
+GP_U13_MIN_FIRST = 4248          (reported 5891; "improved: raise N" — Task 4 re-pins)
+GP_U13_TRACE_MIN_FIRST = 10014   (0 differing through 10013)
+GP_U13_MAX_START = 96            (window starts at capture 96 exactly)
+GP_U13_MIN_REACH = 3549          (reported 4939; "improved: raise the pin")
+GP_U13_CAPTURE_SHA256 = e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6
+GP_U13_CAPTURE_FRAMES = 5904
+GP_U13_MILESTONES = 30           (30/30)
+GP_U13_WIN_MIN_FIRST = 10014     (0 differing through 10013)
+```
+
+### §P3.7 Files and commit
+
+`tools/gp_compare.py` (the `BANDS_ALLOWED['gp-u13-ending2']` entry and the
+second `SCAN3_ALLOWED['gp-u13-ending2']` tuple, each with its comment),
+`tools/tests/test_gp_compare.py` (the extended pin and the new band test), this
+record. No `port/` code, no `data/`, no Makefile. The task report is the
+git-ignored ledger.

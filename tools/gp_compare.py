@@ -85,6 +85,34 @@ BANDS_ALLOWED = {
         # frames).
         (835, 81, 92, 'd9c0ac62f7e0c0d4082fba8d195eae4f767c56a7887bdf7346450511f998cad8'),
     ),
+    'gp-u13-ending2': (
+        # Capture 5120 (raw 8839) at the ending's mode-0x15 fade (record §P3).
+        # Its neighbour 5119 is clean at port 4315 (f=1824) and 5121 is a
+        # (4317, 4318) splice, so the frame sits at the f=1825/f=1826 fade step.
+        # Rows 1..4 are the dump's ONLY unheld rows (measured over all 4940
+        # frames: no other row of 0..199 has zero holders); row 0 is port
+        # 4316/4317/4318's (identical there) and the whole range rows 5..199 is
+        # port 4317's alone (no other frame holds all 195 rows), so the pair
+        # (4316, 4317) is the dump's unique match. The band is 4 rows x 320 =
+        # 1280 bytes, of which exactly 13 pixels differ from port 4317's rows: 8
+        # are 00001c where 4317's index is 0x32 (black in the frame's DAC), 1 is
+        # black where it is 0x2E (100000) and 4 are black where it is 0x4D
+        # (00000c). The band is not a stale copy of any present (no frame holds
+        # those rows) and the port's content at the 13 pixels is corroborated on
+        # both sides: capture 5119 (clean at 4315) shows exactly
+        # DAC_4315[0x32]/[0x2E]/[0x4D] = 000000/180000/000014 there and capture
+        # 5122 (clean at 4318) shows 000000/100000/00000c.
+        # Named limit (as the U11 entry): the band has no port binding, and its
+        # cause is not isolated. No dumped frame's DAC renders index 0x32 as
+        # 00001c (0 of 4940) and 93 other pixels with index 0x32 are black in
+        # this very capture frame, so no single palette applied to port 4317's
+        # indices reproduces the band; the frame-wide constant-offset test picks
+        # k = 0 (13 mismatching pixels) over every other k (next best 12651),
+        # and the three offsets that do cover the 13 ({-29, +14, +29}) are DAC
+        # aliases of the same two colours (00001c occurs at five entries, black
+        # at two hundred), not a palette shift.
+        (5120, 1, 5, '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),
+    ),
 }
 
 # Per-scenario named THREE-frame scan-out allowances for the frames claim
@@ -158,6 +186,21 @@ SCAN3_ALLOWED = {
         # (measured: 3549 alone), and the row splits 46/97 are capture-pinned
         # bytes — the recipe claims nothing about the presents' timing.
         (4248, 46, 97, 'fc1044a6a9e5bb6cee142ce02811c4a4823585747351089bd1514a76685fc6e6'),
+        # Capture 4320 (raw 8019) — the same three-present scan, 72 capture
+        # frames later at the next mode-0x0D -> 0x0C transition (record §P3): its
+        # S bracket is f=1566 mode=000D (ms=114172) -> f=1567 mode=000C. Rows
+        # 0..17 are port 3613's (f=1567 tick=0000163C mode=000D, the only frame
+        # before 3614 holding them; rows 14..17 exist nowhere else), rows 18..107
+        # are port 3614's (f=1567 tick=00001640 mode=000C; rows 88..107 exist
+        # nowhere else) and rows 108..199 are port 3615's (f=1568
+        # tick=00001641 mode=000C, the nearest of the three; rows 108..189 exist
+        # nowhere else). The split is forced by the bytes, not chosen: 3614 does
+        # not hold rows 14..17 (so r1 >= 18) and 3613 does not hold row 18 (so no
+        # frame holds rows 0..18, r1 <= 18); 3615 does not hold rows 88..107 (so
+        # r2 >= 108) and 3614 does not hold rows 108..189 (so r2 <= 108). The
+        # pair (3614, 3615) is the 4940-frame dump's unique match, and 3613 is
+        # the only earlier holder of rows 0..17.
+        (4320, 18, 108, 'c8fa5b9305b132f09d1853594b40429750636f08da70c5e154dc5945ce4b8cb4'),
     ),
     'gp-u16-twop2': (
         # Capture 4089 (raw 6792): row 0 is byte-pinned by the hash and is held
