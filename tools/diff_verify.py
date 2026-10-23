@@ -34785,16 +34785,18 @@ P9C_SLOT = 0x0010A900            # zero BSS of the image: the dead entry EAX
 
 
 def p9c_3a6d4_case(side, phase, char, a, b, gate):
-    """0x3A6D4: the two slot pointers DS_001077B0 (side 0's record E3_REC, side 1's E3_REC2), both
-    records' +0x18 anchor dword, the side's own slot +0x58 (the phase), +0x7A (the animation-stream
-    character) and +0x90 (the snap gate), each between seeded neighbours; the other slot's three
-    bytes seeded with other values (a wrong-side ctx reads phase 5, char 0x69, gate 0x69); the two
-    per-side word pairs 0x107D04 (B) and 0x107D08 (A), the side's from `b`/`a` and the other's
-    0x7777/0x6666, with 0x107D02 and 0x107D0C seeded (the raw reads 0x107D02 + side*2 and
-    0x107D06 + side*2 as dwords and keeps the high word only, so a port that read the low half sees
-    a seeded word or the other side's B, never `b`/`a`); and the 0xC9008 stream table entry for
-    `char` (0xE1234) and its neighbour (0xE5678), so a wrong character or a wrong scale reads
-    another word."""
+    """0x3A6D4: the slot array DS_001077B0's two record dwords (0x1077B0 holds E3_REC for side 0,
+    0x107844 holds E3_REC2 for side 1; the parent's slot-pointer pair 0x1077A8 is a different
+    table), both records' +0x18 anchor dword, the side's own slot +0x58 (the phase), +0x7A (the
+    animation-stream character) and +0x90 (the snap gate), each between seeded neighbours; the other
+    slot's three bytes seeded with other values (a wrong-side ctx reads phase 5, char 0x69, gate
+    0x69); the two per-side word pairs 0x107D04 (B) and 0x107D08 (A), the side's from `b`/`a` and
+    the other's 0x7777/0x6666, with 0x107D02 and 0x107D0C seeded (the raw reads 0x107D02 + side*2
+    and 0x107D06 + side*2 as dwords and keeps the high word only, so a port that read the low half
+    sees a seeded word or the other side's B, never `b`/`a`); and the 0xC9008 stream table entry for
+    `char` (0xE1234) with its neighbour (0xE5678, what a wrong character reads). The 3.0 scale is
+    not a table word: the raw pushes the immediate 0x40400000 (0x3A709), so a wrong scale shows in
+    the recorded `s0`, not in the stream word."""
     own, oth = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
     return {DS_SLOTS: le32(E3_REC), DS_SLOTS + 0x94: le32(E3_REC2),
             E3_REC + 0x18: le32(0x18181818), E3_REC2 + 0x18: le32(0x28282828),

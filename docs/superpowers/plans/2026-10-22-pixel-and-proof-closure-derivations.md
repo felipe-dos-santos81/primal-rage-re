@@ -2420,7 +2420,7 @@ before the next entry:
 
 `0x3D0BC` is bytes 2..5 of that pad (`00 00 00 00`); the real entry is `0x3D0C0`, which the decomp
 index lists (`port/decomp/prage.functions.csv`: `0003d0c0`, size 75) and which already has its own
-row (`fighter_3d0c0`, 2 cases, `VERIFIED`, 2/2 blocks). The index has no entry at `0x3D0BC`, and
+row (`fighter_3d0c0`, 2 cases, `VERIFIED`, 1/1 blocks). The index has no entry at `0x3D0BC`, and
 `tools/port_classification.txt`, `symbols.h` and `port/src` name it nowhere: it is not a function
 and no row can exist for it.
 
@@ -2540,7 +2540,11 @@ The six cases and what the original does (measured from `spec_original`):
 `p4` is the snap arm; `p0` and `p5` are the two early returns. Every seed differs from what the
 function writes (`+0x58` and `+0x90` are seeded 0/1/2 and 0/1/2), the other slot's three bytes are
 seeded with different values, and the other side's A/B words (0x6666/0x7777) and the 0xC9008
-neighbour entry (0xE5678) make a wrong side, character or scale a different recorded argument.
+neighbour entry (0xE5678) make a wrong side or character a different recorded argument; a wrong 3.0
+scale shows in the recorded `s0` instead, because the scale is the raw's immediate `0x40400000`
+(0x3A709), no table word. The fixture's slot array is `DS_001077B0` itself — `0x1077B0` holds side
+0's record pointer (E3_REC) and `0x107844` side 1's (E3_REC2); `0x1077A8`, the slot-pointer pair the
+parent reads, is a different table and the hook never touches it.
 
 Measured, `--function fighter_3a6d4 --self-check`:
 
@@ -2639,17 +2643,20 @@ set's eight are `symbols.h` `FN_` functions, while `0x3A6D4` is one of the E2-cl
 
 The harness suite (`python3 -m unittest tools.tests.test_diff_verify`) is **not run here** by
 instruction (Task 11). This task disturbs **five** exhaustive pins, not the four Task 5 named — the
-fifth is the stub-clobber dictionary, which only a task that adds a *new stub address* can disturb
-(Task 8 added none):
+fifth is the stub-clobber dictionary, which a task disturbs whenever it adds or moves a stub
+address (this task **moves** one, `0x3D0BC -> 0x3A6D4`; Task 8 did neither):
 
 1. `test_the_eax_mask_is_stated_by_the_spec_per_function` — add `fighter_3a6d4` (and its mutants
    inherit the spec name only for the mask dict's `s.name` keys; only the real spec is listed).
 2. `test_every_ported_function_agrees_with_the_original_on_every_block` — add `fighter_3a6d4` to
    the real-name list (a `P9C_MASKS`-style dict or a literal).
 3. `test_every_mutant_is_reported_as_a_mismatch` — add `fighter_3a6d4@a16`, `fighter_3a6d4@b5`.
-4. `test_each_stub_declares_the_registers_its_callee_clobbers` — add
-   `0x3A6D4: ("ebx", "ecx", "edx")` to the pinned dict (re-derived from the bytes; the live
-   re-derivation passes).
+4. `test_each_stub_declares_the_registers_its_callee_clobbers` — **replace** the pinned dict's
+   stale `0x3D0BC: ("edx",)` (`tools/tests/test_diff_verify.py:31964`) with
+   `0x3A6D4: ("ebx", "ecx", "edx")`. The test asserts dict equality, so adding the new key alone
+   leaves it red on the stale `0x3D0BC`. Both entries are what `E.callee_clobbers` derives from the
+   bytes at their addresses (the old one from the padding read as code), and the live re-derivation
+   passes.
 5. The pinned counter string — §P9.5's line.
 
 For Task 11's per-mutant "what alone catches it" maps: `@a16` → `{"call #2"}` on `p4`, `@b5` →
