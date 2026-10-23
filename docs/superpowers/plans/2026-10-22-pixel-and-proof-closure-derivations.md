@@ -2652,7 +2652,7 @@ address (this task **moves** one, `0x3D0BC -> 0x3A6D4`; Task 8 did neither):
    the real-name list (a `P9C_MASKS`-style dict or a literal).
 3. `test_every_mutant_is_reported_as_a_mismatch` — add `fighter_3a6d4@a16`, `fighter_3a6d4@b5`.
 4. `test_each_stub_declares_the_registers_its_callee_clobbers` — **replace** the pinned dict's
-   stale `0x3D0BC: ("edx",)` (`tools/tests/test_diff_verify.py:31964`) with
+   stale `0x3D0BC: ("edx",)` (`tools/tests/test_diff_verify.py:31989`) with
    `0x3A6D4: ("ebx", "ecx", "edx")`. The test asserts dict equality, so adding the new key alone
    leaves it red on the stale `0x3D0BC`. Both entries are what `E.callee_clobbers` derives from the
    bytes at their addresses (the old one from the padding read as code), and the live re-derivation

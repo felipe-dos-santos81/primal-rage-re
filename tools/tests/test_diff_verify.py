@@ -32183,8 +32183,9 @@ class RealFunctionTests(unittest.TestCase):
         # Closed 716 -> 774 (+58): 49 rows whose only open callees are runtime allow-mode callees, 4
         # E2-field + runtime, 3 host-owned + runtime, 1 E2-field alone and 1 host-owned alone (the
         # pre-port-code-check set of 63 less the five above).
-        # The 58 still-open rows block on a recorded stub or real callee outside the set or on a
-        # port-code implementation: 0x65431 11 rows, 0x5DD03 10, 0x40CB0 8, 0x5D812 `real` 8,
+        # The 58 still-open rows at that pin (the pre-2026-10-22 census: the closeout plan's 12 rows
+        # below close the entries it rowed, and 0x3D0BC is padding, §P9.2) block on a recorded stub or
+        # real callee outside the set or on a port-code implementation: 0x65431 11 rows, 0x5DD03 10, 0x40CB0 8, 0x5D812 `real` 8,
         # 0x24568/0x5DEED 7 each, 0x24804/0x28D68/0x5DCC5 6 each, 0x5DECA 5, 0x5DC0F/0x5DC8B 4 each,
         # 0x3E484 3, 0x5DEAF 3, 0x29D04 (stub 2 + allow 2)/0x2CB74/0x6C4CF 2 each, and one each for
         # 0x1C308, 0x25FAC, 0x26194, 0x3D0BC, 0x3E4C4, 0x4F5C8, 0x5D86A, 0x5DC2A, 0x5DC4D, 0x5DC70,

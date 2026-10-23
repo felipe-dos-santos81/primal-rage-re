@@ -460,7 +460,7 @@ consolidation gate).
    keeps: `WEAKER` (12 — the rowed functions whose row is not full: a code poke, a reachable block left out,
    or a declared terminal difference) and `UNROWED` (8 — the ported functions with no differential row at
    all, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
-   g4 (`game_loop`'s recorded RNG stub, `@rng`). The counter's unrowed clause no longer prints
+   g4 (`game_loop`'s recorded RNG stub, `@rng`). The counter's unrowed clause no longer prints only
    `UNROWED`'s literal: `ported_unrowed()` intersects `symbols.h`'s 1203 `FN_` addresses with the
    registry (`NonPortable.ported`) and subtracts every `SPECS` entry, splitting at `RUNTIME_BASE`:
    the scan-visible frontier is 42 (5 portable + 37 runtime, record §P10.2-§P10.4), and with the
@@ -482,7 +482,7 @@ consolidation gate).
    the rule would have closed them on a row that can exist (716→774, +58). The 2026-10-22 plan gave
    all four E2-class entries rows (`0x28D68`, `0x3E484`, `0x29D04`, `0x3E4C4`), so no open row
    blocks on a port-code implementation now. The
-   counter does not tell a full row from a weaker one: 12 of the 751 rowed functions have a row that runs
+   counter does not tell a full row from a weaker one: 12 of the 751 portable rowed functions have a row that runs
    the original under code pokes, leaves reachable blocks out, or declares a terminal difference on some or
    all of its cases (which then compare nothing
    on the port's side, §G1's skip) (`0x2CADC`, whose pokes are runtime or omitted calls, and `game_loop`, whose
@@ -496,7 +496,7 @@ consolidation gate).
    port's documented omission; `0x2EA68`, every case declaring the terminal difference, so the row compares
    nothing on the port's side and carries no mutant, §G2; `0x1B544`, the resident arm only — its
    tail-jump-to-host slow arm named unhit (2 of 11 blocks); `0x2EA30`, the SET-lock clear `0x2EA49` named unhit
-   (7 of 8 blocks)): count 739 full rows, of which `0x51ED8`'s carries one declared difference (the
+   (7 of 8 blocks)): count 739 of those 751 full rows, of which `0x51ED8`'s carries one declared difference (the
    renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
    callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
    The still-open rows are measured, not asserted: after the closure rule 31 of the 844 rows stay open. Every
