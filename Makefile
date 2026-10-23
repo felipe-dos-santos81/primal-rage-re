@@ -1252,19 +1252,26 @@ gp-win-one: build
 # §C5.4/§C5.7). Its first poke writes BLIZZARD's land marks (0x81, not u10's SAURON 0x80:
 # 0x41C28 state 1 tallies (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C), and
 # the rest are gp-u10-ending's from its second poke on; the ending row is therefore
-# _all(ad4=0, c0=1) rather than SAURON's c0 = 0. Measured on the clean Task 7 capture:
-# after its own loader-overlay recipe (tools/gp_compare.py), the report starts at capture 96
-# (raw 1739), scans through port 4939 in report mode, and first diverges at capture 4248
-# (raw 7887); enforced comparison stops there at port 3549. Trace and win fields agree through
-# f=10013, so their end pins are 10014. gp_win.py finds 30/30 milestones including BLIZZARD
-# c0=1, and the capture has 5904 frames with this poll.log sha256.
+# _all(ad4=0, c0=1) rather than SAURON's c0 = 0. Measured on the clean Task 7 capture after
+# its own loader-overlay recipe (tools/gp_compare.py): the window starts at capture 96
+# (raw 1739), and every content-bearing capture frame through 5890 is explained by name —
+# 2188 by the loader's glyph overlay, 4248 (raw 7887) and 4320 (raw 8019) as three-present
+# scan-outs, 5120 (raw 8839) as a four-row band (record 2026-10-22-pixel-and-proof-closure
+# §P1, §P3). The first unexplained is 5891 (raw 14361); 5891..5903 are the post-script tail
+# (the replay ends at f=0x26E1, record §P1.6) and are NOT claimed: MIN_FIRST = 5891, and 5892
+# fails. The enforced comparison's window reach is port 4939 (the highest port frame any
+# classified capture frame exhibits through capture 5890; report mode's reach is the same
+# because the unexplained tail is the capture's last frames), so MIN_REACH = 4939 and 4940
+# fails. Trace and win fields agree through f=10013, so their end pins are 10014. gp_win.py
+# finds 30/30 milestones including BLIZZARD c0=1, and the capture has 5904 frames with this
+# poll.log sha256 (unchanged since the capture: e581916f..2b69c6).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
-GP_U13_MIN_FIRST = 4248
+GP_U13_MIN_FIRST = 5891
 GP_U13_TRACE_MIN_FIRST = 10014
 GP_U13_MAX_START = 96
-GP_U13_MIN_REACH = 3549
+GP_U13_MIN_REACH = 4939
 GP_U13_CAPTURE_SHA256 = e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6
 GP_U13_CAPTURE_FRAMES = 5904
 GP_U13_MILESTONES = 30

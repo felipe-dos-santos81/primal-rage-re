@@ -1152,3 +1152,183 @@ second `SCAN3_ALLOWED['gp-u13-ending2']` tuple, each with its comment),
 `tools/tests/test_gp_compare.py` (the extended pin and the new band test), this
 record. No `port/` code, no `data/`, no Makefile. The task report is the
 git-ignored ledger.
+
+## §P4 The U13 re-pin: `MIN_FIRST` 5891, `MIN_REACH` 4939, enforced
+
+Task 4 of the plan, armed by Tasks 1–3: after the named recipes, 4248, 4320 and
+5120 are explained (§P2, §P3) and the first unexplained capture frame is 5891.
+This task changes the Makefile pins and comment, this record and a short
+`docs/PROGRESS.md` line; no `port/` code, no `tools/` change, no capture.
+
+### §P4.1 Step 1 — the enforced reach
+
+```bash
+GP_WIN_KEEP=1 make gp-u13-oracle        # at the OLD pins (MIN_FIRST 4248, MIN_REACH 3549)
+```
+
+The enforced compare stops at the first unexplained, so its reach is computed
+over the capture frames it classified before that frame. Its lines (rc 0; the
+allowance lines are §P3.6's and unchanged):
+
+```text
+gp_compare: gp-u13-ending2: capture: poll.log sha256 e581916f..2b69c6, 5904 frames: matches the pin
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5774 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 1 unexplained, 22 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 5891 (raw 14361): nearest port 0, rows 0..199, x 0..319 (55510 px)
+gp_compare: gp-u13-ending2: frames: first unexplained 5891, ratchet N 4248 ok (improved: raise N)
+gp_compare: gp-u13-ending2: frames: window reach port 4939 > pinned reach 3549 (improved: raise the pin)
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013; ratchet N 10014 ok
+gp_win: gp-u13-ending2: evidence: 30/30 milestones ok
+gp_compare: gp-u13-ending2: path: 0 not reproduced through 29; ratchet N 30 ok
+gp_compare: gp-u13-ending2: win: 0 differing through 10013; ratchet N 10014 ok
+```
+
+The enforced reach is **4939**: what the enforced comparison printed, i.e. the
+`p` after capture 5890, the highest port frame any classified capture frame in
+its window exhibits. The brief warns against the report-only reach; here the two
+coincide, and the reason is structural rather than a shortcut: the unexplained
+run 5891..5903 is the capture's *last* 13 frames (5904 frames, indices 0..5903),
+so report mode has no later classified frame that could raise `p`, and §P3.6's
+report had already printed 4939. The pin is set to the enforced number the run
+printed.
+
+**The override form (measured).** `GP_WIN_KEEP=1 make …` sets a make variable,
+which is how the target selects whether to keep the dump. A pin is different:
+the Makefile assigns `GP_U13_MIN_FIRST = 4248` (not `?=`), so a makefile
+assignment beats a variable that comes from the **environment**. Measured:
+
+```bash
+GP_U13_MIN_FIRST=5892 make -n gp-u13-oracle | grep -o -- '--min-first "[^"]*"'
+# --min-first "5891"
+make -n gp-u13-oracle GP_U13_MIN_FIRST=5892 | grep -o -- '--min-first "[^"]*"'
+# --min-first "5892"
+```
+
+`GP_U13_MIN_FIRST=5892 make gp-u13-oracle` (the brief's literal environment
+form) therefore ran at the real pin and **passed** (`first unexplained 5891,
+ratchet N 5891 ok`, rc 0) — it proves nothing about the pin. The
+failing-direction proofs below pass the pin on the **command line**, the form
+GNU make lets override the makefile. The reach proof is the same.
+
+### §P4.2 The pin table
+
+| pin | old | new | provenance |
+|---|---:|---:|---|
+| `GP_U13_MIN_FIRST` | 4248 | **5891** | the first unexplained capture frame (raw 14361); 5891..5903 are the post-script tail (§P1.6) and are not claimed |
+| `GP_U13_MIN_REACH` | 3549 | **4939** | the enforced comparison's port reach at that first unexplained (§P4.1) |
+| `GP_U13_TRACE_MIN_FIRST` | 10014 | 10014 | 0 differing through 10013; the traced fields end there |
+| `GP_U13_WIN_MIN_FIRST` | 10014 | 10014 | 0 differing through 10013; unchanged |
+| `GP_U13_MAX_START` | 96 | 96 | the window starts at capture 96 exactly (the run prints `window from capture 96`) |
+| `GP_U13_MILESTONES` | 30 | 30 | 30/30 (BLIZZARD `ad4=0, c0=1` included) |
+| `GP_U13_CAPTURE_SHA256` | `e581916f…2b69c6` | unchanged | the capture identity line matches the pin |
+| `GP_U13_CAPTURE_FRAMES` | 5904 | 5904 | matches the pin |
+
+The capture identity (poll.log sha256
+`e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6`, 5904
+frames) is unchanged from the capture and from §J5: this task opens no capture.
+
+### §P4.3 The failing direction
+
+**(a) `MIN_FIRST` one above the measured value** — `make gp-u13-oracle
+GP_U13_MIN_FIRST=5892`, rc 2 from make (the recipe's compare is rc 1). The
+comparison's lines, verbatim (the four allowance lines and the path lines it
+also printed are §P4.4's and unchanged):
+
+```text
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5774 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 1 unexplained, 22 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 5891 (raw 14361): nearest port 0, rows 0..199, x 0..319 (55510 px)
+gp_compare: gp-u13-ending2: frames: coverage (reported, not ratcheted): 69 non-black port frame(s) up to port 4939 not exhibited by any classified capture frame: [9, 31, 123, 164, 165, 267, 1128, 1129, 1443, 1516, 1716, 1720, 1724, 1728, 1732, 1736, 1740, 1744, 1748, 1752] ...
+gp_compare: gp-u13-ending2: frames: FAIL: first unexplained 5891 < ratchet N 5892
+gp_compare: gp-u13-ending2: trace: 9667 frames compared (f 130..), 43 without a capture snapshot; first tick difference f=131 (reported, not ratcheted)
+gp_compare: gp-u13-ending2: trace: normalised (reported, not ratcheted): ent 0 of 9667 differ; t508 7857 of 9667 differ (first f=273)
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013; ratchet N 10014 ok
+make: *** [Makefile:1282: gp-u13-oracle] Error 1
+```
+
+**(b) `MIN_REACH` one above the measured value** — `make gp-u13-oracle
+GP_U13_MIN_REACH=4940`, rc 2 from make. The comparison lines, verbatim (the
+omitted ones are §P4.4's):
+
+```text
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5774 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 1 unexplained, 22 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 5891 (raw 14361): nearest port 0, rows 0..199, x 0..319 (55510 px)
+gp_compare: gp-u13-ending2: frames: first unexplained 5891, ratchet N 5891 ok
+gp_compare: gp-u13-ending2: frames: FAIL: window reach port 4939 < pinned reach 4940 (the port exhibited fewer port frames)
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013; ratchet N 10014 ok
+make: *** [Makefile:1282: gp-u13-oracle] Error 1
+```
+
+Both runs left the pins in the Makefile at 5891/4939 (the overrides are command
+line only) and both removed the dump (no `GP_WIN_KEEP`), the cleanup path §P4.5
+confirms.
+
+### §P4.4 The enforced run at the new pins
+
+```bash
+GP_WIN_KEEP=1 make gp-u13-oracle          # rc 0
+```
+
+The run's allowance and ratchet lines (the 30 path lines between them are
+§P3.6's, same capture/port pairs; the coverage line is elided):
+
+```text
+gp_compare: gp-u13-ending2: capture: poll.log sha256 e581916f..2b69c6, 5904 frames: matches the pin
+gp_compare: gp-u13-ending2: frames: captured frame 2188 (raw 5047) allowed by name as a glyph overlay: 166 px of port 1799 over port 1800 (the mask from port 1798, the named glyph bytes)
+gp_compare: gp-u13-ending2: frames: captured frame 4248 (raw 7887) allowed by name as a three-frame scan-out: top rows 0..45 held by port 3549, port 3550 rows 46..96, port 3551 rows 97..199 the named bytes
+gp_compare: gp-u13-ending2: frames: captured frame 4320 (raw 8019) allowed by name as a three-frame scan-out: top rows 0..17 held by port 3613, port 3614 rows 18..107, port 3615 rows 108..199 the named bytes
+gp_compare: gp-u13-ending2: frames: captured frame 5120 (raw 8839) allowed by name as a band splice: port 4316/4317 rows 0..0/5..199, band rows 1..4 the named bytes
+gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 5774 classified: 3492 clean, 2270 splice, 7 transition, 1 band-allowed, 2 scan3-allowed, 1 overlay-allowed, 1 unexplained, 22 all-black
+gp_compare: gp-u13-ending2: frames: FIRST UNEXPLAINED capture 5891 (raw 14361): nearest port 0, rows 0..199, x 0..319 (55510 px)
+gp_compare: gp-u13-ending2: frames: first unexplained 5891, ratchet N 5891 ok
+gp_compare: gp-u13-ending2: trace: 0 differing through 10013; ratchet N 10014 ok
+gp_win: gp-u13-ending2: evidence: 30/30 milestones ok
+gp_compare: gp-u13-ending2: path: 0 not reproduced through 29; ratchet N 30 ok
+gp_compare: gp-u13-ending2: win: 0 differing through 10013; ratchet N 10014 ok
+```
+
+`first unexplained 5891, ratchet N 5891 ok` (no `improved` suffix): the pin is
+exact. The frame ratchet prints no window-reach line on equality —
+`reach_check` speaks only for `<` (FAIL) and `>` (`improved: raise the pin`) —
+so the reach pin's exactness is shown by §P4.3(b): 4940 fails against 4939.
+The run's miss set is unchanged (`fn-miss PR_GP_DUMP distinct=4 dropped=0`:
+`0x5D812` actor_spawn/set_dead, `0x29D60`, `0x5D812` frontend_mode_1b_step).
+
+The claim stays as narrow as the other gp scenarios' (AGENTS.md's gp-oracle
+note): no content-bearing capture frame in the window is unexplained and the
+window reaches its end, but port-frame order, under-rendering *inside* the
+window, and the 5891..5903 post-script tail are not claimed.
+
+### §P4.5 The cleanup path
+
+```bash
+make gp-u13-oracle                        # without GP_WIN_KEEP: rc 0
+```
+
+The same lines as §P4.4, rc 0, and the target's trailing
+`[ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u13-ending2` runs:
+
+```text
+$ ls -d /tmp/pr_gp_dump/gp-u13-ending2
+ls: cannot access '/tmp/pr_gp_dump/gp-u13-ending2': No such file or directory
+```
+
+### §P4.6 The Makefile comment
+
+The U13 block's measurement paragraph now reads (addresses and numbers as
+measured above): the window starts at capture 96 (raw 1739); every
+content-bearing capture frame through 5890 is explained by name — 2188 by the
+loader's glyph overlay, 4248 (raw 7887) and 4320 (raw 8019) as three-present
+scan-outs, 5120 (raw 8839) as a four-row band (record §P1, §P3); the first
+unexplained is 5891 (raw 14361) and 5891..5903 are the post-script tail (the
+replay ends at f=0x26E1, §P1.6) and are not claimed, so `MIN_FIRST = 5891` and
+5892 fails; the enforced comparison's window reach is port 4939, so
+`MIN_REACH = 4939` and 4940 fails; trace and win fields agree through f=10013,
+so their end pins are 10014; 30/30 milestones; the capture has 5904 frames with
+this poll.log sha256 (unchanged since the capture). The old
+`4248`/`port 3549`/`report mode` provenance is gone.
+
+### §P4.7 Files and commit
+
+`Makefile` (`GP_U13_MIN_FIRST` 4248 → 5891, `GP_U13_MIN_REACH` 3549 → 4939 and
+the comment), this record, `docs/PROGRESS.md` (one short U13 line; Task 12 owns
+the phase paragraph). No `port/` code, no `tools/` change, no `data/`, no
+capture. The task report is the git-ignored ledger.
