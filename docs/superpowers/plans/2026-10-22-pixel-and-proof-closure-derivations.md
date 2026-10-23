@@ -30,8 +30,8 @@ python3 tools/gp_compare.py --report --scenario gp-u13-ending2 \
 
 `make build` exited 0. `GP_WIN_KEEP=1 make gp-u13-oracle` exited 0 (PASS) and
 kept `/tmp/pr_gp_dump/gp-u13-ending2/` (4940 `.ipx` frames, `frames.txt`,
-`trace.txt`; without `GP_WIN_KEEP` the Makefile removes the directory). The
-verdict lines:
+`trace.txt`, `gp.log`; without `GP_WIN_KEEP` the Makefile removes the
+directory). The verdict lines:
 
 ```text
 gp_compare: gp-u13-ending2: frames: window from capture 96 (raw 1739); 4139 classified: 2569 clean, 1565 splice, 3 transition, 0 band-allowed, 0 scan3-allowed, 1 overlay-allowed, 1 unexplained, 14 all-black
@@ -113,12 +113,12 @@ to drop held-screen matches), `delta = S.ms - t_raw` is:
 
 So the poll's `ms` runs ~0.22..0.28 s ahead of `raw/70.0866` over the capture's
 range. At the end the `X` record's `ms=205231` against capture 5891's
-`raw/70.0866 = 204903.6 ms` is +327 ms (the tail has no clean match; 5891 is
-the first non-black frame at the script's end, §P1.6). The consequence for the
-three frames is stated in the table and repeated here because it is the honest
-limit of the mapping:
+`raw/70.0866 = 204903.6 ms` is +327 ms (the tail has no clean match; 5890 is
+the last capture frame clean against the dump and 5891 the first post-script
+one, §P1.6). The consequence for the three frames is stated in the table and
+repeated here because it is the honest limit of the mapping:
 
-- **4248** and **4320** each sit inside a long `S` gap (328 ms and 511 ms). An
+- **4248** and **4320** each sit inside a long `S` gap (329 ms and 511 ms). An
   `S` line is an end-of-iteration snapshot taken in the loop's spin (`S ...
   a consistent end-of-iteration snapshot (the master loop's spin state)`,
   `tools/gp_session.py` header), so an iteration that runs outside the spin
@@ -135,11 +135,12 @@ limit of the mapping:
 - **5120** has only a 15 ms gap, so the raw-clock nearest preceding `S` is
   `f=1815` (line 6228), but the +269 ms lead puts the instant at 126.384 s,
   which is 1 ms after line 6244 (`ms=126383`, `f=1825`); line 6243
-  (`ms=126360`, `f=1824`) is the record before it. Every recorded field except
-  `f` is identical across those records (`mode=0015 st=0000 r0=FF r1=05
-  s0_5a=00 s1_5a=78 b0c=00`), and the nearest port frame is labelled `f=1826`,
-  again 1..2 above the bracketing `f` — so the calibrated reading is the
-  consistent one, and the raw-clock `f` is not presented as the game frame.
+  (`ms=126360`, `f=1824`) is the record before it. The seven fields the brief
+  asks for are identical across those records (`mode=0015 st=0000 r0=FF r1=05
+  s0_5a=00 s1_5a=78 b0c=00`); `f` and the timing fields (`rng`, `t508`, `t50c`,
+  `tick`) differ. The nearest port frame is labelled `f=1826`, again 1..2 above
+  the bracketing `f` — so the calibrated reading is the consistent one, and the
+  raw-clock `f` is not presented as the game frame.
 
 No game frame is invented anywhere below: the table names the two `S` records,
 the calibration lead, and the port frame's own `f`.
@@ -157,7 +158,10 @@ The two bracketing `S` records and the fields the brief asks for (`f`, `mode`,
 
 For 5120 the lead-corrected nearest preceding `S` is line 6244
 (`ms=126383`, `f=1825`), with line 6243 (`ms=126360`, `f=1824`) the record
-before it; its fields are identical to the 6228 row above except `f`. For 4248
+before it. The seven fields the brief asks for (`mode`, `st`, `r0`, `r1`,
+`s0_5a`, `s1_5a`, `b0c`) are identical to the 6228 row above; `f`, `rng`,
+`t508`, `t50c` and `tick` differ (the first version's "every field except `f`"
+claim was false: `rng` alone differs between 6228 and 6243/6244). For 4248
 and 4320 the lead-corrected nearest preceding `S` is still the listed line
 (their `t_raw + lead` is 12/8 ms before the next `S`), which is the bracket the
 table records.
@@ -190,29 +194,45 @@ Each is a single-frame anomaly: its neighbours are clean or splices —
 ### §P1.4 The model tests: clean, splice, transition, DAC
 
 `title_compare.explain` over the whole dump returns `unexplained` for all
-three. The individual tests, as measured:
+three, so clean, a byte splice of an adjacent port pair and one transition row
+are negative for all three. The individual tests, as measured:
 
-| capture | clean | splice: best adjacent pair | transition: best prefix+suffix rows | DAC constant offset | explained? |
-|---|---|---|---|---|---:|
-| 4248 | no | no — pair N=3550 (3550,3551), 24005 differing bytes | no — 103 rows at N=3550 (needs 199) | no — 2810/22923 px have no offset in ±64; largest numeric offset +1 covers 1393/22923 (6.1 %) | **no** |
-| 4320 | no | no — pair N=3614 (3614,3615), 347 differing bytes | no — 96 rows at N=3614 | no — 55/273 px have no offset; largest −7 covers 15/273 (5.5 %) | **no** |
-| 5120 | no | no — pair N=4316 (4316,4317), 13 differing bytes | no — 196 rows at N=4316 | no — −29 covers 8/13; −64 (the search boundary) covers 5/13 | **no** |
+| capture | clean | splice: best adjacent pair | transition: best prefix+suffix rows | DAC-index: constant offset on the differing pixels |
+|---|---|---|---|---:|
+| 4248 | no | no — pair N=3550 (3550,3551), 24005 differing bytes | no — 103 rows at N=3550 (needs 199) | no — the intersection over all 22923 differing pixels is empty; 2810 px have no offset in ±64; the largest per-`k` coverage is +1 at 1393/22923 (6.1 %) |
+| 4320 | no | no — pair N=3614 (3614,3615), 347 differing bytes | no — 96 rows at N=3614 | no — the intersection is empty; 55 px have no offset in ±64; the largest per-`k` coverage is −7 at 15/273 (5.5 %) |
+| 5120 | no | no — pair N=4316 (4316,4317), 13 differing bytes | no — 196 rows at N=4316 | **yes — the intersection is {−29, +14, +29}, each covering 13/13** |
 
 The DAC-index test is the U10 precedent's test (record
 `2026-10-20-gameplay-truth-ii-derivations.md`, Run 1: "every differing pixel of
-the run maps to `DAC[port_index + 1]`"). For every pixel that differs from the
-nearest port frame, take the port frame's index `p` at that pixel and ask
-whether the capture's RGB equals `port_dac[(p + k) & 0xFF]` for one constant
-`k` over the frame (`k` searched in −64..+64). A palette shift would show one
-`k` covering all differing pixels; none does. All differing capture pixels'
-RGB values are present in the port frame's 256-entry DAC (0 absent), so this is
-not a missing palette entry either — the pixels are different *content*, not a
-different index mapping of the same content.
+the run maps to `DAC[port_index + 1]`"). The measure is the **intersection** of
+the per-pixel offset sets, not the smallest matching offset: for every pixel
+that differs from the nearest port frame, take the port frame's index `p` at
+that pixel and compute `K = {k in −64..+64 : port_dac[(p + k) & 0xFF] ==
+capture RGB}`; the frame's constant offsets are `∩K` over all differing
+pixels. (The first version of this record tabulated the smallest matching `k`
+per pixel, which is not coverage: for 5120, the five black pixels whose
+smallest match is −64 also match −29, +14 and +29.)
 
-**Negative result for all three.** None of clean, a byte splice of an adjacent
-port pair, one transition row, or a constant DAC-index offset explains 4248,
-4320 or 5120. This record does not call any of them an artefact on the size of
-the mismatch; the negative result is the result.
+- **4248**: `∩K` is empty (2810 of the 22923 differing pixels have `K = ∅`);
+  the best single `k` is +1 at 1393/22923 (6.1 %). Negative.
+- **4320**: `∩K` is empty (55 of 273 pixels have `K = ∅`); the best single `k`
+  is −7 at 15/273 (5.5 %). Negative.
+- **5120**: `∩K = {−29, +14, +29}`, each covering 13/13. The 8 `00001c`
+  pixels have `K = {−29, 14, 16, 17, 29}`; the 5 black pixels' `K` sets are
+  large (black is common in the DAC) and contain −29, +14 and +29.
+  **Positive.** This is the U10 4113 evidence signature: that record's Run 1
+  read "every differing pixel of the run maps to `DAC[port_index + 1]`" and
+  its Task 3 identified the cause as the RLE span writers' dword bank add (a
+  real port divergence). This record measures the signature for 5120; it does
+  not name the writer or decide that 5120 is the same defect — Task 2 does.
+
+So the frame model (clean, splice, transition) explains none of the three, and
+the DAC-index test is negative for 4248 and 4320 but **positive for 5120**.
+The first version's sentences "A palette shift would show one `k` covering all
+differing pixels; none does", "the pixels are different *content*, not a
+different index mapping of the same content" and "Negative result for all
+three" were false for 5120; §P1.9 records the correction.
 
 ### §P1.5 What the bytes measure: the segment structure
 
@@ -245,43 +265,91 @@ rows  97..199  held only by port 3551   (f=152C tick=000015CB mode=000C)
   mode=000C`: the capture frame is byte-equal to three consecutively presented
   port frames, split 46/51/103 rows.
 
-**4320** — a composition with no single-holder top:
+**4320** — the maximal runs (27 runs):
 
 ```text
-rows   0.. 87  held by no dumped frame (0 holders)
-rows  88..107  held only by port 3614   (f=1567 tick=00001640 mode=000C)
-rows 108..189  held only by port 3615   (f=1568 tick=00001641 mode=000C)
-rows 190..199  held by ports 3614 and 3615
+rows   0..  2  n=59
+rows   3..  3  n=22
+rows   4..  4  n=12
+rows   5..  5  n=22
+rows   6..  8  n=7    [3589, 3590, 3591, 3611, 3612, 3613, 3633]
+rows   9..  9  n=6    [3589, 3590, 3591, 3611, 3612, 3613]
+rows  10.. 10  n=11
+rows  11.. 11  n=1    [3613]
+rows  12.. 13  n=7
+rows  14.. 14  n=1    [3613]
+rows  15.. 17  n=4    [3613, 3692, 3693, 3694]
+rows  18.. 32  n=8    [3614, 3615, 3616, 3695, 3696, 3697, 3749, 3750]
+rows  33.. 41  n=58
+rows  42.. 52  n=59
+rows  53.. 65  n=21
+rows  66.. 68  n=59
+rows  69.. 69  n=58
+rows  70.. 70  n=56
+rows  71.. 71  n=52
+rows  72.. 72  n=50
+rows  73.. 78  n=21
+rows  79.. 82  n=42
+rows  83.. 86  n=41
+rows  87.. 87  n=21
+rows  88..107  n=1    [3614]
+rows 108..189  n=1    [3615]
+rows 190..199  n=2    [3614, 3615]
 ```
+
+(`n` is the number of port frames holding the row; sets with more than 8
+holders are elided and printed in full by §P1.8's script.)
 
 - split `r1=88`, `r2=108`: the adjacent pair is `(3614, 3615)` (unique), but
-  the SCAN3 shape fails its top condition — **no** port frame at all holds rows
-  0..87 (`scan3_explain` reports "no port frame before 3614 holds its named top
-  rows"), and `band_pair(88, 108)` is `None`;
-- all 273 differing pixels' bytes are held by at least one dumped frame at that
-  coordinate (0 unheld); 59 of them are held *only* by port 3614. The frame is
-  a composition of several dumped frames (the pixels are byte-equal to earlier
-  frames' rows/pixels), not content absent from the dump, and the two-segment
-  part is rows 88..107 / 108..199.
+  the SCAN3 shape fails its top condition — **no single port frame holds all of
+  rows 0..87** (`scan3_explain` reports "no port frame before 3614 holds its
+  named top rows"), and `band_pair(88, 108)` is `None`;
+- the 273 differing pixels' holder counts against the whole dump: 59 are held
+  only by port 3614, 16 by 2..10 frames, 54 by 11..100, 144 by more than 100,
+  and **0 by no frame**. No single dumped frame holds the frame's 200 rows (the
+  top 88 rows have per-row holders but no whole-block holder), and splice/SCAN3
+  fail; whether this is a port divergence or a comparison artefact is Task 2's
+  decision.
 
-**5120** — a 13-pixel difference:
+**5120** — the maximal runs (20 runs):
 
 ```text
-rows   0..  0  byte-equal to ports 4316, 4317, 4318
-rows   1..  4  not byte-equal to any dumped frame (13 px against port 4317)
-rows   5..199  byte-equal to port 4317 (many rows also equal to 4316/4318)
+rows   0..  0  n=3    [4316, 4317, 4318]
+rows   1..  4  n=0    []
+rows   5..114  n=3    [4316, 4317, 4318]
+rows 115..115  n=120  [1, 3, 5, 7, 23, 24, 25, 26, 27, 28, ...]
+rows 116..138  n=3    [4316, 4317, 4318]
+rows 139..140  n=2    [4317, 4318]
+rows 141..141  n=2    [4316, 4317]
+rows 142..144  n=1    [4317]
+rows 145..145  n=2    [4316, 4317]
+rows 146..152  n=1    [4317]
+rows 153..156  n=2    [4316, 4317]
+rows 157..157  n=1    [4317]
+rows 158..158  n=2    [4316, 4317]
+rows 159..168  n=1    [4317]
+rows 169..169  n=2    [4316, 4317]
+rows 170..171  n=1    [4317]
+rows 172..172  n=2    [4317, 4318]
+rows 173..193  n=1    [4317]
+rows 194..194  n=2    [4316, 4317]
+rows 195..199  n=1    [4317]
 ```
 
+- the split is derived from the runs, not chosen: `r1 = 5` is the first row
+  after the run 1..4 that no frame holds, and `r2 = 115` is the end of the
+  5..114 run plus one (the next holder-set boundary). At `(5, 115)` the unique
+  adjacent pair is **`(4316, 4317)`** (`scan3_explain`'s `B = 4316`); the SCAN3
+  top condition fails — no port frame at all holds rows 0..4 — and
+  `band_pair(5, 115)` is `None`;
 - the 13 differing pixels (x 21..298) are:
   `00001c` where the port has `000000` at (1,23), (1,24), (1,295), (1,296),
   (2,22), (2,297), (3,21), (3,298) — **held by no dumped frame** (0 holders);
   `000000` where the port has `100000` at (3,74) (717 holders);
   `000000` where the port has `00000c` at (4,27), (4,28), (4,291), (4,292)
-  (573..659 holders). All 13 capture RGB values are in the port DAC;
-- split `r1=5`, `r2=115`: the adjacent pair `(4316)` binds the rows below, but
-  no port frame holds rows 0..4 (`scan3_explain` reports no earlier top
-  holder), and `band_pair(5, 115)` is `None`. Eight pixels of a colour that no
-  dumped frame carries at those coordinates are the frame's unbound part.
+  (573..659 holders). The DAC-index test (§P1.4) maps all 13 to the constant
+  offsets {−29, +14, +29}; the 8 unheld `00001c` pixels are the ones the port
+  draws black.
 
 ### §P1.6 The post-script tail 5891..5903 is outside the frame claim
 
@@ -312,8 +380,11 @@ The report's remaining 13 unexplained frames are one run:
   replay has no frame for the post-`271D` states;
 - capture 5891 (raw 14361) is 327 ms before the `X` by `t_raw` (204903.6 vs
   205231); the measured lead grows from +217.8 ms (raw 1900..4000) to +282.4 ms
-  (raw 12600..13600), so the AVI frame at the `X` is around 5891. It is also the
-  first non-black frame after the black pair 5889/5890. The run is the
+  (raw 12600..13600), so the AVI frame at the `X` is around 5891. The content
+  boundary is exact: 5889 is all-zero; 5890 is not black (166 pixels at rows
+  7..12, x 130..196, colour `41b2d3`) and is **clean at port 4939**, the dump's
+  last frame; 5891 is the first frame after the port's replay ends — so the
+  run starts at the script's end, not at a black pair. The run is the
   capture's post-script output: **recorded, not forced, and outside the frame
   claim**. The `nearest port 0` in this run is the row-hash maximum against the
   port's boot frame (the dump has no later frame to match), not a temporal
@@ -342,7 +413,12 @@ git-ignored ledger).
 
 Run from the repo root after `GP_WIN_KEEP=1 make gp-u13-oracle`. Save the block
 as `/tmp/u13_task1.py` and run `python3 /tmp/u13_task1.py 4248 4320 5120` (no
-arguments is the same list). It uses the repo's own loaders
+arguments is the same list). It prints, per frame: the class, the nearest port
+frame and diff box, the maximal row runs, the split's pair/`band_pair`/
+`scan3_explain` results, the best adjacent-pair splice and best prefix+suffix
+row counts, the exact DAC offset intersection and per-`k` coverage, the holder
+counts for the differing pixels, and the neighbours' classes; then the
+clock-lead table. It uses the repo's own loaders
 (`tools/gp_compare.py`'s `load_capture_frame`, `load_port_frame`, `nearest`,
 `diff_box`, `band_pair`, `scan3_explain` and `tools/title_compare.py`'s
 `explain`, `row_hashes`, `row_common`, `best_splice`, `raw_map`), and writes
@@ -395,6 +471,7 @@ def frame(j, fm):
     print('  nearest port %d (%s): rows %d..%d x %d..%d, %d px, %d bytes differ' % (
         m, fm[m], box[0], box[1], box[2], box[3], box[4],
         sum(1 for a, b in zip(c, SEQ[m]) if a != b)))
+    # the maximal row runs (identical holder set per row)
     runs = []
     for r in range(tc.FRAME_H):
         hold = tuple(mm for mm in range(N) if ROWS[mm][r] == ch[r])
@@ -403,8 +480,9 @@ def frame(j, fm):
         else:
             runs.append((r, r, hold))
     for lo, hi, hold in runs:
-        print('    row run %3d..%3d  %s' % (
-            lo, hi, list(hold[:8]) + (['...'] if len(hold) > 8 else [])))
+        print('    row run %3d..%3d n=%-3d %s' % (
+            lo, hi, len(hold), list(hold[:10]) + (['...'] if len(hold) > 10 else [])))
+    # the measured three-segment candidate split (derived from the runs)
     r1, r2 = {4248: (46, 97), 4320: (88, 108), 5120: (5, 115)}[j]
     pair = [mm - 1 for mm in range(1, N)
             if all(ROWS[mm - 1][r] == ch[r] for r in range(r1, r2)) and
@@ -413,27 +491,62 @@ def frame(j, fm):
     band = [mm - 1 for mm in range(1, N)
             if all(ROWS[mm - 1][r] == ch[r] for r in range(0, r1)) and
             all(ROWS[mm][r] == ch[r] for r in range(r2, tc.FRAME_H))]
-    print('  split r1=%d r2=%d: pair %s; holders of rows 0..%d: %s; band_pair %s' % (
-        r1, r2, pair, r1 - 1, top[:8] + (['...'] if len(top) > 8 else []), band or 'none'))
+    print('  split r1=%d r2=%d: B hits %s -> pairs %s; holders of rows 0..%d: %d %s; band_pair %s' % (
+        r1, r2, pair, [(b, b + 1) for b in pair], r1 - 1, len(top),
+        top[:8] + (['...'] if len(top) > 8 else []), band or 'none'))
     top_sha = hashlib.sha256(c[:r1 * tc.ROW]).hexdigest()
     print('  top sha256 %s; scan3_explain %r' % (
         top_sha, gc.scan3_explain(c, SEQ, (j, r1, r2, top_sha))))
+    # the best adjacent-pair splice and the transition precondition
+    pref = [0] * N
+    suff = [0] * N
+    for mm in range(N):
+        pref[mm], suff[mm] = tc.row_common(ch, ROWS[mm])
+    bs = tc.best_splice(c, SEQ, pref, suff, N)
+    bt = max(((pref[mm] + suff[mm + 1], mm) for mm in range(N - 1)))
+    print('  best splice %d differing bytes at N=%d (pair %d/%d); best prefix+suffix %d rows at N=%d' % (
+        bs[0], bs[1], bs[1], bs[1] + 1, bt[0], bt[1]))
+    # the exact DAC-index test: per-pixel offset sets, their intersection and coverage
     data = open(os.path.join(PORT, 'frame_%05d.ipx' % m), 'rb').read()
     idx, dac = data[:64000], data[64000:]
-    off = collections.Counter()
+    pix, inter, cover = [], set(range(-64, 65)), collections.Counter()
     for i in range(tc.FRAME_W * tc.FRAME_H):
         a = c[3 * i:3 * i + 3]
         if a == SEQ[m][3 * i:3 * i + 3]:
             continue
         p = idx[i]
-        off[next((k for k in range(-64, 65)
-                  if dac[3 * ((p + k) & 0xFF):3 * ((p + k) & 0xFF) + 3] == a), None)] += 1
-    print('  DAC offsets (n=%d): %s' % (sum(off.values()), ', '.join(
-        ('%+d' % k if k is not None else 'none') + ':%d' % v for k, v in off.most_common(8))))
+        ks = frozenset(k for k in range(-64, 65)
+                       if dac[3 * ((p + k) & 0xFF):3 * ((p + k) & 0xFF) + 3] == a)
+        pix.append((i, p, a, ks))
+        inter &= ks
+        for k in ks:
+            cover[k] += 1
+    best = sorted(cover.items(), key=lambda kv: -kv[1])[:4]
+    print('  DAC: %d differing px; intersection %s; per-k coverage %s' % (
+        len(pix), sorted(inter) if inter else 'EMPTY',
+        ['%+d:%d/%d' % (k, v, len(pix)) for k, v in best]))
+    print('  DAC pixels with no offset: %d' % sum(1 for _i, _p, _a, ks in pix if not ks))
+    for i, p, a, ks in (pix[:13] if j == 5120 else []):
+        print('    (row %d, x %d) capture %s port %s -> %s' % (
+            i // 320, i % 320, a.hex(), SEQ[m][3 * i:3 * i + 3].hex(), sorted(ks)))
+    # the holder-count buckets for the differing pixels (small frames only)
+    if len(pix) <= 300:
+        hs = [[] for _ in pix]
+        for mm in range(N):
+            d = SEQ[mm]
+            for k, (i, _p, _a, _ks) in enumerate(pix):
+                if d[3 * i:3 * i + 3] == c[3 * i:3 * i + 3]:
+                    hs[k].append(mm)
+        buckets = collections.Counter(
+            '0' if not h else '1' if len(h) == 1 else '2..10' if len(h) <= 10
+            else '11..100' if len(h) <= 100 else '>100' for h in hs)
+        print('  differing-pixel holder counts: %s' % dict(buckets))
+        print('  single-holder pixels: %s' % dict(collections.Counter(
+            h[0] for h in hs if len(h) == 1)))
 
 
 def neighbours(j, fm):
-    for jj in (j - 1, j + 1):
+    for jj in (j - 2, j - 1, j + 1, j + 2):
         c = gc.load_capture_frame(os.path.join(CAP, 'frame_%05d.raw.gz' % jj))
         kind, _ = tc.explain(c, tc.row_hashes(c), SEQ, ROWS, N)
         m = gc.nearest(c, ROWS)
@@ -473,7 +586,46 @@ if __name__ == '__main__':
     calibration(fm)
 ```
 
-Its output is the source of the row runs, the pair/band/scan3 results, the DAC
-histograms and the clock-lead table above. (The `idx, dac` line in the
+Its output is the source of the row runs, the pair/band/scan3 results, the
+splice/transition counts, the DAC intersection and coverage, the holder-count
+buckets and the clock-lead table above. (The `idx, dac` line in the
 reproduction is kept literal to the `.ipx` layout — 64000 indices then 768 DAC
 bytes; `gp_compare.expand_ipx` is the model it reproduces.)
+
+### §P1.9 Correction (review, 2026-10-22)
+
+The first version of §P1 had the following evidence errors; the corrected
+values above are those the §P1.8 script prints, and no pin, code, tool or
+Makefile changed.
+
+1. **5120's DAC test is positive.** The first version tabulated the
+   *smallest matching* offset per pixel and read `−29: 8/13, −64: 5/13` as
+   coverage. The correct measure is the intersection of the per-pixel offset
+   sets: `{−29, +14, +29}`, each covering 13/13. The 8 `00001c` pixels match
+   {−29, 14, 16, 17, 29}; the 5 black pixels also match −29, +14 and +29. This
+   is the U10 4113 evidence signature; the "different content, not a different
+   index mapping" and "Negative result for all three" sentences were false for
+   5120. 4248's and 4320's negatives stand (their intersections are empty;
+   2810/22923 and 55/273 pixels have no offset in ±64).
+2. **The 4320 row block was an intersection, not the runs.** "Rows 0..87 held
+   by no dumped frame" was the whole-block holder check; per-row, rows 0..2 are
+   held by 59 frames, etc. §P1.5 now lists the 27 maximal runs and says "no
+   single frame holds all of rows 0..87".
+3. **The 5120 row block was not the maximal runs.** §P1.5 now lists the 20
+   runs, derives the split as `r1 = 5` (after the no-holder run 1..4) and
+   `r2 = 115` (the end of the 5..114 run plus one), and names the pair
+   `(4316, 4317)` (the first version's `(4316)` was the `B` index, not the
+   pair).
+4. **The 4320 composition sentence overclaimed.** The measured facts are the
+   row runs, the 273 differing pixels' holder counts (59 held only by 3614, 16
+   by 2..10, 54 by 11..100, 144 by >100, 0 unheld) and the failing splice/SCAN3
+   tests; "a composition of several dumped frames … not content absent from the
+   dump" is removed. The divergence-vs-artefact decision is Task 2's.
+5. **Small corrections.** 5890 is not black (166 pixels at rows 7..12, x
+   130..196, colour `41b2d3`); only 5889 is all-zero, and 5890 is clean at port
+   4939. The 5120 `S` records differ in `rng`, `t508`, `t50c` and `tick` as
+   well as `f`; only the seven brief fields are identical. 4248's `S` gap is
+   329 ms (112803−112474); the 328 ms figure is the `S`→`P` span
+   (112802−112474). The neighbour rows 4246/4250 are now printed by the script
+   (it checks `j−2 .. j+2`), and the splice/transition counts are computed by
+   it. The dump contents list includes `gp.log`.
