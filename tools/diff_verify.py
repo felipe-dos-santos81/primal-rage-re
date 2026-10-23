@@ -34424,6 +34424,39 @@ G3B_SPECS = [
     ], mutants=("@zero", "@scrub")),
 ]
 D1_SPECS += G3B_SPECS
+
+
+# ---- track P batch P5 (record 2026-10-22-pixel-and-proof-closure §P5): the frontend stub pair ------
+# The two rows that close eight frontend/attract rows' recorded callees: 1 + 7 rows block on the
+# `real`-mode 0x5D812 (attract_scene_tick, frontend_mode_15_step..1b_step) and the six mode_16..1b
+# rows also block on the allow-mode 0x28D68, which the port implements (fn_register in actors.c and
+# a column-0 header in flow.c), so the closure rule cannot excuse it until it has a row.
+P5_SPECS = [
+    # 0x5D812: `xor eax,eax; ret` (raw bytes `33 C0 C3` at file offset 0xB0666). The port does not
+    # register it: fn_resolve reports the miss to the seam and every caller treats it as the no-op
+    # it is (actors.c:943/3062/3893, flow.c:1060). The binding is the original's two instructions
+    # and nothing else; r0 is the zero boundary and r1 seeds EAX non-zero, so `@ret` (the `ret`
+    # without the `xor`, EAX passed through) is a difference — with EAX = 0 it would agree by
+    # accident (measured: only r1 catches it).
+    Spec("runtime_5d812", 0x5D812, [
+        Case("r0", {"eax": 0x00000000}),
+        Case("r1", {"eax": 0x00C0FFEE}),
+    ], eax_mask=0xFFFFFFFF, mutants=("@ret",)),
+    # 0x28D68 frontend_char_screen_hook: `push edx; mov edx,0x43738; mov eax,0x10;
+    # mov [0x104AE4],edx; call 0x4F980; pop edx; ret` (raw at file offset 0x7BBBC; the two dwords
+    # there are pre-fixup, 0x33738 and 0x84AE4, and mem_load_le_fixups makes them 0x43738 and
+    # 0x104AE4, the bytes the harness runs). EDX's push/pop restores it; the hook dword
+    # DS_00104AE4 becomes FN_00043738 and 0x4F980 arms the wipe with the return mode 0x10. 0x4F980
+    # is the case's stub (its own row proves the body, d1d's `frontend_wipe_arm`), so the seam
+    # records the call and its EAX argument on both sides. The sentinel 0x0005D812 is the other
+    # hook value, not the post-condition, and 0x104AE8 is seeded so a store wider than the raw's
+    # dword shows. Mask 0: the callers reach the hook through fn_resolve as a `void (*)(void)` and
+    # none reads EAX.
+    Spec("frontend_28d68", 0x28D68, [
+        Case("h0", {"eax": 0}, {0x00104AE4: le32(0x0005D812) + le32(0xE8E8E8E8)}),
+    ], calls=(E.Call(0x4F980, ("eax",)),), eax_mask=0,
+       mutants=("@hook", "@wipearg", "@nowipe")),
+]
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -34466,7 +34499,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

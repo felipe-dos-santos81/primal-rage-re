@@ -43271,6 +43271,30 @@ N3_MV_MUT(noreset) N3_MV_MUT(reset1) N3_MV_MUT(nokey) N3_MV_MUT(noquit) N3_MV_MU
 N3_MV_MUT(noopen)
 /* ---- n3 bindings end ---- */
 
+/* ---- track P batch P5 (record 2026-10-22-pixel-and-proof-closure §P5): the frontend stub pair ---- */
+/* 0x5D812: `xor eax,eax; ret` (raw bytes `33 C0 C3` at file offset 0xB0666; the next function
+ * 0x5D815's `push ebx` follows the ret). The port does not register it — fn_resolve reports the
+ * miss to the seam — so this is a binding-only row: the C below is the original's two
+ * instructions. Mask full: the value is the row. @ret drops the `xor` and reports the entry EAX,
+ * which the non-zero case catches. */
+static void b_p5_5d812(const u32 *r, u32 *eax)          { (void)r; *eax = 0u; }
+static void m_p5_5d812_ret(const u32 *r, u32 *eax)      { *eax = r[R_EAX]; }
+
+/* 0x28D68 frontend_char_screen_hook: `push edx; mov edx,0x43738; mov eax,0x10;
+ * mov [0x104AE4],edx; call 0x4F980; pop edx; ret` (raw at file offset 0x7BBBC, its two dwords
+ * pre-fixup there). 0x4F980 is the case's stub (its own row proves the body), so the seam records
+ * the call and its EAX = 0x10 argument on both sides; the hook store is the changed byte. Mask 0:
+ * the callers reach it through fn_resolve as a `void (*)(void)` hook, and none reads EAX.
+ * @hook stores 0x43739, @wipearg arms 0x11, @nowipe drops the call. */
+static void b_p5_28d68(const u32 *r, u32 *eax)          { (void)r; frontend_char_screen_hook(); *eax = 0u; }
+static void m_p5_28d68_hook(const u32 *r, u32 *eax)
+{ (void)r; DSD(0x00104AE4u) = 0x00043739u; frontend_wipe_arm(0x10u); *eax = 0u; }
+static void m_p5_28d68_wipearg(const u32 *r, u32 *eax)
+{ (void)r; DSD(0x00104AE4u) = 0x00043738u; frontend_wipe_arm(0x11u); *eax = 0u; }
+static void m_p5_28d68_nowipe(const u32 *r, u32 *eax)
+{ (void)r; DSD(0x00104AE4u) = 0x00043738u; *eax = 0u; }
+/* ---- p5 bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -58900,6 +58924,14 @@ static const binding_t k_bindings[] = {
     { "ret_noop_2ea64",        b_g3b_2ea64,        0xFFFFFFFFu },
     { "ret_noop_2ea64@zero",   m_g3b_2ea64_zero,   0xFFFFFFFFu },
     { "ret_noop_2ea64@scrub",  m_g3b_2ea64_scrub,  0xFFFFFFFFu },
+    /* track P batch P5 */
+    { "runtime_5d812",         b_p5_5d812,         0xFFFFFFFFu },
+    { "runtime_5d812@ret",     m_p5_5d812_ret,     0xFFFFFFFFu },
+    { "frontend_28d68",        b_p5_28d68,         0x00000000u },
+    { "frontend_28d68@hook",   m_p5_28d68_hook,    0x00000000u },
+    { "frontend_28d68@wipearg", m_p5_28d68_wipearg, 0x00000000u },
+    { "frontend_28d68@nowipe", m_p5_28d68_nowipe,  0x00000000u },
+    /* track P batch P5 end */
 };
 
 static const binding_t *find_binding(const char *name)

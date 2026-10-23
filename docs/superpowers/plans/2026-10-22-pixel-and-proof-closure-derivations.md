@@ -1336,3 +1336,235 @@ gone.
 the comment), this record, `docs/PROGRESS.md` (one short U13 line; Task 12 owns
 the phase paragraph). No `port/` code, no `tools/` change, no `data/`, no
 capture. The task report is the git-ignored ledger.
+
+## §P5 The frontend stub pair: `0x5D812` and `0x28D68`
+
+Task 5 of the plan, and the differential track's baseline: two rows, no `port/src` change. `0x5D812`
+is a binding-only row (the port does not register the address; the plan forbids a header or
+`fn_register` for it) and `0x28D68` is the port's `frontend_char_screen_hook` (`flow.c:976`).
+Together they close the eight rows whose recorded callees included them. Everything below was
+measured at base commit `04e3f7ed` in the worktree `pixel-and-proof-closure`, with the driver
+command the plan fixes:
+
+```bash
+python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE \
+  --image /tmp/pr_diff_image.bin --table /tmp/pr_diff_table.md --self-check
+```
+
+### §P5.1 The baseline line
+
+```text
+diff-verify: 1019/1019 functions VERIFIED; 14956/14956 mutants detected; 0 named gaps; 774/833 rows with callees closed (186 have none); 768/833 closed on full rows; 8 ported functions with no row. ...
+```
+
+(The sentence continues with the fixed closure-rule explanation, unchanged in every run; the table
+is `/tmp/pr_diff_table_baseline.md`, 15975 rows = 1019 real + 14956 mutants.) All 1019 real rows are
+`VERIFIED` (30 carry a `reads outside the image` note); the 59 open rows are exactly 833 − 774,
+and the baseline census contains the §J1 blockers plus the two this task removes: `0x5D812 real`
+(8 rows: `attract_scene_tick`, `frontend_mode_15_step` … `frontend_mode_1b_step`) and `0x28D68 allow`
+(6 rows: `frontend_mode_16_step` … `frontend_mode_1b_step`).
+
+### §P5.2 `0x5D812` — `xor eax,eax; ret`, binding only
+
+The raw file bytes at offset `0xB0666` are `33 C0 C3`; the image the harness runs holds the same
+bytes at `0x5D812` (no fixup record touches them), and `0x5D815` (`push ebx`) is the next function.
+The port registers nothing at the address: `fn_resolve` reports the miss to the harness's seam, and
+every caller elides the call (`actors.c:943/3062/3893`, `flow.c:1060`), which is why the row is a
+`port/tests/diff_runner.c` binding and not a C function.
+
+The spec (`tools/diff_verify.py`, `P5_SPECS`):
+
+```python
+Spec("runtime_5d812", 0x5D812, [
+    Case("r0", {"eax": 0x00000000}),
+    Case("r1", {"eax": 0x00C0FFEE}),
+], eax_mask=0xFFFFFFFF, mutants=("@ret",))
+```
+
+`r0` is the zero boundary; `r1` is the case that makes the `xor` observable. The mutant
+`runtime_5d812@ret` is the `ret` without the `xor` (EAX passed through), and the measured
+discrimination is one case, one kind:
+
+```text
+runtime_5d812@ret MISMATCH 1 / 1
+    r1: eax (mask 0xFFFFFFFF): original 0x0, port 0xC0FFEE
+```
+
+This is why the case set is two cases and not the plan's single `{"eax": 0}`: with EAX = 0 at entry
+a pass-through binding is indistinguishable from the original, and the row could not fail for the
+one implementable error (a forgotten clear). The binding (`b_p5_5d812`) is `*eax = 0u` and touches
+no memory; the mutant (`m_p5_5d812_ret`) is `*eax = r[R_EAX]`.
+
+Measured, `--function runtime_5d812 --self-check`:
+
+```text
+| runtime_5d812 | 0x5D812 | 2 | 1/1 | VERIFIED | - |
+| runtime_5d812@ret | 0x5D812 | 2 | 1/1 | MISMATCH | - |
+```
+
+then the full driver with only this row added:
+
+```text
+diff-verify: 1020/1020 functions VERIFIED; 14957/14957 mutants detected; 0 named gaps; 776/833 rows with callees closed (187 have none); 770/833 closed on full rows; 8 ported functions with no row. ...
+```
+
+Two rows closed — `774 → 776` closed, `768 → 770` full, and one row without callees (`186 → 187`)
+because the new row records none. The two are the ones whose only open blocker was `0x5D812`:
+
+```text
+| attract_scene_tick   | 0x292AC | 6 | 6/6 | VERIFIED | 4F1D0 stub VERIFIED, 4F7F4 stub VERIFIED, 5D812 real unverified |
+| frontend_mode_15_step| 0x4F24C | 10 | 9/9 | VERIFIED | 4F790 stub VERIFIED, 5D812 real unverified |
+```
+
+Their final rows read `5D812 real VERIFIED` and no other callee changed. The six
+`frontend_mode_16_step` … `1b_step` rows still name `28D68 allow unverified` and wait for §P5.3.
+
+### §P5.3 `0x28D68` — `frontend_char_screen_hook`
+
+The function's bytes at `0x28D68` are `52 BA 38 37 04 00 B8 10 00 00 00 89 15 E4 4A 10 00 E8 02 6C
+02 00 5A C3` (`push edx; mov edx,0x43738; mov eax,0x10; mov [0x104AE4],edx; call 0x4F980; pop edx;
+ret`, EDX preserved by the push/pop, EAX left at 0x10 by the non-clobbering callee). The file bytes at
+offset `0x7BBBC` are pre-fixup (`0x33738`/`0x84AE4`); `mem_load_le_fixups` rewrites both to
+`0x43738`/`0x104AE4`, which is what the harness runs. The port body is the same two effects
+(`DSD(DS_00104AE4) = FN_00043738; frontend_wipe_arm(0x10u);`).
+
+The spec:
+
+```python
+Spec("frontend_28d68", 0x28D68, [
+    Case("h0", {"eax": 0}, {0x00104AE4: le32(0x0005D812) + le32(0xE8E8E8E8)}),
+], calls=(E.Call(0x4F980, ("eax",)),), eax_mask=0,
+   mutants=("@hook", "@wipearg", "@nowipe")),
+```
+
+The case seeds the hook dword with the *other* hook value, `0x0005D812` (not the post-condition),
+and `0x104AE8` with a neighbour sentinel so a store wider than the raw's dword would show. `0x4F980`
+is a stub in the call set: the port's `frontend_wipe_arm` opens with `PR_SEAM(0x4F980, ret_mode)`, so
+the seam records the call and its argument on both sides while the arm's own stores are skipped on
+both sides. The row therefore claims: the hook store, the call, and the arm's mode word as the call's
+EAX argument; the arm's three stores are `frontend_wipe_arm`'s own row (d1d), not this one. Mask 0:
+the hook's callers reach it through `fn_resolve` as a `void (*)(void)` and none reads EAX.
+
+Measured mutant discrimination (all four rows `MISMATCH`, 1/1 block, one case each):
+
+```text
+frontend_28d68@hook    h0: call #0 memory: ... first difference at 0x104AE4: original 0x38, port 0x39
+                       h0: byte 0x104AE4: original 0x38, port 0x39
+frontend_28d68@wipearg h0: call #0: original 0x4F980(0x10), port 0x4F980(0x11)
+frontend_28d68@nowipe  h0: call #0: original 0x4F980(0x10), port none
+```
+
+The `@hook` byte is the value's low byte; the call-memory difference proves the store is before the
+call on both sides, which the raw's order requires. Measured, `--function frontend_28d68
+--self-check`:
+
+```text
+| frontend_28d68 | 0x28D68 | 1 | 1/1 | VERIFIED | 4F980 stub unverified |
+| frontend_28d68@hook | 0x28D68 | 1 | 1/1 | MISMATCH | 4F980 stub unverified |
+| frontend_28d68@wipearg | 0x28D68 | 1 | 1/1 | MISMATCH | 4F980 stub unverified |
+| frontend_28d68@nowipe | 0x28D68 | 1 | 1/1 | MISMATCH | 4F980 stub unverified |
+```
+
+(the callee column reads `unverified` by design in a `--function` run: the callee's own row is not
+run; the full run below reads `4F980 stub VERIFIED`.)
+
+### §P5.4 The final line and the eight closed rows
+
+```text
+diff-verify: 1021/1021 functions VERIFIED; 14960/14960 mutants detected; 0 named gaps; 783/834 rows with callees closed (187 have none); 777/834 closed on full rows; 8 ported functions with no row. ...
+```
+
+The six remaining rows close with the one added above (`frontend_mode_16_step` … `1b_step`; before
+`28D68 allow unverified, ... 5D812 real unverified`, after `28D68 allow VERIFIED, ... 5D812 real
+VERIFIED`), and no previously open row stays open on either address:
+
+```text
+frontend_mode_16_step 0x4F2B0: 28D68 allow VERIFIED, 4F790 stub VERIFIED, 4F980 allow VERIFIED, 5D812 real VERIFIED
+frontend_mode_17_step 0x4F318: 28D68 allow VERIFIED, 4F790 stub VERIFIED, 4F980 allow VERIFIED, 5D812 real VERIFIED
+frontend_mode_18_step 0x4F6E8: 28D68 allow VERIFIED, 4F980 allow VERIFIED, 5D812 real VERIFIED
+frontend_mode_19_step 0x4F704: 28D68 allow VERIFIED, 4F980 allow VERIFIED, 5D812 real VERIFIED
+frontend_mode_1a_step 0x4F9A0: 28D68 allow VERIFIED, 4F980 allow VERIFIED, 4F9E4 stub VERIFIED, 5D812 real VERIFIED
+frontend_mode_1b_step 0x4F9C8: 28D68 allow VERIFIED, 4F980 allow VERIFIED, 4FA88 stub VERIFIED, 5D812 real VERIFIED
+```
+
+Together with §P5.2's two, that is the plan's 8 rows and its open count, `59 → 51`. **The measured
+closed/full denominators are one higher than the plan's `782/833`/`776/833`**, and the difference is
+not a fitted value: the plan counted the two new rows as callee-less, but `frontend_28d68`'s row
+records its call to `0x4F980`, whose own row is VERIFIED, so the new row is itself a closed row with
+a callee. Hence `with_callees` 833 → 834 and `closed` 774 + 8 + 1 = 783, `full` 768 + 8 + 1 = 777;
+`834 − 783 = 51`, the same 51 open rows as `833 − 782`. The mutant count is exactly the plan's `+4`
+(14957 → 14960) and functions `1019 → 1021`.
+
+No other row moved: comparing the baseline and final tables row by row, 15975 → 15981 entries (the
+six new ones only), no real row's entry/cases/blocks/verdict changed, and every existing row whose
+callee column said `5D812 … unverified` now says `VERIFIED` (the callee-status column is the only
+difference on those rows).
+
+### §P5.5 The 51-row blocker census
+
+Measured from the final table with the §J1 rule (`closed_rows`/`non_portable`). A row can name more
+than one blocker, so the counts sum above 51; every blocker is a recorded stub except the three
+allow-mode E2-class handlers the port implements (`0x29D04`, `0x3E484`, `0x3E4C4`), whose own rows
+can exist and so are not excused:
+
+| blocker | mode | rows |
+|---|---|---|
+| `0x65431` | stub | 11 (`game_frame_*` ×10, `game_quit_prompt`) |
+| `0x5DD03` | stub | 10 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `snd_sample_*` ×4, `sound_sfx_volume`, `sound_shutdown`) |
+| `0x40CB0` | stub | 8 (`game_mode_05_step` ×2, `game_mode_0d_step*` ×3, `game_mode_32_step*` ×3) |
+| `0x24568` | stub | 7 (`game_mode_05_step` ×2, `game_mode_0d_step*` ×2, `game_mode_32_step*` ×3) |
+| `0x5DEED` | stub | 7 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `snd_music_playing`, `sound_music_volume`, `sound_shutdown`) |
+| `0x24804` | stub | 6 (`game_mode_05_step` ×2, `game_mode_0d_step*` ×2, `game_mode_32_step*` ×2) |
+| `0x5DCC5` | stub | 6 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `sound_sample_start`, `sound_sfx_volume`) |
+| `0x5DECA` | stub | 5 (`attract_config_volumes` ×2, `fight_char_screen_open` ×2, `sound_music_volume`) |
+| `0x5DC0F` | stub | 4 (`snd_sample_queue`, `snd_sample_stop`, `snd_samples_stop_all`, `sound_sample_start`) |
+| `0x5DC8B` | stub | 4 (`snd_sample_queue`, `snd_sample_stop`, `snd_samples_stop_all`, `sound_shutdown`) |
+| `0x29D04` | allow / stub | 4 (`fighter_35050`, `fighter_think_side` allow; `fighter_state_350d0`, `fighter_winner_body` stub) |
+| `0x3E484` | allow | 3 (`fighter_19020`, `fighter_pass_a`, `fighter_pass_a_al`) |
+| `0x5DEAF` | stub | 3 (`snd_music_stop`, `sound_music_pause_toggle`, `sound_shutdown`) |
+| `0x2CB74` | stub | 2 (`menu_run`, `menu_step`) |
+| `0x6C4CF` | stub | 2 (`config_file_load`, `menu_fatal_error`) |
+| `0x3E4C4` | allow | 1 (`fighter_winner_body`) |
+| `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCE4`, `0x61A70`, `0x65546` | stub | 1 each |
+
+Against the §J1 paragraph in `AGENTS.md` this is the same census minus `0x5D812 real` (8 rows) and
+`0x28D68 allow` (6 rows), i.e. the 14 blocker-row incidences those two addresses carried.
+
+### §P5.6 The harness pins, the full-scan check and `port_progress`
+
+The direct driver is the acceptance and it is green (exit 0, both runs). The harness suite
+(`python3 -m unittest tools.tests.test_diff_verify`, 133 tests) now fails **four** pins, all because
+they enumerate the complete spec set and this task adds two specs by plan:
+
+- `test_the_self_check_counts_functions_mutants_gaps_and_closed_rows` — the pinned counter string (the
+  one the plan says Task 11 updates);
+- `test_the_eax_mask_is_stated_by_the_spec_per_function` — the `{name: eax_mask}` equality;
+- `test_every_ported_function_agrees_with_the_original_on_every_block` — the sorted real-spec name list;
+- `test_every_mutant_is_reported_as_a_mismatch` — the sorted mutant name list.
+
+The plan's text (line 199) names only the counter string; the other three are the same kind of
+exhaustive pin and need the two names (and the four mutants) added in Task 11 as well. The measured
+values Task 11 needs: `runtime_5d812` mask `0xFFFFFFFF`, `frontend_28d68` mask `0`; mutants
+`@ret` (`eax`, r1 only), `@hook` (`byte` + `call #0 memory`, h0), `@wipearg` (`call #0`, h0),
+`@nowipe` (`call #0`, h0). `tools/tests/test_diff_verify.py` is untouched here by instruction.
+
+`PR_DIFF_FULLSCAN=1` on both rows (the plan's risk 4: no new binding or mutant writes outside
+`mem[]`) is green: `1/1 functions VERIFIED; 1/1 mutants detected` (0x5D812) and `1/1 functions
+VERIFIED; 3/3 mutants detected` (0x28D68) — the only store on either side is the 0x28D68 row's four
+bytes at `0x104AE4`, and the 0x5D812 row writes nothing.
+
+`python3 tools/port_progress.py` is unmoved, as required (no `port/src` header, no `fn_register`):
+
+```text
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+```
+
+### §P5.7 Files and commit
+
+`port/tests/diff_runner.c` (the `p5` binding block: `b_p5_5d812`, `m_p5_5d812_ret`,
+`b_p5_28d68`, `m_p5_28d68_hook`, `m_p5_28d68_wipearg`, `m_p5_28d68_nowipe`, and their six
+`k_bindings` entries), `tools/diff_verify.py` (`P5_SPECS` and its place in the `SPECS`
+concatenation), this record. No `port/src` header or `fn_register`, no `data/`, no Makefile,
+no `tools/tests/` change. Commit `diff: row the frontend stub and 0x28D68`. The task report is the
+git-ignored ledger.
