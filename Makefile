@@ -68,7 +68,7 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
-        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle \
+        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1602,6 +1602,60 @@ gp-u19-oracle: build ## Endgame truth U19 oracle: VERTIGO's ending (character 3,
 			--win-min-first "$(GP_U19_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U19_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u19-vertigo-ending; exit $$rc; fi
 
+# Endgame truth Task 5 (plan docs/superpowers/plans/2026-10-23-endgame-truth.md; record §E1.1,
+# §E5): gp-u20-chaos-ending is CHAOS's ending. P1 confirms character-select cell 4
+# (ending_menu(4): four p1.right presses), which 0xC8882 = 00 02 03 01 06 04 05 maps to class 6
+# CHAOS (0x43D6E/0x43D74), whose ending is DS_0010782A[DS_00104AD4 * 0x94] = 6 (title id 0xE4,
+# CHAOS' REDEMPTION — a 0xA80E4 fact and the compared frames' content, not a WIN/S field).
+# Its first poke writes CHAOS's seven land marks (0x86, not u10's SAURON 0x80: 0x41C28 state 1
+# tallies (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C), and the rest are
+# gp-u10-ending's from its second poke on. `gp_win.py check` finds 30/30 milestones including the
+# mode-0x1F row's ad4=0,c0=6 under the label "CHAOS's ending".
+# Measured on the 2026-10-23 capture (5,790 frames, raw 1396..14493, wall 207.2 s, memsize=64):
+# the window starts at capture 83 (raw 1750); every content-bearing capture frame through 5775 is
+# explained (3,399 clean, 2,259 splice, 8 transition) plus four named per-frame allowances, each
+# its own byte recipe (tools/gp_compare.py): 381 is round 1's mode-8 three-present scan (row 0 port
+# 260's, rows 1..157 port 263's, 158..199 port 264's), 2180 is the loader's 166-px glyph strip at
+# the mode-0x17 -> 0x12 entry over port 1782's mode-0x12 screen (port 1781 over it, the mask from
+# 1780; OVERLAY_ALLOWED, the §G7 composition), 2350 is the health-bonus screen's (mode 0x23)
+# three-present scan (port 1932/1933) and 4272 is the final's mode-0x0D -> 0x0C three-present scan
+# (ports 3566/3567/3568; SCAN3_ALLOWED, the §G6 shape). The first unexplained is 5776 (raw
+# 14433): 5776..5789 are the post-script tail (the replay's dump ends at port frame 4890, f=0x2753,
+# and its trace at f=0x2755, where the capture's X record sits) and are NOT claimed; MIN_FIRST =
+# 5776, and 5777 fails (the ratchet fails only when the first unexplained precedes N). The
+# comparison's window reach is port 4890 (the dump's last frame), so MIN_REACH = 4890 and 4891
+# fails as unreachable beyond the dump. Trace and WIN fields agree through f=0x2755 (10069), so
+# their end pins are 10070; the moves comparison is reported by gp_compare (0 differing through
+# 10069) and is not pinned. The capture has 5,790 frames with this poll.log sha256
+# (73b5bb80..ca7cb).
+# An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
+# capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
+# WIN_MIN_FIRST when they improve.
+GP_U20_MIN_FIRST = 5776
+GP_U20_TRACE_MIN_FIRST = 10070
+GP_U20_MAX_START = 83
+GP_U20_MIN_REACH = 4890
+GP_U20_CAPTURE_SHA256 = 73b5bb808dee603c1e5a359e2716c9654db945737a799cee30c00762699ca7cb
+GP_U20_CAPTURE_FRAMES = 5790
+GP_U20_MILESTONES = 30
+GP_U20_WIN_MIN_FIRST = 10070
+gp-u20-oracle: build ## Endgame truth U20 oracle: CHAOS's ending (character 6, cell 4; skips without data/k11-captures/gp-u20-chaos-ending)
+	@echo "== gameplay oracle: gp-u20-chaos-ending (CHAOS's ending under pokes) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u20-chaos-ending ]; then echo "gp-u20-oracle: no capture at $(K11_CAPTURES)/gp-u20-chaos-ending (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u20-chaos-ending --capture $(K11_CAPTURES)/gp-u20-chaos-ending \
+			--capture-sha256 "$(GP_U20_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u20-chaos-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u20-chaos-ending --capture $(K11_CAPTURES)/gp-u20-chaos-ending \
+			--port $(GP_DUMP)/gp-u20-chaos-ending --min-first "$(GP_U20_MIN_FIRST)" \
+			--trace-min-first "$(GP_U20_TRACE_MIN_FIRST)" --max-start "$(GP_U20_MAX_START)" \
+			--min-reach "$(GP_U20_MIN_REACH)" \
+			--capture-sha256 "$(GP_U20_CAPTURE_SHA256)" --capture-frames "$(GP_U20_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u20-chaos-ending --capture $(K11_CAPTURES)/gp-u20-chaos-ending \
+			--port $(GP_DUMP)/gp-u20-chaos-ending --min-milestones "$(GP_U20_MILESTONES)" \
+			--win-min-first "$(GP_U20_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U20_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u20-chaos-ending; exit $$rc; fi
+
 # Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
 # gp_session.SCENARIOS['gp-u17-device2'], record §H6.6/§H6.9): the K11 service-menu walk to MODIFY
 # CONTROLS (0x31F24) with the K11 walk's own keys, one 5-frame Down, Esc (leave MODIFY CONTROLS) and
@@ -1772,6 +1826,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u18-oracle
 	@echo "== endgame truth U19: VERTIGO's ending (character 3, cell 2); skips without its capture =="
 	@$(MAKE) --no-print-directory gp-u19-oracle
+	@echo "== endgame truth U20: CHAOS's ending (character 6, cell 4); skips without its capture =="
+	@$(MAKE) --no-print-directory gp-u20-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify

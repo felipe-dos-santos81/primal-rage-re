@@ -470,7 +470,7 @@ class TestMemsize(unittest.TestCase):
     is the one its capture was taken with."""
     MEM = ['-set', 'dosbox memsize=64']
     POKED_FINAL = ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
-                   'gp-u19-vertigo-ending')
+                   'gp-u19-vertigo-ending', 'gp-u20-chaos-ending')
 
     def cmd(self, name, root='/r'):         # as gp_capture.main builds it
         scn = gs.SCENARIOS[name]

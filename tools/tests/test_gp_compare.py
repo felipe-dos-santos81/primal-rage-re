@@ -827,6 +827,21 @@ class Scan3Allowance(Dirs):
                            '7b1d3e43b68a309a87c71f991a28f9aaf0597d789a50fe82c20deb8eaf0d66b0'),
                           (4430, 12, 146,
                            '83ca9cdcfbc340ebe24f6331d6ebdb6871ec07704108fc1e3bf139704adefdf9')))
+        # endgame truth Task 5 (record §E5): CHAOS's ending's three scans — 381 is
+        # round 1's mode-8 screen (row 0 port 260's, 1..157 port 263's, 158..199 port
+        # 264's), 2350 the health-bonus screen (0..24 the earlier holders, 25..139 port
+        # 1932's, 140..199 port 1933's) and 4272 the final's mode-0x0D -> 0x0C
+        # transition (0..18 port 3566's, 19..90 port 3567's, 91..199 port 3568's). PIN
+        # only, as the U18/U19 entries: the recipe's mutations are proved on the
+        # fixture by this class's sub-tests and on the real dump by the manual run
+        # record §E5 reports; the dump is not retained.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u20-chaos-ending'],
+                         ((381, 1, 158,
+                           '6ac5160d40dd5666f49650e2f9643c27dedceb5565424bb188405f306c1eb936'),
+                          (2350, 25, 140,
+                           '706572f06c0cdb32aa3e8efd4a52fb42da0bd30f2b4730b9b70ac28987103c68'),
+                          (4272, 19, 91,
+                           '9744b9869a3b9e4b749ddbdacba395ad527c0f3fbef5e40ff88eae19013e30be')))
 
 
 class OverlayAllowance(Dirs):
@@ -1031,6 +1046,15 @@ class OverlayAllowance(Dirs):
         # reports; the dump is not retained, so this case does not run a dump test.
         self.assertEqual(gc.OVERLAY_ALLOWED['gp-u19-vertigo-ending'],
                          ((2312, 1872, 1871, 1873,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+        # endgame truth Task 5 (record §E5): CHAOS's ending's own loader presentation at
+        # capture 2180 (raw 5094), port 1781's 166 glyph pixels over port 1782's mode-0x12
+        # screen, the mask from port 1780 (both mode 0x17 at tick 00000C65). PIN only, as
+        # the U18/U19 entries: the recipe's mutations are proved on the fixture by this
+        # class's sub-tests and on the real dump by the manual run record §E5 reports; the
+        # dump is not retained, so this case does not run a dump test.
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u20-chaos-ending'],
+                         ((2180, 1781, 1780, 1782,
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
 
 

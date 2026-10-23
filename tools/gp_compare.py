@@ -268,6 +268,33 @@ SCAN3_ALLOWED = {
         # are clean at 3640 (capture 4429) and a (3642, ...) splice (4431).
         (4430, 12, 146, '83ca9cdcfbc340ebe24f6331d6ebdb6871ec07704108fc1e3bf139704adefdf9'),
     ),
+    'gp-u20-chaos-ending': (
+        # Capture 381 (raw 2971): the round-1 mode-8 screen's three-present scan, the
+        # first present bunching after the opening (record §E5). Row 0 is held by port
+        # 260 (f=04FB tick=00000551 mode=0008) alone among the frames before the bind
+        # (the still-scanned old screen's top row), rows 1..157 are port 263's (f=04FE
+        # tick=00000552 mode=0008, its only holder over rows 5..12 and 35..157) and rows
+        # 158..199 are port 264's (f=04FF tick=00000553 mode=0008); (263, 264) is the
+        # 4891-frame dump's unique adjacent-pair bind and the r2 split is forced (row 158
+        # exists only in 264). The neighbours are clean at port 260 (capture 380) and a
+        # (264, ...) splice at 382.
+        (381, 1, 158, '6ac5160d40dd5666f49650e2f9643c27dedceb5565424bb188405f306c1eb936'),
+        # Capture 2350 (raw 5736): the health-bonus screen's three-present scan (mode
+        # 0x23), the same class as U19's 2478. Rows 0..24 are held by the earlier ports
+        # 193..196, 1039 and 1926..1931 (not uniquely bound — the named limit), rows
+        # 25..139 are port 1932's (f=0E34 tick=00000E90 mode=0023) and rows 140..199 are
+        # port 1933's (f=0E35 tick=00000E91 mode=0023); (1932, 1933) is the dump's unique
+        # adjacent-pair bind and the r2 split is forced (row 140 exists only in 1933).
+        (2350, 25, 140, '706572f06c0cdb32aa3e8efd4a52fb42da0bd30f2b4730b9b70ac28987103c68'),
+        # Capture 4272 (raw 8091): the final's mode-0x0D -> 0x0C transition, the same
+        # three-present scan as U13's 4248/4320, U18's 4099/4147 and U19's 4362. Rows
+        # 0..18 are port 3566's (f=159F tick=00001674 mode=000D, its only holder over rows
+        # 0..4 and 11..18), rows 19..90 are port 3567's (f=159F tick=00001678 mode=000C)
+        # and rows 91..199 are port 3568's (f=15A0 tick=00001679 mode=000C); (3567, 3568)
+        # is the dump's unique adjacent-pair bind and the r2 split is forced (row 91
+        # exists only in 3568).
+        (4272, 19, 91, '9744b9869a3b9e4b749ddbdacba395ad527c0f3fbef5e40ff88eae19013e30be'),
+    ),
 }
 
 
@@ -370,6 +397,21 @@ OVERLAY_ALLOWED = {
         # measured on this dump; T1 1872/T2 1871 are the only pair at mask 166 that
         # reproduces the frame's pixels.
         (2312, 1872, 1871, 1873,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
+    'gp-u20-chaos-ending': (
+        # Capture 2180 (raw 5094): CHAOS's own loader presentation at the mode-0x17 ->
+        # 0x12 entry, the same §G7 composition as U9/U10/U13/U18/U19: port 1781's
+        # (f=0C12 tick=00000C65 mode=0017) 166 glyph pixels at rows 192..197, x 0..85
+        # over port 1782's (f=0C12 tick=00000C6B mode=0012) screen; port 1780 (f=0C12
+        # tick=00000C65 mode=0017, the same tick's second present) is the same indices
+        # under the stale black palette (the mask's source). The capture shows the
+        # composition over the new screen, where the replay's own presentation 1781 is
+        # over the stale one: no clean match or two-frame splice expresses it (2179 is
+        # clean at 1781 and 2181 clean at 1782). The glyph fingerprint is the loader
+        # string's (de1c1bb2..), measured on this dump; T1 1781/T2 1780 are the only
+        # pair at mask 166 that reproduces the frame's pixels.
+        (2180, 1781, 1780, 1782,
          'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
     ),
 }
