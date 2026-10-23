@@ -11,10 +11,11 @@ no allowance, no fix and no pin: which of the spec's two outcomes (a real port
 divergence or a measured comparison-model artefact) holds is Task 2's decision,
 and every measured value below is the input to it.
 
-Everything here was measured at base commit `2cd2ab0d` in the worktree
-`pixel-and-proof-closure`. The capture is consumed read-only
-(`data/` is read-only); no file under `data/`, `port/`, `tools/` or the
-Makefile is touched.
+The measurements in §P1 (Task 1) are from base commit `2cd2ab0d` in the worktree
+`pixel-and-proof-closure`; every later section names its own base. The capture is
+consumed read-only (`data/` is read-only); Task 1 touches no file under `data/`,
+`port/`, `tools/` or the Makefile. Later tasks in the phase do change `tools/`,
+the Makefile and (for the `0x3A6D4` seam) `port/src`, as their sections state.
 
 ## §P1 U13's in-replay unexplained frames: reproduction and mapping
 
@@ -601,9 +602,12 @@ if __name__ == '__main__':
 
 Its output is the source of the row runs, the pair/band/scan3 results, the
 splice/transition counts, the DAC intersection and coverage, the holder-count
-buckets and the clock-lead table above. (The `idx, dac` line in the
-reproduction is kept literal to the `.ipx` layout — 64000 indices then 768 DAC
-bytes; `gp_compare.expand_ipx` is the model it reproduces.)
+buckets and the clock-lead table above. The 5120 per-pixel holder counts
+(§P1.5: 0, 717, 573..659) come from the same `pix` list the script builds; it
+prints only the holder buckets and the single-holder map, not each pixel's
+count. (The `idx, dac` line in the reproduction is kept literal to the `.ipx`
+layout — 64000 indices then 768 DAC bytes; `gp_compare.expand_ipx` is the model
+it reproduces.)
 
 ### §P1.9 Correction (review, 2026-10-22)
 
@@ -1322,7 +1326,7 @@ content-bearing capture frame through 5890 is explained by name — 2188 by the
 loader's glyph overlay, 4248 (raw 7887) and 4320 (raw 8019) as three-present
 scan-outs, 5120 (raw 8839) as a four-row band (record §P1, §P2, §P3); the first
 unexplained is 5891 (raw 14361) and 5891..5903 are the post-script tail (the
-replay's dump ends at f=0x271B and its trace at f=0x271D, X f=10013; §P1.6) and
+replay's dump ends at f=0x271B and its trace at f=0x271D, X f=10013 = 0x271D; §P1.6) and
 are not claimed, so `MIN_FIRST = 5891` and 5892 fails; the enforced
 comparison's window reach is port 4939, so `MIN_REACH = 4939` and 4940 fails;
 trace and win fields agree through f=10013, so their end pins are 10014; 30/30
@@ -2914,8 +2918,8 @@ PR_DIFF_FULLSCAN=1 make verify        # rc 0
 `PR_DIFF_FULLSCAN=1` runs each `diffrun` binding's outside-the-image scan over the whole
 63 MB instead of the write-fault pages — the form AGENTS.md asks for before a push, and
 the one this phase's review focus #4 names (every new binding and mutant inside `mem[]`).
-One uninterrupted invocation, about 58 minutes wall for the shell call, with `EXIT=0`. Every
-stage it reaches passes:
+One uninterrupted invocation, about 58 minutes wall for the shell call; the log's own first-to-last
+span is ~44.5 min, with `EXIT=0`. Every stage it reaches passes:
 
 | stage | result line (verbatim) |
 |---|---|
@@ -3132,7 +3136,7 @@ through capture 5890, and the differential's rowable frontier) and leaves these 
 each with its evidence:
 
 - **U13's post-script tail.** 5891..5903 (raw 14361..14417) is the 13-frame tail after the
-  scenario's `X` record (f=10013); the port's dump ends at frame 4939 (f=0x271B) and its
+  scenario's `X` record (f=10013 = 0x271D); the port's dump ends at frame 4939 (f=0x271B) and its
   trace at f=0x271D, so no frame exists for those states and the pin stops there (§P1.6).
 - **The 5120 band's cause.** Capture 5120 is explained by name (§P3.3) with a byte-pinned,
   mutation-tested recipe (§P3.4), but the state that produced its four-row band is not
@@ -3152,18 +3156,21 @@ each with its evidence:
   the replay's post-script tail) and what the pokes replaced — the KO by hits and the six
   earlier won matches — is not claimed (§W.9). No other character's ending has a capture.
 - **The runtime/host blockers.** All 31 open rows block on recorded stubs outside the
-  portable set — 16 runtime addresses, 5 host-owned routines (the AIL/presence family),
-  2 addresses the decomp index never lists. None can have a row, so those rows keep their
-  place in the counter by design (§J1, §P11.2).
+  portable set — 16 runtime addresses, 5 host-owned routines (the paged allocator
+  `0x1C308` and the four PIT/game-port calibration routines
+  `0x4FBBB`/`0x4FC05`/`0x4FCFD`/`0x4FDF5`), 2 addresses the decomp index never lists.
+  None can have a row, so those rows keep their place in the counter by design
+  (§J1, §P11.2).
 - **The weaker rows.** The 12 ways above (pokes, unhit blocks, terminal differences) are
   declared, not proved away; the `0x24C5C` rows' partial block coverage (62/161 on
   `game_frame_keys`) and `game_loop`'s two named unhits are the largest, and the counter's
   headline does not distinguish a weaker row from a full one — only its `closed on full
   rows` figure does.
-- **`flow_4f5c8`'s zero divisor.** No case uses divisor 0: the raw's `idiv` would fault at
-  `0x4F5E0`, and the port returns 0 instead — a documented deviation (`flow.c`'s PORT
-  comment, the same form as `0x4F4E8`'s), so that path is unverified on both sides by
-  construction.
+- **`flow_4f5c8`'s zero divisor.** This is not one of the weaker rows: the row covers
+  4/4 blocks and the stock divisor `0x1088D0` is never zero. No case uses divisor 0 (the
+  raw's `idiv` would fault at `0x4F5E0`, and the port returns 0 instead) — a deviation
+  named separately in §P8.3 (`flow.c`'s PORT comment, the same form as `0x4F4E8`'s), so
+  that path is unverified on both sides by construction.
 - **The oracles' claim width.** Each gameplay oracle proves only that no content-bearing
   capture frame in its pinned window is unexplained and that the window reaches its end
   (plus the state-field ratchets); port-frame order, under-rendering inside a window and
@@ -3197,18 +3204,19 @@ this task; the phase added no new `FN_` header and no `fn_register`, only seams 
 > not in the decomp index), and the unrowed figure now measures the frontier instead of
 > restating a hand-maintained set (the guard test fails on a new `FN_` port without a
 > row). The `0x3D0BC` spec was corrected: it is four zero bytes of alignment padding, not
-> a function, and the real hook is `0x3A6D4`. Six pins in
+> a function, and the real hook is `0x3A6D4`. Five pins in
 > `tools/tests/test_diff_verify.py` were re-measured from the driver's own line — the
-> counter string, the EAX-mask dict, the real-spec-name list, the mutant-name list, the
-> stub-clobber dict, and Task 10's frontier guard test (already green) — and no row,
-> closure rule or port code changed with them. The pixel half re-pinned U13: with the
+> counter string, the EAX-mask dict, the real-spec-name list, the mutant-name list and
+> the stub-clobber dict — plus the Task 10 guard test (already green); no row, closure
+> rule or port code changed with the pin update (Task 9's `PR_SEAM` on `0x3A6D4` is a
+> port seam, not a pin). The pixel half re-pinned U13: with the
 > named per-frame recipes for capture 4248, 4320 and 5120, `gp-u13-ending2`'s first
 > unexplained capture frame is 5891 (the post-script tail 5891..5903) and the enforced
 > reach is port 4939 (`GP_U13_MIN_FIRST` 4248 -> 5891, `GP_U13_MIN_REACH` 3549 -> 4939,
 > each proved to fail one step above; trace/WIN stay 10014, start 96, milestones 30/30,
 > the capture sha and 5904 frames unchanged). `PR_DIFF_FULLSCAN=1 make verify` is green on
 > the phase tip, `port_progress.py` is unmoved (`799 1203 66` / `759 759 100`) and no pin
-> moved outside the U13 pair and the six re-measured harness pins. **Remaining
+> moved outside the U13 pair and the five re-measured harness pins. **Remaining
 > (capture-gated or by design):** U14's fought live win
 > (R1, no capture; all `GP_U14_*` pins empty), U16's finisher (R2), the other endings
 > beyond character 1's BLIZZARD and character 0's poked U10 path, U13's 5891..5903 tail,

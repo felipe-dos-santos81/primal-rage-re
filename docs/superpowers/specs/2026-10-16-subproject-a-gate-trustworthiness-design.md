@@ -152,7 +152,9 @@ title_compare list at `:1150`, the diff list at `:1077`).
 ### A4 — metric honesty
 
 The counter sentence is produced at `tools/diff_verify.py:34405-34414` and
-pinned at `tools/tests/test_diff_verify.py:32024`. It cannot distinguish a full
+pinned at `tools/tests/test_diff_verify.py`'s
+`RealFunctionTests.test_the_self_check_counts_functions_mutants_gaps_and_closed_rows`
+(the line cited in this dated design, `:32024`, has since moved). It cannot distinguish a full
 row from a "weaker" one: `SpecResult` (`diff_verify.py:388-402`) drops the spec's
 `Case.terminal`, `Case.pokes` and `Spec.unhit_named`; and "1 named gaps" is the
 spec `NAMED_GAP` count (one spec, `host_1b890`), while **8 ported functions have
@@ -164,7 +166,8 @@ named rows, `AGENTS.md:398-412`) and `UNROWED` (the 8 functions,
 sentence with `; N/M closed on full rows; L ported functions with no row`. An
 explicit set, not a heuristic — a `terminal | pokes | unhit_named` heuristic
 flags ~120 rows (~120 `unhit_named=` sites, most declared dead). Re-pin
-`test_diff_verify.py:32024`; add a unit test that distinguishes full from weaker
+`RealFunctionTests.test_the_self_check_counts_functions_mutants_gaps_and_closed_rows`;
+add a unit test that distinguishes full from weaker
 and is mutation-proven to flip; update `AGENTS.md:384-385`.
 
 ### A5 — doc truth
@@ -241,7 +244,9 @@ and is mutation-proven to flip; update `AGENTS.md:384-385`.
 - **A3:** `test_title_pin` runs in the gate; `grep -r mdi_disasm` finds no
   live reference after deletion.
 - **A4:** the new "closed on full rows" figure MOVES under a `WEAKER` mutation
-  (add/remove a row) — the pin at `test_diff_verify.py:32024` fails, then the
+  (add/remove a row) — the pin in
+  `RealFunctionTests.test_the_self_check_counts_functions_mutants_gaps_and_closed_rows`
+  fails, then the
   mutation is reverted.
 - **Whole-A:** `PR_DIFF_FULLSCAN=1 make verify` green on the integrated tree,
   with the oracle verdict lines equal to the pre-A baseline's (new coverage

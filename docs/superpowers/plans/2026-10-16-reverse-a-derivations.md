@@ -41,8 +41,9 @@ explicit set, not a `terminal | pokes | unhit_named` heuristic — that flags ~1
 - `UNROWED` (8, record §J1: "measured ported + unrowed, and callees of no row"):
   `0x1B120 0x1B3AC 0x1BEC4 0x1C930 0x1CF40 0x20C10 0x47370 0x4FBA2`.
 
-**The pin.** `tools/tests/test_diff_verify.py:32024` (in `RealFunctionTests`,
-`test_the_self_check_counts_functions_mutants_gaps_and_closed_rows`) now asserts the sentence
+**The pin.** `tools/tests/test_diff_verify.py`'s
+`RealFunctionTests.test_the_self_check_counts_functions_mutants_gaps_and_closed_rows` (line
+32024 at the time; later a section name, not a line) now asserts the sentence
 with `; 768/832 closed on full rows; 8 ported functions with no row` inserted after
 `(175 have none)`.
 

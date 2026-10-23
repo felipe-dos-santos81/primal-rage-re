@@ -400,7 +400,10 @@ def compare(orig, port, mask=0xFFFFFFFF):
 # §J1; the closure-rule paragraph in AGENTS.md): a row that runs the original under code
 # pokes, leaves reachable blocks out, or declares a terminal difference. Function
 # entries, not spec names; keep in step with AGENTS.md. The counter could not tell these
-# from a full row.
+# from a full row. `0x4F5C8` is not here: its row covers 4/4 blocks and the stock divisor
+# 0x1088D0 is never zero; its zero-divisor deviation (the port returns where the raw's idiv
+# would fault) is named separately in record 2026-10-22-pixel-and-proof-closure §P8.3,
+# not a weaker row.
 WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1BE30, 0x1C740,
                     0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30})
 # The 8 ported functions with no differential row at all (record §J1:26; AGENTS.md's
@@ -34625,7 +34628,7 @@ P7C_ENT_CASES = [
     # AL = 1, x0 = 0xFFFFD000: the 0x5000 left test's `jl` fails into the right arm, which succeeds
     # (x = 0x2000, 0x245B6/0x24852); at 0x40CB0's 0x3000 the left arm succeeds (x = 0xFFFFA000)
     ("f0", 0, 0, 0xFFFFD000, 0x55550000, 1, 0x80, None),
-    # AL = 1, x0 = 0xFFFFB000 below 0x40CB0's left floor 0xFFFFB400: its `jl` (0x40CF3) falls into
+    # AL = 1, x0 = 0xFFFFB000 below 0x40CB0's left floor 0xFFFFB400: its `jl` (0x40CF5) falls into
     # the right arm, which succeeds (x = 0xFFFFE000); at 0x5000 the left arm also fails
     # (x = 0xFFFF6000) and the right succeeds (x = 0x0)
     ("g0", 0, 0, 0xFFFFB000, 0x88880000, 1, 0x00, None),
@@ -35188,6 +35191,10 @@ def main(argv=None):
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
     full = full_rows(closed)
+    # The first `8` is deliberately len(UNROWED), the declared portable figure (not
+    # frontier.total): the Task 10 guard test (test_the_unrowed_figure_measures_the_frontier)
+    # proves the declared set matches the scan-visible frontier, and the printed arithmetic
+    # after it is the computed split (8 + 37).
     print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
           "none); %d/%d closed on full rows; %d ported functions with no row (%d FN_ ported-unrowed: "
           "%d portable [%d registry-visible + %d header-shape exceptions] + %d runtime; the scan-visible "

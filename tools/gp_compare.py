@@ -184,7 +184,8 @@ SCAN3_ALLOWED = {
         # match for the two lower ranges, and port 3549 is the only frame
         # before it holding rows 0..45. The capture's neighbours show the same
         # scan: 4247 is clean at 3549 and 4249 is a two-frame splice of
-        # (3551, 3552) at row 187 — the capture scan raced three presents.
+        # (3551, 3552) at row 187 — the capture's scan shows three consecutive
+        # presents.
         # Named limit (as the other entries and §G6): the top rows are bound by
         # hash and by the EXISTENCE of an earlier holder, not by its uniqueness
         # (measured: 3549 alone), and the row splits 46/97 are capture-pinned

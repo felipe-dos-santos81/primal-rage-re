@@ -78,8 +78,9 @@ if any engine code is touched (this plan touches none).
 **Files:**
 - Modify: `tools/diff_verify.py` (`SpecResult` ~388-402; `verify_gap` ~405-422;
   `verify_spec` ~439-504; the counter print ~34405-34414; add the two module frozensets)
-- Modify: `tools/tests/test_diff_verify.py` (the pin ~32024; add the unit test beside
-  `test_only_rows_with_callees_count_toward_the_closed_figure` ~32301)
+- Modify: `tools/tests/test_diff_verify.py` (the pin in
+  `RealFunctionTests.test_the_self_check_counts_functions_mutants_gaps_and_closed_rows`;
+  add the unit test beside `test_only_rows_with_callees_count_toward_the_closed_figure`)
 - Modify: `AGENTS.md` (the counter sentence ~384-385)
 
 **Interfaces:**
@@ -151,7 +152,8 @@ Run the self-check once to read the new sentence:
 Run: `make build && python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE --image /tmp/a4img --table /tmp/a4table --self-check | tail -1`
 Expected: the sentence now ends `... (175 have none); F/832 closed on full rows; 8 ported functions with no row.` Record `F`.
 
-In `tools/tests/test_diff_verify.py:32024`, extend the `assertIn` string with the two new
+In `RealFunctionTests.test_the_self_check_counts_functions_mutants_gaps_and_closed_rows`,
+extend the `assertIn` string with the two new
 clauses at their measured values (`F` from the run above), keeping the existing text
 verbatim before them.
 

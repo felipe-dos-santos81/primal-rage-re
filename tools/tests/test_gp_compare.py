@@ -629,7 +629,10 @@ class BandAllowance(Dirs):
         # rows 5..199 is port 4317's alone, so the pair (4316, 4317) is the
         # unique match. The band is the unheld run's ends (1..4), 1280 pixels
         # (3840 bytes) of which exactly 13 pixels differ from port 4317's rows;
-        # its cause is a named gap (§P3).
+        # its cause is a named gap (§P3). This test pins the tuple only: the
+        # mutation proof is delegated to the class fixture's sub-tests (a mutated
+        # band byte / bound port frame un-explains it) and the manual real-dump
+        # run in record §P3.5.
         self.assertEqual(gc.BANDS_ALLOWED['gp-u13-ending2'],
                          ((5120, 1, 5,
                            '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),))
