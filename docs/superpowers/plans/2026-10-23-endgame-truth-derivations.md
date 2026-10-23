@@ -98,7 +98,8 @@ Supporting addresses: state 1's fixed actor spawn at `0x2099E` (call `0x2AE14`
 at `0x209A3`), the sprite-flag test `0x209B3 f6 c3 02`; state 2's position gate
 `0x20A3C/0x20A42` (`> 0x1E00`) and mode-0x15 handoff `0x20A5C..0x20A80`
 (`0x4B0` frames, `0x3C`, mode `0x15`, return mode `0x1F`); state 3's fixed
-fade-out stream `0x20AD5 ba 06 92 06 00` (linear `0xE9206`) and anim calls
+fade-out stream `0x20AD5 ba 06 92 0e 00` (linear `0xE9206`; raw `06 92 06 00`)
+and anim calls
 `0x20AE0`/`0x20AF6`; state 4's countdowns `0x20B10..0x20B1A` (−0x80) and
 `0x20B54..0x20B5A` (+0x40, clamped at `0x1000` at `0x20B6A`), the title string
 draw `0x20BAC` (`game_string_get` = `0x1C500`), row `0x20BB3 ba 1a 00 00 00`,
@@ -128,8 +129,9 @@ literal bytes (`de 00 00 00 df 00 00 00 …`).
 0x3F`; group blocks are chained by the u32 at block`+4` (the first block starts
 at `base+8`, group 0; the u32 at `base+4` is group 1's block), entries begin at
 block`+8`, each is one length byte then that many bytes **XORed with the
-length**. Decoded (measured; sanity: id `0x1B` = `TM   1943 ATARI GAME CORP.`,
-id `0x3B` = `YOU'RE UP, RIGHT PLAYER`):
+length**. Decoded (measured; sanity: id `0x01` = `TM   1994 ATARI GAMES CORP.`
+(the same string `port/tests/test_game.c:87` asserts), id `0x1B` = `ENTER 3
+LETTERS`, id `0x3B` = `YOU'RE UP, RIGHT PLAYER`):
 
 | id | title |
 |---:|---|
@@ -154,12 +156,13 @@ All seven match the spec's table exactly (apostrophes included: `BLIZZARD'S`,
   al,[esi+0xC8880]` / `0x445DE 88 86 66 81 10 00 mov [esi+0x108166],al`
   (image bytes; `fight.c:1177` documents the same copy).
 - `0xC8882` = `00 02 03 01 06 04 05` (measured, raw and image): the
-  cell→character-id table. The write is `FUN_00043d60` at `0x43D60`:
-  `0x43D65 8b 80 63 81 08 00 mov eax,[eax+0x88163]` (the dword at
+  cell→character-id table. The write is `FUN_00043d60` at `0x43D60` (image
+  bytes; the raw file's displacements are `0x88163`/`0x48882`/`0x8816A`):
+  `0x43D65 8b 80 63 81 10 00 mov eax,[eax+0x108163]` (the dword at
   `0x108163+side`, whose high byte at `0x108166+side` is the cursor cell),
-  `0x43D6B c1 f8 18 sar eax,0x18`, `0x43D6E 8a 80 82 88 04 00 mov
-  al,[eax+0x48882]` (linear `0xC8882`), `0x43D74 88 83 6a 81 08 00 mov
-  [ebx+0x8816A],al` (`DS_0010816A[side]` = the character id).
+  `0x43D6B c1 f8 18 sar eax,0x18`, `0x43D6E 8a 80 82 88 0c 00 mov
+  al,[eax+0xC8882]`, `0x43D74 88 83 6a 81 10 00 mov
+  [ebx+0x10816A],al` (`DS_0010816A[side]` = the character id).
 
 Inverse map (measured): cell 0→char 0, **cell 1→char 2**, **cell 2→char 3**,
 **cell 3→char 1**, **cell 4→char 6**, **cell 5→char 4**, **cell 6→char 5**.
@@ -215,7 +218,7 @@ All three reaction starters test the **other** slot's record:
 Measured; `EBX`/`ECX` is `DS_001077A8[(rec+0x51)^1]` (the defeated slot's
 record), loaded at `0x37655..0x3765F`, `0x37787..0x37791`, `0x378B6`.
 
-### The one writer of both gate bits
+### The one write that sets both gate bits
 
 `FUN_00036f10` (`0x36F10`, 477 bytes) arm A:
 
@@ -297,10 +300,10 @@ idx*6`. `0x34E2C` then calls `[ebx+4]` (`0x35045`).
 
 **Correction to the spec/plan.** "The three finisher entries are
 `0x15/0x16/0x17`" is **TALON's (character 2) set only**. The entry indices are
-per-character: SAURON's are `0x17/0x18/0x19` (and `gp_session.py:548-553`
-already says so: "TALON's (char 2, P1 here) are 0x15/0x16/0x17 while 0x17..0x19
-are characters 0/1/3/4/5/6's"). Tasks 3–7 need the character's own indices; the
-U23 scenario (P1 = TALON) is the one where `0x15/0x16/0x17` are right.
+per-character: SAURON's are `0x17/0x18/0x19` (and `gp_session.py:547-548`
+already says so: "TALON's (char 2, P1 here) are 0x15/0x16/0x17"). Tasks 3–7
+need the character's own indices; the U23 scenario (P1 = TALON) is the one
+where `0x15/0x16/0x17` are right.
 
 ### The S fields
 
@@ -316,8 +319,10 @@ gameplay-u6b (record gameplay-u6 §U6.11):
   `0x34EF6 88 8b a8 88 10 00  mov [ebx+0x1088A8],cl` inside `0x34E2C`
   (measured).
 - `s0_43` is `0x1077F3` = **slot 0's `+0x43`** (the block bits `0x20/0x10`).
-- **There is no `+0x42` field** in `SNAP_FIELDS` (no `0x1077E2`, `0x107876`):
-  the U16 gate's `+0x42` bit 5 is **not** a captured field. `s0_43` is slot 0's
+- **There is no `+0x42` field** in `SNAP_FIELDS`: `+0x42` is `0x1077F2`
+  (slot 0) and `0x107886` (slot 1), and `+0x43` is `0x1077F3` (`s0_43`, slot 0)
+  and `0x107887` (slot 1); only slot 0's `+0x43` is a field. The U16 gate's
+  `+0x42` bit 5 is **not** a captured field. `s0_43` is slot 0's
   own `+0x43`; the U16 gate is the *other* (defeated) slot's `+0x43` bit 3, so
   in the U23 capture (P1 = TALON the winner, P2 defeated) `s0_43` does not
   carry the gate either. The gate is decomp evidence; the reaction is the
@@ -356,14 +361,16 @@ every `b0c=1` must be `0x37EA0` (or a harness poke).
 `0x37EA0` is the `0xD100` opcode-`0x11` target in the seven character streams
 (the dwords at `0xD2BEA`, `0xD486C`, `0xE119C`, `0xE4566`, `0xE7932`,
 `0xEB1A6`, `0xED5AA`), ported as `fighter_37ea0` (record §D8.1;
-`port/src/game/fighter.c:14353-14401`).
+`port/src/game/fighter.c:14353-14403`, whose 14401 store is the `b0c` write).
 
 ### The U10 trace (measured, `data/k11-captures/gp-u10-ending/poll.log`)
 
 `gp_session.parse`-parsed `S` records (9972 of them):
 
-- The **first and only** `b0c=1` is at **game frame `f=0x1602` (5634)**, in
-  **mode `0x0F`**, with `b14=1`, `b21=7`, `s1_5a=0x78`, `ad4=0`.
+- The **only `b0c` 0→1 transition** is at **game frame `f=0x1602` (5634)**, in
+  **mode `0x0F`**, with `b14=1`, `b21=7`, `s1_5a=0x78`, `ad4=0`; after it
+  `b0c` stays 1 to the capture end (`f=0x271D`), 4,364 `S` records with
+  `b0c=1` and no 1→0 transition.
 - The seventh final opponent's KO `S` record is at **`f=0x153A`** (mode
   `0x0D`); mode `0x0F` starts at **`f=0x1544`** (`b21=7`). `0x1602 - 0x1544 =
   0xBE = **190**`, and `0x1602 - 0x153A = 0xC8 = 200`.
@@ -378,8 +385,9 @@ every `b0c=1` must be `0x37EA0` (or a harness poke).
   entry at `f=0x1544`.
 - **Every poked `b0c=1` is consumed inside its own frame**: e.g. the poke at
   capture `0x14CB` is followed by `f=0x14CC mode=0x0C b0c=0` (`0x27582` ran).
-  No `S` record ever shows the poked value — the only `b0c=1` is the game's own
-  `0x37FF6` write, 190 frames into mode `0x0F`.
+  No `S` record shows a poked 1 (each poke's value is consumed in the same
+  frame); the only `b0c` 0→1 transition is the game's own `0x37FF6` write,
+  190 frames into mode `0x0F`.
 
 So a new `b0c` capture is **not needed**: U10 already pins the game-set write.
 `GP_ENDING_WIN_MIN_FIRST = 9954` (`Makefile:1212`, comment at `:1139`) compares
@@ -391,9 +399,10 @@ exactly `f=0x1602`.
 
 - `b14` is `DS_00104B14` (`0x104B14`, `WIN_EXTRA`). Its writers in the image
   (displacement scan `14 4b 10 00`) are `0x25A08 mov [..],cl` / `0x25A51
-  mov [..],dl` (value from the caller), `0x27037 88 35 14 4b 10 00 mov
-  [0x104B14],dh` with `dh=1` (`0x27033`), and `0x271FA 88 15 14 4b 10 00` with
-  `dl=1` (`0x271E4 b2 01`). **The only unconditional setters of 1 are
+  mov [..],dl` (value from the caller), `0x25AF8 88 25 14 4b 10 00 mov
+  [0x104B14],ah` with `ah=0` (`0x25AF6 30 e4 xor ah,ah`), `0x27037 88 35 14 4b
+  10 00 mov [0x104B14],dh` with `dh=1` (`0x27033`), and `0x271FA 88 15 14 4b
+  10 00` with `dl=1` (`0x271E4 b2 01`). **The only unconditional setters of 1 are
   `0x27037` (the mode-0x24 handler `0x26F58`'s expiry) and `0x271FA` (the join
   prompt).** The U10 trace shows `b14 0→1` at `f=0x139E`, mode `0x17`, i.e.
   when the mode-`0x24` health-bonus screen expired — **not** inside the final's
@@ -486,8 +495,10 @@ arm).
 
 Re-measured from `data/k11-captures/gp-u13-ending2/frame_05120.raw.gz` and
 port frame `4317` of a fresh `make gp-replay scenario=gp-u13-ending2` dump
-(`/tmp/pr_gp_dump/gp-u13-ending2`; 4940 `.ipx` frames). `expand_ipx`:
-64,000 indices then a 768-byte DAC, `rgb = dac[idx]`.
+(`/tmp/pr_gp_dump/gp-u13-ending2`; 4940 `.ipx` frames). The port frames are
+`.ipx` (64,000 indices + a 768-byte DAC) and are expanded with `expand_ipx`
+(`rgb = dac[idx]`); the capture frames (`frame_05120.raw.gz`) are already the
+192,000 RGB bytes (`320*200*3`), read directly.
 
 **Capture 5120 differs from port 4317 in exactly 13 pixels**, rows 1..4,
 x 21..298:
@@ -544,7 +555,7 @@ The 4248/4320 recipes and pins are unchanged by this section (they are
 
 ### The installer (measured)
 
-Raw file bytes at `0x66519..0x6652C` (pre-fixup), and the fixup-applied image:
+Raw file bytes at `0x66519..0x6652D` (pre-fixup), and the fixup-applied image:
 
 ```text
 raw   : b8 08 00 00 00  ba 7e 62 05 00  66 8c cb  b4 25  1e  66 8e db  cd 21
@@ -687,10 +698,11 @@ vector's target is `0x6627E` (§E1.6 above).
   gate is decomp evidence and the `r0`/`r1` reaction is the capture's claim
   (`s0_43` exists, no `+0x42` field does).
 - **`b0c` is already proven game-set by U10.** `0x37FF6` is the only direct
-  store of a non-zero value to `b0c`; the trace's only `b0c=1` is at `f=0x1602` in mode
-  `0x0F`, 190 frames after the mode-`0x0F` entry (`f=0x1544`) and 200 after
-  the seventh KO's `S` record, with every poked `DEATH_DONE` consumed by
-  `0x27582` inside its own frame. No new `b0c` capture is needed; only the
+  store of a non-zero value to `b0c`; the trace's only `b0c` 0→1 transition is
+  at `f=0x1602` in mode `0x0F`, after which `b0c` stays 1 to the capture end
+  (4,364 `S` records), 190 frames after the mode-`0x0F` entry (`f=0x1544`) and
+  200 after the seventh KO's `S` record, with every poked `DEATH_DONE` consumed
+  by `0x27582` inside its own frame. No new `b0c` capture is needed; only the
   fought (no-poke) win (U14) is open, under the `live_death` rule.
 - **U14's failed retry is measured** (round 1 P1 KO'd `s0_5a=0x78`, round 2
   P1 KO'd `s0_5a=0x78` with P2 `s1_5a=0x38`, `ad4=1`, mode 3 at
