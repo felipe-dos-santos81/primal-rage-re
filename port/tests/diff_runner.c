@@ -43367,6 +43367,140 @@ static void m_p6_3e4c4_arg(const u32 *r, u32 *eax)
 }
 /* ---- p6 bindings end ---- */
 
+/* ---- track P closure batch P7 (record 2026-10-22-pixel-and-proof-closure §P7): the actor entrance
+ * entries 0, 1 and 6 of the per-character table 0xA8628 ---- */
+/* Record §P7: the three are the stubs that keep the eight game_mode_05/0d/32 rows open. Each is a
+ * `void (*)(u32)` the dispatcher calls with EAX = the entering side; the 0xA8628 callers read none of
+ * EAX (0x25F27 -> 0x25F2E reloads the side from 0x104B12, 0x27732 -> 0x27739 the same, 0x2989C ->
+ * 0x298A3 from 0x104B09), so every binding's mask is 0. The three bodies are the same shape:
+ * 0x1A570(0x10810D) picks the placement's first arm, the loop places x 0x5000 (0x24568, 0x24804) or
+ * 0x3000 (0x40CB0) from the record the byte 0x10810D names, 0x33C78 is the spawn (0x40CB0's y =
+ * 0x4C00, the others' 0), 0x2BC30 starts the entrance stream (0xE453A / 0xE790A / 0xE1174, the
+ * streams whose 0xD500 targets are 0x246D4 / 0x40C34 / 0x24964), 0x39A10 runs its 0x309, and the
+ * blink byte 0x104B03/02/08 sets the slot's +0x41 bit with the 0x40/0x80 mask 0x10810D chooses. */
+static void b_p7c_24568(const u32 *r, u32 *eax)          { fighter_24568(r[R_EAX]); *eax = 0u; }
+static void b_p7c_40cb0(const u32 *r, u32 *eax)          { fighter_40cb0(r[R_EAX]); *eax = 0u; }
+static void b_p7c_24804(const u32 *r, u32 *eax)          { fighter_24804(r[R_EAX]); *eax = 0u; }
+
+/* 0x24568's mutants: @a5 passes 0 from the left arm (the spawn's stack word, 0x24568's 0x4000),
+ * @stream starts character 0's stream 0xE790A instead of 0xE453A (0x246D4's), @no64 drops the
+ * slot's +0x64 = 0x2A. 0x2372C runs on both sides (allow). */
+static void p7c_24568_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 slot = DS_001077B0 + side * 0x94u;
+    int left = fighter_actor_bit15_clear((u32)DSB(0x0010810Du)) != 0;
+    u32 x, a5, mask, v;
+    for (;;) {
+        u32 sel = (u32)DSB(0x0010810Du);
+        u32 x0 = DSD(DSD(DS_001077B0 + sel * 0x94u) + 0x18u);
+        if (left) {
+            x = x0 - 0x5000u;
+            if ((s32)x >= (s32)(0u - DSD(DS_000BE018))) {
+                a5 = (mut & 1u) ? 0u : 0x4000u;
+                break;
+            }
+        }
+        x = x0 + 0x5000u;
+        if ((s32)x <= (s32)DSD(DS_000BE018)) { a5 = 0u; break; }
+        left = 1;
+    }
+    fighter_spawn_slot(side, x, (u32)DSW(DS_000BD898), 0u, a5 & 0xFFFFu);
+    actors_anim_begin(DSD(slot), (mut & 2u) ? 0x000E790Au : 0x000E453Au, 0x40800000u);
+    fighter_39a10(DSD(slot), 0x309u);
+    fighter_2372c(DSD(slot));
+    mask = DSB(0x0010810Du) != 0u ? 0x40u : 0x80u;
+    if (((u32)DSB(0x00104B03u) & mask) != 0u) DSB(slot + 0x41u) |= 1u;
+    (void)sound_voice(0xB4u);
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = 3u;
+    v = DSD(slot + 0x40u);
+    if (!(mut & 4u)) DSB(slot + 0x64u) = 0x2Au;
+    DSD(slot + 0x40u) = v | 0x81000u;
+    DSB(slot + 0x63u) = 1u;
+}
+static void m_p7c_24568_a5(const u32 *r, u32 *eax)      { p7c_24568_core(r, 1u); *eax = 0u; }
+static void m_p7c_24568_stream(const u32 *r, u32 *eax)  { p7c_24568_core(r, 2u); *eax = 0u; }
+static void m_p7c_24568_no64(const u32 *r, u32 *eax)    { p7c_24568_core(r, 4u); *eax = 0u; }
+
+/* 0x40CB0's mutants: @y passes EBX = 0 to the spawn (0x40D2F's 0x4C00), @place uses 0x5000 for
+ * 0x3000 (both arms), @stream starts 0xE453A for 0xE790A. */
+static void p7c_40cb0_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 slot = DS_001077B0 + side * 0x94u;
+    int left = fighter_actor_bit15_clear((u32)DSB(0x0010810Du)) != 0;
+    u32 x, a5, mask, v;
+    u32 width = (mut & 2u) ? 0x5000u : 0x3000u;
+    for (;;) {
+        u32 sel = (u32)DSB(0x0010810Du);
+        u32 x0 = DSD(DSD(DS_001077B0 + sel * 0x94u) + 0x18u);
+        if (left) {
+            x = x0 - width;
+            if ((s32)x >= (s32)(0u - DSD(DS_000BE018))) { a5 = 0x4000u; break; }
+        }
+        x = x0 + width;
+        if ((s32)x <= (s32)DSD(DS_000BE018)) { a5 = 0u; break; }
+        left = 1;
+    }
+    fighter_spawn_slot(side, x, (u32)DSW(DS_000BD898), (mut & 1u) ? 0u : 0x4C00u, a5 & 0xFFFFu);
+    actors_anim_begin(DSD(slot), (mut & 4u) ? 0x000E453Au : 0x000E790Au, 0x40800000u);
+    fighter_39a10(DSD(slot), 0x309u);
+    mask = DSB(0x0010810Du) != 0u ? 0x40u : 0x80u;
+    if (((u32)DSB(0x00104B02u) & mask) != 0u) DSB(slot + 0x41u) |= 1u;
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x54u) = 2u;
+    v = DSD(slot + 0x40u);
+    DSB(slot + 0x63u) = 1u;
+    DSD(slot + 0x40u) = v | 0x81000u;
+    (void)sound_voice(0x8Cu);
+}
+static void m_p7c_40cb0_y(const u32 *r, u32 *eax)       { p7c_40cb0_core(r, 1u); *eax = 0u; }
+static void m_p7c_40cb0_place(const u32 *r, u32 *eax)   { p7c_40cb0_core(r, 2u); *eax = 0u; }
+static void m_p7c_40cb0_stream(const u32 *r, u32 *eax)  { p7c_40cb0_core(r, 4u); *eax = 0u; }
+
+/* 0x24804's mutants: @24754 calls 0x24754 on the other side (its inner 0x1A570/0x2AE14 arguments
+ * and the slot its stores target change), @a5 and @no64 are 0x24568's. 0x24754 runs on both sides
+ * (allow) and so does its 0x33950. */
+static void p7c_24804_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 slot = DS_001077B0 + side * 0x94u;
+    int left = fighter_actor_bit15_clear((u32)DSB(0x0010810Du)) != 0;
+    u32 x, a5, mask, v;
+    for (;;) {
+        u32 sel = (u32)DSB(0x0010810Du);
+        u32 x0 = DSD(DSD(DS_001077B0 + sel * 0x94u) + 0x18u);
+        if (left) {
+            x = x0 - 0x5000u;
+            if ((s32)x >= (s32)(0u - DSD(DS_000BE018))) {
+                a5 = (mut & 2u) ? 0u : 0x4000u;
+                break;
+            }
+        }
+        x = x0 + 0x5000u;
+        if ((s32)x <= (s32)DSD(DS_000BE018)) { a5 = 0u; break; }
+        left = 1;
+    }
+    fighter_spawn_slot(side, x, (u32)DSW(DS_000BD898), 0u, a5 & 0xFFFFu);
+    actors_anim_begin(DSD(slot), 0x000E1174u, 0x40800000u);
+    fighter_39a10(DSD(slot), 0x309u);
+    mask = DSB(0x0010810Du) != 0u ? 0x40u : 0x80u;
+    if (((u32)DSB(0x00104B08u) & mask) != 0u) DSB(slot + 0x41u) |= 1u;
+    fighter_24754((mut & 1u) ? (side ^ 1u) : side);
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = 3u;
+    v = DSD(slot + 0x40u);
+    if (!(mut & 4u)) DSB(slot + 0x64u) = 0x20u;
+    DSD(slot + 0x40u) = v | 0x81000u;
+    DSB(slot + 0x63u) = 1u;
+}
+static void m_p7c_24804_24754(const u32 *r, u32 *eax)   { p7c_24804_core(r, 1u); *eax = 0u; }
+static void m_p7c_24804_a5(const u32 *r, u32 *eax)      { p7c_24804_core(r, 2u); *eax = 0u; }
+static void m_p7c_24804_no64(const u32 *r, u32 *eax)    { p7c_24804_core(r, 4u); *eax = 0u; }
+/* ---- p7c bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -59018,6 +59152,20 @@ static const binding_t k_bindings[] = {
     { "fighter_3e4c4@swap",    m_p6_3e4c4_swap,     0x00000000u },
     { "fighter_3e4c4@arg",     m_p6_3e4c4_arg,      0x00000000u },
     /* track P closure batch P6 end */
+    /* track P closure batch P7 */
+    { "fighter_24568",         b_p7c_24568,         0x00000000u },
+    { "fighter_24568@a5",      m_p7c_24568_a5,      0x00000000u },
+    { "fighter_24568@stream",  m_p7c_24568_stream,  0x00000000u },
+    { "fighter_24568@no64",    m_p7c_24568_no64,    0x00000000u },
+    { "fighter_40cb0",         b_p7c_40cb0,         0x00000000u },
+    { "fighter_40cb0@y",       m_p7c_40cb0_y,       0x00000000u },
+    { "fighter_40cb0@place",   m_p7c_40cb0_place,   0x00000000u },
+    { "fighter_40cb0@stream",  m_p7c_40cb0_stream,  0x00000000u },
+    { "fighter_24804",         b_p7c_24804,         0x00000000u },
+    { "fighter_24804@24754",   m_p7c_24804_24754,   0x00000000u },
+    { "fighter_24804@a5",      m_p7c_24804_a5,      0x00000000u },
+    { "fighter_24804@no64",    m_p7c_24804_no64,    0x00000000u },
+    /* track P closure batch P7 end */
 };
 
 static const binding_t *find_binding(const char *name)

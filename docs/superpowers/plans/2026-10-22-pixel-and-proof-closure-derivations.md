@@ -1844,3 +1844,259 @@ sides; no `reads outside the image` note is printed on any of the three.
 `SPECS` concatenation — the variable is `P6C_SPECS` because `P6_SPECS` already names track P batch
 6), this record. No `port/src` header or `fn_register`, no `data/`, no Makefile, no `tools/tests/`
 change. Commit `diff: row the fighter callback entries`. The task report is the git-ignored ledger.
+
+## §P7 The actor entrance entries: `0x24568`, `0x40CB0` and `0x24804`
+
+Task 7 of the plan: three rows, no `port/src` change. The three addresses are entries 1, 0 and 6 of
+the per-character entrance table `0xA8628` (`0xA862C`, `0xA8628`, `0xA8640`); the port implements all
+three (`fighter_24568` at `fighter.c:7070`, `fighter_40cb0` at 7162, `fighter_24804` at 7630) and
+`actors.c` `fn_register`s them (`0x24568` at 584, `0x40CB0` at 594, `0x24804` at 599). The eight
+`game_mode_05`/`game_mode_0d`/`game_mode_32` rows stub them by address and so stay open until each has
+a row of its own; every callee of all three already has a row, so the three new rows also close
+themselves. Everything below was measured at base commit `453f90ed` in the worktree
+`pixel-and-proof-closure`, with the plan's driver command:
+
+```bash
+python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE \
+  --image /tmp/pr_diff_image.bin --table /tmp/pr_diff_table_p7.md --self-check
+```
+
+### §P7.1 The baseline line
+
+```text
+diff-verify: 1024/1024 functions VERIFIED; 14969/14969 mutants detected; 0 named gaps; 793/837 rows with callees closed (187 have none); 787/837 closed on full rows; 8 ported functions with no row. ...
+```
+
+(the baseline table is `/tmp/pr_diff_table_base.md`, 15993 entries = 1024 real + 14969 mutants; the
+44 open rows are `837 - 793`, Task 6's measured figure).
+
+### §P7.2 `0x24568` — entry 1, character 1's entrance
+
+The raw bytes at file offset `0x773BC` (VA + `0x52E54`) are 0x16B bytes: `53 51 52 56 89 C6 31 C0 A0
+0D 81 08 00 E8 F6 5F FF FF 84 C0 74 38 ...` — `push ebx; push ecx; push edx; push esi; mov esi,eax;
+xor eax,eax; mov al,[0x10810D]; call 0x1A570; test al,al; je 0x245B6`, the 0x5000 placement loop
+(`0x2457E..0x245E5`, signed compares against `-DS_000BE018` and `DS_000BE018`), the spawn
+`0x245E7..0x245FD` (`and edx,0xffff; xor ecx,ecx; xor ebx,ebx; mov cx,[0xBD898]; push edx; mov
+edx,eax; mov eax,esi; call 0x33C78`), `mov edx,0xE453A`/`push 0x40800000`/`call 0x2BC30`,
+`mov edx,0x309`/`call 0x39A10`, `call 0x2372C`, the `0x10810D` 0x40/0x80 mask over `0x104B03` and the
+`+0x41` bit, `mov eax,0xB4`/`call 0x2C3FC`, then `+0x52`/`+0x53` = 9/3, `+0x64` = 0x2A, `+0x40 |=
+0x81000`, `+0x63` = 1 and the four pops. The data operands are pre-fixup in the file (`0x8810D`,
+`0x3E018`, `0x3D898`, `0x6453A`, `0x877B0`, `0x84B03`); `mem_load_le_fixups` makes them the values
+above. The port's `fighter_24568` is that body, including the placement loop (its comment at
+`fighter.c:7053` states the same addresses).
+
+The spec (`P7C_SPECS`) shares one case builder with the other two entrances:
+
+```python
+def p7c_record(slot, x, w28, side, tag):   # one record, +0x14..+0x53, sentinel neighbours
+def p7c_slot_pokes(slot, rec, d8):         # +0, +8, +0x40 = 0x80008000, +0x52..+0x64
+def p7c_ent_case(cid, ch, side, sel, x0, ox0, al, blink, bound=None, spawn=False)
+
+Spec("fighter_24568", 0x24568, p7c_cases(1, True),
+     allow_calls=(0x2372C,), calls=(BIT15, D4C_33C78, ANIM_BEGIN, TIMER, SPAWN, VOICE),
+     eax_mask=0, mutants=("@a5", "@stream", "@no64")),
+```
+
+`P7C_ENT_CASES` is seven cases, chosen so the four control-flow arms of the placement and both blink
+arms are all exercised (`l0` left success, `l1` the same on side 1/sel 1, `r0` right success, `r1` the
+right arm failing into the `left = 1` back-edge, `f0` the left arm failing into the right arm, `m0`
+sel 1 with side 0 for the mask/select split, `p0` a poked bound `0x4000` for the back-edge). The
+records `0x10A800`/`0x10A900` are zero BSS of the image; the record blob sets `+0x14` (the slot),
+`+0x18` (x), `+0x1C`, `+0x28` (REC has bit 14, REC2 not, so `0x2372C`'s two speed/a5 arms both run),
+`+0x30`, `+0x3C` and `+0x51` (the side), every other byte its own sentinel. The slots' `+0x40` dword
+is `0x80008000` (so the blink store flips its `+0x41` byte 0x80 -> 0x81 and the `| 0x81000` shows);
+`+0x52..+0x64` carry 0x52..0x64. `0x10810D` is the case's `sel`, `0xBD898` is poked to `0x5A5A`
+(the spawn's ECX argument) and the character's blink byte (`0x104B03` here) to the case's `blink`.
+Mask 0: the three dispatchers (`0x25F27`, `0x27732`, `0x2989C`) reload the side from a byte and read
+none of EAX. `0x1A570` is the `BIT15` stub with the case's AL (the entrance's only such call passes
+`DSB(0x10810D)`); `0x33C78` is the existing `D4C_33C78` stub (EBX = 0 and the stack a5
+0x4000/0, its own row proving the body); `0x2BC30`/`0x39A10`/`0x2C3FC` are `ANIM_BEGIN`/`TIMER`/
+`VOICE`; `0x2372C` is the port's unseamed projectile target, so it runs on both sides (allow) and the
+`0x2AE14` it calls is the `SPAWN` stub returning `P7C_CHILD` (0x10AA00), whose `+0x14/+0x2E/+0x4E/
++0x34/+0x36/+0x59` the body writes are seeded.
+
+Measured, `--function fighter_24568 --self-check`:
+
+```text
+| fighter_24568 | 0x24568 | 7 | 11/11 | VERIFIED | 1A570 stub unverified, 2372C allow unverified, 2AE14 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33C78 stub unverified, 39A10 stub unverified |
+| fighter_24568@a5 | 0x24568 | 7 | 11/11 | MISMATCH | ... |
+| fighter_24568@stream | 0x24568 | 7 | 11/11 | MISMATCH | ... |
+| fighter_24568@no64 | 0x24568 | 7 | 11/11 | MISMATCH | ... |
+```
+
+The original's six recorded calls and the placement, per case (the `--self-check` evidence):
+
+```text
+l0  1A570(0x0) 33C78(0x0,0xFFFFD000,0x5A5A,0x0,0x4000) 2BC30(0x10A800,0xE453A,0x40800000)
+    39A10(0x10A800,0x309) 2AE14(0xBB3D0,0x2C00,0x30,0x1C1491,0x4000) 2C3FC(0xB4)  (16 bytes)
+l1  1A570(0x1) 33C78(0x1,0xFFFFC800,0x5A5A,0x0,0x4000) ... 2AE14(...,0xC00,0x30,0x1C14D1,0x0)
+    (18 bytes: 0x2372C's side-1 +0x2E/+0x4E arm)
+r0  33C78(0x0,0x6000,0x5A5A,0x0,0x0)      r1  ... 0xFFFFE000 ... 0x4000   (the back-edge)
+f0  1A570(0x0) ... 33C78(0x0,0x2000,...)  (the left arm's `jl` to the right arm)
+m0  1A570(0x1) ... 33C78(0x0,0x6000,...)  sel 1, side 0: the mask is 0x40, the store happens
+p0  bound 0x4000: 33C78(0x1,0xFFFFD000,...,0x4000)
+```
+
+The three mutants are caught by the call arguments and one store: `@a5` (`0x33C78`'s stack word 0
+against the original's 0x4000; l0, l1, r1 and p0 — the four cases whose left arm passes a5),
+`@stream` (`0x2BC30`'s EDX 0xE790A against 0xE453A; all seven), `@no64` (`+0x64` left at the seed 0x64
+instead of 0x2A; all seven). No case reads EAX.
+
+### §P7.3 `0x40CB0` — entry 0, character 0's entrance
+
+The raw bytes at file offset `0x93B04` are 0x163 bytes, the same shape with 0x3000 (both arms) and
+`mov ebx,0x4C00` at `0x40D2F` before the spawn (so EBX = y survives to `0x33C78`), the anim stream
+`0xE790A`, the blink byte `0x104B02`, state 9/3/2, `+0x63` = 1, `mov eax,0x8C`/`call 0x2C3FC`; there is
+no `0x2372C` and no `+0x64`. The port's `fighter_40cb0` is that body.
+
+```python
+Spec("fighter_40cb0", 0x40CB0, p7c_cases(0, False),
+     calls=(BIT15, D4C_33C78, ANIM_BEGIN, TIMER, VOICE), eax_mask=0,
+     mutants=("@y", "@place", "@stream")),
+```
+
+No allow call and no `0x2AE14`: every callee is seamed. Measured, `--function fighter_40cb0
+--self-check`:
+
+```text
+| fighter_40cb0 | 0x40CB0 | 7 | 11/11 | VERIFIED | 1A570 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33C78 stub unverified, 39A10 stub unverified |
+| fighter_40cb0@y | 0x40CB0 | 7 | 11/11 | MISMATCH | ... |
+| fighter_40cb0@place | 0x40CB0 | 7 | 11/11 | MISMATCH | ... |
+| fighter_40cb0@stream | 0x40CB0 | 7 | 11/11 | MISMATCH | ... |
+```
+
+The placement per case: `l0` `0xFFFFF000`, `l1` `0xFFFFE800`, `r0` `0x4000`, `r1` `0x6000` after the
+right arm fails (`0x8000 > 0x7C00`) and the back-edge computes `0x2000`; `f0` starts at `0xFFFFA000`
+(left `0xFFFF7000 < -0x7C00`) and takes the right arm to `0xFFFFD000`; `m0` sel 1/side 0 stores the
+blink bit with mask 0x40; `p0` (bound 0x4000) back-edges to `0xFFFFF000`. `@y` changes the spawn's
+EBX (0x4C00 -> 0; all seven), `@place` the width (0x3000 -> 0x5000; all seven), `@stream` the anim
+stream (all seven).
+
+### §P7.4 `0x24804` — entry 6, character 6's entrance
+
+The raw bytes at file offset `0x77658` are 0x15D bytes of `0x24568`'s shape on stream `0xE1174`,
+blink byte `0x104B08` and `+0x64` = 0x20, with `mov eax,esi`/`call 0x24754` at `0x24910..0x24912`
+where `0x24568` calls `0x2372C`. The port's `fighter_24804` is that body.
+
+```python
+Spec("fighter_24804", 0x24804, p7c_cases(6, True),
+     allow_calls=(0x33950, 0x24754),
+     calls=(BIT15, D4C_33C78, ANIM_BEGIN, TIMER, SPAWN, VOICE), eax_mask=0,
+     mutants=("@24754", "@a5", "@no64")),
+```
+
+`0x24754` is the port's second unseamed callee, so it runs on both sides (allow), as does its
+`0x33950`; its `0x1A570`, `0x2AE14` and `0x2C3FC` are the row's stubs. The row therefore records both
+`0x1A570` calls (the entrance's with `sel`, `0x24754`'s with `side`) and `0x24754`'s spawn with the
+other slot's record x (`ctx[5] + 0x18 - ctx[5] + 0x3C` when AL, else `0x5400 - +0x3C + +0x18`), its
+a3 (`+0x30 sar 16`), y = 0x1A00 and a5 = 0. Measured, `--function fighter_24804 --self-check`:
+
+```text
+| fighter_24804 | 0x24804 | 7 | 11/11 | VERIFIED | 1A570 stub unverified, 24754 allow unverified, 2AE14 stub unverified, 2BC30 stub unverified, 2C3FC stub unverified, 33950 allow unverified, 33C78 stub unverified, 39A10 stub unverified |
+| fighter_24804@24754 | 0x24804 | 7 | 11/11 | MISMATCH | ... |
+| fighter_24804@a5 | 0x24804 | 7 | 11/11 | MISMATCH | ... |
+| fighter_24804@no64 | 0x24804 | 7 | 11/11 | MISMATCH | ... |
+```
+
+`@24754` calls it on `side ^ 1` and is caught by the second `0x1A570` argument, the `0x2AE14` x and
+the target-slot store (`0x1077B8`/`0x10784C`); `@a5` and `@no64` as on `0x24568`. The base row's
+call list for `l0` is `1A570(0x0) 33C78(0x0,0xFFFFD000,...) 2BC30(0x10A800,0xE1174,...)
+39A10(0x10A800,0x309) 1A570(0x0) 2AE14(0xA8614,0x10D4FFAF,0x30,0x1A00,0x0) 2C3FC(0xA8)` (19 bytes
+changed).
+
+The brief names the streams' `0xD500` targets (`0x246D4` for `0x24568`, `0x40C34` for `0x40CB0`);
+both are data-referenced only (the dword after the `0xD500` word in `0xE453A`/`0xE790A`; no code
+calls them), so no case can execute them. What the rows pin is the stream every entrance starts through
+`0x2BC30`: the `@stream` mutant is the wrong stream and the call argument catches it. `0x246D4` and
+`0x40C34` stay rowless animation targets (registered in `actors.c`, no row names them), as before.
+
+### §P7.5 The final line, the eight closed rows, and the arithmetic
+
+```text
+diff-verify: 1027/1027 functions VERIFIED; 14978/14978 mutants detected; 0 named gaps; 804/840 rows with callees closed (187 have none); 798/840 closed on full rows; 8 ported functions with no row. ...
+```
+
+Functions `1024 -> 1027` and mutants `14969 -> 14978` are the plan's `+3`/`+9`. The eight rows the
+family stubs close (they name the three addresses as recorded stubs; nothing else in them changed):
+
+```text
+game_mode_05_step       before: 24568/24804/40CB0 stub unverified   after: all three VERIFIED
+game_mode_05_step_reread before: 24568/24804/40CB0 stub unverified  after: all three VERIFIED
+game_mode_32_step       before: 24568/24804/40CB0 stub unverified   after: all three VERIFIED
+game_mode_32_step_end   before: 24568/40CB0 stub unverified         after: 24568/40CB0 VERIFIED
+game_mode_32_step_rr    before: 24568/24804/40CB0 stub unverified   after: all three VERIFIED
+game_mode_0d_step       before: 24568/24804/40CB0 stub unverified   after: all three VERIFIED
+game_mode_0d_step_end   before: 40CB0 stub unverified               after: 40CB0 VERIFIED
+game_mode_0d_step_rr    before: 24568/24804/40CB0 stub unverified   after: all three VERIFIED
+```
+
+No other real row moved: comparing the baseline and final tables row by row, 15993 -> 16005 entries
+(the 12 new ones: 3 real + 9 mutants) and **none** of the 1024 shared real rows changed entry, case
+count, blocks or verdict. The callee column flips `24568 stub` x372, `24804 stub` x333 and `40CB0
+stub` x425 lines (mutants included; the mode stays `stub`).
+
+**The measured closed/full figures are `804/840` and `798/840`, one higher per new row than the
+plan's `797/791`**, the same correction Task 5's §P5.4 and Task 6's §P6.5 recorded: the plan counted
+the three new rows as callee-less, but each records VERIFIED callees (`0x24568`: six stubs and the
+allow-mode `0x2372C`; `0x40CB0`: five stubs; `0x24804`: six stubs and the allow-mode `0x33950`/
+`0x24754`) and is therefore itself a closed row with callees. Hence
+`with_callees` 837 -> 840, `closed` 793 + 8 + 3 = 804, `full` 787 + 8 + 3 = 798 and
+`840 - 804 = 36 = 44 - 8` open. The `full` figure equals `closed` because none of the eleven is in
+`WEAKER`.
+
+### §P7.6 The 36-row blocker census
+
+Measured from the final table with the §J1 rule (`closed_rows`/`non_portable`), the same script that
+reproduces §P6.6's 44 rows on the baseline table. Every blocker is a recorded stub (no allow-mode
+address is left); the three this task removed carried 21 of the 92 incidences (8 + 7 + 6), and the
+rest is §P6.6's table unchanged:
+
+| blocker | mode | rows | names |
+|---|---|---|---|
+| `0x65431` | stub | 11 | `game_frame_keys`, `game_frame_keys2`, `game_frame_head`, `game_frame_fight`, `game_frame_tails`, `game_frame_m25`, `game_frame_match`, `game_frame_front`, `game_frame_start`, `game_frame_rr`, `game_quit_prompt` |
+| `0x5DD03` | stub | 10 | `snd_sample_playing`, `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DEED` | stub | 7 | `snd_music_playing`, `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DCC5` | stub | 6 | `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `sound_sample_start`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DECA` | stub | 5 | `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DC0F` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sample_start` |
+| `0x5DC8B` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_shutdown` |
+| `0x5DEAF` | stub | 3 | `snd_music_stop`, `sound_music_pause_toggle`, `sound_shutdown` |
+| `0x2CB74` | stub | 2 | `menu_step`, `menu_run` |
+| `0x6C4CF` | stub | 2 | `config_file_load`, `menu_fatal_error` |
+| `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4F5C8`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCE4`, `0x61A70`, `0x65546` | stub | 1 each | (17 rows: `sound_buffers_alloc`, `game_frame_head` x2, `fighter_state_3531c`, `game_loop`, `input_sampler` x4, `sound_shutdown`, `sound_sample_start` x5, `text_number_format`, `text_number_core`) |
+
+27 distinct blockers, 71 incidences over 36 rows. The 8 ported functions with no row (`UNROWED`)
+are unmoved.
+
+### §P7.7 The harness pins, the full-scan check and `port_progress`
+
+The harness suite (`python3 -m unittest tools.tests.test_diff_verify`) is **not run here** by
+instruction (its exhaustive pins are Task 11's). Task 11 needs, for the three new specs: masks all
+`0`; `@a5`/`@no64` (and `@y`, `@place`) caught as call-argument/byte differences on all seven cases;
+`@stream` on `0x2BC30`'s EDX on all seven; `@24754` on the second `0x1A570` argument and the
+`0x2AE14` x.
+
+`PR_DIFF_FULLSCAN=1 --function <row> --self-check` is green on all three:
+`1/1 functions VERIFIED; 3/3 mutants detected` for `fighter_24568`, `fighter_40cb0` and
+`fighter_24804`. The rows' only writes are the pokes' seeded fields (the two slots, the two records,
+`0x10810D`, `0xBD898`, the blink byte, the optional bound, the child) and the bodies' stores to them;
+no `reads outside the image` note is printed on any of the three.
+
+`python3 tools/port_progress.py` is unmoved, as required (no `port/src` header, no `fn_register`):
+
+```text
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+```
+
+### §P7.8 Files and commit
+
+`port/tests/diff_runner.c` (the `p7c` binding block: `b_p7c_24568` with `m_p7c_24568_{a5,stream,no64}`,
+`b_p7c_40cb0` with `m_p7c_40cb0_{y,place,stream}`, `b_p7c_24804` with `m_p7c_24804_{24754,a5,no64}`
+and their twelve `k_bindings` entries), `tools/diff_verify.py` (`P7C_SPECS`, `P7C_REC`/`P7C_REC2`/
+`P7C_CHILD`, `P7C_BLINK`,
+`P7C_LAYER`/`P7C_BOUND`, `p7c_record`, `p7c_slot_pokes`, `p7c_ent_case`, `p7c_cases`, and the place of
+`P7C_SPECS` in the `SPECS` concatenation — the variable is `P7C_SPECS` because `P7_SPECS` already
+names track P batch 7), this record. No `port/src` header or `fn_register`, no `data/`, no Makefile,
+no `tools/tests/` change. Commit `diff: row the actor entrance entries`. The task report is the
+git-ignored ledger.

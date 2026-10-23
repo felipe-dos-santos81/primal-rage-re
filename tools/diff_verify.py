@@ -34518,6 +34518,129 @@ P6C_SPECS = [
         Case("c1", {"eax": 1}, SLOT_PTRS),
     ], allow_calls=(0x33950,), calls=(REACT,), eax_mask=0, mutants=("@swap", "@arg")),
 ]
+
+
+# ---- track P closure batch P7 (record 2026-10-22-pixel-and-proof-closure §P7): the actor entrance
+# entries 0, 1 and 6 of the per-character table 0xA8628 -------------------------------------------------
+# The three are the recorded stubs that keep the game_mode_05/0d/32 family open (8 rows, record §P7.5).
+# Every callee of all three has its own row, so each new row closes itself and the family. No port/src
+# change: the entries are ported and PR_SEAM'd. Two callees are the port's unseamed 0x2372C (0x24568)
+# and 0x24754 (0x24804), so those run on both sides (allow) and their own spawn call stays in the row's
+# call set (SPAWN): their bodies are proven by their rows (anim_2372c, fighter_24754). 0x246D4/0x40C34
+# are the 0xD500 targets of the entrance streams 0xE453A/0xE790A: no code calls them, so the row's
+# actors_anim_begin call is what pins the stream each entrance starts (the `@stream` mutant).
+P7C_REC, P7C_REC2, P7C_CHILD = 0x10A800, 0x10A900, 0x10AA00    # zero BSS of the image
+P7C_BLINK = {0: 0x00104B02, 1: 0x00104B03, 6: 0x00104B08}      # the character's blink mask byte
+P7C_BOUND = 0x000BE018                                         # the placement's signed x bound (image 0x7C00)
+P7C_LAYER = 0x000BD898                                         # the spawn's word layer argument (image 0x400)
+
+
+def p7c_record(slot, x, w28, side, tag):
+    """One record from +0x14 through +0x53, the fields the entrances and the two allow-mode callees
+    read: the slot at +0x14, x at +0x18 (the placement), y at +0x1C and a3 at +0x30 (`sar 16`), the
+    word +0x28 (bit 14: 0x2372C's speed/a5 rule), the other record's +0x3C (0x24754's x) and the
+    side byte +0x51 (0x2372C's +0x2E/+0x4E arm). Every other byte its own sentinel, so a store into
+    a neighbour shows."""
+    b = bytearray(((tag + k * 7) & 0xFF) for k in range(0x40))
+    b[0x00:0x04] = le32(slot)
+    b[0x04:0x08] = le32(x)
+    b[0x08:0x0C] = le32(0x001C0000 + tag)
+    b[0x14:0x16] = le16(w28)
+    b[0x1C:0x20] = le32(0x00300000 + tag)
+    b[0x28:0x2C] = le32(0x003C0000 + tag)
+    b[0x3D] = side
+    return bytes(b)
+
+
+def p7c_slot_pokes(slot, rec, d8):
+    """One slot's seeded fields: +0 (the record, read after the stubbed spawn), +8 (0x2372C's
+    projectile and 0x24754's child), +0x40's dword whose +0x41 byte is 0x80 so the blink store
+    shows, and +0x52..+0x64 (the state/counter stores of all three tails) each its own sentinel."""
+    return {slot: le32(rec), slot + 0x08: le32(d8), slot + 0x40: le32(0x80008000),
+            slot + 0x52: bytes(range(0x52, 0x65))}
+
+
+def p7c_ent_case(cid, ch, side, sel, x0, ox0, al, blink, bound=None, spawn=False):
+    """One entrance case. `ch` picks the entrance's blink byte, `side` is the spawning side (EAX),
+    `sel` the byte 0x10810D (the reference slot of the placement and the mask's 0x40/0x80 choice),
+    `x0`/`ox0` the selected/other record's +0x18, `al` the 0x1A570 stub's answer, `blink` the blink
+    byte; `bound` pokes 0xBE018 (else the image's 0x7C00). `spawn` adds the 0x2AE14 stub (the allow
+    callees' spawn) and seeds the child it returns: its +0x14/+0x34/+0x36/+0x2E/+0x4E/+0x59, each
+    different from what the callees store."""
+    p = {}
+    for i, (slot, rec, x, w28, d8) in enumerate((
+            (DS_SLOTS, P7C_REC, x0 if sel == 0 else ox0, 0x4000, 0x08080808),
+            (DS_SLOTS + 0x94, P7C_REC2, x0 if sel == 1 else ox0, 0x0000, 0x09090909))):
+        p.update(p7c_slot_pokes(slot, rec, d8))
+        p[rec + 0x14] = p7c_record(slot, x, w28, i, 0x11 + 0x40 * i)
+    p[0x0010810D] = bytes([sel])
+    p[P7C_LAYER] = le16(0x5A5A)
+    p[P7C_BLINK[ch]] = bytes([blink])
+    if bound is not None:
+        p[P7C_BOUND] = le32(bound)
+    stubs = {0x1A570: al}
+    if spawn:
+        p[P7C_CHILD + 0x14] = (le32(0x14141414) + bytes(0x16) + le16(0x2E2E) + bytes(4)
+                               + le16(0x3434) + le16(0x3636) + bytes(4))
+        p[P7C_CHILD + 0x4E] = b"\x4e" + bytes(0x0A) + b"\x59"
+        stubs[0x2AE14] = P7C_CHILD
+    return Case(cid, {"eax": side}, p, stubs)
+
+
+P7C_ENT_CASES = [
+    # left arm: AL = 1 and x - the entrance's width >= -bound (a5 = 0x4000, the blink store on)
+    ("l0", 0, 0, 0x2000, 0x11110000, 1, 0x80, None),
+    # left arm, the other side and sel (the record blob's +0x51 = 1 takes 0x2372C's +0x2E arm)
+    ("l1", 1, 1, 0x1800, 0x22220000, 1, 0x40, None),
+    # right arm: AL = 0 and x + the width <= bound (a5 = 0, the blink byte clear: no store)
+    ("r0", 0, 0, 0x1000, 0x33330000, 0, 0x00, None),
+    # right arm fails and the loop's `jg` back-edge (0x245E3/0x40D2B/0x2487F) retests the left arm
+    ("r1", 1, 1, 0x3000, 0x44440000, 0, 0x80, None),
+    # AL = 1, the left test's `jl` fails into the right arm (0x245B6/0x40CFE/0x24852), which succeeds
+    ("f0", 0, 0, 0xFFFFD000, 0x55550000, 1, 0x80, None),
+    # sel 1 != side 0: the mask comes from 0x10810D, not the side (0x40 & 0x40 stores)
+    ("m0", 0, 1, 0x1000, 0x66660000, 0, 0x40, None),
+    # a poked bound (0x4000): the right arm fails and the back-edge's left arm succeeds
+    ("p0", 1, 1, 0x2000, 0x77770000, 0, 0x00, 0x4000),
+]
+
+
+def p7c_cases(ch, spawn):
+    return [p7c_ent_case(cid, ch, side, sel, x0, ox0, al, blink, bound, spawn)
+            for cid, side, sel, x0, ox0, al, blink, bound in P7C_ENT_CASES]
+
+
+P7C_SPECS = [
+    # 0x24568 fighter_24568 (record §P7.2): entry 1, character 1's entrance. The placement is
+    # 0x5000 wide from the record of the side 0x10810D names; 0x1A570(0x10810D) is the BIT15 stub;
+    # the spawn D4C_33C78's stub (its EBX = 0, the stack a5 = 0x4000/0); the anim ANIM_BEGIN on 0xE453A
+    # at 4.0 (the stream whose 0xD500 target is 0x246D4); TIMER; 0x2372C runs on both sides (allow,
+    # its 0x2AE14 the SPAWN stub); the +0x41 bit from 0x104B03 & the 0x40/0x80 mask; VOICE 0xB4;
+    # +0x52/+0x53 = 9/3, +0x64 = 0x2A, +0x40 |= 0x81000, +0x63 = 1. Mask 0: the 0xA8628
+    # dispatchers (0x25F27/0x27732/0x2989C) read none of EAX. @a5 passes 0 from the left arm,
+    # @stream starts the wrong entrance's stream, @no64 drops the +0x64 store.
+    Spec("fighter_24568", 0x24568, p7c_cases(1, True),
+         allow_calls=(0x2372C,), calls=(BIT15, D4C_33C78, ANIM_BEGIN, TIMER, SPAWN, VOICE),
+         eax_mask=0, mutants=("@a5", "@stream", "@no64")),
+    # 0x40CB0 fighter_40cb0 (record §P7.3): entry 0, character 0's entrance. 0x3000 placement, y =
+    # 0x4C00 (both arms pass through 0x40D2F), the anim ANIM_BEGIN on 0xE790A (the stream whose
+    # 0xD500 target is 0x40C34), the blink bit from 0x104B02, state 9/3/2, VOICE 0x8C; no 0x2372C
+    # and no +0x64. Mask 0: the dispatchers read none of EAX. @y passes y = 0, @place the 0x5000
+    # placement width, @stream the other entrance's stream.
+    Spec("fighter_40cb0", 0x40CB0, p7c_cases(0, False),
+         calls=(BIT15, D4C_33C78, ANIM_BEGIN, TIMER, VOICE), eax_mask=0,
+         mutants=("@y", "@place", "@stream")),
+    # 0x24804 fighter_24804 (record §P7.4): entry 6, character 6's entrance. 0x24568's shape on
+    # 0xE1174 with 0x104B08's blink byte and +0x64 = 0x20; in 0x2372C's place it calls 0x24754,
+    # which runs on both sides (allow; its 0x33950 allowed too, its 0x1A570/0x2AE14/0x2C3FC the
+    # stubs), so the row records its inner calls and its stores to the child and the slot. Mask 0.
+    # @24754 calls it on the other side (the inner arguments and the target slot change), @a5 and
+    # @no64 are 0x24568's.
+    Spec("fighter_24804", 0x24804, p7c_cases(6, True),
+         allow_calls=(0x33950, 0x24754),
+         calls=(BIT15, D4C_33C78, ANIM_BEGIN, TIMER, SPAWN, VOICE), eax_mask=0,
+         mutants=("@24754", "@a5", "@no64")),
+]
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -34560,7 +34683,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P6C_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P6C_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS + P7C_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------
