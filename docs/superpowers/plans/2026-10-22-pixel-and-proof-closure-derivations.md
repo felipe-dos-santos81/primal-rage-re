@@ -2914,8 +2914,8 @@ PR_DIFF_FULLSCAN=1 make verify        # rc 0
 `PR_DIFF_FULLSCAN=1` runs each `diffrun` binding's outside-the-image scan over the whole
 63 MB instead of the write-fault pages — the form AGENTS.md asks for before a push, and
 the one this phase's review focus #4 names (every new binding and mutant inside `mem[]`).
-One uninterrupted invocation, about 58 minutes on this host, with `EXIT=0`. Every stage
-it reaches passes:
+One uninterrupted invocation, about 58 minutes wall for the shell call, with `EXIT=0`. Every
+stage it reaches passes:
 
 | stage | result line (verbatim) |
 |---|---|
@@ -2925,7 +2925,7 @@ it reaches passes:
 | restart driver | `test_restart_drive: restart after 1198 menu iterations (stamp 3E, clock 4EF)`; `all checks passed` |
 | smacker | `smk_compare: 120/120 frames match`; `smk_compare: 41/41 frames match` |
 | title | both captures `111 frames in window` with `0 unexplained`; `port frames exhibited 95/96; missing [0]; endpoints OK`; `determinism: clean samples of 54 port frame(s) agree, 0 disagree` |
-| front-end | `1325 frames in window: 517 clean, 801 splice, 3 transition, 2 unexplained`; `2 unexplained captured frame(s) allowed by name: [(832, 3671), (833, 3740)]; no other unexplained frame in the window.`; `port frames exhibited 1145/1382 … endpoints OK` |
+| front-end | `1325 frames in window: 517 clean, 801 splice, 3 transition, 2 unexplained`; `2 unexplained captured frame(s) allowed by name: [(832, 3671), (833, 3740)]; no other unexplained frame in the window.`; `port frames exhibited 1145/1382` (its missing-frame list elided), `endpoints OK` |
 | demo-fight | `0 unexplained in the fight window`; `fully explained; the window claim is now exact` |
 | attract cycle-2 | `1732 frames in region: 1078 clean, 630 splice, 17 transition, 1 unexplained, 6 all-black` (3545 allowed by name); `0 unexplained in the region` |
 | attract prefix | both captures `215/216 capture frames explained; port attract frames exhibited 173/690`; `expected divergence at capture frame 215` |
@@ -2990,10 +2990,10 @@ diff-verify: 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named
 ```
 
 The arithmetic, each term measured (§P5–§P9 and Task 11's report carry the derivations):
-`833 + 11 = 844` rows with callees (11 of the 12 rows have callees; `runtime_5d812` and
-`runtime_61a70` have none), `1019 + 12 = 1031` functions, `14956 + 27 = 14983` mutants,
-`774 + 11 + 28 = 813` closed, `768 + 11 + 27 = 806` full, `59 - 28 = 31` open. The twelve
-rows of this phase:
+`833 + 11 = 844` rows with callees (11 of the 12 rows have callees; only `runtime_5d812`
+has none — the `0x61A70` row's two callees, `0x65490`/`0x654C7`, are allow-mode),
+`1019 + 12 = 1031` functions, `14956 + 27 = 14983` mutants, `774 + 11 + 28 = 813` closed,
+`768 + 11 + 27 = 806` full, `59 - 28 = 31` open. The twelve rows of this phase:
 
 | row | entry | cases | mutants | plan task |
 |---|---|---:|---:|---|
@@ -3046,7 +3046,7 @@ The 31 open rows, in table order: `snd_music_stop`, `snd_sample_playing`,
 `game_frame_keys2`, `game_frame_head`, `game_frame_fight`, `game_frame_tails`,
 `game_frame_m25`, `game_frame_match`, `game_frame_front`, `game_frame_start`,
 `game_frame_rr`), `game_quit_prompt`, `config_file_load`, `menu_fatal_error` and
-`sound_shutdown`. No row is open on a portable-set function by accident: every blocker is
+`sound_shutdown`. No row blocks on a portable-set function by accident: every blocker is
 outside the portable set, and the only ported functions with no row at all are the
 declared unrowed set below.
 
@@ -3064,13 +3064,14 @@ block out, or declares a terminal difference; it can still be closed). Twelve fu
 carry one: `0x1AFE8` (`config_file_load`, the l6 short-read exit difference), `0x1B084`
 (`config_file_save`, the exit block a memory-backed file cannot reach), `0x1B544`
 (`res_resolve`, the resident arm only), `0x1BE30` (`game_shutdown`, `int 0x10` poked),
-`0x1C740` (`movie_play`, the keyboard poll poked), `0x24C5C` (`game_frame_*`, two named
-unhits and 18/20 blocks), `0x255CC` (`game_loop`, two named unhits `0x25680`/`0x256D4`
-and its RNG a recorded stub), `0x2CADC`, `0x2EA30`, `0x2EA68`, `0x2EA74`, `0x2EA78`.
-Seven of their rows are closed (so `806 = 813 - 7`); the other five entries are among the
-31 open rows above; `0x1B544` and `0x2EA30` have callee-less rows, so they never enter
-the closed/full arithmetic. On the function scale the docs keep, 12 of the 751 portable
-rowed functions are weaker and 739 are full.
+`0x1C740` (`movie_play`, the keyboard poll poked), `0x24C5C` (`game_frame_*`, 62/161
+blocks on `game_frame_keys`), `0x255CC` (`game_loop`, 18/20 blocks, two named unhits
+`0x25680`/`0x256D4` and its RNG a recorded stub), `0x2CADC`, `0x2EA30`, `0x2EA68`,
+`0x2EA74`, `0x2EA78`. Seven of their rows are closed (so `806 = 813 - 7`); three of the
+other five entries are among the 31 open rows above (`0x1AFE8`, `0x24C5C`, `0x2EA68`);
+`0x1B544` and `0x2EA30` have callee-less rows, so they never enter the closed/full
+arithmetic. On the function scale the docs keep, 12 of the 751 portable rowed functions
+are weaker and 739 are full.
 
 ### §P11.3 The final U13 pins and their failing direction
 
@@ -3138,7 +3139,9 @@ each with its evidence:
   checks (§J6). The poked `DEATH_DONE` wins of U9/U10 are not a substitute and are not
   claimed for U14.
 - **U16's finisher.** The three finisher entries were attempted but no `r0`/`r1` reaction
-  in `0x32..0x34` appears, so `make gp-u16-oracle` omits `--finisher` (R2, §J8).
+  in `0x32..0x34` appears; `make gp-u16-oracle` passes `--finisher
+  --allow-missing-reaction` (`Makefile:1435`), so the oracle does not claim a reaction
+  (R2, §J8).
 - **The other endings.** `gp-u13-ending2` covers character 1's BLIZZARD ending; character
   0's is the U10 path under `DEATH_DONE` pokes (`gp-u10-ending`, first unexplained 5437,
   the replay's post-script tail) and what the pokes replaced — the KO by hits and the six
@@ -3148,9 +3151,10 @@ each with its evidence:
   2 addresses the decomp index never lists. None can have a row, so those rows keep their
   place in the counter by design (§J1, §P11.2).
 - **The weaker rows.** The 12 ways above (pokes, unhit blocks, terminal differences) are
-  declared, not proved away; `game_loop`'s and `0x24C5C`'s named unhits are the largest,
-  and the counter's headline does not distinguish a weaker row from a full one — only its
-  `closed on full rows` figure does.
+  declared, not proved away; the `0x24C5C` rows' partial block coverage (62/161 on
+  `game_frame_keys`) and `game_loop`'s two named unhits are the largest, and the counter's
+  headline does not distinguish a weaker row from a full one — only its `closed on full
+  rows` figure does.
 - **`flow_4f5c8`'s zero divisor.** No case uses divisor 0: the raw's `idiv` would fault at
   `0x4F5E0`, and the port returns 0 instead — a documented deviation (`flow.c`'s PORT
   comment, the same form as `0x4F4E8`'s), so that path is unverified on both sides by
@@ -3162,7 +3166,9 @@ each with its evidence:
 
 ### §P11.6 The `port_progress` lines, the PROGRESS paragraph and the commit
 
-`python3 tools/port_progress.py` is unmoved, as required (no `port/src` file changed):
+`python3 tools/port_progress.py` is unmoved, as required (no `port/src` file changed by
+this task; the phase added no new `FN_` header and no `fn_register`, only seams such as
+`0x3A6D4`'s):
 
 ```text
 799 1203 66
@@ -3196,8 +3202,9 @@ each with its evidence:
 > reach is port 4939 (`GP_U13_MIN_FIRST` 4248 -> 5891, `GP_U13_MIN_REACH` 3549 -> 4939,
 > each proved to fail one step above; trace/WIN stay 10014, start 96, milestones 30/30,
 > the capture sha and 5904 frames unchanged). `PR_DIFF_FULLSCAN=1 make verify` is green on
-> the phase tip, `port_progress.py` is unmoved (`799 1203 66` / `759 759 100`) and no
-> existing pin moved. **Remaining (capture-gated or by design):** U14's fought live win
+> the phase tip, `port_progress.py` is unmoved (`799 1203 66` / `759 759 100`) and no pin
+> moved outside the U13 pair and the six re-measured harness pins. **Remaining
+> (capture-gated or by design):** U14's fought live win
 > (R1, no capture; all `GP_U14_*` pins empty), U16's finisher (R2), the other endings
 > beyond character 1's BLIZZARD and character 0's poked U10 path, U13's 5891..5903 tail,
 > the 31 open rows' runtime/host stubs (no row can exist), the 12 weaker rows and
