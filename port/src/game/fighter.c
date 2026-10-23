@@ -5703,6 +5703,7 @@ void fighter_pose_3a43c(u32 slot, u32 side)
  * 0x3A726 on the ESP offsets name ctx[1] (the side) and ctx[5] (rec_self). */
 void fighter_pose_3a6d4(u32 slot, u32 side)
 {
+    PR_SEAM(0x3A6D4u, slot, side);
     u32 ctx[6];
     u8 phase;
     (void)slot;

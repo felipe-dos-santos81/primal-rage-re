@@ -2376,3 +2376,309 @@ instruction (its exhaustive pins are Task 11's). Task 11 needs, for the three ne
 `P8C_SPECS` because `P8_SPECS` already names track P batch 8), this record. No `port/src` header or
 `fn_register`, no `data/`, no Makefile, no `tools/tests/` change. Commit
 `diff: row the menu, loop and memset entries`. The task report is the git-ignored ledger.
+
+## §P9 The synthetic `+0x10` hook and the real `0x3A6D4`
+
+Task 9 of the plan: the `0x3D0BC` spec artifact is corrected and the real slot `+0x10` hook
+`0x3A6D4` gets a row. The hook was already ported (`fighter_pose_3a6d4`, `fighter.c:5704`) and
+`fn_register`ed (`actors.c:301`), so no new port function or header: one `PR_SEAM` line is the
+existing repo rule for a call-set callee, and its absence was the only port change (§P9.4).
+Everything below was measured at base commit `7bf21ad8` in the worktree `pixel-and-proof-closure`,
+with the plan's driver command:
+
+```bash
+python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE \
+  --image /tmp/pr_diff_image.bin --table /tmp/pr_diff_table_p9.md --self-check
+```
+
+### §P9.1 The baseline line
+
+```text
+diff-verify: 1030/1030 functions VERIFIED; 14981/14981 mutants detected; 0 named gaps; 811/843 rows with callees closed (187 have none); 804/843 closed on full rows; 8 ported functions with no row. ...
+```
+
+Task 8's §P8.5 line, 32 open rows (`843 - 811`), with the baseline table at
+`/tmp/pr_diff_table_p8_fix.md` (16011 entries).
+
+### §P9.2 The raw correction: `0x3D0BC` is not a function
+
+The bytes at `0x3D0BC` (file offset `0x8FF10` = VA + `0x52E54`) are `00 00 00 00`. The
+surrounding bytes are the previous function's epilogue (`0x3D004`, the decomp index's size 0xB7,
+ends at `0x3D0BB`: its last instruction is the `ret` at `0x3D0BA`) and the five-byte alignment pad
+before the next entry:
+
+```text
+3D0B4  30 c0               xor al,al
+3D0B6  5e                  pop esi
+3D0B7  5a                  pop edx
+3D0B8  59                  pop ecx
+3D0B9  5b                  pop ebx
+3D0BA  c3                  ret
+3D0BB  00 00 00 00 00      the five pad bytes that align 0x3D0C0
+3D0C0  52 89 c2 c1 e0 03   push edx; mov edx,eax; shl eax,3; add eax,edx; ...
+```
+
+`0x3D0BC` is bytes 2..5 of that pad (`00 00 00 00`); the real entry is `0x3D0C0`, which the decomp
+index lists (`port/decomp/prage.functions.csv`: `0003d0c0`, size 75) and which already has its own
+row (`fighter_3d0c0`, 2 cases, `VERIFIED`, 2/2 blocks). The index has no entry at `0x3D0BC`, and
+`tools/port_classification.txt`, `symbols.h` and `port/src` name it nowhere: it is not a function
+and no row can exist for it.
+
+The slot `+0x10` hooks the pose setters store are the real functions this neighbourhood was
+confused with:
+
+| setter | store | hook |
+|---|---|---|
+| `0x3A79C` (the `0x107D08`/`0x107D04` family) | `0x3A7D2  c7 40 10 d4 a6 03 00` (`mov dword [eax+0x10],0x3a6d4`) | `0x3A6D4` |
+| `0x3A650` (the `0x107D0C`/`0x107D00` family) | `0x3A686  c7 40 10 88 a5 03 00` (`mov dword [eax+0x10],0x3a588`) | `0x3A588` |
+
+`0x3531C` case 10 is the only **call** through the dword (`cmp dword [ecx+0x10],0; je 0x354E5;
+mov eax,ecx; call dword [ecx+0x10]` 0x354DA..0x354E2; it is `port/src`'s only
+`fn_resolve(DSD(slot + 0x10u))` — the other sites compare the value), and its registers there are
+EAX = ECX = slot and EBX = side (`0x35325 mov ebx,eax`, rewritten on no path to the call). The old
+`d15` case poked `0x3D0BC` into the scratch slot's `+0x10`; the original's stub at that address
+recorded the arrival, and the port's `fn_resolve_from` reports an *unregistered* address to the
+seam with no arguments (`mem.c:66..72`), so `fn_resolve(0x3D0BC)` returning NULL still produced a
+matching `(0x3D0BC, ())` arrival on both sides — the case compared the address alone (the old
+comment's "the port reports the address alone"), never a call, and so could not notice that the
+address was not a function.
+
+### §P9.3 The row: `0x3A6D4`, twelve blocks
+
+The raw at `0x3A6D4..0x3A798` (measured from the fixup-applied image; the image is
+`mem[0x10000..0x10B0D0)`, `build/diffrun --exe data/game/C/PRAGE.EXE --image-out`):
+
+```text
+3A6D4  83 ec 18            sub esp,0x18
+3A6D7  89 da               mov edx,ebx              ; side
+3A6D9  89 e0               mov eax,esp
+3A6DB  e8 30 93 ff ff      call 0x33A10             ; the ctx swap
+3A6E0  8b 44 24 0c         mov eax,[esp+0xc]        ; ctx[3] = the side's own slot
+3A6E4  8a 40 58            mov al,[eax+0x58]
+3A6E7  3c 01               cmp al,1
+3A6E9  72 06               jb 0x3A6F1               ; phase 0
+3A6EB  76 18               jbe 0x3A705              ; phase 1
+3A6ED  83 c4 18            add esp,0x18             ; phase > 1
+3A6F0  c3                  ret
+3A6F1  84 c0               test al,al
+3A6F3  0f 85 9c 00 00 00   jne 0x3A795              ; dead: al < 1 unsigned means al is 0
+3A6F9  8b 44 24 0c         mov eax,[esp+0xc]
+3A6FD  c6 40 58 01         mov byte [eax+0x58],1
+3A701  83 c4 18            add esp,0x18
+3A704  c3                  ret
+3A705  8b 44 24 0c         mov eax,[esp+0xc]
+3A709  68 00 00 40 40      push 0x40400000          ; 3.0f
+3A70E  8a 40 7a            mov al,[eax+0x7a]        ; the character
+3A711  25 ff 00 00 00      and eax,0xff
+3A716  8b 14 85 08 90 0c 00 mov edx,[eax*4+0xC9008] ; the stream table
+3A71D  8b 44 24 18         mov eax,[esp+0x18]       ; ctx[5] = the record
+3A721  e8 0a 15 ff ff      call 0x2BC30             ; RET 4, pops the push
+3A726  8b 54 24 14         mov edx,[esp+0x14]       ; ctx[5]
+3A72A  31 db               xor ebx,ebx
+3A72C  8b 44 24 04         mov eax,[esp+4]          ; ctx[1] = the side
+3A730  8b 52 18            mov edx,[edx+0x18]
+3A733  e8 74 e1 fd ff      call 0x188AC             ; anchor set (x, y = 0)
+3A738  8b 44 24 0c         mov eax,[esp+0xc]
+3A73C  c6 40 58 02         mov byte [eax+0x58],2
+3A740  8b 54 24 04         mov edx,[esp+4]          ; the side
+3A744  8b 1c 55 06 7d 10 00 mov ebx,[edx*2+0x107D06] ; high word = 0x107D08 + side*2 = A
+3A74B  8b 14 55 02 7d 10 00 mov edx,[edx*2+0x107D02] ; high word = 0x107D04 + side*2 = B
+3A752  89 e1               mov ecx,esp
+3A754  c1 fa 10            sar edx,0x10
+3A757  c1 fb 10            sar ebx,0x10
+3A75A  85 d2               test edx,edx
+3A75C  74 2c               je 0x3A78A               ; B == 0
+3A75E  83 fa 05            cmp edx,5
+3A761  74 27               je 0x3A78A               ; B == 5
+3A763  8b 44 24 0c         mov eax,[esp+0xc]
+3A767  8a 80 90 00 00 00   mov al,[eax+0x90]        ; the old gate
+3A76D  fe c8               dec al
+3A76F  3c 03               cmp al,3
+3A771  77 0d               ja 0x3A780
+3A773  25 ff 00 00 00      and eax,0xff
+3A778  2e ff 24 85 c4 a6 03 00  jmp cs:[eax*4+0x3A6C4]   ; four entries, all 0x3A78A
+3A780  89 da               mov edx,ebx              ; A
+3A782  8b 41 04            mov eax,[ecx+4]          ; ctx[1] = the side
+3A785  e8 52 e1 fd ff      call 0x188DC             ; snap x to A
+3A78A  8b 44 24 0c         mov eax,[esp+0xc]
+3A78E  c6 80 90 00 00 00 03 mov byte [eax+0x90],3
+3A795  83 c4 18            add esp,0x18
+3A798  c3                  ret
+```
+
+The switch table at `0x3A6C4` is `8a a7 02 00` four times in the file and `8a a7 03 00` four times
+in the image (the fixups add the code object's `0x10000`): every entry is `0x3A78A`, so the four
+gate values `1..4` skip the snap. The gate test is `(u8)(old +0x90 - 1) > 3`: the snap runs when
+the old `+0x90` is `0` or `5..0xFF`. `E.static_scan` resolves the switch through `switch_cases`
+(the `cmp al,3; ja` guard with `and eax,0xff` keeping the bound), so the entry's twelve leaders are
+`0x3A6D4, 0x3A6EB, 0x3A6ED, 0x3A6F1, 0x3A6F9, 0x3A705, 0x3A75E, 0x3A763, 0x3A773, 0x3A780,
+0x3A78A, 0x3A795` and no `RESOLVED_JUMPS` entry is needed.
+
+The row (`P9C_SPECS` in `tools/diff_verify.py`) runs `0x33A10` on both sides (allow; its own row
+proves it) and stubs `0x188AC` (`ANCHOR`), `0x2BC30` (`ANIM_BEGIN`) and `0x188DC` (`ANCHORX`) —
+each has its own row — so it compares the recorded arguments and the two slot bytes. Mask 0: the
+only caller is `0x3531C` case 10, whose return value no caller reads (the parent's mask-0 note).
+
+```python
+Spec("fighter_3a6d4", 0x3A6D4, [ ... six cases ... ],
+     allow_calls=(0x33A10,), calls=(ANCHOR, ANIM_BEGIN, ANCHORX), eax_mask=0,
+     mutants=("@a16", "@b5"))
+```
+
+The six cases and what the original does (measured from `spec_original`):
+
+| case | side | phase | char | A | B | gate | the original's calls and writes |
+|---|---|---|---|---|---|---|---|
+| `p0` | 0 | 0 | 3 | 0x7FFF | 7 | 0 | none; `0x107808` (`+0x58`) 0 → 1 |
+| `p1` | 1 | 1 | 5 | 0x1000 | 0 | 2 | `2BC30(0x10A400, 0xE1234, 0x40400000)`, `188AC(1, 0x28282828, 0)`; `0x10789C` 1 → 2, `0x1078D4` 2 → 3 |
+| `p2` | 0 | 1 | 3 | 0x2000 | 5 | 0 | `2BC30(0x10A300, 0xE1234, 0x40400000)`, `188AC(0, 0x18181818, 0)`; `0x107808` 1 → 2, `0x107840` 0 → 3 |
+| `p3` | 1 | 1 | 5 | 0x3000 | 0x8000 | 1 | as `p1` with the gate 1 (index 0 ≤ 3): the switch arm, A unused, no snap |
+| `p4` | 0 | 1 | 3 | 0x8001 | 7 | 0 | as `p2` plus `188DC(0, 0xFFFF8001)` — the sign-extended A |
+| `p5` | 1 | 2 | 5 | 0x4000 | 0 | 0 | none, no writes (the `0x3A6ED` return) |
+
+`p1` and `p3` are the first `je` (B == 0) and the switch arm; `p2` is the second `je` (B == 5);
+`p4` is the snap arm; `p0` and `p5` are the two early returns. Every seed differs from what the
+function writes (`+0x58` and `+0x90` are seeded 0/1/2 and 0/1/2), the other slot's three bytes are
+seeded with different values, and the other side's A/B words (0x6666/0x7777) and the 0xC9008
+neighbour entry (0xE5678) make a wrong side, character or scale a different recorded argument.
+
+Measured, `--function fighter_3a6d4 --self-check`:
+
+```text
+| fighter_3a6d4 | 0x3A6D4 | 6 | 12/12 | VERIFIED | 188AC stub unverified, 188DC stub unverified, 2BC30 stub unverified, 33A10 allow unverified |
+| fighter_3a6d4@a16 | 0x3A6D4 | 6 | 12/12 | MISMATCH | ... |
+| fighter_3a6d4@b5 | 0x3A6D4 | 6 | 12/12 | MISMATCH | ... |
+```
+
+`@a16` reads A zero-extended (`(s32)(u32)DSW(0x107D08 + side*2)` where the raw's `sar ebx,0x10`
+sign-extends) and is caught on `p4` alone, by the recorded call:
+`p4: call #2: original 0x188DC(0x0, 0xFFFF8001), port 0x188DC(0x0, 0x8001)` (1 diff). `@b5` drops
+the B == 5 exemption (`0x3A75E/0x3A761`) and is caught on `p2` alone (B = 5, gate 0):
+`p2: call #2: original none, port 0x188DC(0x0, 0x2000)` (1 diff). The other four cases are the
+ones that leave each mutation unobservable (B = 0, the closed gate, the early returns), so both
+cases that carry them are load-bearing.
+
+### §P9.4 The `d15` case and the one-line port seam
+
+`D3C_CB10` becomes `0x0003A6D4` and its stub `D3C_CB10_CALL` becomes
+`E.Call(0x3A6D4, ("eax", "ebx"), clobbers=("ebx", "ecx", "edx"))` — the original's registers at
+0x354E2 in the port's C argument order `(slot, side)`, and `E.callee_clobbers` over `0x3A6D4`'s
+bytes gives exactly `('ebx', 'ecx', 'edx')`. Nothing else in the parent changed; its 28 cases,
+25/25 blocks and 36 mutants are unchanged.
+
+The first run showed the port side still needed its seam. Without `PR_SEAM`, the port's
+`fn_resolve(0x3A6D4)` resolves the registered `fighter_pose_3a6d4` and runs its body inside the
+parent's case, which
+- records no call (so `d15: call #0: original 0x3A6D4(0x10A000, 0x1), port none`), and
+- stores the phase-0 byte on the *side's own* slot (`d15: byte 0x10789C: original unchanged,
+  port 0x01`) — the hook re-derives its slot from `DS_001077B0` through `0x33A10` and ignores the
+  pointer the parent passes, so the parent's scratch-slot case is exactly where an unseamed hook
+  shows.
+
+`AGENTS.md`'s rule ("a ported function that a differentially verified function stubs or records
+opens with `PR_SEAM`") is the fix: one line at the top of `fighter_pose_3a6d4`,
+`PR_SEAM(0x3A6D4u, slot, side);`, arguments in the C signature's order, the `E.Call` naming the
+original's registers in the same order (EAX = slot, EBX = side). It is inert outside `build/diffrun`
+(`pr_seam` is NULL), so `run_tests` and the windowed run are unaffected. With it, the parent reads
+`VERIFIED` again (25/25, 36/36 mutants detected) and both sides record
+`0x3A6D4(0x10A000, 0x1)` on `d15`.
+
+### §P9.5 The final line, the two closed rows, and the arithmetic
+
+```text
+diff-verify: 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps; 813/844 rows with callees closed (187 have none); 806/844 closed on full rows; 8 ported functions with no row. ...
+```
+
+Functions `1030 -> 1031` and mutants `14981 -> 14983` are the plan's `+1`/`+2`. The two rows that
+the correction closed (each reads `VERIFIED` on the callee; no verdict, case count or block count
+moved anywhere):
+
+```text
+fighter_state_3531c  3D0BC stub unverified -> VERIFIED   (the d15 case's hook, now 3A6D4)
+fighter_3a6d4         the new row (188AC, 188DC, 2BC30 stubs and 33A10 allow, all VERIFIED)
+```
+
+`with_callees` `843 -> 844` (the new row has four), closed `811 -> 813` (the new row plus the
+parent), full `804 -> 806` (both), and open `32 -> 31` (`844 - 813`). The plan's `801 -> 802`
+closed and `794 -> 795` full count only the parent (its new row as callee-less); as with §P5.4,
+§P6.5, §P7.5 and §P8.5 the measured *increases* are one higher (`+2` vs `+1`) because a new row
+with callees closes itself, and the absolute figure is twelve above the plan's 801/794.
+
+Table size `16011 -> 16014` entries = the three new lines (1 real + 2 mutants); of the 1030 shared
+real rows **none** changed its verdict, case count or blocks, and the callee-status column flips
+exactly 37 entries over 37 rows (`3D0BC stub unverified -> 3A6D4 stub VERIFIED`: the parent and its
+36 mutants). The 1031 real rows are 1030 shared + the new one; the 14983 mutants are 14981 shared +
+2.
+
+### §P9.6 The 31-row blocker census
+
+Measured from the final table with the §J1 rule (`closed_rows`/`non_portable`), the same script
+that reproduces §P8.6's 32 rows on the baseline table. The only change is the parent's row, whose
+`0x3D0BC` blocker is gone (the blocker that was never a function); 23 distinct blockers, 66
+incidences over 31 rows:
+
+| blocker | mode | rows | names |
+|---|---|---|---|
+| `0x65431` | stub | 11 | `game_frame_keys`, `game_frame_keys2`, `game_frame_head`, `game_frame_fight`, `game_frame_tails`, `game_frame_m25`, `game_frame_match`, `game_frame_front`, `game_frame_start`, `game_frame_rr`, `game_quit_prompt` |
+| `0x5DD03` | stub | 10 | `snd_sample_playing`, `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DEED` | stub | 7 | `snd_music_playing`, `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DCC5` | stub | 6 | `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `sound_sample_start`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DECA` | stub | 5 | `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DC0F` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sample_start` |
+| `0x5DC8B` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_shutdown` |
+| `0x5DEAF` | stub | 3 | `snd_music_stop`, `sound_music_pause_toggle`, `sound_shutdown` |
+| `0x6C4CF` | stub | 2 | `config_file_load`, `menu_fatal_error` |
+| `0x1C308`, `0x25FAC`, `0x26194`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCE4`, `0x65546` | stub | 1 each | (14 rows: `sound_buffers_alloc`, `game_frame_head` ×2, `input_sampler` ×4, `sound_shutdown`, `sound_sample_start` ×5, `text_number_core`) |
+
+The 8 ported functions with no row (`UNROWED`) are unmoved: `0x3A6D4` was never in that set — the
+set's eight are `symbols.h` `FN_` functions, while `0x3A6D4` is one of the E2-class entries
+`port/src` implements and `fn_register`s that the decomp index never lists (like `0x3A43C` and
+`0x3A588` beside it), which is the class Task 10's frontier counter is about.
+
+### §P9.7 The harness pins, the full-scan check and `port_progress`
+
+The harness suite (`python3 -m unittest tools.tests.test_diff_verify`) is **not run here** by
+instruction (Task 11). This task disturbs **five** exhaustive pins, not the four Task 5 named — the
+fifth is the stub-clobber dictionary, which only a task that adds a *new stub address* can disturb
+(Task 8 added none):
+
+1. `test_the_eax_mask_is_stated_by_the_spec_per_function` — add `fighter_3a6d4` (and its mutants
+   inherit the spec name only for the mask dict's `s.name` keys; only the real spec is listed).
+2. `test_every_ported_function_agrees_with_the_original_on_every_block` — add `fighter_3a6d4` to
+   the real-name list (a `P9C_MASKS`-style dict or a literal).
+3. `test_every_mutant_is_reported_as_a_mismatch` — add `fighter_3a6d4@a16`, `fighter_3a6d4@b5`.
+4. `test_each_stub_declares_the_registers_its_callee_clobbers` — add
+   `0x3A6D4: ("ebx", "ecx", "edx")` to the pinned dict (re-derived from the bytes; the live
+   re-derivation passes).
+5. The pinned counter string — §P9.5's line.
+
+For Task 11's per-mutant "what alone catches it" maps: `@a16` → `{"call #2"}` on `p4`, `@b5` →
+`{"call #2"}` on `p2` (measured above; no `P9C_KINDS` exists yet).
+
+`PR_DIFF_FULLSCAN=1 --function fighter_3a6d4 --self-check` and
+`PR_DIFF_FULLSCAN=1 --function fighter_state_3531c --self-check` are green
+(`1/1 functions VERIFIED; 2/2` and `36/36 mutants detected`); neither prints a
+`reads outside the image` note or an unhit block (`p0..p5` 12/12, `d0..r15` 25/25).
+
+`python3 tools/port_progress.py` is unmoved, as required (the hook's header and `fn_register`
+already existed; the seam is not a header):
+
+```text
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+```
+
+`./build/run_tests` — the suite without the oracle env vars — passes ("all checks passed"): the
+seam is inert outside `build/diffrun`.
+
+### §P9.8 Files and commit
+
+`tools/diff_verify.py` (`D3C_CB10`/`D3C_CB10_CALL`, the parent's comment, `P9C_SLOT`,
+`p9c_3a6d4_case`, `P9C_SPECS` and its place in the `SPECS` concatenation — the variable is
+`P9C_SPECS` because `P9_SPECS` would read as the track-P batch-9 name), `port/tests/diff_runner.c`
+(the `p9c` binding block: `b_p9c_3a6d4`, the `p9c_3a6d4_core` mutant core with
+`m_p9c_3a6d4_a16`/`m_p9c_3a6d4_b5`, and their three `k_bindings` entries),
+`port/src/game/fighter.c` (one line: the `PR_SEAM(0x3A6D4u, slot, side)` the callee rule
+requires), this record. No new `port/src` header or `fn_register`, no `data/`, no Makefile, no
+`tools/tests/` change. Commit `fix: correct the 0x3D0BC spec to the real 0x3A6D4 hook`. The task
+report is the git-ignored ledger.

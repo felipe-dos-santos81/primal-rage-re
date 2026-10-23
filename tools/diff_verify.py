@@ -21982,10 +21982,17 @@ D3C_SPECS += [
                 "@prev1", "@al698", "@vd", "@order", "@pside", "@alpred", "@v65", "@no6", "@v0b", "@al898",
                 "@v8", "@stb", "@nost")),
 ]
-D3C_CB10 = 0x0003D0BC            # not a function and not registered: the +0x10 hook's address is all the port can report
+# The slot +0x10 hook 0x3531C case 10 calls at 0x354E2 is the real 0x3A6D4: the 0x3A79C pose
+# setter stores it at 0x3A7D2 (`mov dword [eax+0x10],0x3a6d4`; its twin 0x3A650 stores 0x3A588 at
+# 0x3A686), and 0x3A6D4 has its own row (P9C_SPECS, record §P9). The address this case poked until
+# Task 9, 0x3D0BC, is `00 00 00 00`: four bytes of the five-byte alignment pad between 0x3D0BA's
+# `ret` and the next entry, 0x3D0C0 (`52 89 c2 ...`, which already has its own row) — not a function.
+# The indirect call's registers are EAX = slot (`mov eax,ecx` 0x354E0) and EBX = side (0x35325
+# `mov ebx,eax`, never rewritten on any path to the call).
+D3C_CB10 = 0x0003A6D4
 D3C_350D0 = E.Call(0x350D0, ("eax",), clobbers=("edi", "ebp"))
 D3C_34E20 = E.Call(0x34E20, ("eax",))
-D3C_CB10_CALL = E.Call(D3C_CB10, (), clobbers=("edx",))
+D3C_CB10_CALL = E.Call(D3C_CB10, ("eax", "ebx"), clobbers=("ebx", "ecx", "edx"))
 # 0x3CF38 as a stub that overwrites both slots' +0x5F: 0x3531C saved the byte before the call
 # (0x354B2) and stores it back after it (0x354CD)
 D3C_3CF38_5F = E.Call(0x3CF38, ("eax",), writes=((None, D3C_SLOT + 0x5F, b"\xFF"),
@@ -22032,12 +22039,12 @@ def d3c_disp_case(side, st, ptr="own", f6=0, cfg=0xFD, cb0c=0, cb10=0, ch=4, s5f
 D3C_SPECS += [
     # 0x3531C fighter_state_3531c: EAX = side. Stubs: 0x2C3FC, 0x2B150, 0x350D0, 0x367DC, 0x34E20
     # and 0x3CF38 (AL tested: 0x354A8, 0x354C1; d12 returns 0x100, d13 0xFFFFFF01 and 0x100), the
-    # 0x3C4CC inside the +0x0C hook and the +0x10 hook itself. The +0x0C hook is the registered
-    # 0x23130, run real with 0x33950; the +0x10 hook's address is unregistered, so the port
-    # reports the address alone (record §4). d5 and d10 point DS_001077A8[side] at a scratch slot:
-    # state 8 reads +0x88 and +0x5F and stores +0x53/+0x5F through the side's own slot ([esp+8]:
-    # 0x35483, 0x3549A, 0x354AC, 0x354C5). r1..r15 are the ten table entries that only return.
-    # Mask 0: the one call site writes EAX before reading it (0x35803 call, 0x3580E `mov eax,ebx`).
+    # 0x3C4CC inside the +0x0C hook and the +0x10 hook 0x3A6D4 itself (its own row, P9C_SPECS). The
+    # +0x0C hook is the registered 0x23130, run real with 0x33950. d5 and d10 point
+    # DS_001077A8[side] at a scratch slot: state 8 reads +0x88 and +0x5F and stores +0x53/+0x5F
+    # through the side's own slot ([esp+8]: 0x35483, 0x3549A, 0x354AC, 0x354C5). r1..r15 are the ten
+    # table entries that only return. Mask 0: the one call site writes EAX before reading it
+    # (0x35803 call, 0x3580E `mov eax,ebx`).
     Spec("fighter_state_3531c", 0x3531C, [
         Case("d0", {"eax": 0}, d3c_disp_case(0, 0, ptr=None)),
         Case("d1", {"eax": 1}, d3c_disp_case(1, 0, ptr="norec")),
@@ -34742,6 +34749,87 @@ P8C_SPECS = [
              d1d_chunks(P8C_BUF, b"\xFF" * 0x120)),
     ], allow_calls=(0x65490, 0x654C7), mutants=("@fill",)),
 ]
+
+
+# ---- track P closure batch P9 (record 2026-10-22-pixel-and-proof-closure §P9): the +0x10 pose hook ---
+# 0x3A6D4 fighter_pose_3a6d4 (fighter.c:5704): the 0x3A79C pose family's per-frame handler, which
+# 0x3531C case 10 calls through the slot's +0x10 dword (0x3A79C stores 0x3A6D4 at 0x3A7D2,
+# `mov dword [eax+0x10],0x3a6d4`; its twin 0x3A650 stores 0x3A588 at 0x3A686). EAX = slot (dead:
+# 0x3A6D9 overwrites EAX with `mov eax,esp` before any read) and EBX = side. Raw
+# 0x3A6D4..0x3A798, twelve blocks:
+#   0x3A6D4 sub esp,0x18; mov edx,ebx; mov eax,esp; call 0x33A10   (the ctx swap)
+#   0x3A6E0 mov eax,[esp+0xc] (ctx[3], the side's own slot); mov al,[eax+0x58]; cmp al,1
+#   0x3A6E9 jb 0x3A6F1 (phase 0)   0x3A6EB jbe 0x3A705 (phase 1)   0x3A6ED add esp,0x18; ret (> 1)
+#   0x3A6F1 test al,al; jne 0x3A795 (dead: al < 1 unsigned means al is 0)
+#   0x3A6F9 mov eax,[esp+0xc]; mov byte [eax+0x58],1; ret                  (phase 0)
+#   0x3A705 mov eax,[esp+0xc]; push 0x40400000; mov al,[eax+0x7a]; and eax,0xff
+#   0x3A716 mov edx,[eax*4+0xC9008]; mov eax,[esp+0x18] (ctx[5], the record); call 0x2BC30 (RET 4)
+#   0x3A726 mov edx,[esp+0x14]; xor ebx,ebx; mov eax,[esp+4] (ctx[1], the side)
+#   0x3A730 mov edx,[edx+0x18]; call 0x188AC                               (anchor set, y = 0)
+#   0x3A738 mov eax,[esp+0xc]; mov byte [eax+0x58],2
+#   0x3A740 mov edx,[esp+4]; mov ebx,[edx*2+0x107D06]; mov edx,[edx*2+0x107D02]; mov ecx,esp
+#   0x3A754 sar edx,0x10 (B = the word at 0x107D04 + side*2); sar ebx,0x10 (A = 0x107D08 + side*2)
+#   0x3A75A test edx,edx; je 0x3A78A (B == 0); 0x3A75E cmp edx,5; je 0x3A78A (B == 5)
+#   0x3A763 mov eax,[esp+0xc]; mov al,[eax+0x90]; dec al; cmp al,3; ja 0x3A780
+#   0x3A773 and eax,0xff; jmp cs:[eax*4+0x3A6C4]   (the four table entries are all 0x3A78A)
+#   0x3A780 mov edx,ebx; mov eax,[ecx+4]; call 0x188DC                      (snap x to A)
+#   0x3A78A mov eax,[esp+0xc]; mov byte [eax+0x90],3
+#   0x3A795 add esp,0x18; ret
+# The gate is `(u8)(+0x90 - 1) > 3`, so the snap runs when the old +0x90 is 0 or 5..0xFF and the
+# switch (whose four targets all skip it) when 1..4 — the +0x90 the function then stores is 3.
+# 0x33A10 runs on both sides (allow, its own row proves it); 0x188AC, 0x2BC30 and 0x188DC are stubbed
+# (each has its own row), so the row compares the recorded (side, anchor x), (record, stream, 3.0)
+# and (side, A) arguments and the two slot bytes. Mask 0: the only caller is 0x3531C case 10, whose
+# return value no caller reads (the parent's mask-0 note).
+P9C_SLOT = 0x0010A900            # zero BSS of the image: the dead entry EAX
+
+
+def p9c_3a6d4_case(side, phase, char, a, b, gate):
+    """0x3A6D4: the two slot pointers DS_001077B0 (side 0's record E3_REC, side 1's E3_REC2), both
+    records' +0x18 anchor dword, the side's own slot +0x58 (the phase), +0x7A (the animation-stream
+    character) and +0x90 (the snap gate), each between seeded neighbours; the other slot's three
+    bytes seeded with other values (a wrong-side ctx reads phase 5, char 0x69, gate 0x69); the two
+    per-side word pairs 0x107D04 (B) and 0x107D08 (A), the side's from `b`/`a` and the other's
+    0x7777/0x6666, with 0x107D02 and 0x107D0C seeded (the raw reads 0x107D02 + side*2 and
+    0x107D06 + side*2 as dwords and keeps the high word only, so a port that read the low half sees
+    a seeded word or the other side's B, never `b`/`a`); and the 0xC9008 stream table entry for
+    `char` (0xE1234) and its neighbour (0xE5678), so a wrong character or a wrong scale reads
+    another word."""
+    own, oth = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    return {DS_SLOTS: le32(E3_REC), DS_SLOTS + 0x94: le32(E3_REC2),
+            E3_REC + 0x18: le32(0x18181818), E3_REC2 + 0x18: le32(0x28282828),
+            own + 0x57: bytes([0x57, phase, 0x59]),
+            own + 0x79: bytes([0x79, char, 0x7B]),
+            own + 0x8F: bytes([0x8F, gate, 0x91]),
+            oth + 0x57: b"\x67\x05\x69",
+            oth + 0x79: b"\x69\x69\x6B",
+            oth + 0x8F: b"\x6F\x69\x71",
+            0x00107D02: le16(0x1357), 0x00107D0C: le16(0x9ABC),
+            0x00107D04 + side * 2: le16(b), 0x00107D04 + (1 - side) * 2: le16(0x7777),
+            0x00107D08 + side * 2: le16(a), 0x00107D08 + (1 - side) * 2: le16(0x6666),
+            0x000C9008 + char * 4: le32(0x000E1234),
+            0x000C9008 + ((char + 1) & 0xFF) * 4: le32(0x000E5678)}
+
+
+P9C_SPECS = [
+    Spec("fighter_3a6d4", 0x3A6D4, [
+        # phase 0: the only store is +0x58 = 1 (seeded 0), no call
+        Case("p0", {"eax": P9C_SLOT, "ebx": 0}, p9c_3a6d4_case(0, 0x00, 3, 0x7FFF, 0x0007, 0x00)),
+        # phase 1 with B == 0 (the first `je`): the stream, the anchor, +0x58 = 2 and +0x90 = 3, no snap
+        Case("p1", {"eax": P9C_SLOT, "ebx": 1}, p9c_3a6d4_case(1, 0x01, 5, 0x1000, 0x0000, 0x02)),
+        # phase 1 with B == 5 (the second `je`) and the gate open: the 5 exemption keeps the snap off
+        Case("p2", {"eax": P9C_SLOT, "ebx": 0}, p9c_3a6d4_case(0, 0x01, 3, 0x2000, 0x0005, 0x00)),
+        # phase 1, B = 0x8000 (negative, neither 0 nor 5) and the old +0x90 = 1: (u8)0 <= 3, the
+        # switch skips the snap (all four 0x3A6C4 entries are 0x3A78A)
+        Case("p3", {"eax": P9C_SLOT, "ebx": 1}, p9c_3a6d4_case(1, 0x01, 5, 0x3000, 0x8000, 0x01)),
+        # phase 1, B = 7 and the old +0x90 = 0: (u8)0xFF > 3, the snap runs with A sign-extended
+        # (0x8001 -> 0xFFFF8001 in the recorded EDX)
+        Case("p4", {"eax": P9C_SLOT, "ebx": 0}, p9c_3a6d4_case(0, 0x01, 3, 0x8001, 0x0007, 0x00)),
+        # phase 2: nothing (the early return at 0x3A6ED)
+        Case("p5", {"eax": P9C_SLOT, "ebx": 1}, p9c_3a6d4_case(1, 0x02, 5, 0x4000, 0x0000, 0x00)),
+    ], allow_calls=(0x33A10,), calls=(ANCHOR, ANIM_BEGIN, ANCHORX), eax_mask=0,
+       mutants=("@a16", "@b5")),
+]
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -34784,7 +34872,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P6C_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS + P7C_SPECS + P8C_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P6C_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS + P7C_SPECS + P8C_SPECS + P9C_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

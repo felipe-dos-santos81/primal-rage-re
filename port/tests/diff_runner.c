@@ -43554,6 +43554,47 @@ static void m_p8c_61a70_fill(const u32 *r, u32 *eax)
 }
 /* ---- p8c bindings end ---- */
 
+/* ---- track P closure batch P9 (record 2026-10-22-pixel-and-proof-closure §P9): the +0x10 pose hook - */
+/* 0x3A6D4 fighter_pose_3a6d4 (fighter.c:5704): EAX = slot (dead), EBX = side. The raw is 0x3A6D4's
+ * `sub esp,0x18; mov edx,ebx; mov eax,esp; call 0x33A10` (the ctx swap, allow) and then the side's
+ * own slot +0x58 phase: 0 stores 1 (0x3A6FD) and returns, above 1 returns (0x3A6ED), and 1 runs
+ * 0x2BC30(record, 0xC9008[+0x7A] at 3.0), 0x188AC(side, [record+0x18], 0), stores +0x58 = 2, tests
+ * the 0x107D04/0x107D08 per-side word pair, snaps x to A through 0x188DC when B is neither 0 nor 5
+ * and the old +0x90 is 0 or above 5 (`dec al; cmp al,3; ja`, the four-entry 0x3A6C4 table all
+ * pointing past the snap), then stores +0x90 = 3. Mask 0: the only caller (0x3531C case 10) reads
+ * nothing back (the parent's mask-0 note). The three callees are stubbed (each has its own row) and
+ * only record their arguments, so the row compares (record, stream, 3.0), (side, anchor, 0),
+ * (side, A) and the two slot bytes. @a16 is the zero-extension the raw's `sar ebx,0x10` rules out
+ * (p4's A = 0x8001 records 0x8001 where the original records 0xFFFF8001); @b5 drops the B == 5
+ * exemption (0x3A761), so p2 (B = 5, gate open) snaps where the original does not. */
+static void p9c_3a6d4_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EBX];
+    u32 ctx[6];
+    u8 phase;
+    fighter_ctx_swap(ctx, side);
+    phase = DSB(ctx[3] + 0x58u);
+    if (phase == 0u) { DSB(ctx[3] + 0x58u) = 1u; return; }
+    if (phase != 1u) return;
+    actors_anim_begin(ctx[5], DSD(0x000C9008u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40400000u);
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);
+    DSB(ctx[3] + 0x58u) = 2u;
+    {
+        s32 b = (s32)(s16)DSW(DS_00107D04 + ctx[1] * 2u);
+        s32 a = (mut & 1u) ? (s32)(u32)DSW(DS_00107D08 + ctx[1] * 2u)      /* @a16 */
+                           : (s32)(s16)DSW(DS_00107D08 + ctx[1] * 2u);
+        if (b != 0 && (((mut & 2u) != 0u) || b != 5)) {                    /* @b5: no exemption */
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)
+                hit_anchor_x(ctx[1], (u32)a);
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 3u;
+}
+static void b_p9c_3a6d4(const u32 *r, u32 *eax)     { fighter_pose_3a6d4(r[R_EAX], r[R_EBX]); *eax = 0u; }
+static void m_p9c_3a6d4_a16(const u32 *r, u32 *eax) { p9c_3a6d4_core(r, 1u); *eax = 0u; }
+static void m_p9c_3a6d4_b5(const u32 *r, u32 *eax)  { p9c_3a6d4_core(r, 2u); *eax = 0u; }
+/* ---- p9c bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -59227,6 +59268,11 @@ static const binding_t k_bindings[] = {
     { "runtime_61a70",         b_p8c_61a70,          0xFFFFFFFFu },
     { "runtime_61a70@fill",    m_p8c_61a70_fill,     0xFFFFFFFFu },
     /* track P closure batch P8 end */
+    /* track P closure batch P9 */
+    { "fighter_3a6d4",         b_p9c_3a6d4,          0x00000000u },
+    { "fighter_3a6d4@a16",     m_p9c_3a6d4_a16,      0x00000000u },
+    { "fighter_3a6d4@b5",      m_p9c_3a6d4_b5,       0x00000000u },
+    /* track P closure batch P9 end */
 };
 
 static const binding_t *find_binding(const char *name)
