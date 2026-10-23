@@ -802,9 +802,12 @@ class Scan3Allowance(Dirs):
                          ((4089, 1, 66,
                            '8eeaad13ee80ed904df9a8d600d3972f34959d6d5a0692cdbd319003b80376f6'),))
         # endgame truth Task 3 (record §E3): TALON's ending's own two three-present
-        # scans in the health bonus's mode-0x22 ramp: capture 4099 (rows 0..63 port
-        # 3430's, 64..167 port 3431's, 168..199 port 3432's) and 4147 (0..45 port
-        # 3474's, 46..168 port 3475's, 169..199 port 3476's).
+        # scans at the final's mode-0x0D -> 0x0C transitions: capture 4099 (rows 0..63
+        # port 3430's, 64..167 port 3431's, 168..199 port 3432's) and 4147 (0..45 port
+        # 3474's, 46..168 port 3475's, 169..199 port 3476's). PIN only: the recipe's
+        # mutations are proved on the fixture by this class's sub-tests and on the real
+        # dump by the manual run record §E3 reports; the dump is not retained, so this
+        # case does not run a dump test.
         self.assertEqual(gc.SCAN3_ALLOWED['gp-u18-talon-ending'],
                          ((4099, 64, 168,
                            '2fb5ec8f9b74cc393b7619ad560c9771ff75d987dc1bcdd46c2d751c87c15772'),
@@ -999,7 +1002,10 @@ class OverlayAllowance(Dirs):
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
         # endgame truth Task 3 (record §E3): TALON's ending's own loader presentation
         # at capture 2227 (raw 4988), port 1810's 166 glyph pixels over port 1811's
-        # mode-5 screen, the mask from port 1809.
+        # mode-0x12 screen, the mask from port 1809. PIN only: the recipe's mutations
+        # are proved on the fixture by this class's sub-tests and on the real dump by
+        # the manual run record §E3 reports; the dump is not retained, so this case
+        # does not run a dump test.
         self.assertEqual(gc.OVERLAY_ALLOWED['gp-u18-talon-ending'],
                          ((2227, 1810, 1809, 1811,
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))

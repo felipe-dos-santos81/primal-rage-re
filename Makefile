@@ -1515,10 +1515,12 @@ gp-u23-oracle: build ## Endgame truth U23 oracle: the U16 finisher reaction (lab
 # inside one capture scan (SCAN3_ALLOWED, the §G6 shape U13's 4248/4320 have). The first
 # unexplained is 5735 (raw 14294): 5735..5748 are the post-script tail (the replay's dump ends
 # at f=0x26E4, its trace and the capture's X at f=0x26E6) and are NOT claimed; MIN_FIRST = 5735,
-# and 5734 fails. The comparison's window reach is port 4864 (the dump's last frame), so
-# MIN_REACH = 4864 and 4865 fails as unreachable beyond the dump. Trace, WIN and move fields
-# agree through f=0x26E6 (9958), so their end pins are 9959. The capture has 5,749 frames with
-# this poll.log sha256 (b3279414..d2fcf1).
+# and 5736 fails (the ratchet fails only when the first unexplained precedes N). The
+# comparison's window reach is port 4864 (the dump's last frame), so
+# MIN_REACH = 4864 and 4865 fails as unreachable beyond the dump. Trace and WIN fields
+# agree through f=0x26E6 (9958), so their end pins are 9959; the moves comparison is
+# reported by gp_compare (0 differing through 9958) and is not pinned. The capture has
+# 5,749 frames with this poll.log sha256 (b3279414..d2fcf1).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.

@@ -300,8 +300,9 @@ class TestTalonEnding(unittest.TestCase):
         self.assertEqual(len(seventh), 1)
         self.assertEqual(seventh[0][3](dict(t104=7)), True)
         self.assertEqual(seventh[0][3](dict(t104=6)), False)
-        # the 0x82 marks are the mode-8 row's; the seventh land counts DS_00108104[0]
-        self.assertNotEqual(seventh[0][3](dict(t104=6)), True)
+        # the 0x82 marks are the mode-8 row's; the seventh land counts DS_00108104[0],
+        # so the row holds with no mark bytes at all
+        self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
 
 
 class TestPath(unittest.TestCase):

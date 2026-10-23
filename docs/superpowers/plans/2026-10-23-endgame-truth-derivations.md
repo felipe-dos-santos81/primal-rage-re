@@ -196,9 +196,11 @@ captures' marks are `0x82` (TALON), `0x83` (VERTIGO), `0x84` (ARMADON), `0x85`
 (DIABLO), `0x86` (CHAOS); `0x80` is SAURON's and `0x81` BLIZZARD's.
 
 The `gp_win.py` mode-0x1F row's label is built from the **character name**, not
-the title: `_ENDING_LABEL` (`gp_win.py:52-54`) is `"%s's ending (mode 0x1F,
-0x208F8): …"`, `_ending_tail(c0, name)` (`gp_win.py:105-110`) takes `(c0,
-name)` and its predicate is `_all(ad4=0, c0=c0)`. The title is a `0xA80E4`
+the title: `_ENDING_LABEL` (`gp_win.py:53-55`) is `"%s's ending (mode 0x1F,
+0x208F8): …"`, `_ending_tail(c0, name)` (`gp_win.py:120-126`) takes `(c0,
+name)` and its predicate is `_all(ad4=0, c0=c0)`. The label's read range is
+`0x20900..0x2091A` (the load is `0x20914..0x2091A`; Task 3 corrected it from
+`0x20914`). The title is a `0xA80E4`
 fact and the compared frames' content, not a WIN/S field.
 
 ---
@@ -972,7 +974,8 @@ the same §G.24 pair `0x29D60`/`0x5D812` from `frontend_mode_1b_step` (hits 1 an
 pinned in `port/tests/test_platform.c`.
 
 No conflict with §E1 was found: cell 1 is class 2 TALON, the mark is `0x82`, the
-title id is `0xE0` (TALON'S DREAM) and the label is the character name. One citation
-is left as it was: `gp_win.py`'s shared `_ENDING_LABEL` still says `0x20900..0x20914`
-where §E1 measured the load at `0x20914..0x2091A` — a label shared by every ending
-scenario, not a Task 3 claim, and out of this task's file list.
+title id is `0xE0` (TALON'S DREAM) and the label is the character name. Review
+correction (2026-10-23): `gp_win.py`'s shared `_ENDING_LABEL` said `0x20900..0x20914`
+where §E1 measured the load at `0x20914..0x2091A`; it now names the whole read,
+`0x20900..0x2091A`. The label is shared by every ending scenario, so each ending
+oracle's printed label names the full range; no pin compares the label text.

@@ -50,9 +50,10 @@ def _all(**want):
 
 
 # The mode-0x1F ending row's label: the winner's character slot
-# DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x20914) selects the ending (record §W.6).
+# DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x2091A, the load at 0x20914..0x2091A)
+# selects the ending (record §W.6, §E1.1).
 _ENDING_LABEL = ("%s's ending (mode 0x1F, 0x208F8): the winner's character "
-                 "DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x20914) is character c0=%d")
+                 "DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x2091A) is character c0=%d")
 
 
 # One row per milestone: (label, mode, k, predicate). The frame of a row is the first record

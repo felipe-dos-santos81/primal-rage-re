@@ -619,13 +619,16 @@ class TestTalonEnding(unittest.TestCase):
         steps, u10 = scn['steps'], gs.SCENARIOS['gp-u10-ending']['steps']
         i = next(k for k, st in enumerate(steps) if st[0] == 'after_entry' and st[1] == 0x06)
         k = next(k for k, st in enumerate(u10) if st[0] == 'after_entry' and st[1] == 0x06)
-        self.assertEqual(steps[:i], gs.ending_menu(1))
+        # the cell-1 walk itself (ending_menu's own test pins the full helper shape)
+        self.assertEqual((steps[3][0], steps[3][1], steps[3][2], steps[3][-1]),
+                         ('after_mode', 0x10, 60, ('pad', ('p1.right',), 4)))
+        self.assertEqual(steps[4], ('after', 30, ('pad', ('p1.start',), 6)))
         self.assertEqual(steps[i], ('after_entry', 0x06, 1, 10,
                                     ('poke', ((0x108106, gs.lands_marked(0, 2)),
                                               (0x10789E, b'\x78')))))
         self.assertEqual(gs.lands_marked(0, 2), b'\x82' * 7)   # 0x80 | side 0 | class 2
         self.assertEqual(steps[i + 1:], u10[k + 1:])           # the rest is u10's
-        self.assertIsNot(steps, u10)                           # a new tuple
+        self.assertEqual(len(u10), 21)                         # u10 itself, not extended
         self.assertEqual(u10[k][4], ('poke', ((0x108106, gs.lands_marked(0, 0)),
                                               (0x10789E, b'\x78'))))
 
