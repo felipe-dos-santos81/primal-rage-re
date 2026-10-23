@@ -3134,6 +3134,11 @@ each with its evidence:
 - **U13's post-script tail.** 5891..5903 (raw 14361..14417) is the 13-frame tail after the
   scenario's `X` record (f=10013); the port's dump ends at frame 4939 (f=0x271B) and its
   trace at f=0x271D, so no frame exists for those states and the pin stops there (§P1.6).
+- **The 5120 band's cause.** Capture 5120 is explained by name (§P3.3) with a byte-pinned,
+  mutation-tested recipe (§P3.4), but the state that produced its four-row band is not
+  isolated: no dumped DAC, no dumped present and no whole-frame offset reproduces it, and
+  the band's bounds are capture-pinned, not machine-forced (`tools/gp_compare.py:106`) —
+  the same limit as U11's 81/92. The allowance binds the band's bytes, not a cause.
 - **U14's fought live win.** `gp-u14-win-live` has no capture and all `GP_U14_*` pins stay
   empty (`make gp-u14-oracle` skips, rc 0); the two permitted attempts failed the session
   checks (§J6). The poked `DEATH_DONE` wins of U9/U10 are not a substitute and are not

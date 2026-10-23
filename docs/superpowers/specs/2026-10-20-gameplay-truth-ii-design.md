@@ -1,6 +1,9 @@
 # Gameplay truth II — the unexplained tail and the held captures (2026-10-20)
 
 Status: implemented; evidence closeout complete (2026-10-22): four captures are taken and pinned (U15, U12, U13, U16); U14 live win is the R1 named gap (§J6), U16 finisher is the R2 named gap (§J8), and U13's pixel claim ends at capture 4248 (§J5). No existing pin moved.
+
+**Superseded in part (2026-10-23, pixel-and-proof closure):** U13's pixel claim now reaches capture 5890. The in-replay frames 4248, 4320 and 5120 are explained by named, byte-pinned and mutation-tested per-frame recipes, and the pins are `GP_U13_MIN_FIRST=5891` (the post-script tail 5891..5903 stays unclaimed) and `GP_U13_MIN_REACH=4939`; see `docs/PROGRESS.md` and `docs/superpowers/plans/2026-10-22-pixel-and-proof-closure-derivations.md` §P4 and §P11.5. The rest of this design and its record stand.
+
 Written from the 2026-10-14 next-phase recon, the track G/J/A records, and a
 2026-10-20 re-read of the current pins and tools. Builder-checked 2026-10-20: its three findings are folded in (W1 is a tail pass, not a single
 frame; W8 is a raw verdict, not a capture; W5's death-animation test is

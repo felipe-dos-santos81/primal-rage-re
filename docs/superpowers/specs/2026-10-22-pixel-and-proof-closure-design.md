@@ -1,7 +1,7 @@
 # Pixel and Proof Closure — Design
 
 **Date:** 2026-10-22
-**Status:** Draft for review
+**Status:** Implemented and gated (2026-10-23)
 **Predecessors:** `2026-10-20-gameplay-truth-ii-design.md` (GT2) and
 `2026-10-22-evidence-closeout-design.md` (evidence closeout)
 

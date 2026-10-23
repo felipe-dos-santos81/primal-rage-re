@@ -266,15 +266,24 @@ true original, and ported the divergence. Two pieces:
    dword +4 = handle), so its id → resource mapping is extractable; it is not
    yet extracted.
 
-### Remaining work (2026-10-22)
+### Remaining work (2026-10-22; counter re-measured at the 2026-10-23 phase gate)
 
 - The captures `gp-u12-endurance`, `gp-u13-ending2`, `gp-u15-join` and
   `gp-u16-twop2` are captured and pinned; their `gp-u1x-oracle` targets skip
   only on a checkout without the git-ignored captures. The remaining open
-  gameplay-evidence gaps are the U14 live win (R1, §J6), the U16 finisher
-  reaction (R2, §J8) and the U13 pixel claim from capture 4248 onward (R3, §J5).
-- The differential audit: 59 of the 833 rows stay open, and 8 ported functions
-  have no differential row (the counter in `AGENTS.md`; `make diff-verify`).
+  gameplay-evidence gaps are the U14 live win (R1, §J6) and the U16 finisher
+  reaction (R2, §J8). U13's pixel claim now reaches capture 5890: frames 4248,
+  4320 and 5120 are explained by named, byte-pinned and mutation-tested
+  per-frame recipes, the first unexplained frame is the post-script tail
+  5891..5903 (unclaimed) and the enforced reach is port 4939 — `GP_U13_MIN_FIRST`
+  = 5891, `GP_U13_MIN_REACH` = 4939 (R3, §J5; record
+  `2026-10-22-pixel-and-proof-closure-derivations.md` §P4/§P11.5).
+- The differential audit: 31 of the 844 rows stay open (all on recorded stubs
+  outside the portable set), and 45 `FN_` functions the port implements have no
+  differential row (8 portable — 5 registry-visible and 3 header-shape
+  exceptions — plus 37 runtime; the scan-visible subset is 42 = 5 + 37). The
+  counter and its clauses are in `AGENTS.md`, the phase record in
+  `docs/PROGRESS.md`; `make diff-verify` prints it.
 - Host and product work: audio audibility (no device-recording oracle), CI and
   packaging, SDL pad hot-plug, and the save-path documentation.
 - The tick interrupt vector (item 4).

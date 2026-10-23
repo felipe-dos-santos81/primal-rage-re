@@ -397,13 +397,15 @@ def compare(orig, port, mask=0xFFFFFFFF):
 
 
 # The rowed functions whose row is not full (record 2026-10-15-reverse-j-derivations.md
-# §J1; AGENTS.md:398-412): a row that runs the original under code pokes, leaves
-# reachable blocks out, or declares a terminal difference. Function entries, not spec
-# names; keep in step with AGENTS.md. The counter could not tell these from a full row.
+# §J1; the closure-rule paragraph in AGENTS.md): a row that runs the original under code
+# pokes, leaves reachable blocks out, or declares a terminal difference. Function
+# entries, not spec names; keep in step with AGENTS.md. The counter could not tell these
+# from a full row.
 WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1BE30, 0x1C740,
                     0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30})
-# The 8 ported functions with no differential row at all (record §J1:26;
-# AGENTS.md:385-386): "1 named gaps" is the spec NAMED_GAP count and never named these.
+# The 8 ported functions with no differential row at all (record §J1:26; AGENTS.md's
+# WEAKER/UNROWED paragraph): "1 named gaps" is the spec NAMED_GAP count and never named
+# these.
 # Track P batch 10 (record §P10): 5 of the 8 are visible to `non_portable()`'s strict registry
 # scan (a `fn_register` call or a column-0 `/* 0xADDR` header); the other 3 are mentioned in
 # port/src only mid-comment (res.c, flow.c), so the scan cannot see them. They are named here so

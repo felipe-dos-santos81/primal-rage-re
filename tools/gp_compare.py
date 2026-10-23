@@ -193,8 +193,9 @@ SCAN3_ALLOWED = {
         # Capture 4320 (raw 8019) — the same three-present scan, 72 capture
         # frames later at the next mode-0x0D -> 0x0C transition (record §P3): its
         # S bracket is f=1566 mode=000D (ms=114172) -> f=1567 mode=000C. Rows
-        # 0..17 are port 3613's (f=1567 tick=0000163C mode=000D; rows 14..17
-        # exist nowhere else), rows 18..107 are port 3614's (f=1567
+        # 0..17 are port 3613's (f=1567 tick=0000163C mode=000D; rows 14..17 are
+        # 3613's among the three presents, and row 14 is 3613's alone, record
+        # §P3.2), rows 18..107 are port 3614's (f=1567
         # tick=00001640 mode=000C; rows 88..107 exist nowhere else) and rows
         # 108..199 are port 3615's (f=1568 tick=00001641 mode=000C, the nearest
         # of the three; rows 108..189 exist nowhere else). The split is forced
