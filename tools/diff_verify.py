@@ -34648,6 +34648,96 @@ P7C_SPECS = [
          calls=(BIT15, D4C_33C78, ANIM_BEGIN, TIMER, SPAWN, VOICE), eax_mask=0,
          mutants=("@24754", "@a5", "@no64")),
 ]
+
+
+# ---- track P closure batch P8 (record 2026-10-22-pixel-and-proof-closure §P8): the menu, loop and
+# memset entries ------------------------------------------------------------------------------------
+# The three recorded stubs that keep four rows open (record §P7.6): 0x2CB74 (menu_step, menu_run),
+# 0x4F5C8 (game_loop) and 0x61A70 (text_number_format). The first two are ported functions with a
+# PR_SEAM; the third is the runtime memset the port serves from mem_fill, so its row is binding-only:
+# a port/src header or fn_register would make the address `ported` in the closure rule's NonPortable
+# table and stop it excusing the 28 rows that name it as an allow callee (record §J1). The variable
+# is P8C_SPECS because P8_SPECS already names track P batch 8 (record 2026-10-04-reverse-p8).
+
+# 0x2CB74 svc_start_menu (svcmenu.c:78): `push ebx; push ecx; push edx; mov ebx,0xF000;
+# mov edx,0x10; mov eax,0x3CCCC; xor ecx,ecx; call 0x2FFC4; pop edx; pop ecx; pop ebx; ret` (raw at
+# file offset 0x7F9C8; 0x3CCCC there is pre-fixup — mem_load_le_fixups makes it 0xBCCCC, the START
+# MENU table svcmenu.c names SVC_TABLE_START). The entry EAX is dead (0x2CB81 reloads EAX with the
+# table), so the case seeds it non-zero and `@entry`, which passes it as the table, is caught by the
+# recorded first argument. The return is menu_step's own (0x2CB8D): the item callback's EAX is what
+# menu_step tests with full-register compares (`call [entry+8]` 0x304A2, `cmp eax,-0xA` 0x304AA,
+# `cmp eax,-5` 0x304B3) and returns on its -10/-5 arms (0x305E9/0x304DA) to callers that test the
+# whole value too (0x251F3), so mask full; the stub's EAX 5 makes the return observable. The
+# EBX = 0xF000 the raw sets is not read by 0x2FFC4 (the menu_step row's i4).
+P8C_MENU_STEP = E.Call(0x2FFC4, ("eax", "edx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+
+# 0x4F5C8 flow_bonus_count_step (flow.c:2745): the render table's bit-4 entry, `fn()` with EAX
+# unread. The count 0x104AC4 and the divisor 0x1088D0 are dwords, the tick 0x104AF4 is a word the
+# raw zero-extends (`xor edx,edx; mov dx,[0x104AF4]` at 0x4F5CC..0x4F5CE) before the signed
+# `idiv ebx`, and the side byte 0x104B1A scales the slot 0x1077B0 by 0x94. The body stores n = count
+# - 1 at 0x104AC4 *before* the 0x2F528 draw (0x4F60A vs 0x4F610), which the call's recorded memory
+# pins, then calls the 0x4DBB4 slot add with (the slot, 1). 0x2F528 is a stub (its own row proves
+# the draw); 0x4DBB4 has no PR_SEAM, so it runs on both sides (allow) and its own row proves it; its
+# +0x5B store is the compared byte. Mask 0: the render walk reloads EAX (`mov eax,ebx` 0x25621)
+# before the next entry, so no caller reads the return (the raw leaves the idiv quotient on the two
+# early arms and 0x4DBB4's sum on the body); the port returns.
+P8C_TICK, P8C_DIV, P8C_COUNT, P8C_SIDE = 0x00104AF4, 0x001088D0, 0x00104AC4, 0x00104B1A
+P8C_SLOT0, P8C_SLOT1 = 0x001077B0, 0x00107844          # +0x5B: 0x10780B / 0x10789F
+P8C_BUF = 0x0010AC00                                   # zero BSS of the image: the memset's target
+
+
+def p8c_loop_case(word, div, count, side):
+    """0x4F5C8: the tick word 0x104AF4, the divisor 0x1088D0, the count 0x104AC4 and the side byte
+    0x104B1A, each between seeded neighbours, and both slots' +0x5A..+0x5C bytes (the +0x5B the
+    allow-mode 0x4DBB4 writes). The divisor 3 divides 6 and 0xFFFF exactly; 5 % 3 = 2 leaves the
+    remainder arm."""
+    return {P8C_TICK - 1: b"\x61" + le16(word) + b"\x62",
+            P8C_DIV - 2: b"\x63\x64" + le32(div) + b"\x65\x66",
+            P8C_COUNT - 2: b"\x67\x68" + le32(count) + b"\x69\x6A",
+            P8C_SIDE - 1: bytes([0x6B, side, 0x6C]),
+            P8C_SLOT0 + 0x5A: b"\x11\x20\x22",
+            P8C_SLOT1 + 0x5A: b"\x33\x40\x44"}
+
+
+P8C_LOOP_CASES = [
+    # the remainder arm: 5 % 3 = 2, so the count 7 and the slot byte 0x20 stay
+    Case("r0", {}, p8c_loop_case(5, 3, 7, 0)),
+    # the zero-count arm: 6 % 3 = 0, count 0 (no draw, no slot add)
+    Case("c0", {}, p8c_loop_case(6, 3, 0, 0)),
+    # the body: count 3 -> 2, the draw (0x13, 1, 2, width 2, pad 0, mode 0x4000), slot 0's
+    # +0x5B 0x20 -> 0x21
+    Case("b0", {}, p8c_loop_case(6, 3, 3, 0)),
+    # the word is zero-extended: 0xFFFF % 3 = 0 (a sign-extended -1 % 3 = -1 returns); count 1 -> 0
+    Case("w0", {}, p8c_loop_case(0xFFFF, 3, 1, 0)),
+    # the side scales the slot by 0x94: side 1's +0x5B 0x40 -> 0x41, side 0's 0x20 stays
+    Case("b1", {}, p8c_loop_case(6, 3, 2, 1)),
+]
+
+P8C_SPECS = [
+    Spec("svc_2cb74", 0x2CB74, [
+        Case("m0", {"eax": 0x00C0FFEE}, {}, {0x2FFC4: 5}),
+    ], calls=(P8C_MENU_STEP,), mutants=("@entry",)),
+    Spec("flow_4f5c8", 0x4F5C8, P8C_LOOP_CASES,
+         allow_calls=(0x4DBB4,), calls=(D2C_NUMDRAW2,), eax_mask=0, mutants=("@zext",)),
+    # 0x61A70, the runtime memset (file offset 0xB48C4): `push eax; push ecx; mov dh,dl;
+    # shl edx,8; mov dl,dh; shl edx,8; mov dl,dh; mov ecx,ebx; call 0x65490; pop ecx; pop eax; ret`.
+    # EAX = dest, EDX = fill (only DL reaches the bytes: the shifts broadcast it), EBX = len; the
+    # call fills len bytes at dest and the pops return dest in EAX. 0x65490 and its 0x654C7 body run
+    # on both sides (allow; runtime >= 0x5D000), so the row compares the bytes mem_fill writes and
+    # the returned dest. The cases cover len 0 (the callee's `or ecx,ecx; je`), an unaligned start,
+    # the 0x20-byte block loop and a non-uniform EDX (0x12345678: DL 0x78, not DH 0x56), each buffer
+    # seeded 0xA5/0xFF so every written byte differs from its seed.
+    Spec("runtime_61a70", 0x61A70, [
+        Case("z0", {"eax": P8C_BUF, "edx": 0x0000005A, "ebx": 0},
+             d1d_chunks(P8C_BUF, b"\xA5" * 8)),
+        Case("a0", {"eax": P8C_BUF, "edx": 0x0000005A, "ebx": 0x23},
+             d1d_chunks(P8C_BUF, b"\xA5" * 0x40)),
+        Case("b0", {"eax": P8C_BUF + 1, "edx": 0x12345678, "ebx": 7},
+             d1d_chunks(P8C_BUF, b"\xA5" * 0x10)),
+        Case("c0", {"eax": P8C_BUF, "edx": 0x00000000, "ebx": 0x100},
+             d1d_chunks(P8C_BUF, b"\xFF" * 0x120)),
+    ], allow_calls=(0x65490, 0x654C7), mutants=("@fill",)),
+]
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -34690,7 +34780,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P6C_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS + P7C_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P5_SPECS + P6_SPECS + P6C_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS + P7C_SPECS + P8C_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

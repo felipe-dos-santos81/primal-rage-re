@@ -2112,3 +2112,265 @@ and their twelve `k_bindings` entries), `tools/diff_verify.py` (`P7C_SPECS`, `P7
 names track P batch 7), this record. No `port/src` header or `fn_register`, no `data/`, no Makefile,
 no `tools/tests/` change. Commit `diff: row the actor entrance entries`. The task report is the
 git-ignored ledger.
+
+## §P8 The menu, loop and memset entries: `0x2CB74`, `0x4F5C8` and `0x61A70`
+
+Task 8 of the plan: three rows, no `port/src` change. The three were recorded stubs in 36 rows'
+callee columns (§P7.6) and kept four rows open: `0x2CB74` (`menu_step`, `menu_run`), `0x4F5C8`
+(`game_loop`) and `0x61A70` (`text_number_format`). The port implements the first two
+(`svc_start_menu` at `svcmenu.c:78` with `PR_SEAM_RET(0x2CB74u, entry)`, `flow_bonus_count_step` at
+`flow.c:2745` with `PR_SEAM0(0x4F5C8u)`); the third is the runtime memset the port serves from
+`mem_fill` (`mem.c:131`) behind `host_memset`'s `PR_SEAM(0x61A70u, …)` (`actors.c:4335`), so its row
+is **binding-only**: a `port/src` column-0 header or `fn_register` would put `0x61A70` in the
+closure rule's `ported` set and stop it excusing the 28 rows that name it as an allow-mode callee
+(`§J1`). Everything below was measured at base commit `965c62db` in the worktree
+`pixel-and-proof-closure`, with the plan's driver command:
+
+```bash
+python3 tools/diff_verify.py --diffrun build/diffrun --exe data/game/C/PRAGE.EXE \
+  --image /tmp/pr_diff_image.bin --table /tmp/pr_diff_table_p8.md --self-check
+```
+
+### §P8.1 The baseline line
+
+```text
+diff-verify: 1027/1027 functions VERIFIED; 14978/14978 mutants detected; 0 named gaps; 804/840 rows with callees closed (187 have none); 798/840 closed on full rows; 8 ported functions with no row. ...
+```
+
+(the baseline table is `/tmp/pr_diff_table_base_p8.md`, 16005 entries = 1027 real + 14978 mutants;
+the 36 open rows are `840 - 804`, Task 7's measured figure).
+
+### §P8.2 `0x2CB74` — the START MENU step
+
+The raw bytes at file offset `0x7F9C8` (VA + `0x52E54`) are 0x1D bytes, `53 51 52 BB 00 F0 00 00 BA
+10 00 00 00 B8 CC CC 03 00 31 C9 E8 37 34 00 00 5A 59 5B C3`: `push ebx; push ecx; push edx;
+mov ebx,0xF000; mov edx,0x10; mov eax,0x3CCCC; xor ecx,ecx; call 0x2FFC4; pop edx; pop ecx;
+pop ebx; ret`. The `0x3CCCC` there is pre-fixup (`mem_load_le_fixups` adds the data object's
+`0x80000` base), so the runtime table argument is `0xBCCCC`, the START MENU table `svcmenu.c`
+calls `SVC_TABLE_START`. The function is one block (the call is the row's stop).
+
+```python
+P8C_MENU_STEP = E.Call(0x2FFC4, ("eax", "edx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+Spec("svc_2cb74", 0x2CB74, [
+    Case("m0", {"eax": 0x00C0FFEE}, {}, {0x2FFC4: 5}),
+], calls=(P8C_MENU_STEP,), mutants=("@entry",)),
+```
+
+The entry EAX is dead: `0x2CB81` reloads EAX with the table (0xBCCCC at runtime), so the case seeds it
+`0x00C0FFEE` and the recorded first argument still has to be `0xBCCCC`. The return is `menu_step`'s own
+(`0x2CB8D`): `0x2FFC4` invokes the selected item's callback with `call dword ptr [edx+8]`
+(`0x304A2`), tests the result with full-register compares (`cmp eax,-0xA` `0x304AA`, `cmp eax,-5`
+`0x304B3`) and returns it on those arms (`0x305E9`/`0x304DA`), and its own callers test the whole of
+it too (`0x251E9`'s main-menu step, `test eax,eax; je; cmp eax,-5` at `0x251F3`), so mask full; the
+stub's EAX 5 makes the return observable. `0x2FFC4` is a recorded stub
+(the `menu_step` row proves its body), so the port's `menu_step(SVC_TABLE_START, 0x10, 0)` seam
+returns it. The `EBX = 0xF000` the raw sets is not read by `0x2FFC4` (the `menu_step` row's i4).
+
+Measured, `--function svc_2cb74 --self-check`:
+
+```text
+| svc_2cb74 | 0x2CB74 | 1 | 1/1 | VERIFIED | 2FFC4 stub unverified |
+| svc_2cb74@entry | 0x2CB74 | 1 | 1/1 | MISMATCH | 2FFC4 stub unverified |
+```
+
+`@entry` is caught on `m0` by the call argument alone: `call #0: original 0x2FFC4(0xBCCCC, 0x10,
+0x0), port 0x2FFC4(0xC0FFEE, 0x10, 0x0)` (1 diff).
+
+### §P8.3 `0x4F5C8` — the render walk's bit-4 entry
+
+The raw bytes at file offset `0xA241C` are 0x7A bytes, `53 51 52 56 31 D2 66 8B 15 F4 4A 08 00 8B 1D
+D0 88 08 00 89 D0 C1 FA 1F F7 FB 85 D2 75 57 8B 0D ...`, the render table's bit-4 entry
+(`DS_000A86C4[4]` = the dword at `0xA86D4`, its only reference; Ghidra has no function here) reached
+by `0x255CC`'s per-bit walk while `DS_00104AEC` bit 4 is set (which `0x26D40` sets). Its four blocks
+(leaders `0x4F5C8`, `0x4F5E6`, `0x4F5F0`, `0x4F63D`):
+
+```text
+4F5C8  push ebx/ecx/edx/esi; xor edx,edx; mov dx,[0x104AF4]; mov ebx,[0x1088D0];
+       mov eax,edx; sar edx,0x1f; idiv ebx; test edx,edx; jne 0x4F63D
+4F5E6  mov ecx,[0x104AC4]; test ecx,ecx; je 0x4F63D
+4F5F0  push 0x4000; lea esi,[ecx-1]; mov eax,0x13; mov ecx,2; push edx (0); mov ebx,esi;
+       mov edx,1; mov [0x104AC4],esi; call 0x2F528; xor edx,edx; mov dl,[0x104B1A];
+       lea eax,[edx*8]; add eax,edx; shl eax,2; add eax,edx; shl eax,2; mov edx,1;
+       add eax,0x1077B0; call 0x4DBB4
+4F63D  pop esi/edx/ecx/ebx; ret
+```
+
+The tick is a **word** the raw zero-extends (`xor edx,edx` before `mov dx`) before a signed `idiv`;
+the divisor is the signed dword `0x1088D0`; the count `0x104AC4` is stored as `n = count - 1`
+(0x4F60A) **before** the draw (0x4F610); the slot is `0x1077B0 + DSB(0x104B1A) * 0x94` and the
+`0x4DBB4(slot, 1)` add writes its `+0x5B` byte. Port comment and body: `flow.c:2730-2757`.
+
+```python
+P8C_TICK, P8C_DIV, P8C_COUNT, P8C_SIDE = 0x00104AF4, 0x001088D0, 0x00104AC4, 0x00104B1A
+P8C_SLOT0, P8C_SLOT1 = 0x001077B0, 0x00107844          # +0x5B: 0x10780B / 0x10789F
+def p8c_loop_case(word, div, count, side): ...         # the four globals between seeded neighbours,
+                                                       # both slots' +0x5A..+0x5C
+P8C_LOOP_CASES = [r0, c0, b0, w0, b1]
+Spec("flow_4f5c8", 0x4F5C8, P8C_LOOP_CASES,
+     allow_calls=(0x4DBB4,), calls=(D2C_NUMDRAW2,), eax_mask=0, mutants=("@zext",)),
+```
+
+The five cases and what the original does (measured from `spec_original`):
+
+| case | word | divisor | count | side | arm | original calls and writes |
+|---|---|---|---|---|---|---|
+| `r0` | 5 | 3 | 7 | 0 | 5 % 3 = 2: the remainder return | none |
+| `c0` | 6 | 3 | 0 | 0 | the zero-count return | none |
+| `b0` | 6 | 3 | 3 | 0 | the body | `2F528(0x13,1,0x2,0x2,0x0,0x4000)`; 0x104AC4 3→2, 0x10780B 0x20→0x21 |
+| `w0` | 0xFFFF | 3 | 1 | 0 | the zero-extension: 65535 % 3 = 0 | `2F528(0x13,1,0x0,0x2,0x0,0x4000)`; 0x104AC4 1→0, 0x10780B 0x20→0x21 |
+| `b1` | 6 | 3 | 2 | 1 | the body on side 1 | `2F528(0x13,1,0x1,0x2,0x0,0x4000)`; 0x104AC4 2→1, 0x10789F 0x40→0x41 |
+
+At the `0x2F528` arrival the original has already stored the new count: its recorded memory there is
+`{0x104AC4: n}` on `b0`/`w0`/`b1` (0x2/0x0/0x1) and empty on `r0`/`c0`, which is what pins the store
+before the draw (`0x4F60A` vs `0x4F610`).
+
+The `r0`/`c0` arms leave EAX at the idiv quotient (1 and 2) and the body arms at `0x4DBB4`'s sum
+(0x21/0x41), none of which a caller reads (the walk reloads EAX at `0x25621`), so mask 0. `0x2F528`
+(`text_number_draw_font2`) is the existing `D2C_NUMDRAW2` stub (its own row proves the draw, and the
+call's recorded memory pins the count store's order); `0x4DBB4` (`fight_slot_5b_add`) has **no**
+`PR_SEAM`, so it runs on both sides (allow) and its own row proves the body, its `+0x5B` store being
+the compared byte. No case uses a zero divisor: the raw's `idiv` would fault (`0x4F5E0`), and the
+port's zero return is the documented deviation (`flow.c`'s PORT comment, as `0x4F4E8`'s).
+
+Measured, `--function flow_4f5c8 --self-check`:
+
+```text
+| flow_4f5c8 | 0x4F5C8 | 5 | 4/4 | VERIFIED | 2F528 stub unverified, 4DBB4 allow unverified |
+| flow_4f5c8@zext | 0x4F5C8 | 5 | 4/4 | MISMATCH | 2F528 stub unverified, 4DBB4 allow unverified |
+```
+
+`@zext` (a copy of the body whose tick read is `(s32)(s16)DSW(0x104AF4)`) is caught on `w0` alone,
+three ways: `call #0: original 0x2F528(0x13,0x1,0x0,0x2,0x0,0x4000), port none`,
+`byte 0x104AC4: original 0x00, port unchanged`, `byte 0x10780B: original 0x21, port unchanged`
+(-1 % 3 = -1 returns). The other four cases read the same word sign- or zero-extended, so they
+cannot catch it — the case is load-bearing.
+
+### §P8.4 `0x61A70` — the runtime memset, binding only
+
+The raw bytes at file offset `0xB48C4` are `50 51 88 D6 C1 E2 08 88 F2 C1 E2 08 88 F2 89 D9 E8 0B
+3A 00 00 59 58 C3`: `push eax; push ecx; mov dh,dl; shl edx,8; mov dl,dh; shl edx,8; mov dl,dh;
+mov ecx,ebx; call 0x65490; pop ecx; pop eax; ret`. EAX = dest, EDX = fill (the three shifts
+broadcast DL through the whole register), EBX = len; `0x65490` (and its `0x654C7` body) fills the
+bytes, and the popped EAX returns dest. The row is a binding over the port's `mem_fill`, which is the
+same byte fill:
+
+```c
+static void b_p8c_61a70(const u32 *r, u32 *eax)
+{ mem_fill(r[R_EAX], (u8)r[R_EDX], r[R_EBX]); *eax = r[R_EAX]; }
+```
+
+No `port/src` header or `fn_register`: `mem_fill` is a `port/src` function but the address `0x61A70`
+stays unregistered, so `NonPortable.ported` does not gain it and the closure rule keeps excusing the
+28 rows whose `61A70 allow` callee names it (two of the 28 are open on other blockers; 26 currently
+close on that excuse).
+
+```python
+Spec("runtime_61a70", 0x61A70, [
+    Case("z0", {"eax": P8C_BUF, "edx": 0x0000005A, "ebx": 0}, d1d_chunks(P8C_BUF, b"\xA5" * 8)),
+    Case("a0", {"eax": P8C_BUF, "edx": 0x0000005A, "ebx": 0x23}, d1d_chunks(P8C_BUF, b"\xA5" * 0x40)),
+    Case("b0", {"eax": P8C_BUF + 1, "edx": 0x12345678, "ebx": 7}, d1d_chunks(P8C_BUF, b"\xA5" * 0x10)),
+    Case("c0", {"eax": P8C_BUF, "edx": 0x00000000, "ebx": 0x100}, d1d_chunks(P8C_BUF, b"\xFF" * 0x120)),
+], allow_calls=(0x65490, 0x654C7), mutants=("@fill",)),
+```
+
+`P8C_BUF` is `0x10AC00` in the image's zero BSS. The four cases, measured: `z0` len 0 (the callee's
+`or ecx,ecx; je 0x654C0`: no writes, EAX = dest 0x10AC00), `a0` len 0x23 from an aligned start
+(35 bytes 0x10AC00..0x10AC22), `b0` len 7 from an unaligned start with `EDX = 0x12345678` (DL 0x78,
+DH 0x56: the write is 0x78, not 0x56) (7 bytes 0x10AC01..0x10AC07), `c0` len 0x100 (256 bytes
+0x10AC00..0x10ACFF, the 0x20-byte unrolled path). Each returns dest in EAX.
+
+Measured, `--function runtime_61a70 --self-check`:
+
+```text
+| runtime_61a70 | 0x61A70 | 4 | 1/1 | VERIFIED | 65490 allow unverified, 654C7 allow unverified |
+| runtime_61a70@fill | 0x61A70 | 4 | 1/1 | MISMATCH | 65490 allow unverified, 654C7 allow unverified |
+```
+
+`@fill` fills with `(u8)(DL + 1)` and is caught on the three non-empty cases (298 byte diffs, first
+`a0: byte 0x10AC00: original 0x5A, port 0x5B`). The row's own callees are the allow-mode runtime
+pair `0x65490`/`0x654C7` (both `>= 0x5D000`, neither in the port tree), which the closure rule
+excuses, so the row closes and is full.
+
+### §P8.5 The final line, the four closed rows, and the arithmetic
+
+```text
+diff-verify: 1030/1030 functions VERIFIED; 14981/14981 mutants detected; 0 named gaps; 811/843 rows with callees closed (187 have none); 804/843 closed on full rows; 8 ported functions with no row. ...
+```
+
+Functions `1027 -> 1030` and mutants `14978 -> 14981` are the plan's `+3`/`+3`. The four rows the
+three stubs kept open (each now reads `VERIFIED` on the callee; no other field moved):
+
+```text
+menu_step           2CB74 stub unverified -> VERIFIED
+menu_run            2CB74 stub unverified -> VERIFIED
+game_loop           4F5C8 stub unverified -> VERIFIED   (stays in WEAKER: closed, not full)
+text_number_format  61A70 stub unverified -> VERIFIED
+```
+
+The measured `811/843` closed and `804/843` full are the Task 7 line's `804/840`/`798/840` plus:
+`with_callees` +3 (each new row records VERIFIED callees), closed +4 (the four rows above) +3 (the
+three new rows close themselves) = `804 + 7 = 811`, full +3 (the three of the four that are not
+`WEAKER`) +3 = `798 + 6 = 804`, and open `843 - 811 = 32 = 36 - 4`. `game_loop` is the one new
+closed row that is not full, so the full increase (+6) is one below the closed one (+7); the absolute
+`closed - full = 7` is the previous six closed `WEAKER` rows plus `game_loop`. The plan's `797 -> 801`
+closed and `791 -> 794` full count only the four unblocked rows (its three new rows as callee-less),
+so the measured figures are exactly `+3` above both, one per new row; the baseline is seven above the
+plan's 797/791 (the Task 5-7 measured corrections, §P5.4/§P6.5/§P7.5).
+
+Table size `16005 -> 16011` entries = the six new lines (3 real + 3 mutants); of the 1027 shared real
+rows **none** changed its entry, case count, blocks or verdict. The callee-status column flips 563
+entries over 563 rows (`61A70 allow/stub -> VERIFIED` ×412, `2CB74 stub -> VERIFIED` ×117,
+`4F5C8 stub -> VERIFIED` ×34; mutants included, the mode is unchanged). The `61A70` flips reach every
+row that names it as an allow callee (28 real rows and their mutants) as well as
+`text_number_format`, which stubs it.
+
+### §P8.6 The 32-row blocker census
+
+Measured from the final table with the §J1 rule (`closed_rows`/`non_portable`), the same script that
+reproduces §P7.6's 36 rows on the baseline table. Every blocker is a recorded stub; the three this
+task removed carried 4 of the 71 baseline incidences (`0x2CB74` ×2, `0x4F5C8` ×1, `0x61A70` ×1), and
+the rest is §P7.6's table unchanged:
+
+| blocker | mode | rows | names |
+|---|---|---|---|
+| `0x65431` | stub | 11 | `game_frame_keys`, `game_frame_keys2`, `game_frame_head`, `game_frame_fight`, `game_frame_tails`, `game_frame_m25`, `game_frame_match`, `game_frame_front`, `game_frame_start`, `game_frame_rr`, `game_quit_prompt` |
+| `0x5DD03` | stub | 10 | `snd_sample_playing`, `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DEED` | stub | 7 | `snd_music_playing`, `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both`, `sound_shutdown` |
+| `0x5DCC5` | stub | 6 | `sound_sfx_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `sound_sample_start`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DECA` | stub | 5 | `sound_music_volume`, `attract_config_volumes_unscaled`, `attract_config_volumes`, `fight_char_screen_open`, `fight_char_screen_open_both` |
+| `0x5DC0F` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_sample_start` |
+| `0x5DC8B` | stub | 4 | `snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `sound_shutdown` |
+| `0x5DEAF` | stub | 3 | `snd_music_stop`, `sound_music_pause_toggle`, `sound_shutdown` |
+| `0x6C4CF` | stub | 2 | `config_file_load`, `menu_fatal_error` |
+| `0x1C308`, `0x25FAC`, `0x26194`, `0x3D0BC`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCE4`, `0x65546` | stub | 1 each | (15 rows: `sound_buffers_alloc`, `game_frame_head` ×2, `fighter_state_3531c`, `input_sampler` ×4, `sound_shutdown`, `sound_sample_start` ×5, `text_number_core`) |
+
+24 distinct blockers, 67 incidences over 32 rows. The 8 ported functions with no row (`UNROWED`)
+are unmoved.
+
+### §P8.7 The harness pins, the full-scan check and `port_progress`
+
+The harness suite (`python3 -m unittest tools.tests.test_diff_verify`) is **not run here** by
+instruction (its exhaustive pins are Task 11's). Task 11 needs, for the three new specs: masks
+`0xFFFFFFFF` (`svc_2cb74`, `runtime_61a70`) and `0` (`flow_4f5c8`); `@entry` caught on `m0` by the
+`0x2FFC4` first argument; `@zext` on `w0` only (three diffs); `@fill` on `a0`/`b0`/`c0` (298 diffs).
+`PR_DIFF_FULLSCAN=1 --function <row> --self-check` is green on all three:
+`1/1 functions VERIFIED; 1/1 mutants detected` each. None of the three prints a
+`reads outside the image` note or an unhit block (`m0` 1/1, `flow_4f5c8` 4/4, `runtime_61a70` 1/1).
+
+`python3 tools/port_progress.py` is unmoved, as required (no `port/src` header, no `fn_register`):
+
+```text
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+```
+
+### §P8.8 Files and commit
+
+`port/tests/diff_runner.c` (the `p8c` binding block: `b_p8c_2cb74` with `m_p8c_2cb74_entry`,
+`b_p8c_4f5c8` with `m_p8c_4f5c8_zext`, `b_p8c_61a70` with `m_p8c_61a70_fill`, and their six
+`k_bindings` entries), `tools/diff_verify.py` (`P8C_SPECS`, `P8C_MENU_STEP`,
+`P8C_TICK`/`P8C_DIV`/`P8C_COUNT`/`P8C_SIDE`, `P8C_SLOT0`/`P8C_SLOT1`, `P8C_BUF`, `p8c_loop_case`,
+`P8C_LOOP_CASES`, and the place of `P8C_SPECS` in the `SPECS` concatenation — the variable is
+`P8C_SPECS` because `P8_SPECS` already names track P batch 8), this record. No `port/src` header or
+`fn_register`, no `data/`, no Makefile, no `tools/tests/` change. Commit
+`diff: row the menu, loop and memset entries`. The task report is the git-ignored ledger.

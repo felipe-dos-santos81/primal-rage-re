@@ -43502,6 +43502,57 @@ static void m_p7c_24804_a5(const u32 *r, u32 *eax)      { p7c_24804_core(r, 2u);
 static void m_p7c_24804_no64(const u32 *r, u32 *eax)    { p7c_24804_core(r, 4u); *eax = 0u; }
 /* ---- p7c bindings end ---- */
 
+/* ---- track P closure batch P8 (record 2026-10-22-pixel-and-proof-closure §P8): the menu, loop and
+ * memset entries ---------------------------------------------------------------------------------- */
+/* 0x2CB74 svc_start_menu (svcmenu.c:78): the raw sets EBX = 0xF000, EDX = 0x10, EAX = 0xBCCCC and
+ * ECX = 0, then calls 0x2FFC4. The entry EAX is dead (0x2CB81 reloads it with the table) and the
+ * return is menu_step's own: the item callback's EAX is what menu_step tests with full-register
+ * compares (`call [entry+8]` 0x304A2, `cmp eax,-0xA` 0x304AA, `cmp eax,-5` 0x304B3) and returns on
+ * its -10/-5 arms (0x305E9/0x304DA) to callers that test the whole value (0x251F3), so mask full.
+ * menu_step is seamed (menu.h; included by the d1i batch above), so the case's stub EAX 5 makes the
+ * return observable. @entry passes the entry where the table belongs: the raw's first argument is
+ * always 0xBCCCC, so the recorded argument differs (the return does not). */
+static void b_p8c_2cb74(const u32 *r, u32 *eax)         { *eax = svc_start_menu(r[R_EAX]); }
+static void m_p8c_2cb74_entry(const u32 *r, u32 *eax)   { *eax = menu_step(r[R_EAX], 0x10u, 0u); }
+
+/* 0x4F5C8 flow_bonus_count_step (flow.c:2745): void. Reads the divisor dword 0x1088D0, the
+ * zero-extended tick word 0x104AF4 (`xor edx,edx; mov dx,[...]`), the count 0x104AC4 and the side
+ * byte 0x104B1A; stores n = count - 1 before the 0x2F528 draw, then 0x4DBB4(slot, 1). Mask 0: the
+ * render walk reloads EAX (`mov eax,ebx` 0x25621). @zext sign-extends the tick word, so w0's
+ * 0xFFFF % 3 is -1 % 3 = -1 and the mutant returns instead of decrementing, drawing and adding. */
+static void b_p8c_4f5c8(const u32 *r, u32 *eax)         { (void)r; flow_bonus_count_step(); *eax = 0u; }
+static void m_p8c_4f5c8_zext(const u32 *r, u32 *eax)
+{
+    (void)r;
+    *eax = 0u;
+    if (DSD(0x001088D0u) == 0u) return;                     /* the port's zero-divisor guard */
+    if (((s32)(s16)DSW(0x00104AF4u) % (s32)DSD(0x001088D0u)) != 0) return;   /* @zext */
+    u32 n = DSD(0x00104AC4u);
+    if (n == 0u) return;
+    n -= 1u;
+    DSD(0x00104AC4u) = n;
+    text_number_draw_font2(0x13, 1, (s32)n, 2, 0u, 0x4000u);
+    fight_slot_5b_add(0x001077B0u + (u32)DSB(0x00104B1Au) * 0x94u, 1);
+}
+
+/* 0x61A70, the runtime memset (binding only: the port serves it from mem_fill, mem.c:131; a
+ * port/src header or fn_register would make the closure rule stop excusing the 28 rows that name it
+ * as an allow callee, record §J1). EAX = dest, DL = the fill byte (the raw broadcasts DL through
+ * EDX: mov dh,dl; shl; mov dl,dh; shl; mov dl,dh), EBX = len, and the raw returns dest in EAX (the
+ * popped EAX). Mask full: the return is the dest pointer. @fill uses the next byte up, which every
+ * case's seeded buffer shows. */
+static void b_p8c_61a70(const u32 *r, u32 *eax)
+{
+    mem_fill(r[R_EAX], (u8)r[R_EDX], r[R_EBX]);
+    *eax = r[R_EAX];
+}
+static void m_p8c_61a70_fill(const u32 *r, u32 *eax)
+{
+    mem_fill(r[R_EAX], (u8)(r[R_EDX] + 1u), r[R_EBX]);
+    *eax = r[R_EAX];
+}
+/* ---- p8c bindings end ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -59167,6 +59218,14 @@ static const binding_t k_bindings[] = {
     { "fighter_24804@a5",      m_p7c_24804_a5,      0x00000000u },
     { "fighter_24804@no64",    m_p7c_24804_no64,    0x00000000u },
     /* track P closure batch P7 end */
+    /* track P closure batch P8 */
+    { "svc_2cb74",             b_p8c_2cb74,          0xFFFFFFFFu },
+    { "svc_2cb74@entry",       m_p8c_2cb74_entry,    0xFFFFFFFFu },
+    { "flow_4f5c8",            b_p8c_4f5c8,          0x00000000u },
+    { "flow_4f5c8@zext",       m_p8c_4f5c8_zext,     0x00000000u },
+    { "runtime_61a70",         b_p8c_61a70,          0xFFFFFFFFu },
+    { "runtime_61a70@fill",    m_p8c_61a70_fill,     0xFFFFFFFFu },
+    /* track P closure batch P8 end */
 };
 
 static const binding_t *find_binding(const char *name)
