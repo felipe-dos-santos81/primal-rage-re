@@ -1,8 +1,6 @@
 # Evidence Closeout and Truth Pass — Design
 
-Status: approved (builder-checked 2026-10-22; its five questions are settled in
-the design: state-proof evidence checks, measured miss sets, per-scenario
-allowances, the already-enforced U13 frame count, and the citation sweep)
+Status: implemented and closed (2026-10-22): its evidence checks, measured miss sets, per-scenario allowances and citation sweep landed with the four GT2 captures (U15, U12, U13, U16); U14's fought live win is the R1 named gap.
 Date: 2026-10-22
 Branch: from `main` at `2304b677`
 

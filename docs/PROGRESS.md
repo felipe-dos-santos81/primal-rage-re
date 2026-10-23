@@ -8,16 +8,21 @@ Each paragraph corresponds to a stretch of work, generally cross-referencing
 a derivation record (`docs/superpowers/plans/<date>-…-derivations.md`), which
 holds the underlying raw-byte evidence.
 
-**Current state (2026-10-15).** The port is complete (`python3 tools/port_progress.py`
-reads `787 1203 65` raw and `747 747 100` portable). Track D extended the
+**Current state (2026-10-22).** The port is complete (`python3 tools/port_progress.py`
+reads `799 1203 66` raw and `759 759 100` portable). Track D extended the
 differential verification from the 181 ported functions the callee scan reached,
-and tracks S, I, N, H, F and G added the rest: `make diff-verify` reads
-`1007/1007 functions VERIFIED; 14900/14900 mutants detected; 1 named gaps;
-774/832 rows with callees closed (175 have none)` (the closure rule, record
-`2026-10-15-reverse-j-derivations.md` §J1), 739 of the 747 ported functions have
-a row (727 full, 12 weaker) and the 8 without one are the named gaps, none open.
-The paragraphs below are the chronological log; a named gap stands until a later
-paragraph closes it.
+and tracks S, I, N, H, F, G and the host input truth phase added the rest; the
+2026-10-22 pixel-and-proof closure plan added 12 rows, so `make diff-verify` reads
+`1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps;
+813/844 rows with callees closed (187 have none); 806/844 closed on full rows;
+8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5
+registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible
+subset is 42 = 5 + 37)` (the closure rule, record
+`2026-10-15-reverse-j-derivations.md` §J1). 31 rows stay open (23 blockers, 66
+incidences; record `2026-10-22-pixel-and-proof-closure-derivations.md` §P9.6),
+751 of the 759 portable functions have a row (739 full, 12 weaker) and the 8
+without one are the named gaps, none open. The paragraphs below are the
+chronological log; a named gap stands until a later paragraph closes it.
 
 **Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
 functions**, 0 failures. LE layout and `INDEX` verified; `S16*.GRA` chunk types

@@ -884,6 +884,30 @@ P8_KINDS = {
     "fighter_pose_3a820@order": {"call #0 memory", "call #1 memory"},
 }
 
+# The 2026-10-22 pixel-and-proof closure plan (record
+# 2026-10-22-pixel-and-proof-closure-derivations.md §P5-§P9): its twelve rows with their EAX masks,
+# and their mutants. Ten of the twelve are E2-class entries the decomp index never lists and the
+# other two are runtime bindings, so `port_progress.py` does not move.
+CLOSEOUT_MASKS = {
+    "runtime_5d812": 0xFFFFFFFF, "frontend_28d68": 0,
+    "fighter_3e484": 0xFFFFFFFF, "fighter_29d04": 0xFFFFFFFF, "fighter_3e4c4": 0,
+    "fighter_24568": 0, "fighter_40cb0": 0, "fighter_24804": 0,
+    "svc_2cb74": 0xFFFFFFFF, "flow_4f5c8": 0, "runtime_61a70": 0xFFFFFFFF,
+    "fighter_3a6d4": 0,
+}
+CLOSEOUT_MUTANTS = (
+    "runtime_5d812@ret",
+    "frontend_28d68@hook", "frontend_28d68@wipearg", "frontend_28d68@nowipe",
+    "fighter_3e484@flag0", "fighter_3e484@flag1", "fighter_3e484@flag8", "fighter_3e484@ret",
+    "fighter_29d04@gate", "fighter_29d04@side", "fighter_29d04@handle",
+    "fighter_3e4c4@swap", "fighter_3e4c4@arg",
+    "fighter_24568@a5", "fighter_24568@stream", "fighter_24568@no64",
+    "fighter_40cb0@y", "fighter_40cb0@place", "fighter_40cb0@stream",
+    "fighter_24804@24754", "fighter_24804@a5", "fighter_24804@no64",
+    "svc_2cb74@entry", "flow_4f5c8@zext", "runtime_61a70@fill",
+    "fighter_3a6d4@a16", "fighter_3a6d4@b5",
+)
+
 
 # Track P batch C2b (record 2026-10-05-reverse-c2b): the nine deferred callee rows with their EAX
 # masks, and what alone catches each of their mutants.
@@ -30775,7 +30799,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(C3D_MASKS) + list(C3E_MASKS) + list(C3F_MASKS) + list(C3G_MASKS) + list(D1_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(C3D_MASKS) + list(C3E_MASKS) + list(C3F_MASKS) + list(C3G_MASKS) + list(D1_MASKS) + list(P7_MASKS) + list(P8_MASKS) + list(CLOSEOUT_MASKS)))
         for name, r in self.real.items():
             self.assertEqual((r.verdict, r.problems, r.unhit), ("VERIFIED", [], []), name)
             self.assertLessEqual(r.hit, r.total, name)
@@ -30789,7 +30813,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(C3C_KINDS) + list(C3D_KINDS) + list(C3E_KINDS) + list(C3F_KINDS) + list(C3G_KINDS) + list(D1_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(C3C_KINDS) + list(C3D_KINDS) + list(C3E_KINDS) + list(C3F_KINDS) + list(C3G_KINDS) + list(D1_KINDS) + list(P7_KINDS) + list(P8_KINDS) + list(CLOSEOUT_MUTANTS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -30866,7 +30890,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0,
             **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS, **C3C_MASKS, **C3D_MASKS, **C3E_MASKS, **C3F_MASKS, **C3G_MASKS, **D1_MASKS,
-            **P7_MASKS, **P8_MASKS})
+            **P7_MASKS, **P8_MASKS, **CLOSEOUT_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -31961,7 +31985,8 @@ class RealFunctionTests(unittest.TestCase):
         0x1A5D4: (), 0x1A640: (), 0x35B7C: ("edx",), 0x35C1C: ("edx",), 0x367DC: ("edx",), 0x34038: ("esi", "edi", "ebp"),     # track D3 batch d3c
         0x4FB20: (), 0x3BAEC: (), 0x406B4: (), 0x46F4C: (), 0x46C78: (), 0x46DD4: (),     # track D3 batch d3c
         0x46958: (), 0x46698: (), 0x466F4: (), 0x4673C: (), 0x46794: (), 0x467DC: (), 0x4682C: (), 0x46898: (),     # track D3 batch d3c
-        0x350D0: ("edi", "ebp"), 0x34E20: (), 0x3D0BC: ("edx",),     # track D3 batch d3c
+        0x350D0: ("edi", "ebp"), 0x34E20: (),     # track D3 batch d3c
+        0x3A6D4: ("ebx", "ecx", "edx"),     # 2026-10-22 closure §P9: replaces 0x3D0BC (padding, §P9.2)
         0x38D24: (), 0x382C4: (), 0x38434: ("edi", "ebp"), 0x2A4FC: ("ebp",), 0x186C4: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x1922C: (), 0x3D004: ("edi", "ebp"), 0x235C4: ("ebp",),     # track D3 batch d3e
         0x1317C: (), 0x140E4: ("edx",), 0x164F4: ("edx",), 0x16AFC: ("edx",), 0x181D0: ("ebx", "ecx", "edx"), 0x387F4: ("edi", "ebp"), 0x38890: ("edi", "ebp"), 0x38A38: (), 0x3B938: (), 0x41030: ("ebx", "ecx", "edx"),     # track D4 batch d4b
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
@@ -32172,9 +32197,21 @@ class RealFunctionTests(unittest.TestCase):
         # the sampler, whose 48 blocks are all hit but whose four host-owned presence stubs are not
         # allow-mode, so its row is open (rows with callees 832 -> 833, closed stays 774; full stays
         # 768). Functions 1016 -> 1019, mutants 14938 -> 14956.
-        self.assertIn("diff-verify: 1019/1019 functions VERIFIED; 14956/14956 mutants detected; 0 named gaps; "
-                      "774/833 rows with callees closed (186 have none); 768/833 closed on full rows; "
-                      "8 ported functions with no row. The closure rule (record J §J1): "
+        # The 2026-10-22 pixel-and-proof closure plan (record
+        # 2026-10-22-pixel-and-proof-closure-derivations.md §P5-§P10): twelve rows (eleven with
+        # callees — runtime_5d812 is a leaf) close 28 more, so rows with callees 833 -> 844, closed
+        # 774 -> 813, full 768 -> 806 (31 open), functions 1019 -> 1031 and mutants 14956 -> 14983.
+        # Task 10 made the unrowed clause measure the frontier instead of the literal 8: it now
+        # prints 45 FN_ ported-unrowed — the declared portable 8 (5 registry-visible + 3
+        # header-shape exceptions) plus 37 runtime — with the scan-visible subset 42 = 5 + 37.
+        # Task 9 also corrected the spec's 0x3D0BC (alignment padding, not a function, §P9.2) to
+        # the real 0x3A6D4 hook, so the stub-clobber pin moves with it.
+        self.assertIn("diff-verify: 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps; "
+                      "813/844 rows with callees closed (187 have none); 806/844 closed on full rows; "
+                      "8 ported functions with no row (45 FN_ ported-unrowed: 8 portable "
+                      "[5 registry-visible + 3 header-shape exceptions] + 37 runtime; "
+                      "the scan-visible subset is 42 = 5 + 37). "
+                      "The closure rule (record J §J1): "
                       "an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred "
                       "in tools/port_classification.txt, or an address the decomp index never lists as a "
                       "function - does not keep a row open, provided the port tree does not implement the "

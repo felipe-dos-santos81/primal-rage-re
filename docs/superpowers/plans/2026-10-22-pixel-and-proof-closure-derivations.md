@@ -2721,10 +2721,10 @@ the scan-visible subset. The closure rule is untouched.
   neither.
 
 Measured on this tree (d642ba86, 1031 rows over 905 distinct entries): `FN_` 1203, `ported` 1262
-addresses (all classes), `FN_ ∩ ported` 784, of which **45 have no row**. The strict scan sees 42
-of the 45 (5 portable + 37 runtime); the other three are `UNROWED_HEADER_SHAPE`, so the declared
-portable figure is **8** (5 + 3) and the declared total is **45** (8 + 37). The `42 = 5 + 37`
-stays as the scan-visible sub-figure.
+addresses (all classes), `FN_ ∩ ported` 784, of which **42 have no row**; with the three
+header-shape exceptions the declared portable figure is **8** (5 + 3) and the total **45** (8 + 37).
+The scan's 42 are the 5 portable + 37 runtime; the three exceptions are `UNROWED_HEADER_SHAPE`,
+outside the strict scan's `ported` set. The `42 = 5 + 37` stays as the scan-visible sub-figure.
 
 ### §P10.3 The two declared sets, and the three header-shape exceptions
 

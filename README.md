@@ -42,7 +42,10 @@ and the game-over/high-score flows. Two claims back that:
   bytes in unicorn against the port's C functions from the same image,
   comparing every changed byte, the return register, the ordered calls (with
   the memory changed so far at each) and the block coverage:
-  **1019/1019 functions VERIFIED; 14956/14956 mutants detected**. C3g closed the
+  **1031/1031 functions VERIFIED; 14983/14983 mutants detected**, with **813 of
+  the 844 rows that have callees closed** (the 187 with none are counted apart);
+  806 of those 813 rest on full rows and 31 stay open (by blocker, in
+  `AGENTS.md`). C3g closed the
   callee-row frontier at 322 rows; track D rowed every ported function the
   callee scan never reached (751 of 759 have a row after its sixth wave, tracks
   S, I, N, H, F, G and the host input truth phase — 739 a full one (`0x51ED8`
@@ -51,12 +54,22 @@ and the game-over/high-score flows. Two claims back that:
   or declares a terminal difference: `0x2CADC`, `game_loop`, `0x1AFE8`,
   `0x1B084`, `0x1BE30`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
   `0x1B544`, `0x2EA30`; the other 8 are named gaps, none is open; records
-  `2026-10-11-reverse-d-derivations.md` and `2026-10-14-reverse-g-derivations.md`),
-  and its rows have found 172 raw-over-port corrections (track D; 174
-  program-wide including track N's two, `PROGRESS.md:1034`). The
-  E2 triage's remaining rows are the 231 table-driven span-writers — not ported
-  one by one (decision D2: the port blits a span as one routine) — and 2
-  classified host-owned/deferred callbacks (`0x1BDF4`, `0x10604`).
+  `2026-10-11-reverse-d-derivations.md` and `2026-10-14-reverse-g-derivations.md`).
+  The 2026-10-22 pixel-and-proof closure plan added 12 rows for game code whose
+  callees were already VERIFIED — `0x5D812`/`0x28D68`, the fighter callbacks
+  `0x3E484`/`0x29D04`/`0x3E4C4`, the actor entrances `0x24568`/`0x40CB0`/`0x24804`,
+  the menu/loop/memset entries `0x2CB74`/`0x4F5C8`/`0x61A70` and the `+0x10` hook
+  `0x3A6D4` (the spec's `0x3D0BC` is alignment padding, not a function) — and 28
+  of the rows that were open on those callees closed (59 open → 31), moving the
+  counter to 844 rows with callees, 813 closed and 806 full. The counter's
+  "ported functions with no row" clause now measures the frontier from the
+  repo's own tables: 45 `FN_` ported-unrowed, the declared portable 8 (5
+  registry-visible + 3 header-shape exceptions) plus 37 runtime. The
+  differential rows have found 172 raw-over-port corrections (track D; 174
+  program-wide including track N's two, `PROGRESS.md:1034`). The E2 triage's
+  remaining rows are the 231 table-driven span-writers — not ported one by one
+  (decision D2: the port blits a span as one routine) — and 2 classified
+  host-owned/deferred callbacks (`0x1BDF4`, `0x10604`).
 
 Byte-exact oracles gate the rendering and timing: the Smacker logo, title,
 attract, front end and demo fight, the service menu, and every captured

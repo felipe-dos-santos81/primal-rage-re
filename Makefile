@@ -1302,7 +1302,7 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # narrow one plus what a poke could not claim: the game itself raises P2's +0x5A to 0x78,
 # reaches the same mode-8/mode-9 entries and the land mark, and gp_win.py check requires an S
 # record with the death-done byte b0c = 1 at or after the round-2 KO (mode 9) with no
-# DEATH_DONE poke — the game's own 0x37EA0 -> 0x37FF2 write that U9/U10 poked (spec W5). The
+# DEATH_DONE poke — the game's own 0x37EA0 -> 0x37FF6 write that U9/U10 poked (spec W5). The
 # byte is not cleared between rounds (only mode 0x17's setup 0x271E0 and the final's consumers
 # clear it), so the rule proves a game death animation ended by the match-end screen, not that
 # round 2's specifically did; the frames and the WIN trace carry which animation ran. Which
