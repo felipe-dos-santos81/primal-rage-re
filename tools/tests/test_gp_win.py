@@ -410,19 +410,19 @@ class TestArmadonEnding(unittest.TestCase):
     mode-0x1F row's label is the character name, not the title; the land mark is
     0x80 | side 0 | 4 = 0x84."""
 
-    def test_start_char_labels_the_character_and_cell(self):
-        rows = gw.start_char(4, 5)
-        self.assertEqual([(r[1], r[2]) for r in rows], [(0x10, 1), (0x06, 1)])
+    def test_the_milestones_end_with_armadons_ending(self):
+        rows = gw.MILESTONES['gp-u21-armadon-ending']
+        self.assertEqual(len(rows), 30)
+        # the start rows are start_char(4, 5)'s: character-select mode 0x10 and round 1's
+        # mode 0x06 c0=4/b1e=1, with the character and the cursor in the label (Task 4/5
+        # cover the helper's generic shape; these are ARMADON's own cell and class)
+        self.assertEqual([r[:3] for r in rows[:2]], [r[:3] for r in gw.start_char(4, 5)])
+        self.assertEqual([(r[1], r[2]) for r in rows[:2]], [(0x10, 1), (0x06, 1)])
         self.assertIn('character 4', rows[1][0])
         self.assertIn('cursor 5', rows[1][0])
         self.assertTrue(rows[1][3](dict(c0=4, b1e=1)))
         self.assertFalse(rows[1][3](dict(c0=3, b1e=1)))
         self.assertFalse(rows[1][3](dict(c0=4, b1e=2)))
-
-    def test_the_milestones_end_with_armadons_ending(self):
-        rows = gw.MILESTONES['gp-u21-armadon-ending']
-        self.assertEqual(len(rows), 30)
-        self.assertEqual([r[:3] for r in rows[:2]], [r[:3] for r in gw.start_char(4, 5)])
         ending = [r for r in rows if (r[1], r[2]) == (0x1F, 1)]
         self.assertEqual(len(ending), 1)
         label, _, _, pred = ending[0]

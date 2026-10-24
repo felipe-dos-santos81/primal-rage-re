@@ -1336,7 +1336,8 @@ Measured in its `poll.log` (9,953 S records):
   (reported apart); the normalised `ent` 0 of 9,615 differ and `t508` 6,466 of 9,615
   (port = capture + 1), both reported.
 - the mode-0x1F frames are inside the window: the ending's S records map to capture
-  ≈4942 (`f=0x1885`) and ≈5189 (`f=0x1E27`) by the capture's own clock
+  **5193** (`f=0x1885`, `ms=128531` -> raw 9009, `window.txt`'s `05193 9009`) and **5431**
+  (`f=0x1E27`, `ms=152834` -> raw 10712, `05431 10712`) by the capture's own clock
   (`ms * 70.09 / 1000`), both below 5932.
 
 One loader overlay and fifteen present-copy bands, each its own byte recipe
@@ -1368,15 +1369,16 @@ asynchronously to the 60.05 Hz presents, so a scan that lands inside that copy r
 the front row mixed. The captured frame is therefore a state the driver never dumps — it
 dumps one composed frame per present — which is `BANDS_ALLOWED`'s named class (§G5).
 Measured per frame on this dump: its two segments are byte-equal to one unique adjacent
-dumped pair, its band rows (and the mixed front row where the front lies inside the
-band) are no dumped present's rows, every neighbour is clean, a splice or a transition,
+dumped pair, its band (as a row range, its front row mixed) is held by no single dumped
+present, every neighbour is clean, a splice or a transition,
 and **fourteen of the fifteen have all 64,000 pixels equal to a pixel of some port frame
 within ±4 of that pair** (0 unmatched of 64,000 for 426, 756, 4317, 4470, 4477, 4486,
 4491, 4497, 4502, 4505, 4511, 4527, 4554 and 4560) — a pure tear of two dumped presents.
 The exception is 5119, the mode-0x15 fade: its rows 2..199 are port 4301's and its 640
-band pixels hold 215 equal to port 4301's, 31 to 4300's and 425 that no frame within ±4
-has (no constant per-channel offset reproduces them) — the fade's own step between the
-two presents, U13's 5120 class. Capture 4470 is the worked example of the tear: rows
+band pixels break down as 215 equal to port 4301's (31 of those also equal port 4300's,
+where the two frames coincide) and 425 equal to no frame within ±4 (no constant
+per-channel offset reproduces them) — the fade's own step between the two presents,
+U13's 5120 class. Capture 4470 is the worked example of the tear: rows
 0..45 are port 3739's, rows 47..199 are port 3741's and row 46 is a 216-of-320-pixel
 mixture of the two — port 3740 (the present between them) is nowhere on the frame,
 because its whole copy fell between two scans. The mode-0xF screen is redrawn almost

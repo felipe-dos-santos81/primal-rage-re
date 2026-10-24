@@ -93,12 +93,14 @@ BANDS_ALLOWED = {
         # copy reads the previous present's rows above the copy's front, the new
         # present's rows below it, and one mixed row at the front. Measured on this
         # 4,974-frame dump: each frame below has two byte-equal segments from one
-        # unique adjacent dumped pair and a band (plus, where the front row is inside
-        # it, that row) that no dumped present holds; fourteen of the fifteen have
-        # every one of their 64,000 pixels equal to a pixel of some port frame within
-        # ±4 of the pair, so their content is a pure tear of two dumped presents; the
-        # fifteenth (5119, the mode-0x15 fade) holds 425 band pixels that no frame
-        # within ±4 has, a fade step between the two presents (the U13 5120 class).
+        # unique adjacent dumped pair and a band (as a row range, its front row mixed;
+        # plus, where the front row is inside the band, that row) that no dumped
+        # present holds — no single present carries the band's rows. Fourteen of the
+        # fifteen have every one of their 64,000 pixels equal to a pixel of some port
+        # frame within ±4 of the pair, so their content is a pure tear of two dumped
+        # presents; the fifteenth (5119, the mode-0x15 fade) holds 425 band pixels that
+        # no frame within ±4 has, a fade step between the two presents (the U13 5120
+        # class).
         # Every neighbour is clean, a splice or a transition, so the port's own
         # sequence is intact. The entries' order is ascending; `top_row` 0 and
         # `band_hi` 200 are the entries whose band reaches an edge (the pair then binds
@@ -168,10 +170,11 @@ BANDS_ALLOWED = {
         (4560, 110, 200, 'b0ca25c494237c479259872d18dd2967d93bd49a1850b7f6de03ff15c4b66950'),
         # Capture 5119 (raw 8872) at the ending's mode-0x15 fade, the U13 5120 class:
         # rows 2..199 are port 4301's (f=182A tick=00001903 mode=0015) and rows 0..1
-        # the band; (4300, 4301) unique. The band's 640 pixels hold 215 equal to port
-        # 4301's, 31 to 4300's and 425 that no frame within ±4 has — the fade's own
-        # step between the two presents (no constant per-channel offset reproduces
-        # them), the "present state the driver never dumped" U13's 5120 names.
+        # the band; (4300, 4301) unique. The band's 640 pixels: 215 equal port 4301's
+        # (31 of those also equal port 4300's, where the two frames coincide) and 425
+        # equal no frame within ±4 — the fade's own step between the two presents (no
+        # constant per-channel offset reproduces them), the "present state the driver
+        # never dumped" U13's 5120 names.
         # Neighbours 5118 clean at 4300 and 5120 clean at 4302.
         (5119, 0, 2, '287a61f4cc91a282bfdd583a0ebf510b90d87de913545aeaa8ed76d60b0e950a'),
     ),
