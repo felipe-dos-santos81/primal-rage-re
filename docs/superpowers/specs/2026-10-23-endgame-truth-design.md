@@ -1,6 +1,6 @@
 # Endgame Truth — Design
 
-Status: Draft for approval (2026-10-23; revised after review)
+Status: Implemented and gated (2026-10-24; draft approved 2026-10-23, revised after review)
 Phase branch: `endgame-truth`, base `main` at `fcdd11d2`
 Plan: `docs/superpowers/plans/2026-10-23-endgame-truth.md`
 Record: `docs/superpowers/plans/2026-10-23-endgame-truth-derivations.md`
@@ -104,7 +104,8 @@ immediate `0x0005627E` is the code-object offset of linear `0x6627E` (CS base
 `0x10000`), so vector 8 points at the handler `0x6627E`. The PIT routine entry
 is `0x663A4`; the mode command `b0 36 e6 43` is at `0x663AC..0x663AF`; the
 divisor formula at `0x663D4` (`param*10000/0x20BC`) gives 19,887 for the AIL
-60 Hz period 16,666 µs (`0x1CFFF` sets `0x3C`), 59.998 Hz. `0x2D62C` is the
+60 Hz period 16,666 µs (`0x1CFFA` pushes `0x3C`; `0x1CFFF` is the
+`call 0x5DA87`), 59.998 Hz. `0x2D62C` is the
 9-byte counter called by the 60 Hz callback `0x1BDF4` at `0x1BE28`, not the
 ISR entry. Mark `RE_GUIDE` item 4 done. No port code.
 
@@ -317,11 +318,11 @@ The immediate `0x0005627E` is the code-object offset of linear `0x6627E`
 (CS base `0x10000`), so vector 8 points at the handler `0x6627E`. The PIT
 routine entry is `0x663A4`; the mode command `b0 36 e6 43` is at
 `0x663AC..0x663AF`; the divisor formula at `0x663D4` (`param*10000/0x20BC`)
-gives 19,887 for the AIL 60 Hz period 16,666 µs (`0x1CFFF` sets `0x3C`),
-59.998 Hz. `0x2D62C` is the 9-byte counter called by the 60 Hz callback
-`0x1BDF4` at `0x1BE28`, not the ISR entry. The port models the ticks in
-`game_isr_ticks` and the clock in `config.c`; the installer is runtime
-(≥`0x5D000`) and stays host-owned.
+gives 19,887 for the AIL 60 Hz period 16,666 µs (`0x1CFFA` pushes `0x3C`;
+`0x1CFFF` is the `call 0x5DA87`), 59.998 Hz. `0x2D62C` is the 9-byte counter
+called by the 60 Hz callback `0x1BDF4` at `0x1BE28`, not the ISR entry. The port
+models the ticks in `game_isr_ticks` and the clock in `config.c`; the installer
+is runtime (≥`0x5D000`) and stays host-owned.
 
 ## 8. The approach
 
@@ -380,7 +381,7 @@ divisor.
    its evidence; the 5120 comment/test match the measured 8/1/4 finding; the
    4248/4320 pins and recipes are unchanged.
 5. **G5**: `RE_GUIDE` item 4 done; the tick section cites the bytes at
-   `0x66519..0x6652C`, the handler `0x6627E` via the `0x0005627E` immediate,
+   `0x66519..0x6652D`, the handler `0x6627E` via the `0x0005627E` immediate,
    the PIT routine `0x663A4`/`0x663AC`/`0x663D4`, 19,887 and 59.998 Hz; no
    port code.
 6. **G6**: `PR_DIFF_FULLSCAN=1 make verify` exits 0; every new oracle runs;

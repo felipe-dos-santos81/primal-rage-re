@@ -1842,17 +1842,22 @@ plan conflicts and the static raw-byte test.
 - The stale INT 8 range `0x66519..0x6652C` is not only in the git-ignored brief:
   the committed `docs/superpowers/plans/2026-10-23-endgame-truth.md:55,327,334`
   and `docs/superpowers/specs/2026-10-23-endgame-truth-design.md:383` carry it
-  too (the design's `:101-105` lists the same block's bytes offset by offset).
-  It is one byte short, and the correction recorded here applies to all of them:
+  too (the design's `:101-105` lists the same block's bytes offset by offset,
+  and `:305-320` repeats the block). It is one byte short, and the correction
+  recorded here applies to all of them:
   the block is **21 bytes, `0x66519..0x6652D`**, ending `cd 21` (`cd` at
   `0x6652C`, `21` at `0x6652D`). §E1.6's range is used verbatim; the brief's (and
-  the plan's) individual opcode offsets are otherwise right.
+  the plan's) individual opcode offsets are otherwise right. The plan lines and
+  the design's `:383` were corrected in Task 11 (the phase gate's docs commit);
+  the design's `:305-320` listing labels each opcode by its own address and
+  needs no range change.
 - §E1.6's own correction stands and the brief inherits the error: `0x1CFFA` is
   the `push 0x3C` and `0x1CFFF` is the `call 0x5DA87`, so "`0x1CFFF` sets 0x3C"
   names the call, not the push. The committed documents repeat that wording too
-  — `docs/superpowers/plans/2026-10-23-endgame-truth.md:330` and the design's G5
-  block, `docs/superpowers/specs/2026-10-23-endgame-truth-design.md:107` — and
-  this section's correction applies to them.
+  — `docs/superpowers/plans/2026-10-23-endgame-truth.md:330`, the design's G5
+  block, `docs/superpowers/specs/2026-10-23-endgame-truth-design.md:107` and
+  its §7.6 at `:320` — and this section's correction applies to them; Task 11
+  corrected all four sites.
 
 ### The addresses (re-read for this task)
 
@@ -1934,12 +1939,15 @@ not as a second rate.
   landmark table's `0x2D62C` row (was "interrupt handler; vector unresolved"),
   Open questions item 5 (was "still open: which interrupt vector carries the
   tick `0x2D62C`"), and Open questions item 3's lock list, which called
-  `0x2D62C` "ISR code" and now says "counter code"; all three now name the
-  `0x66519` install and `0x6627E`. Two further honesty edits are in the same
-  section: the install's absence from the static search is attributed to that
-  search's `0x10000..0x5FFFF` range while the earlier DOSBox-X `-log-int21`
-  run's absent `AX=25` is stated as **not reconciled** here rather than dropped,
-  and the rate is written as "the 60 Hz timer's divisor is 19,887 (59.998 Hz)"
+  `0x2D62C` "ISR code" and now says "counter code"; the landmark row and
+  Open questions item 5 name the `0x66519` install and `0x6627E` (item 3's
+  lock list is only the label correction). Two further honesty edits are in the
+  same section: the install's absence from the static search is attributed to
+  that search's `0x10000..0x5FFFF` range while the earlier DOSBox-X
+  `-log-int21` run's absent `AX=25` is stated as **not reconciled** here rather
+  than dropped, and the rate is written as
+  "`16666*10000/8380` gives the 60 Hz timer's divisor **19,887** (remainder
+  6,940), and 1,193,182/19,887 = **59.998 Hz**" (verbatim from `game_flow.md`)
   — `0x66407` programs the PIT from AIL's minimum period over its 16 timer
   slots, so it is not one global PIT rate (`port/spec/audio.md` documents a
   second sequencer driver timer). The Tick section also points at Open
@@ -1978,3 +1986,147 @@ with §E1.6. The `-log-int21` observation the old Tick paragraph carried is kept
 as an explicitly unreconciled observation, not dropped.
 `port_progress.py` and the differential counter are unmoved (no `FN_` function
 was added; the test lives in `tools/tests/`).
+
+## §E11 The phase gate and the named limits (Task 11)
+
+### The wiring
+
+`make verify` runs the six new targets after `gp-u17-oracle`, in the plan's
+order: `gp-u23-oracle` (Task 2's U16 finisher) and then `gp-u18-oracle` …
+`gp-u22-oracle` (Tasks 3–7). Each is in `.PHONY` and each is its own target,
+guarded by a capture-directory test (`[ ! -d $(K11_CAPTURES)/<scenario> ]`) that
+prints a skip line and returns 0, so a checkout without the git-ignored capture
+skips instead of failing. With the capture present the target runs, in order:
+the module's unit tests (`tools.tests.test_gp_twop` for U23,
+`tools.tests.test_gp_win` for the endings), the capture's evidence check
+(`gp_twop.py check --finisher` **without** `--allow-missing-reaction` for U23;
+`gp_win.py check` for the endings), `gp-replay` with `GP_OPTIONAL=1`,
+`gp_compare.py` with the frame/trace/reach/sha/frames pins (plus
+`--moves-min-first` for U23) and `gp_win.py path` with the milestone and WIN
+pins (the endings); `GP_WIN_KEEP` decides whether the port dump is removed. The
+`test_gp_session` and `test_gp_compare` modules are in `verify`'s unit list
+(`Makefile:1952` in this commit); `test_gp_win` and `test_gp_twop` are **not** in
+that list — the oracle targets run them, and they run on demand. Task 11 added
+no Makefile line: Tasks 2–7 had already committed the six targets, their pins
+and their `verify` entries, and this task checked the wiring against them (the
+`verify` order, the `.PHONY` list and each target's guard, §E11's gate run).
+
+| Oracle | Scenario | Character (cell) | `MIN_FIRST` | `TRACE` | `MAX_START` | `MIN_REACH` | `MILESTONES` | `WIN` | Frames | sha256 (prefix) |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `gp-u23-oracle` | `gp-u23-u16-finisher` | U16 finisher (P2) | 4095 | 5449 | 106 | 3439 | — | — | 5464 | `6684d3cb…` |
+| `gp-u18-oracle` | `gp-u18-talon-ending` | TALON (2, 1) | 5735 | 9959 | 85 | 4864 | 30 | 9959 | 5749 | `b3279414…` |
+| `gp-u19-oracle` | `gp-u19-vertigo-ending` | VERTIGO (3, 2) | 5991 | 10012 | 85 | 4989 | 30 | 10012 | 6004 | `31da347f…` |
+| `gp-u20-oracle` | `gp-u20-chaos-ending` | CHAOS (6, 4) | 5776 | 10070 | 83 | 4890 | 30 | 10070 | 5790 | `73b5bb80…` |
+| `gp-u21-oracle` | `gp-u21-armadon-ending` | ARMADON (4, 5) | 5932 | 10070 | 90 | 4973 | 30 | 10070 | 5946 | `41e384a9…` |
+| `gp-u22-oracle` | `gp-u22-diablo-ending` | DIABLO (5, 6) | 5798 | 10090 | 74 | 4929 | 30 | 10090 | 5811 | `e53bef4f…` |
+
+U23's `MOVES_MIN_FIRST` is 5467 (the §E2 port divergence). Every value is the
+one Tasks 2–7 measured and proved one step above; Task 11 changed no pin. The
+only existing pins the phase moved are U13's four (§E9: `MIN_FIRST` 5891 → 5904,
+`MIN_REACH` 4939 → 4952, `TRACE`/`WIN` 10014 → 10069); `git diff base..tip --
+Makefile` shows no other `GP_*`, `DEMO_FIGHT_*`, `ATTRACT2_*`, `K11_*`,
+`FRONTEND_*` or `SAVE_*` line changed.
+
+### The docs this task corrected
+
+| File | What it now says |
+|---|---|
+| `docs/PROGRESS.md` | the Task 2–10 paragraphs, the phase-gate paragraph, and the corrected Task 8 sentence (the diff does change tools/tests, just no U14 behaviour) |
+| `README.md` | the endgame status (seven endings, the U16 finisher, U14 R1 open) and the fuller `make verify` oracle list |
+| `AGENTS.md` | the six new commands, the endgame-truth bullet (the claims, U14 R1, the U13 tail, the tick, the named gaps), the game-set `b0c` = U10's `GP_ENDING_WIN_MIN_FIRST=9954`, and the 60.05/59.998 Hz distinction |
+| `port/RE_GUIDE.md` | "Remaining work": all seven endings, the U16 fallback, U14 R1 open, U13's reach, `b0c` not a gap, the tick install |
+| the endgame design | `Status: Implemented and gated`; the §7.6/§9.5 `0x66519..0x6652D` range and `0x1CFFA`/`0x1CFFF` split |
+| the phase plan | the same range and push/call corrections at `:55`, `:327`, `:330`, `:334` |
+| the 2026-09-16 engine-core design | the Timing paragraph's "9-byte handler" → counter, the vector resolution, and Risks row 1 |
+| this record | §E10's "all three now name" narrowed to two sites and its rate quote made verbatim |
+
+### The gate (2026-10-24)
+
+`PR_DIFF_FULLSCAN=1 make verify` on the phase tip: **exit 0**. The lines the
+gate is read by:
+
+```text
+gp_compare: gp-u23-u16-finisher: frames: first unexplained 4095, ratchet N 4095 ok
+gp_compare: gp-u23-u16-finisher: trace: first differing 5449, ratchet N 5449 ok
+gp_compare: gp-u23-u16-finisher: moves: first differing 5467, ratchet N 5467 ok
+gp_win: gp-u18-talon-ending: evidence: 30/30 milestones ok
+gp_compare: gp-u18-talon-ending: frames: first unexplained 5735, ratchet N 5735 ok
+gp_compare: gp-u19-vertigo-ending: frames: first unexplained 5991, ratchet N 5991 ok
+gp_compare: gp-u20-chaos-ending: frames: first unexplained 5776, ratchet N 5776 ok
+gp_compare: gp-u21-armadon-ending: frames: first unexplained 5932, ratchet N 5932 ok
+gp_compare: gp-u22-diablo-ending: frames: first unexplained 5798, ratchet N 5798 ok
+gp-u14-oracle: no capture at data/k11-captures/gp-u14-win-live (skipped)
+diff-verify: 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps; 813/844 rows with callees closed (187 have none); 806/844 closed on full rows; 8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37). …
+entry-triage: 579 candidates (575 by U0's rule); finisher=9 move-callback=71 span-writer=231 call-table=7 anim-target=112 mid-instruction=3 data=75 code-immediate=15 direct=2 interior=6 data-pointer=48
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+1304 globals, 1206 functions -> port/src/symbols.h
+all checks passed
+EXIT=0
+```
+
+| Check | Result |
+|---|---|
+| the six new oracles | all ran with their captures (no skip): U23 4095/5449/5467; U18 5735 / 9959 / 30/30 / WIN 9959; U19 5991 / 10012 / 30/30 / 10012; U20 5776 / 10070 / 30/30 / 10070; U21 5932 / 10070 / 30/30 / 10070; U22 5798 / 10090 / 30/30 / 10090 — every ratchet line `ok`, every capture sha `matches the pin` |
+| the only skip | `gp-u14-oracle` (absent capture, the recorded R1 gap) |
+| the existing pins | unchanged: idle-loss 7559; U9 2452/3503; U10 5437/9954; U13 `0 unexplained through 5903`, N 5904, trace/WIN 10069; U12 732/1931; U15 805/2158; U16 8069/8637/8637; U17's evidence check |
+| `run_tests` | 217 tests, `OK` (`PR_ORACLE_REQUIRED=1`) |
+| `diff-verify` | the counter line above: 0 named gaps, 813/844 closed, 806/844 full, 8 unrowed, 31 open by the closure rule |
+| `entry-triage` | the committed table equals a fresh run (44 tests, `OK`) |
+| `symbols.h` | regenerates byte-identically (1304 globals, 1206 functions) |
+| `port_progress.py` | `799 1203 66` / `759 759 100` |
+
+### The named limits after the phase
+
+- **U14 R1 is open.** `data/k11-captures/gp-u14-win-live` does not exist (Task 8
+  was declined; the two permitted attempts are spent), all eight `GP_U14_*` pins
+  stay empty and `gp-u14-oracle` keeps its absent-capture skip. `live_death`'s
+  rule — the `(0x09,1)` anchor, no `DEATH_DONE` write and a game-set `b0c=1`
+  after the KO — stays the acceptance test for a future attempt, and a poked win
+  is not R1. A third attempt needs a new, explicit go-ahead.
+- **The captured wins are poked.** The WIN_MENU path, the seven land marks
+  (`0x108106`), the `0x10789E=0x78` KO and the `DEATH_DONE` pokes are harness
+  writes. The claim is the mode-0x1F ending content (the `0xA80E4` title is a
+  decomp fact and compared-frame content, not a WIN/S field) and, for U23, the
+  finisher reaction; the KO by hits and the six earlier won matches are not
+  claimed.
+- **The U16 finisher used the labelled fallback.** The live KO was attempted six
+  times and never reconciled with the narrow `0x36F10` gate window (record §E2),
+  so the published capture's P2 damage is poked to `0x77` and a real hit takes
+  it to the KO `0x78`. The reaction `r0=0x33` is the game's; the port's replay
+  does not advance to it (`r0=0x27`, `MOVES_MIN_FIRST` 5467), a measured port
+  divergence recorded and not fixed by this phase.
+- **The 5120 band's cause is not isolated.** The 8/1/4 shape and the
+  capture-pinned bounds (1, 5) stand; the neighbours 5119/5122 corroborate the
+  port's rendered colours at its own indices, not the capture's 13 pixels. The
+  corner-ornament handle the spec offered (`0x01047345`) is withdrawn (§E1:
+  zero occurrences in the image) and no writer is claimed.
+- **U13's tail is claimed; the other scenarios' post-script tails are not.**
+  U12/U15/U16/U9/U10 stop at their scripts' `X` (or at the replay's own end) and
+  their `MIN_REACH`/`MIN_FIRST` say how far the port got; §NG3 keeps them out of
+  scope. In the ending captures `MIN_REACH` is likewise the port dump's last
+  frame and the `MIN_FIRST` tail is unclaimed.
+- **Every oracle's claim is narrow.** Within its window, no content-bearing
+  capture frame is unexplained (the named per-frame allowances aside) and the
+  window reaches its pinned END. It does not claim that the port under-renders
+  nothing inside the window, nor the order of the port's frames, nor a
+  pixel-exact window — only the U13 tail is byte-identical.
+- **The differential frontier is unmoved and not this phase's work.** `make
+  diff-verify` reads `1031/1031 functions VERIFIED; 14983/14983 mutants
+  detected; 0 named gaps; 813/844 rows with callees closed (187 have none);
+  806/844 closed on full rows; 8 ported functions with no row (45 `FN_`
+  ported-unrowed: 8 portable + 37 runtime); 31 rows open` (all on recorded
+  stubs outside the portable set). The 12 weaker rows and `flow_4f5c8`'s
+  documented zero-divisor deviation are the same open list `AGENTS.md` and
+  `docs/PROGRESS.md` carry (spec NG1).
+- **The tick install is documented, not ported.** INT 8 → `0x6627E` and the
+  PIT divisor 19,887 are read from the bytes; the installer is runtime
+  (≥ `0x5D000`) and stays host-owned, and how AIL's handler reaches the
+  registered callback `0x1BDF4` is not traced (§E1.6/§E10).
+- **Product chores stay open**: audio audibility (no device-recording oracle),
+  CI and packaging, SDL pad hot-plug, save-path documentation.
+- **No ported function changed in the whole phase.** `port_progress.py` reads
+  `799 1203 66` / `759 759 100` (the README title stays 66%) and the
+  differential counter is the same as before the phase; the phase's code
+  changes are in `tools/` (the `gp_session`/`gp_compare`/`gp_win` harness and
+  its tests, §E9's `--end-to-last-s`) and `port/tests/test_platform.c` (the new
+  scenarios' `fn_resolve` miss pins).

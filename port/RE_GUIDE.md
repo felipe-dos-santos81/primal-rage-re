@@ -278,19 +278,34 @@ true original, and ported the divergence. Two pieces:
    dword +4 = handle), so its id → resource mapping is extractable; it is not
    yet extracted.
 
-### Remaining work (2026-10-22; counter re-measured at the 2026-10-23 phase gate)
+### Remaining work (2026-10-24; counter re-measured at the endgame truth phase gate)
 
 - The captures `gp-u12-endurance`, `gp-u13-ending2`, `gp-u15-join` and
   `gp-u16-twop2` are captured and pinned; their `gp-u1x-oracle` targets skip
-  only on a checkout without the git-ignored captures. The remaining open
-  gameplay-evidence gaps are the U14 live win (R1, §J6) and the U16 finisher
-  reaction (R2, §J8). U13's pixel claim now reaches the capture's last frame
-  (5903): frames 4248, 4320 and 5120 are explained by named, byte-pinned and
-  mutation-tested per-frame recipes, the tail 5891..5903 is byte-identical to
-  the replay's own frames (the script now ends at the last `S`, f=10068, via
-  `--end-to-last-s`), and the enforced reach is port 4952 — `GP_U13_MIN_FIRST`
-  = 5904, `GP_U13_MIN_REACH` = 4952, trace/WIN = 10069 (R3, §J5; record
-  `2026-10-23-endgame-truth-derivations.md` §E9).
+  only on a checkout without the git-ignored captures. **All seven character
+  endings are now captured**: SAURON's by U10 (poked), BLIZZARD's by U13, and
+  TALON's, VERTIGO's, CHAOS's, ARMADON's and DIABLO's by the endgame truth
+  phase (`gp-u18-oracle`…`gp-u22-oracle`, each in `make verify` and each
+  skipping only without its capture; record
+  `2026-10-23-endgame-truth-derivations.md` §E3–§E7). The U16 finisher reaction
+  is `gp-u23-oracle` (§E2), captured under the **labelled poked-damage
+  fallback** (P2's `0x10789E` poked to `0x77`, then a real hit to the KO
+  `0x78`): `gp_twop.py check --finisher` runs without
+  `--allow-missing-reaction` and the capture reaches `r0=0x33`; its moves
+  ratchet records a measured port divergence, the replay leaving `r0=0x27`
+  where the capture advances to `0x33`. The poked captures claim the ending
+  content and the finisher reaction, not the KO by hits or the six earlier won
+  matches. **U14's fought live win (R1, §J6) is a named gap**: the retake was
+  declined, the two permitted attempts are spent, all `GP_U14_*` pins are empty
+  and `gp-u14-oracle` keeps its absent-capture skip. U13's pixel claim now
+  reaches the capture's last frame (5903): frames 4248, 4320 and 5120 are
+  explained by named, byte-pinned and mutation-tested per-frame recipes, the
+  tail 5891..5903 is byte-identical to the replay's own frames (the script now
+  ends at the last `S`, f=10068, via `--end-to-last-s`), and the enforced reach
+  is port 4952 — `GP_U13_MIN_FIRST` = 5904, `GP_U13_MIN_REACH` = 4952,
+  trace/WIN = 10069 (R3, §J5; record `2026-10-23-endgame-truth-derivations.md`
+  §E9). The game-set `b0c` is U10's (`GP_ENDING_WIN_MIN_FIRST=9954`), not a
+  gap; only the fought no-poke win is open (§E1.3).
 - The differential audit: 31 of the 844 rows stay open (all on recorded stubs
   outside the portable set), and 45 `FN_` functions the port implements have no
   differential row (8 portable — 5 registry-visible and 3 header-shape

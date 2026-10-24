@@ -52,7 +52,7 @@ The spec implies these failure modes; each gets a test in the task named.
 
 - [ ] **Step 4: Confirm U14 and U13.** Read the U14 scenario's `U14_ATTEMPTS`/`U14_PUNCH`/`U14_KICK`/`WIN_MENU`/`time_limit` and the failed retry's S records: round 1 P1 KO'd (`s0_5a=0x78`, P2 `s1_5a=0x00`); round 2 P1 KO'd (`s0_5a=0x78`), P2 `s1_5a=0x38`, `ad4=1` (P2 won), mode 3 at `0x1D68`. Read the U13 capture's `X` f=10013 (0x271D), last `S` f=2754 (10068), and the `gp_session.port_script` `end > last` guard (`tools/gp_session.py:970-977`).
 
-- [ ] **Step 5: Confirm the 5120 and tick evidence.** Re-measure the 13 pixels (rows 1..4, x 21..298; 8 are `00001c` where 4317's index is `0x32`, 1 is black where it is `0x2E` (`100000`), 4 are black where it is `0x4D` (`00000c`); the one-capture-frame occurrence; the empty static-index intersections; the corner-ornament candidate `0x01047345`). Confirm the INT 8 bytes at `0x66519..0x6652C` (`b8 08 00 00 00 ba 7e 62 05 00 66 8c cb b4 25 1e 66 8e db cd 21`), the `0x0005627E` immediate, the handler `0x6627E`, the PIT routine `0x663A4`/`0x663AC`/`0x663D4`, 19,887, 59.998 Hz, and `0x2D62C`'s counter role (`0x1BDF4` at `0x1BE28`).
+- [ ] **Step 5: Confirm the 5120 and tick evidence.** Re-measure the 13 pixels (rows 1..4, x 21..298; 8 are `00001c` where 4317's index is `0x32`, 1 is black where it is `0x2E` (`100000`), 4 are black where it is `0x4D` (`00000c`); the one-capture-frame occurrence; the empty static-index intersections; the corner-ornament candidate `0x01047345`). Confirm the INT 8 bytes at `0x66519..0x6652D` (`b8 08 00 00 00 ba 7e 62 05 00 66 8c cb b4 25 1e 66 8e db cd 21`; 21 bytes, `cd 21` ending at `0x6652D`), the `0x0005627E` immediate, the handler `0x6627E`, the PIT routine `0x663A4`/`0x663AC`/`0x663D4`, 19,887, 59.998 Hz, and `0x2D62C`'s counter role (`0x1BDF4` at `0x1BE28`).
 
 - [ ] **Step 6: Write record §E1.** Put the evidence tables and the exact addresses in `docs/superpowers/plans/2026-10-23-endgame-truth-derivations.md`. No code and no capture. Mark each value measured or inferred; the raw bytes win over the spec.
 
@@ -324,14 +324,14 @@ The spec implies these failure modes; each gets a test in the task named.
 - Optional: a static raw-byte test in `tools/tests/` if the implementer chooses (no port counterpart)
 
 **Interfaces:**
-- Consumes: the raw bytes at `0x66519..0x6652C`, `0x6627E`, `0x663A4`/`0x663AC`/`0x663D4`, `0x1CFFF`, `0x2D62C`, `0x1BDF4`, `0x1BE28`.
+- Consumes: the raw bytes at `0x66519..0x6652D`, `0x6627E`, `0x663A4`/`0x663AC`/`0x663D4`, `0x1CFFA`/`0x1CFFF`, `0x2D62C`, `0x1BDF4`, `0x1BE28`.
 - Produces: the documentation pin; no port code.
 
-- [ ] **Step 1: Re-read the bytes.** Confirm the AIL timer install (`0x1CFED`/`0x1CFF2`/`0x1CFFF`/`0x1D008`), the INT 8 set-vector bytes (`0x66519 b8 08 00 00 00`, `0x6651E ba 7e 62 05 00`, `0x66523 66 8c cb`, `0x66526 b4 25`, `0x66528 1e`, `0x66529 66 8e db`, `0x6652C cd 21`), the `0x0005627E` immediate → linear `0x6627E` (CS base 0x10000), the handler `0x6627E`, the PIT routine `0x663A4` with the mode command `b0 36 e6 43` at `0x663AC..0x663AF`, the divisor formula `0x663D4` (`param*10000/0x20BC`), 19,887 for the 16,666 µs AIL period (`0x1CFFF` sets 0x3C) and 59.998 Hz, and `0x2D62C`'s counter role (`0x1BDF4` at `0x1BE28`). Record the addresses in §E6.
+- [ ] **Step 1: Re-read the bytes.** Confirm the AIL timer install (`0x1CFED`/`0x1CFF2`/`0x1CFFF`/`0x1D008`), the INT 8 set-vector bytes (`0x66519 b8 08 00 00 00`, `0x6651E ba 7e 62 05 00`, `0x66523 66 8c cb`, `0x66526 b4 25`, `0x66528 1e`, `0x66529 66 8e db`, `0x6652C cd 21`), the `0x0005627E` immediate → linear `0x6627E` (CS base 0x10000), the handler `0x6627E`, the PIT routine `0x663A4` with the mode command `b0 36 e6 43` at `0x663AC..0x663AF`, the divisor formula `0x663D4` (`param*10000/0x20BC`), 19,887 for the 16,666 µs AIL period (`0x1CFFA` pushes `0x3C`; `0x1CFFF` is the `call 0x5DA87`) and 59.998 Hz, and `0x2D62C`'s counter role (`0x1BDF4` at `0x1BE28`). Record the addresses in §E6.
 
 - [ ] **Step 2: Update the docs.** In `port/RE_GUIDE.md`, mark item 4 done with the INT 8/handler/PIT addresses and the `0x2D62C` distinction; correct the "Remaining work" tick bullet. In `port/spec/game_flow.md`, replace the "vector unread" wording with the measured install and the port's `game_isr_ticks`/`config.c` model. No fitted rate: 59.998 Hz is from 16,666·10,000/8,380.
 
-- [ ] **Step 3: Optional static test.** If added, assert the raw bytes of `0x66519..0x6652C` (including `ba 7e 62 05 00`), the `0x663AC` mode command, and the `0x663D4` formula/divisor 19,887; skip without the game data. Run it; expected PASS.
+- [ ] **Step 3: Optional static test.** If added, assert the raw bytes of `0x66519..0x6652D` (including `ba 7e 62 05 00`), the `0x663AC` mode command, and the `0x663D4` formula/divisor 19,887; skip without the game data. Run it; expected PASS.
 
 - [ ] **Step 4: Commit.** Commit (when authorized): `docs: pin the INT 8 tick vector`.
 

@@ -25,8 +25,8 @@ write to it.
 decompiled (`docs/FORMATS.md`, `port/decomp/`). The SDL3 port reimplements the
 engine in C over a flat `mem[]` at the original addresses (`port/PORTING.md`)
 and covers the whole game — boot, title, attract cycles, front end, service
-menu, character select, one- and two-player matches, the win path, the ending,
-and the game-over/high-score flows. Two claims back that:
+menu, character select, one- and two-player matches, the win path, all seven
+character endings, the game-over/high-score flows. Two claims back that:
 
 - **Porting — 66% raw, 100% portable.** 799 of the original's 1203 real
   functions have a ported, header-commented counterpart in `port/src/` (see
@@ -75,6 +75,15 @@ and the game-over/high-score flows. Two claims back that:
 Byte-exact oracles gate the rendering and timing: the Smacker logo, title,
 attract, front end and demo fight, the service menu, and every captured
 gameplay scenario are compared against the original's own captured frames.
+The endgame is captured end to end: all seven character endings are pinned —
+SAURON and BLIZZARD by the earlier U10/U13 captures, TALON, VERTIGO, CHAOS,
+ARMADON and DIABLO by the endgame truth phase (`gp-u18-oracle`…`gp-u22-oracle`,
+under the poked win path) — and the U16 finisher reaction by `gp-u23-oracle`
+(under a labelled poked-damage fallback). Each capture has its own oracle in
+`make verify`, and the claim is the ending content and the finisher reaction,
+not the KO by hits: the U14 fought live win (R1) remains a named gap, as do the
+5120 band's cause and the differential frontier. The same phase claimed U13's
+post-script tail from its existing capture and documented the INT 8 tick vector.
 The detailed, continuously-updated status — what's ported, what's verified,
 and every named gap with its evidence — is in
 **[`docs/PROGRESS.md`](docs/PROGRESS.md)**; the frame loop and pixel path are
@@ -161,8 +170,10 @@ PR_ORACLE_REQUIRED=1 ./build/run_tests            # or: make verify
 `make verify` is the gate: a `--check 820` headless smoke run (crossing the
 boot attract into the title), the oracle-required test suite, the restart
 driver, every pixel and ratchet oracle (Smacker, title, attract, front end,
-demo fight, attract cycle 2, K11 service menu, the gameplay captures), the
-differential harness, the E2 triage check, the tool unit tests, and
+demo fight, attract cycle 2, K11 service menu, the gameplay captures —
+idle-loss, character select, moves, keys, two-human, the U8 modes, the U12/U13
+and U9/U10 win/ending paths, the five ending captures and the U16 finisher),
+the differential harness, the E2 triage check, the tool unit tests, and
 `symbols.h` idempotence. The capture-based oracles are **git-ignored copies of
 the game's own bytes**, so they skip when their capture is absent:
 `PR_ORACLE_REQUIRED=1` turns that absence into a failure where the Makefile

@@ -37,6 +37,12 @@ make gp-u14-oracle         # Gameplay U14: gp-u14-win-live's fought win; in make
 make gp-u15-oracle         # Gameplay U15: gp-u15-join's mid-round join; in make verify; skips without data/k11-captures/gp-u15-join
 make gp-u16-oracle         # Gameplay U16: gp-u16-twop2's extended two-human match and frame evidence (finisher gap; §J8); in make verify; skips without data/k11-captures/gp-u16-twop2
 make gp-u17-oracle         # host input truth U17: gp-u17-device2 must reach MODIFY CONTROLS and select device 2 with no pad (tools/gp_u17.py check: the S-record clear, the label band's screen proof, the poll.log sha256 and frame count); in make verify; skips without the capture; the frame/trace ratchets are empty (the wall-paced walk has no replay, record §H6.9)
+make gp-u18-oracle         # endgame truth U18: TALON's ending (character 2, cell 1) on gp-u18-talon-ending; gp_win.py check + frame/trace/reach/WIN ratchets; in make verify; skips without the capture
+make gp-u19-oracle         # endgame truth U19: VERTIGO's ending (character 3, cell 2); as gp-u18-oracle
+make gp-u20-oracle         # endgame truth U20: CHAOS's ending (character 6, cell 4); as gp-u18-oracle
+make gp-u21-oracle         # endgame truth U21: ARMADON's ending (character 4, cell 5); as gp-u18-oracle
+make gp-u22-oracle         # endgame truth U22: DIABLO's ending (character 5, cell 6); as gp-u18-oracle
+make gp-u23-oracle         # endgame truth U23: the U16 finisher reaction under the labelled poked-damage fallback on gp-u23-u16-finisher (gp_twop.py check --finisher without --allow-missing-reaction); in make verify; skips without the capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -356,6 +362,38 @@ consolidation gate).
   TRACE and WIN pins rise 2364/3162 -> 3503 (MIN_FIRST 346 and MAX_START 100 unchanged and exact),
   and `0x29C78` P7: U10's set loses it (distinct=4) with every pin exact and unchanged — record
   2026-10-04-reverse-p7 §P7.8).
+- **The endgame truth phase: all seven endings and the U16 finisher are captured; U14 R1 stays
+  a named gap** (plan `docs/superpowers/plans/2026-10-23-endgame-truth.md`, record
+  `2026-10-23-endgame-truth-derivations.md` §E2–§E11). Five ending captures clone U13's poked win
+  path — `gp-u18-talon-ending` (TALON, character 2, cell 1), `gp-u19-vertigo-ending` (VERTIGO, 3,
+  cell 2), `gp-u20-chaos-ending` (CHAOS, 6, cell 4), `gp-u21-armadon-ending` (ARMADON, 4, cell 5)
+  and `gp-u22-diablo-ending` (DIABLO, 5, cell 6) — each pinned by `gp-u18-oracle`…`gp-u22-oracle`
+  (all in `make verify`, each skipping only without its capture): `gp_win.py check` (30/30
+  milestones, the mode-0x1F `ad4=0,c0=char` row under the character-name label), the
+  frame/trace/reach ratchets, the WIN ratchet, the `poll.log` sha256 and frame count, plus each
+  capture's measured per-frame allowances (`SCAN3_ALLOWED` three-present scans, the loader strip in
+  `OVERLAY_ALLOWED`, ARMADON's `BANDS_ALLOWED` present-copy scan-outs and DIABLO's fade bands).
+  `gp-u23-oracle` (record §E2) captures the U16 finisher reaction under the labelled poked-damage
+  fallback: the live KO could not be reconciled with the narrow `0x36F10` gate window (six
+  attempts, record §E2), so P2's damage byte `0x10789E` is poked to `0x77` and a real hit takes it
+  to `0x78`; `gp_twop.py check --finisher` runs without `--allow-missing-reaction` and the capture
+  reaches `r0=0x33`. Its moves ratchet records a measured port divergence: the replay leaves
+  `r0=0x27` where the capture advances to `0x33` (the capture also holds `0x27` at `f=0x14F7`).
+  **The claims are the ending content and the finisher reaction, not the fight**: the WIN_MENU
+  path, the seven land marks, the `0x10789E` damage and the `DEATH_DONE` pokes are harness writes,
+  so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) is
+  a named gap: Task 8 was declined (its two permitted attempts are spent) and all eight `GP_U14_*`
+  pins are empty, so `gp-u14-oracle` keeps its absent-capture skip. U13's post-script tail is
+  claimed (record §E9): `port_script`'s opt-in `--end-to-last-s` runs the script to the capture's
+  last `S` (f=10068), the 5891..5903 tail is byte-identical to the replay's own 4940..4952 frames,
+  and `GP_U13_MIN_FIRST`/`MIN_REACH`/`TRACE`/`WIN` read 5904/4952/10069/10069. The game-set `b0c`
+  is **not** a gap and needs no new capture: it is U10's `GP_ENDING_WIN_MIN_FIRST=9954` (the write
+  at f=0x1602 in mode 0x0F, 190 frames after the seventh poked final KO; record §E1.3); only the
+  fought (no-poke) win is open (`live_death`'s `(0x09,1)` rule). The INT 8 tick item is done
+  (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
+  is 19,887 (59.998 Hz), and `0x2D62C` is the counter the AIL callback `0x1BDF4` calls — the
+  installer stays host-owned. Named gaps left by the phase: U14 R1, the 5120 band's unisolated
+  cause (its bounds capture-pinned), the differential frontier, and the poked-win status above.
 - **The input sampler and its readers are ported; the game logic has no joystick path.** `0x2D2F0`
   (`input_joystick_device`) is `xor eax,eax; ret` (raw `31 c0 c3`; it has its own differential
   row), so `0x4F644` stores 0 in `0x1088D4`/`0x1088DC`; its gate at `0x4F68B`
@@ -411,7 +449,9 @@ consolidation gate).
   `data/game/C` is proven untouched (the capture's own `CHECK staging`).
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
-  adjacent port frames rather than a 1:1 match.
+  adjacent port frames rather than a 1:1 match. (60.05 Hz is the capture model's
+  observed iteration rate; the bytes' AIL period and PIT divisor give 59.998 Hz,
+  0.09 % apart — record `2026-10-23-endgame-truth-derivations.md` §E1.6.)
 - **The differential rows are being extended to every ported function** (track D,
   record `docs/superpowers/plans/2026-10-11-reverse-d-derivations.md`). C3g closed
   the callee frontier at 322 rows; track D rows the ported functions the callee
@@ -559,8 +599,9 @@ consolidation gate).
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure; the README title keeps the raw
-  percentage. As of 2026-10-22 (host input truth) the two lines read `799 1203 66` and
-  `759 759 100` (track S read `787 1203 65` / `747 747 100`; the 12 input functions left the
+  percentage. As of 2026-10-24 (endgame truth) the two lines still read `799 1203 66` and
+  `759 759 100` (the phase added no `FN_` function; host input truth set them, track S read
+  `787 1203 65` / `747 747 100`; the 12 input functions left the
   classification, 65 → 53 host-owned, record §H7):
   - **Raw:** 799 ported of 1203 real functions (66%). The 404 unported functions
     are not porting targets: 53 are host-owned or deferred (the rows of

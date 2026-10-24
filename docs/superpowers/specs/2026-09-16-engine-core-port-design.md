@@ -144,16 +144,19 @@ in `0x24C5C`) and `PTR_FUN_000a86c4` + `_DAT_00104AEC` (render, walked in
 `0x255CC`). Entries are 4-byte function pointers. This is the engine's process
 scheduler, and it is **the** extensibility seam of the original.
 
-**Timing.** `DAT_00105D88` is the tick counter, incremented by the 9-byte
-handler `0x2D62C` (`DAT_00105D88++`). `main` locks `0x2D62C`'s code page and
+**Timing.** `DAT_00105D88` is the tick counter. It is incremented by the 9-byte
+run-clock counter `0x2D62C` (`DAT_00105D88++`), which the 60 Hz AIL timer
+callback `0x1BDF4` calls at `0x1BE28`; `0x2D62C` is not the ISR entry. `main`
+locks `0x2D62C`'s code page and
 the `DAT_00105D88` data page (`0x109A0(&DAT_00105D88, 0x1000)`), and also
-`0x1B610` (+`0x4000`) and `0x62451` (+`0x1000`) — i.e. the ISR code plus the
-shared data it touches. Frame pacing is a counter pair: `DAT_00101508`
+`0x1B610` (+`0x4000`) and `0x62451` (+`0x1000`) — i.e. the callback's code plus
+the shared data it touches. Frame pacing is a counter pair: `DAT_00101508`
 (asynchronously advanced) and `DAT_0010150C` (loop-local), compared in
 `0x255CC`. `0x1C740` separately busy-polls VBlank (`in(0x3DA) & 8`) around the
 palette/present work. **So frame sync is ISR-tick + VBlank-poll, not a pure
-software timer.** The exact interrupt vector is not yet pinned down and is a
-plan task (see Risks).
+software timer.** The interrupt vector is read: the AIL timer init sets INT 8
+at `0x66519..0x6652D` to `0x6627E` (record
+`2026-10-23-endgame-truth-derivations.md` §E1.6/§E10).
 
 **DPMI region lock/unlock** (resolves `game_flow.md` open question 3):
 `0x109A0(ptr, size)` → `0x10830(ptr, ptr+size)`; the unlock twin is
@@ -380,7 +383,7 @@ No test framework; assertion-based self-checks plus the PPM comparison, as in
 
 | # | Risk | Mitigation |
 |---|---|---|
-| 1 | Exact interrupt vector for the tick ISR is unidentified; if the loop's pacing depends on ISR-side state beyond the counter, the host tick model changes. | The planned mitigation **failed**: no static install site was found and this build's DOSBox-X refuses a scriptable debugger. The vector therefore remains **unresolved**, and the port's tick is a documented nominal at the *measured* rate (~60.05 Hz), marked `TODO(verify)`. |
+| 1 | Exact interrupt vector for the tick ISR is unidentified; if the loop's pacing depends on ISR-side state beyond the counter, the host tick model changes. | The planned mitigation **failed**: no static install site was found and this build's DOSBox-X refuses a scriptable debugger. **Later resolved** by the endgame truth phase (record `2026-10-23-endgame-truth-derivations.md` §E1.6/§E10): INT 8 is set at `0x66519..0x6652D` to the AIL handler `0x6627E`, which calls the callback `0x1BDF4`; `0x2D62C` is only the counter. The install is above the `0x10000..0x5FFFF` range the earlier static search covered, and the port still models the tick at the bytes' rate (59.998 Hz from the PIT divisor 19,887), not the install. |
 | 2 | GRA chunk 2 may be delta/compressed across frames rather than standalone bitmaps. | Decode frames in order; if the title screen needs sequential state, it is still in scope; if it needs the fight engine, that part moves to sub-project 5 and is stubbed. |
 | 3 | The `int 10h` mode `0x13` gate (320x200) versus the installed `S16` (640x480) asset set is still contradictory — unresolved for Task 14. (The framebuffer write path itself is now **resolved**: a constant `0xA0000`, which is the VGA aperture because DOS/4GW relocates the image above 1 MB — see the memory-model rule above.) | Named discovery task for the resolution question; `present_frame()` isolates it. |
 | 4 | `fn_resolve` breaks if the original does arithmetic on code addresses. | Documented limitation; revisit when sub-project 5's jump tables need it. |
