@@ -77,12 +77,14 @@ attract, front end and demo fight, the service menu, and every captured
 gameplay scenario are compared against the original's own captured frames.
 The endgame is captured end to end: all seven character endings are pinned —
 SAURON and BLIZZARD by the earlier U10/U13 captures, TALON, VERTIGO, CHAOS,
-ARMADON and DIABLO by the endgame truth phase (`gp-u18-oracle`…`gp-u22-oracle`,
-under the poked win path) — and the U16 finisher reaction by `gp-u23-oracle`
-(under a labelled poked-damage fallback). Each capture has its own oracle in
-`make verify`, and the claim is the ending content and the finisher reaction,
-not the KO by hits: the U14 fought live win (R1) remains a named gap, as do the
-5120 band's cause and the differential frontier. The same phase claimed U13's
+ARMADON and DIABLO by the endgame truth phase (`gp-u18-oracle`…`gp-u22-oracle`)
+— all seven under poked win paths, and the U16 finisher reaction by
+`gp-u23-oracle` (under a labelled poked-damage fallback). Each capture has its
+own oracle in `make verify`, and the claim is the ending content and the
+finisher reaction, not the KO by hits (U23's moves ratchet records the port's
+`r0=0x27` where the capture reaches `0x33`; endgame truth record §E2): the U14
+fought live win (R1) remains a named gap, as do the 5120 band's cause and the
+differential frontier. The same phase claimed U13's
 post-script tail from its existing capture and documented the INT 8 tick vector.
 The detailed, continuously-updated status — what's ported, what's verified,
 and every named gap with its evidence — is in

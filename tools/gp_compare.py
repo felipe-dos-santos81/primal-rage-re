@@ -232,10 +232,11 @@ BANDS_ALLOWED = {
         # Its neighbour 5119 is clean at port 4315 (f=1824) and 5121 is a
         # (4317, 4318) splice, so the frame sits at the f=1825/f=1826 fade step.
         # Rows 1..4 are the dump's ONLY unheld rows (measured over all 4940
-        # frames: no other row of 0..199 has zero holders); row 0 is port
-        # 4316/4317/4318's (identical there) and the whole range rows 5..199 is
-        # port 4317's alone (no other frame holds all 195 rows), so the pair
-        # (4316, 4317) is the dump's unique match. The band is 4 rows x 320 =
+        # default frames, 4954 with --end-to-last-s: no other row of 0..199
+        # has zero holders); row 0 is port 4316/4317/4318's (identical there)
+        # and the whole range rows 5..199 is port 4317's alone (no other frame
+        # holds all 195 rows), so the pair (4316, 4317) is the dump's unique
+        # match. The band is 4 rows x 320 =
         # 1280 pixels (3840 bytes), of which exactly 13 pixels differ from port
         # 4317's rows: 8 are 00001c where 4317's index is 0x32 (black in the
         # frame's DAC), 1 is black where it is 0x2E (100000) and 4 are black
@@ -250,10 +251,11 @@ BANDS_ALLOWED = {
         # machine-forced: the shape also accepts wider bands (band_pair returns
         # 4316 for (0, 6), (0, 7), ... too), so the bounds follow the unheld
         # run's ends as the U11 entry's 81/92 do. No dumped frame's DAC renders
-        # index 0x32 as 00001c (0 of 4940) and 93 other pixels with index 0x32
-        # are black in this very capture frame, so no single palette applied to
-        # port 4317's indices reproduces the band; the frame-wide
-        # constant-offset test picks k = 0 (13 mismatching pixels) over every
+        # index 0x32 as 00001c (0 of 4940 default, 4954 with
+        # --end-to-last-s) and 93 other pixels with index 0x32 are black in this
+        # very capture frame, so no single palette applied to port 4317's
+        # indices reproduces the band; the frame-wide constant-offset test picks
+        # k = 0 (13 mismatching pixels) over every
         # other k (over the +/-64 domain the next best is 12651; over all 256
         # offsets it is 11282, k = +109), and the three offsets that do cover
         # the 13 ({-29, +14, +29}) are DAC aliases of the same two colours

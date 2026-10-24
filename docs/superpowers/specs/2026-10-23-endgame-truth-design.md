@@ -14,7 +14,8 @@ U10 pokes, and BLIZZARD's (character 1) in `gp-u13-ending2`. TALON, VERTIGO,
 CHAOS, ARMADON and DIABLO have no capture. The U16 finisher reaction (R2) was
 attempted but never appeared. The game-set death-done byte `b0c` is already
 pinned by U10: its first `b0c=1` is at f=0x1602 in mode 0x0F, 190 frames after
-the seventh poked final KO, and `GP_ENDING_WIN_MIN_FIRST=9954` compares it
+the mode-0x0F entry (`f=0x1544`) and 200 after the seventh poked final KO's
+`S`, and `GP_ENDING_WIN_MIN_FIRST=9954` compares it
 (`Makefile:1139/1212`). What U10 does not claim is a fought (no-poke) win; the
 U14 fought live win (R1) failed its two permitted attempts.
 
@@ -250,7 +251,8 @@ decomp evidence and the reaction is the capture's claim.
 ### 7.3 The b0c evidence is already U10's
 
 U10's `poll.log` has its first `b0c=1` at f=0x1602 in mode 0x0F, 190 frames
-after the seventh poked final KO; `GP_ENDING_WIN_MIN_FIRST=9954` pins it
+after the mode-0x0F entry (`f=0x1544`) and 200 after the seventh poked final
+KO's `S`; `GP_ENDING_WIN_MIN_FIRST=9954` pins it
 (`Makefile:1139/1212`). The final's `DEATH_DONE` poke replaces the mode-0xD
 wait for the opponent's replacement, not the `0x37EA0`/`0x37FF6` write: the
 poked `0x78` KO's death animation still ran and set `b0c`. The final sets

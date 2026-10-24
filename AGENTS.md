@@ -388,7 +388,8 @@ consolidation gate).
   last `S` (f=10068), the 5891..5903 tail is byte-identical to the replay's own 4940..4952 frames,
   and `GP_U13_MIN_FIRST`/`MIN_REACH`/`TRACE`/`WIN` read 5904/4952/10069/10069. The game-set `b0c`
   is **not** a gap and needs no new capture: it is U10's `GP_ENDING_WIN_MIN_FIRST=9954` (the write
-  at f=0x1602 in mode 0x0F, 190 frames after the seventh poked final KO; record §E1.3); only the
+  at f=0x1602 in mode 0x0F, 190 frames after the mode-0x0F entry (`f=0x1544`) and 200 after the
+  seventh poked final KO's `S` — record §E1.3); only the
   fought (no-poke) win is open (`live_death`'s `(0x09,1)` rule). The INT 8 tick item is done
   (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
   is 19,887 (59.998 Hz), and `0x2D62C` is the counter the AIL callback `0x1BDF4` calls — the

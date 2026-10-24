@@ -1025,9 +1025,9 @@ wrote 6004 frames (raw 1391..14418), wall 206.1 s
 ```
 
 `python3 tools/gp_capture.py check-input` prints `check=ok no unscripted input`.
-The 22 fired steps are the 7 menu actions (4 `WIN_MENU` steps, the two `p1.right`
-presses and the confirm) plus the 15 cloned u10 actions (the trailing
-`until_mode` is not an action).
+The 22 fired steps are the 6 menu actions (`WIN_MENU`'s 3 prefix steps, the two
+`p1.right` presses and the confirm), the scenario's own first poke and the 15
+cloned u10 actions (the trailing `until_mode` is not an action).
 
 Measured in its `poll.log` (10,023 S records):
 
@@ -1694,7 +1694,8 @@ this commit) changes no `U14_*` definition, no `gp-u14-win-live` scenario line
 and no `GP_U14_*` pin; the U14 scenario, the Makefile target and pins and
 `gp_win.py`'s rule are byte-identical, so Task 8's own change set is these two
 documentation files (the phase's other U14 mentions are new unit-case uses of
-`live_death`, `U14_PUNCH`/`U14_KICK` in the U18-U22 tests and one reflowed
+`live_death`, `U14_PUNCH`/`U14_KICK` in `TestU23Finisher`
+(`tools/tests/test_gp_session.py`), not the U18-U22 tests, and one reflowed
 scenario-list assertion — not definitions, scenario lines or pins).
 
 ### `live_death` stays the acceptance test

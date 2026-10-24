@@ -1470,7 +1470,7 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 # Provenance (2026-10-23 fallback re-capture, 5464 frames, raw 1371..8555, wall 122.8 s):
 #   MIN_FIRST 4095: the report's first unexplained capture frame (raw 6783, nearest port 3442,
 #     rows 0..2, 510 px). It is not a loader overlay or a scan-out (the loader's 166-px six-row
-#     strip is capture 5523, after the pin), so no allowance is added; the tail is not claimed.
+#     strip is capture 5461, after the pin), so no allowance is added; the tail is not claimed.
 #   TRACE_MIN_FIRST 5449: the first differing trace f, in rng (capture 75B49A54, port BA99085D);
 #     first tick difference f=147 is reported apart (host-timed).
 #   MOVES_MIN_FIRST 5467: the first differing move frame, f=0x155B in r0 (capture 0x33, the applied
