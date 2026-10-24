@@ -68,7 +68,7 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
-        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle \
+        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1656,6 +1656,59 @@ gp-u20-oracle: build ## Endgame truth U20 oracle: CHAOS's ending (character 6, c
 			--win-min-first "$(GP_U20_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U20_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u20-chaos-ending; exit $$rc; fi
 
+# Endgame truth Task 6 (plan docs/superpowers/plans/2026-10-23-endgame-truth.md; record §E1.1,
+# §E6): gp-u21-armadon-ending is ARMADON's ending. P1 confirms character-select cell 5
+# (ending_menu(5): five p1.right presses), which 0xC8882 = 00 02 03 01 06 04 05 maps to class 4
+# ARMADON (0x43D6E/0x43D74), whose ending is DS_0010782A[DS_00104AD4 * 0x94] = 4 (title id 0xE2,
+# THE MEDITATION OF ARMADON — a 0xA80E4 fact and the compared frames' content, not a WIN/S field).
+# Its first poke writes ARMADON's seven land marks (0x84, not u10's SAURON 0x80: 0x41C28 state 1
+# tallies (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C), and the rest are
+# gp-u10-ending's from its second poke on. `gp_win.py check` finds 30/30 milestones including the
+# mode-0x1F row's ad4=0,c0=4 under the label "ARMADON's ending".
+# Measured on the 2026-10-23 capture (5,946 frames, raw 1414..14516, wall 208.0 s, memsize=64):
+# the window starts at capture 90 (raw 1743); every content-bearing capture frame through 5931 is
+# explained (3,598 clean, 2,149 splice, 59 transition) plus sixteen named per-frame allowances,
+# each its own byte recipe (tools/gp_compare.py): fifteen BANDS_ALLOWED present-copy scan-outs —
+# 426 and 756 on round 1's mode-8 screen (ports 291/292, 577/578), 4317 the final's mode-0x0D ->
+# 0x0C entry (3610/3611), the eleven 4470..4560 the mode-0xF master screen (3740/3741 ..
+# 3816/3817) and 5119 the ending's mode-0x15 fade (4300/4301, the U13 5120 class) — and the
+# loader's 166-px glyph strip at capture 2217 (OVERLAY_ALLOWED, port 1799 over 1800, mask from
+# 1798). The first unexplained is 5932 (raw 14456): 5932..5945 are the post-script tail (the
+# replay's dump ends at port frame 4973, f=0x2753, and its trace at f=0x2755, where the capture's
+# X record sits) and are NOT claimed; MIN_FIRST = 5932, and 5933 fails (the ratchet fails only when
+# the first unexplained precedes N). The comparison's window reach is port 4973 (the dump's last
+# frame), so MIN_REACH = 4973 and 4974 fails as unreachable beyond the dump. Trace and WIN fields
+# agree through f=0x2755 (10069), so their end pins are 10070; the moves comparison is reported by
+# gp_compare (0 differing through 10069) and is not pinned. The capture has 5,946 frames with this
+# poll.log sha256 (41e384a9..b1b42f).
+# An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
+# capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
+# WIN_MIN_FIRST when they improve.
+GP_U21_MIN_FIRST = 5932
+GP_U21_TRACE_MIN_FIRST = 10070
+GP_U21_MAX_START = 90
+GP_U21_MIN_REACH = 4973
+GP_U21_CAPTURE_SHA256 = 41e384a94049fc5c1c74934c802153dcdee230631d44522ef03f27935db1b42f
+GP_U21_CAPTURE_FRAMES = 5946
+GP_U21_MILESTONES = 30
+GP_U21_WIN_MIN_FIRST = 10070
+gp-u21-oracle: build ## Endgame truth U21 oracle: ARMADON's ending (character 4, cell 5; skips without data/k11-captures/gp-u21-armadon-ending)
+	@echo "== gameplay oracle: gp-u21-armadon-ending (ARMADON's ending under pokes) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u21-armadon-ending ]; then echo "gp-u21-oracle: no capture at $(K11_CAPTURES)/gp-u21-armadon-ending (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u21-armadon-ending --capture $(K11_CAPTURES)/gp-u21-armadon-ending \
+			--capture-sha256 "$(GP_U21_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u21-armadon-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u21-armadon-ending --capture $(K11_CAPTURES)/gp-u21-armadon-ending \
+			--port $(GP_DUMP)/gp-u21-armadon-ending --min-first "$(GP_U21_MIN_FIRST)" \
+			--trace-min-first "$(GP_U21_TRACE_MIN_FIRST)" --max-start "$(GP_U21_MAX_START)" \
+			--min-reach "$(GP_U21_MIN_REACH)" \
+			--capture-sha256 "$(GP_U21_CAPTURE_SHA256)" --capture-frames "$(GP_U21_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u21-armadon-ending --capture $(K11_CAPTURES)/gp-u21-armadon-ending \
+			--port $(GP_DUMP)/gp-u21-armadon-ending --min-milestones "$(GP_U21_MILESTONES)" \
+			--win-min-first "$(GP_U21_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U21_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u21-armadon-ending; exit $$rc; fi
+
 # Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
 # gp_session.SCENARIOS['gp-u17-device2'], record §H6.6/§H6.9): the K11 service-menu walk to MODIFY
 # CONTROLS (0x31F24) with the K11 walk's own keys, one 5-frame Down, Esc (leave MODIFY CONTROLS) and
@@ -1828,6 +1881,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u19-oracle
 	@echo "== endgame truth U20: CHAOS's ending (character 6, cell 4); skips without its capture =="
 	@$(MAKE) --no-print-directory gp-u20-oracle
+	@echo "== endgame truth U21: ARMADON's ending (character 4, cell 5); skips without its capture =="
+	@$(MAKE) --no-print-directory gp-u21-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify

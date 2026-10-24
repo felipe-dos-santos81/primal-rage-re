@@ -637,6 +637,49 @@ class BandAllowance(Dirs):
                          ((5120, 1, 5,
                            '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),))
 
+    def test_the_table_names_the_measured_u21_frames(self):
+        # Endgame truth Task 6 (record §E6): ARMADON's ending's fifteen present-copy
+        # scan-outs (contract §G5's class, measured on the 4,974-frame dump): each
+        # binds one unique adjacent pair by its byte-equal segment(s) and pins its
+        # band. 426 and 756 are round 1's mode-8 screen (ports 291/292, 577/578),
+        # 4317 the final's mode-0x0D -> 0x0C entry (3610/3611), the eleven 4470..4560
+        # the mode-0xF master screen (3740/3741 .. 3816/3817) and 5119 the ending's
+        # mode-0x15 fade (4300/4301, the U13 5120 class). PIN only, as the U13 entry:
+        # the recipe's mutations are proved on the fixture by this class's sub-tests
+        # and on the real dump by the manual run record §E6 reports; the dump is not
+        # retained.
+        self.assertEqual(gc.BANDS_ALLOWED['gp-u21-armadon-ending'],
+                         ((426, 58, 191,
+                           '5d3d8e35e3f51cf6b311f324e6464e3867ff0d1b14245a6bc171596019018b4b'),
+                          (756, 151, 154,
+                           'e59ab79c2ef799dc9c62fd288ecb3beab3e0872789ef00233e3ebbe87c96a3de'),
+                          (4317, 4, 32,
+                           '3144a709b3ec68ebd634a739d50dc4d828745de7cabf039dd1bf22b13687fafb'),
+                          (4470, 0, 47,
+                           'ddafe873449ea92c58b677ed0eb03621b32e20e027b26bb642507bd91f6f0e6e'),
+                          (4477, 0, 29,
+                           '2d86bf24b3159f478651834c631e1f5444edde3a2546871b40e1d53e0db2dc19'),
+                          (4486, 195, 200,
+                           '1a44ec8841928d96d6f4fbd54f642751f01484928ba811f212f51b847506bf08'),
+                          (4491, 0, 11,
+                           '6831e908ba5d1ebcae85df1864be3b05c7d8606fcdb8c1bf80c3a96495e0082e'),
+                          (4497, 0, 82,
+                           'df42f0b55e5a6d540833176d9931e422279d4034524bdb733ae0c0a5691bf3ff'),
+                          (4502, 0, 13,
+                           '3cf9379061f7441b7c4471b55310e473981af591de9127889290b38c964c3563'),
+                          (4505, 5, 32,
+                           'c72d73dac4804087ccd98a88e53a5106f9fa8624eab027d6e6bc223bb7ce3555'),
+                          (4511, 0, 65,
+                           '30e62f335803a407aa4620248f09698f7c20f7f7c939d71b3969aa804d55469e'),
+                          (4527, 135, 200,
+                           '929bc3ad9b85d5c8d642b4d5c10dff9133c466a13a5f972d823330ffe1e5efc9'),
+                          (4554, 103, 200,
+                           'e10b51fb7b5bd6efa86e215f5bbbe4a745e845bc1bd25bccbfd5bc57d435f89f'),
+                          (4560, 110, 200,
+                           'b0ca25c494237c479259872d18dd2967d93bd49a1850b7f6de03ff15c4b66950'),
+                          (5119, 0, 2,
+                           '287a61f4cc91a282bfdd583a0ebf510b90d87de913545aeaa8ed76d60b0e950a')))
+
 
 class Scan3Allowance(Dirs):
     # Track G task 6 (record §G6): the named three-frame scan-out allowance, the
@@ -1055,6 +1098,16 @@ class OverlayAllowance(Dirs):
         # dump is not retained, so this case does not run a dump test.
         self.assertEqual(gc.OVERLAY_ALLOWED['gp-u20-chaos-ending'],
                          ((2180, 1781, 1780, 1782,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+        # endgame truth Task 6 (record §E6): ARMADON's ending's own loader presentation at
+        # capture 2217 (raw 5125), port 1799's 166 glyph pixels over port 1800's mode-0x12
+        # screen, the mask from port 1798 (both mode 0x17 at tick 00000C6D). PIN only, as
+        # the U18/U19/U20 entries: the recipe's mutations are proved on the fixture by this
+        # class's sub-tests and on the real dump by the manual run record §E6 reports; the
+        # dump is not retained, so this case does not run a dump test. Named limit: the
+        # later mode-0x12 pair (1802, 1801) has the same glyph bytes at the same indices.
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u21-armadon-ending'],
+                         ((2217, 1799, 1798, 1800,
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
 
 

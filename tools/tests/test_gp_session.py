@@ -699,6 +699,41 @@ class TestChaosEnding(unittest.TestCase):
         self.assertEqual(len(u10), 21)                            # u10 itself, not extended
 
 
+class TestArmadonEnding(unittest.TestCase):
+    """gp-u21-armadon-ending (endgame truth Task 6; record §E1.1/§E6): P1 confirms the
+    character-select cell 5, which 0xC8882 = 00 02 03 01 06 04 05 (0x43D6E/0x43D74) maps
+    to class 4 ARMADON, whose ending is DS_0010782A[DS_00104AD4 * 0x94] = 4 (title id
+    0xE2, THE MEDITATION OF ARMADON). ending_menu(5) is five p1.right presses from cell 0,
+    so the walk is cell 5's own; the scene is otherwise Task 3's TALON arrangement."""
+
+    def test_the_walk_is_five_rights_from_cell_zero(self):
+        menu, steps = gs.WIN_MENU, gs.SCENARIOS['gp-u21-armadon-ending']['steps']
+        self.assertEqual(steps[:len(menu) - 1], menu[:-1])        # the same menu path
+        self.assertEqual(steps[3:9], (
+            ('after_mode', 0x10, 60, ('pad', ('p1.right',), 4)),  # cell 0 -> 1
+            ('after', 30, ('pad', ('p1.right',), 4)),             # 1 -> 2
+            ('after', 30, ('pad', ('p1.right',), 4)),             # 2 -> 3
+            ('after', 30, ('pad', ('p1.right',), 4)),             # 3 -> 4
+            ('after', 30, ('pad', ('p1.right',), 4)),             # 4 -> 5 (class 4)
+            ('after', 30, ('pad', ('p1.start',), 6)),             # confirm cursor 5
+        ))
+
+    def test_the_scenario_marks_armadons_lands_and_clones_u10s_tail(self):
+        scn = gs.SCENARIOS['gp-u21-armadon-ending']
+        self.assertIn('gp-u21-armadon-ending', gs.STOP_AT_END)
+        self.assertEqual((scn['time_limit'], scn['memsize'], scn['extra']),
+                         (240, 64, gs.WIN_EXTRA))
+        steps, u10 = scn['steps'], gs.SCENARIOS['gp-u10-ending']['steps']
+        i = next(k for k, st in enumerate(steps) if st[0] == 'after_entry' and st[1] == 0x06)
+        k = next(k for k, st in enumerate(u10) if st[0] == 'after_entry' and st[1] == 0x06)
+        self.assertEqual(steps[i], ('after_entry', 0x06, 1, 10,
+                                    ('poke', ((0x108106, gs.lands_marked(0, 4)),
+                                              (0x10789E, b'\x78')))))
+        self.assertEqual(gs.lands_marked(0, 4), b'\x84' * 7)      # 0x80 | side 0 | class 4
+        self.assertEqual(steps[i + 1:], u10[k + 1:])              # the rest is u10's
+        self.assertEqual(len(u10), 21)                            # u10 itself, not extended
+
+
 class TestLiveWin(unittest.TestCase):
     """gp-u14-win-live (plan 2026-10-20-gameplay-truth-ii Task 6; spec W5): a match won
     by fought hits, without the WIN_MENU pokes. The hit sequence is the builder's and

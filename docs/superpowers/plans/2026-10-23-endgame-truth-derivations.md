@@ -1256,3 +1256,184 @@ No conflict with §E1 was found: cell 4 is class 6 CHAOS, the mark is `0x86`,
 the title id is `0xE4` (CHAOS' REDEMPTION) and the label is the character name.
 The old scenarios, `WIN_MENU1`, the U13/U18/U19 recipes and every existing pin
 are unchanged.
+
+---
+
+## §E6 The ARMADON ending capture (Task 6)
+
+### The scenario and the milestones
+
+`SCENARIOS['gp-u21-armadon-ending']` (in `STOP_AT_END`) is P1's confirm of
+character-select cell 5 — `ending_menu(5)`, Task 3's helper: five `p1.right` presses
+(the first at mode 0x10 + 60, the rest 30 apart, hold 4) and the confirm — which
+`0xC8882 = 00 02 03 01 06 04 05`, indexed by the cursor at `0x43D6E`/`0x43D74`, maps to
+class 4 ARMADON (§E1.1). The first poke is `(0x108106, lands_marked(0, 4))` = `0x84 × 7`
+and `0x10789E = 0x78` at `after_entry 0x06, 1, 10`; the rest is
+`SCENARIOS['gp-u10-ending']['steps']` from index `len(WIN_MENU) + 1` (the round-2 KO, the
+final's 14 pokes and the `until_mode 0x03` end). `time_limit=240`, `WIN_EXTRA` and
+`memsize=64` are u10's (record §W.13); neither `WIN_MENU` nor u10's steps are mutated.
+
+`MILESTONES['gp-u21-armadon-ending']` is `start_char(4, 5)` (the label names character
+4 / cursor 5; the predicate `_all(c0=4, b1e=1)`), the round-1 KO row whose seven-lands
+predicate is `[0x80 | r['c0']] * 7` (measured `0x84` on the capture), `_MATCH1[1:]` and
+`_ending_tail(4, 'ARMADON')`. The seventh-land row is the inherited `0x41C28 state 3` row
+(`r['t104'] & 0xFF == 7`), not the mark row. The mode-0x1F row is `_all(ad4=0, c0=4)`
+under the label `ARMADON's ending`; the title is a `0xA80E4` fact — id `0xE2`,
+THE MEDITATION OF ARMADON (§E1.1) — and the compared frames' content, not a WIN/S
+field.
+
+### The capture (2026-10-23)
+
+`xvfb-run -a make gp-capture scenario=gp-u21-armadon-ending` (this host has no X
+display). Every session check is `ok`:
+
+```text
+snapshots 9953, f 5..278C, 167 frames missed
+CHECK base / steps fired 25/25 / end frame reached / mode 0x27 after the Enter /
+      snapshots kb == raw (0 differ) / frames written 5946/5946 / port script v2 /
+      no unscripted input / pokes written 17/17, 0 raced / stopped at the end
+      (SIGTERM at f=278C, rc=0): ok
+wrote 5946 frames (raw 1414..14516), wall 208.0s
+```
+
+`python3 tools/gp_capture.py check-input` prints `check=ok no unscripted input`. The 25
+fired steps are the 9 menu steps (the `boot`/`after`/`after_mode` prefix, the five
+`p1.right` presses and the confirm), the scenario's own first poke and the 15 cloned u10
+steps; the trailing `until_mode` is the 26th step and is not counted as a fired step
+(the harness's `total` excludes it — the X record says `step=26`).
+
+Measured in its `poll.log` (9,953 S records):
+
+| Fact | Value |
+|---|---|
+| the first poke | `W f=0504 step=9 addr=00108106 was=..00 now=84848484848484 late=0 race=0` and `0x0010789E was=00 now=78` |
+| round 1's mode-6 entry | `f=0x4FB`, `c0=4 b1e=1` |
+| round 1's KO (mode 8) | `f=0x508`, the seven `0x84` marks |
+| the conquered lands | mode `0x12` at `f=0xC1E`; the seventh land (`t104=7`) at `f=0xCBF` |
+| WORLD DOMINATION | `c82=1` at `f=0xD0B` |
+| the health bonus | mode `0x23` at `f=0xE3D`, mode `0x22` at `f=0xEB8`, mode `0x24` at `f=0x1358` |
+| the final | mode `0xC` at `f=0x1524`; mode 0xF at `f=0x15B3` |
+| the ending | mode `0x1F` at `f=0x1885` with `ad4=0 c0=4`; state 3 at `f=0x1E27` |
+| the high-score entry | mode `0x1E` at `f=0x21ED` |
+| back in mode 3 / the X record | `f=0x2755` (`X ms=206774 f=2755 step=26 end`, `E reason=end rc=0`) |
+
+`gp_win.py check` prints every row `ok` and `30/30 milestones ok`, including
+`ARMADON's ending (mode 0x1F, 0x208F8): ... is character c0=4 at f=1885`.
+
+### The report and the allowances
+
+`gp_compare.py --report --max-unexplained 0` on the 4,974-frame port dump:
+
+- **window** from capture 90 (raw 1743); 5,836 classified: 3,598 clean, 2,149
+  splice, 59 transition, 15 band-allowed, 1 overlay-allowed, 14 unexplained, and 20
+  all-black (the enforced run stops at the first unexplained, hence its 5,823 and 1).
+- **first unexplained** capture **5932** (raw 14456), nearest port 0: 5932..5945 are
+  the post-script tail (the replay's dump ends at port frame 4973, `f=0x2753`, and its
+  trace at `f=0x2755`, where the capture's X record sits) and are NOT claimed.
+- **reach** port 4973 (the dump's last frame).
+- **trace / win / moves**: 9,615 frames compared from `f=0x120`, 167 without a capture
+  snapshot, **0 differing through 10069**; the first tick difference is `f=0x121`
+  (reported apart); the normalised `ent` 0 of 9,615 differ and `t508` 6,466 of 9,615
+  (port = capture + 1), both reported.
+- the mode-0x1F frames are inside the window: the ending's S records map to capture
+  ≈4942 (`f=0x1885`) and ≈5189 (`f=0x1E27`) by the capture's own clock
+  (`ms * 70.09 / 1000`), both below 5932.
+
+One loader overlay and fifteen present-copy bands, each its own byte recipe
+(`tools/gp_compare.py`, `OVERLAY_ALLOWED`/`BANDS_ALLOWED`):
+
+| capture (raw) | class | recipe (measured from the dump's `frames.txt`) |
+|---|---|---|
+| 2217 (5125) | overlay | port 1799's (`f=0C1C tick=C6D mode=17`) 166 glyph px, rows 192..197 x 0..85, over port 1800's (`f=0C1C tick=C73 mode=12`) mode-0x12 screen; the mask from port 1798 (`f=0C1C tick=C6D mode=17`, the stale-palette twin). The §G7 loader presentation at the mode-0x17 -> 0x12 entry; 2216 is clean at port 29 (the still-black early screen) and 2218 clean at 1800. |
+| 426 (3002) | band | rows 0..57 port 291's (`f=0505 tick=557 mode=08`), 191..199 port 292's (`f=0506 tick=558 mode=08`), band 58..190; pair (291, 292) unique; neighbours 425 clean at 291, 427 clean at 295. Round 1's mode-8 screen. |
+| 756 (3333) | band | rows 0..150 port 577's (`f=0623 tick=675 mode=08`), 154..199 port 578's (`f=0624`), band 151..153; pair (577, 578) unique; 755 clean at 577, 757 a splice. The same mode-8 screen. |
+| 4317 (8037) | band | rows 0..3 port 3610's (`f=1577 tick=1636 mode=0C`), 32..199 port 3611's (`f=1578`), band 4..31; pair (3610, 3611) unique; 4316 clean at 3609, 4318 a splice. The final's mode-0x0D -> 0x0C entry (U19's 4362 / U20's 4272 class). |
+| 4470 (8216) | band | rows 47..199 port 3741's (`f=15F8 tick=16D1 mode=0F`), band 0..46; pair (3740, 3741) unique by the bottom rows; 4469 clean at 3739, 4471 a transition. The mode-0xF master screen. |
+| 4477 (8223) | band | rows 29..199 port 3747's (`f=15FE tick=16D7 mode=0F`), band 0..28; pair (3746, 3747); 4476 clean at 3745, 4478 a transition. |
+| 4486 (8232) | band | rows 0..194 port 3753's (`f=1604 tick=16DD mode=0F`), band 195..199; pair (3753, 3754); 4485 a splice, 4487 clean at 3755. |
+| 4491 (8237) | band | rows 11..199 port 3759's (`f=160A tick=16E3 mode=0F`), band 0..10; pair (3758, 3759); 4490 clean at 3757, 4492 a transition. |
+| 4497 (8243) | band | rows 82..199 port 3764's (`f=160F tick=16E8 mode=0F`), band 0..81; pair (3763, 3764); 4496 clean at 3762, 4498 clean at 3764. |
+| 4502 (8248) | band | rows 13..199 port 3768's (`f=1613 tick=16EC mode=0F`), band 0..12; pair (3767, 3768); 4501 clean at 3766, 4503 a splice. |
+| 4505 (8251) | band | rows 0..4 port 3770's (`f=1615 tick=16EE mode=0F`), 32..199 port 3771's (`f=1616`), band 5..31; pair (3770, 3771); 4504 clean at 3769, 4506 a splice. |
+| 4511 (8257) | band | rows 65..199 port 3776's (`f=161B tick=16F4 mode=0F`), band 0..64; pair (3775, 3776); 4510 clean at 3774, 4512 clean at 3776. |
+| 4527 (8273) | band | rows 0..134 port 3788's (`f=1627 tick=1700 mode=0F`), band 135..199; pair (3788, 3789); 4526 clean at 3788, 4528 clean at 3790. |
+| 4554 (8300) | band | rows 0..102 port 3811's (`f=163E tick=1717 mode=0F`), band 103..199; pair (3811, 3812); 4553 clean at 3811, 4555 clean at 3813. |
+| 4560 (8306) | band | rows 0..109 port 3816's (`f=1643 tick=171C mode=0F`), band 110..199; pair (3816, 3817); 4559 clean at 3816, 4561 clean at 3818. |
+| 5119 (8872) | band | rows 2..199 port 4301's (`f=182A tick=1903 mode=15`), band 0..1; pair (4300, 4301); 5118 clean at 4300, 5120 clean at 4302. The ending's mode-0x15 fade (U13's 5120 class). |
+
+**Why these sixteen and not a port divergence.** The game's present copies the composed
+320×200 frame into the aperture top to bottom; at 70.09 Hz the scan-out runs
+asynchronously to the 60.05 Hz presents, so a scan that lands inside that copy reads the
+*previous* present's rows above the copy's front, the *new* present's rows below it and
+the front row mixed. The captured frame is therefore a state the driver never dumps — it
+dumps one composed frame per present — which is `BANDS_ALLOWED`'s named class (§G5).
+Measured per frame on this dump: its two segments are byte-equal to one unique adjacent
+dumped pair, its band rows (and the mixed front row where the front lies inside the
+band) are no dumped present's rows, every neighbour is clean, a splice or a transition,
+and **fourteen of the fifteen have all 64,000 pixels equal to a pixel of some port frame
+within ±4 of that pair** (0 unmatched of 64,000 for 426, 756, 4317, 4470, 4477, 4486,
+4491, 4497, 4502, 4505, 4511, 4527, 4554 and 4560) — a pure tear of two dumped presents.
+The exception is 5119, the mode-0x15 fade: its rows 2..199 are port 4301's and its 640
+band pixels hold 215 equal to port 4301's, 31 to 4300's and 425 that no frame within ±4
+has (no constant per-channel offset reproduces them) — the fade's own step between the
+two presents, U13's 5120 class. Capture 4470 is the worked example of the tear: rows
+0..45 are port 3739's, rows 47..199 are port 3741's and row 46 is a 216-of-320-pixel
+mixture of the two — port 3740 (the present between them) is nowhere on the frame,
+because its whole copy fell between two scans. The mode-0xF screen is redrawn almost
+entirely every iteration (consecutive dumped frames differ in ~45,000 pixels), which is
+why eleven of the sixteen sit there; the earlier ending captures' scans simply missed
+the copy windows (U19/U20 had none).
+
+Mutation runs on the real dump (`gp_compare.band_explain` / `overlay_explain` called on
+the loaded frames), 79 edits over the fifteen band entries with the range's own hash
+where the range moved:
+
+| edit (per entry) | result |
+|---|---|
+| one band byte in the capture (15) | caught: `its band rows a..b are 45723eeaec59.., not the named 5d3d8e35e3f5..` |
+| one byte of a bound port frame's segment (15) | caught: `no unique adjacent port pair binds its rows [0,58)/[191,200)` |
+| the band shrunk by one row at the top (`top_row+1`, its own hash) (15) | caught: `no unique adjacent port pair binds its rows [0,59)/[191,200)` |
+| the band shrunk by one row at the bottom (`band_hi-1`, its own hash) (15) | caught: `no unique adjacent port pair binds its rows [0,58)/[190,200)` |
+| the band grown by one row (`top_row-1` / `band_hi+1`, its own hash) (19 applicable) | explained: a wider band is a valid description of the same frame — the §G5 shape limit U13's 5120 names (the bounds follow the unbindable run's ends, not the model) |
+
+The overlay's five mutations all fail: a masked capture pixel (`its pixel row 192 x 0 is
+010203, not port 1799's 41b2d3`), a T1 glyph byte (`its glyph pixels are
+b1f9319c813a.., not the named de1c1bb2b51d..`), an S screen pixel off the mask (`its
+pixel row 0 x 100 is 000000, not port 1800's 070707`), T1/T2 swapped
+(`43fead2f4cfc..`) and S named as T2 (`a2bc55c0b71a..`). Named limit: the later
+mode-0x12 pair (1802, 1801) carries the same glyph bytes at the same 166 indices, so
+T1's identity is not unique — T2 is only the mask's indicator — and the capture's
+pixels are the same under either.
+
+### The pins
+
+`GP_U21_MIN_FIRST=5932`, `GP_U21_TRACE_MIN_FIRST=10070`,
+`GP_U21_MAX_START=90`, `GP_U21_MIN_REACH=4973`,
+`GP_U21_CAPTURE_SHA256=41e384a94049fc5c1c74934c802153dcdee230631d44522ef03f27935db1b42f`,
+`GP_U21_CAPTURE_FRAMES=5946`, `GP_U21_MILESTONES=30`,
+`GP_U21_WIN_MIN_FIRST=10070`. Each one-step move was run through the target's own
+tools (with the dump kept) and fails:
+
+| move | failure |
+|---|---|
+| MIN_FIRST 5933 | `FAIL: first unexplained 5932 < ratchet N 5933` (also through `make gp-u21-oracle GP_U21_MIN_FIRST=5933`, `make: *** [Makefile:1698: gp-u21-oracle] Error 1`) |
+| TRACE_MIN_FIRST 10071 | `FAIL: N 10071 > end 10070: N is unreachable` |
+| WIN_MIN_FIRST 10071 | `FAIL: win: N 10071 > end 10070: N is unreachable` |
+| MAX_START 89 | `FAIL: window starts at capture 90 (raw 1743) > pinned start 89` |
+| MIN_REACH 4974 | `FAIL: window reach port 4973 < pinned reach 4974 (the port exhibited fewer port frames)` |
+| sha (last nibble) | `FAIL: poll.log sha256 41e384a9..b1b42f (5946 frames) != the pinned 41e384a9..b1b42e (5946 frames): a re-capture invalidates the pinned N, F and window start; re-measure them from the new capture (record §G.24) before pinning` |
+| CAPTURE_FRAMES 5947 | `FAIL: poll.log sha256 … (5946 frames) != the pinned … (5947 frames)` |
+| MILESTONES 31 | `FAIL: path: N 31 > end 30: N is unreachable` |
+
+`make gp-u21-oracle` passes at the pins (30/30 milestones, the sixteen allowance lines,
+first unexplained 5932, reach 4973, `0 differing through 10069`) and is wired into
+`make verify` after `gp-u20-oracle`. The `PR_GP_DUMP` miss set for the new scenario is
+the measured §G.24 pair `0x29D60` (one hit) / `0x5D812` (three hits) from
+`frontend_mode_1b_step`, pinned in `port/tests/test_platform.c` as
+`k_miss_gp_u21_armadon_ending`, and `test_gp_capture`'s poked-final list gains the
+scenario (`memsize=64`).
+
+No conflict with §E1 was found: cell 5 is class 4 ARMADON, the mark is `0x84`, the title
+id is `0xE2` (THE MEDITATION OF ARMADON) and the label is the character name. The old
+scenarios, `WIN_MENU1`, the U13/U18/U19/U20 recipes and every existing pin (the
+4248/4320/5120 pins included) are unchanged.

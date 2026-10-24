@@ -404,6 +404,56 @@ class TestChaosEnding(unittest.TestCase):
         self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
 
 
+class TestArmadonEnding(unittest.TestCase):
+    """gp-u21-armadon-ending (endgame truth Task 6; record §E1.1/§E6): ARMADON is
+    character 4, character-select cell 5, title id 0xE2 (THE MEDITATION OF ARMADON). The
+    mode-0x1F row's label is the character name, not the title; the land mark is
+    0x80 | side 0 | 4 = 0x84."""
+
+    def test_start_char_labels_the_character_and_cell(self):
+        rows = gw.start_char(4, 5)
+        self.assertEqual([(r[1], r[2]) for r in rows], [(0x10, 1), (0x06, 1)])
+        self.assertIn('character 4', rows[1][0])
+        self.assertIn('cursor 5', rows[1][0])
+        self.assertTrue(rows[1][3](dict(c0=4, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=3, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=4, b1e=2)))
+
+    def test_the_milestones_end_with_armadons_ending(self):
+        rows = gw.MILESTONES['gp-u21-armadon-ending']
+        self.assertEqual(len(rows), 30)
+        self.assertEqual([r[:3] for r in rows[:2]], [r[:3] for r in gw.start_char(4, 5)])
+        ending = [r for r in rows if (r[1], r[2]) == (0x1F, 1)]
+        self.assertEqual(len(ending), 1)
+        label, _, _, pred = ending[0]
+        self.assertTrue(label.startswith("ARMADON's ending"), label)
+        self.assertIn('c0=4', label)
+        self.assertNotIn('MEDITATION', label)    # the title is a 0xA80E4 fact, not the label
+        self.assertTrue(pred(dict(ad4=0, c0=4)))
+        self.assertFalse(pred(dict(ad4=0, c0=3)))
+        self.assertFalse(pred(dict(ad4=1, c0=4)))
+
+    def test_the_round_1_row_expects_armadons_land_marks(self):
+        rows = gw.MILESTONES['gp-u21-armadon-ending']
+        round1 = [r for r in rows if (r[1], r[2]) == (0x08, 1)]
+        self.assertEqual(len(round1), 1)
+        marks84 = _marks(l0=0x84, l1=0x84, l2=0x84, l3=0x84, l4=0x84, l5=0x84, l6=0x84)
+        self.assertTrue(round1[0][3](dict(c0=4, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                          **marks84)))
+        self.assertFalse(round1[0][3](dict(c0=4, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                           **_marks(l0=0x86, l1=0x86, l2=0x86, l3=0x86,
+                                                    l4=0x86, l5=0x86, l6=0x86))))
+
+    def test_the_seventh_land_row_is_the_t104_tally(self):
+        rows = gw.MILESTONES['gp-u21-armadon-ending']
+        seventh = [r for r in rows if (r[1], r[2]) == (0x12, 1)
+                   and r[0].startswith('0x41C28 state 3')]
+        self.assertEqual(len(seventh), 1)
+        self.assertEqual(seventh[0][3](dict(t104=7)), True)
+        self.assertEqual(seventh[0][3](dict(t104=6)), False)
+        self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
+
+
 class TestPath(unittest.TestCase):
     def test_a_capture_without_mode_27_fails_cleanly(self):
         cap = _log([(0x100, 0x140, 0x03, {}), (0x141, 0x150, 0x10, {})])
@@ -433,12 +483,13 @@ class TestPath(unittest.TestCase):
         self.assertEqual(sorted(gw.MILESTONES),
                          ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live',
                           'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
-                          'gp-u20-chaos-ending', 'gp-u9-win'])
+                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():
             for label, mode, k, pred in rows:
                 self.assertTrue(0 < mode < 0x40 and k >= 1, (name, label))
         for name in ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
-                     'gp-u19-vertigo-ending', 'gp-u20-chaos-ending'):
+                     'gp-u19-vertigo-ending', 'gp-u20-chaos-ending',
+                     'gp-u21-armadon-ending'):
             rows = [(m, k) for _, m, k, _ in gw.MILESTONES[name]]
             self.assertEqual(len(rows), 30)
             self.assertEqual(rows.count((0x0D, 7)), 1)
