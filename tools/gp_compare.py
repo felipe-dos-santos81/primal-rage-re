@@ -178,6 +178,55 @@ BANDS_ALLOWED = {
         # Neighbours 5118 clean at 4300 and 5120 clean at 4302.
         (5119, 0, 2, '287a61f4cc91a282bfdd583a0ebf510b90d87de913545aeaa8ed76d60b0e950a'),
     ),
+    'gp-u22-diablo-ending': (
+        # Endgame truth Task 7 (record §E7): eight present-copy scan-outs of the
+        # DIABLO capture, the two-segment shape (rows 0..top_row-1 of one present and
+        # band_hi..199 of the next, the band a state no dumped present holds; the
+        # U13/U21 class). Six more frames of this capture are unique three-frame
+        # scan-outs (SCAN3_ALLOWED) and one is the loader overlay (OVERLAY_ALLOWED);
+        # where a three-frame recipe binds all 200 rows it is used instead of a band.
+        # The entries' order is ascending; `top_row` 0 and `band_hi` 200 are the
+        # entries whose band reaches an edge (the pair then binds through the other
+        # segment alone).
+        #
+        # Capture 1988 (raw 4829), mode 9: rows 0..116 port 1638's (f=0B02
+        # tick=00000B57 mode=0009), rows 122..199 port 1639's (f=0B03 tick=B58,
+        # mode 0009) and rows 117..121 the band; (1638, 1639) unique. Neighbours
+        # 1987 clean at 1638 and 1989 a (1639, 1640) splice.
+        (1988, 117, 122, '8910a572dd6de6db88203905a608459ef595d210c64ffb39498a76e4270365b9'),
+        # Capture 2014 (raw 4855), mode 9: rows 66..199 are port 1661's (f=0B19
+        # tick=00000B6E mode=0009) and rows 0..65 the band; (1660, 1661) unique.
+        # Neighbours 2013 clean at 1659 and 2015 a (1661, 1662) splice.
+        (2014, 0, 66, '62708bc21c8c9429e72c92b7786eeb331ec4429ec7d909fe2100a4456475e71a'),
+        # Capture 2020 (raw 4861), mode 9: rows 13..199 are port 1666's (f=0B1E
+        # tick=00000B73 mode=0009) and rows 0..12 the band; (1665, 1666) unique.
+        # Neighbours 2019 clean at 1664 and 2021 a (1666, 1667) splice.
+        (2020, 0, 13, '4e2d273ec17c1c645cde62e95f74cc75bb427a67ce58fb11fb5edffff58fdf54'),
+        # Capture 5008 (raw 8959), the ending's mode-0x15 fade: rows 0..176 port
+        # 4270's (f=184E tick=00001929 mode=0015), rows 191..199 port 4271's
+        # (f=184F tick=0000192A) and rows 177..190 the band (the fade's own step
+        # between the two presents, U13's 5120 class); (4270, 4271) unique.
+        # Neighbours 5007 clean at 4270 and 5009 clean at 4272.
+        (5008, 177, 191, '3e0e4a3ce88a017d190e8f06e26b2f60e0a243210d3853dde3b3a304603021ef'),
+        # Capture 5013 (raw 8966), the same fade: rows 2..199 port 4277's (f=1855
+        # tick=00001930 mode=0015) and rows 0..1 the band (the fade's step at the
+        # top edge); (4276, 4277) unique. Neighbours 5012 clean at 4275 and 5014
+        # clean at 4277.
+        (5013, 0, 2, '0ba833920723fcc0d3cd9e8e408c84af8a78ac80139d448173a3f935ba7d9144'),
+        # Capture 5015 (raw 8968): rows 2..199 port 4279's (f=1857 tick=00001932
+        # mode=0015) and rows 0..1 the band; (4278, 4279) unique. Neighbour 5014
+        # clean at 4277; 5016 is 5015's successor state (its own named band below).
+        (5015, 0, 2, 'd6a7f2bc5434edc9cb86ec6fe81e32f44b09891dfadbf99206cee5c1b4fb69b6'),
+        # Capture 5016 (raw 8969): rows 0..93 port 4280's (f=1858 tick=00001933
+        # mode=0015), rows 134..199 port 4281's (f=1859 tick=00001934) and rows
+        # 94..133 the band; (4280, 4281) unique. Neighbour 5017 clean at 4281.
+        (5016, 94, 134, 'b0f6fe0c5e29acab29da07a98ad2ffd274f39bbfc4ad9b2fc9809481ac4c7f06'),
+        # Capture 5024 (raw 8983): rows 0..148 port 4291's (f=1863 tick=0000193E
+        # mode=0015), rows 189..199 port 4292's (f=1864 tick=0000193F) and rows
+        # 149..188 the band; (4291, 4292) unique. Neighbours 5023 clean at 4291
+        # and 5025 clean at 4293.
+        (5024, 149, 189, 'f5d6102f0b72f59341a505962e2541e1fd83203c3f4fe1560b4d9c62cec2b673'),
+    ),
     'gp-u13-ending2': (
         # Capture 5120 (raw 8839) at the ending's mode-0x15 fade (record §P3).
         # Its neighbour 5119 is clean at port 4315 (f=1824) and 5121 is a
@@ -388,6 +437,48 @@ SCAN3_ALLOWED = {
         # exists only in 3568).
         (4272, 19, 91, '9744b9869a3b9e4b749ddbdacba395ad527c0f3fbef5e40ff88eae19013e30be'),
     ),
+    'gp-u22-diablo-ending': (
+        # Capture 380 (raw 3028): round 1's mode-8 screen, three presents inside one
+        # scan (§G6's class). Rows 0..10 are port 284's (f=04FB tick=00000551
+        # mode=0008) alone before the bind (the still-scanned old screen's top rows),
+        # rows 11..60 are port 286's (f=04FD tick=00000552 mode=0008) and rows 61..199
+        # are port 287's (f=04FE tick=00000553 mode=0008); (286, 287) is the dump's
+        # unique adjacent-pair bind and the r2 split is forced (row 61 exists only in
+        # 287). Neighbours 379 clean at 284 and 381 a (287, 288) splice.
+        (380, 11, 61, 'e9a10eb395f6b88c1d97654ecd76d736f8f6a08c9c5617867912719dc4be4ccc'),
+        # Capture 1267 (raw 4009), mode 5: rows 0..24 are held by the earlier ports
+        # 218..221 (mode 3, the still-black early screens) and 1026 (f=0844
+        # tick=00000899 mode=0005) — not uniquely bound, the named limit — rows 25..178
+        # are port 1027's (f=0845 tick=0000089A mode=0005) and rows 179..199 port
+        # 1028's (f=0846 tick=0000089B); (1027, 1028) unique. Neighbours 1266 clean
+        # at port 1 (the still-black early screen) and 1268 clean at 1028.
+        (1267, 25, 179, '9f20c2ce81c05a414a7b6fa5d0b2766944eef64f9ba8fe06b8b74ca70e8bb2a8'),
+        # Capture 4136 (raw 7998), the final's mode 0xC: rows 0..23 are port 3496's
+        # (f=154D tick=000015F1 mode=000C) alone before the bind, rows 24..149 are
+        # port 3497's (f=154E tick=000015F2 mode=000C) and rows 150..199 port 3498's
+        # (f=154F tick=000015F3); (3497, 3498) unique. Neighbours 4135 clean at 3496
+        # and 4137 clean at 3498.
+        (4136, 24, 150, '221c7921fd2463f65fb8a482b6c928207aaac3bf322b42e6e825abec17483240'),
+        # Capture 4228 (raw 8129), the same final: rows 0..41 are port 3579's
+        # (f=159E tick=00001662 mode=000C) alone before the bind, rows 42..144 are
+        # port 3580's (f=159F tick=00001663) and rows 145..199 port 3581's (f=15A0
+        # tick=00001664); (3580, 3581) unique. Neighbours 4227 clean at 3579 and
+        # 4229 clean at 3581.
+        (4228, 42, 145, '13f698a7b1bebc862720e22041862f02b4c5f315540e3e86911a52f7f7370000'),
+        # Capture 5027 (raw 8987), the ending's mode-0x15 fade: rows 0..118 are port
+        # 4294's (f=1866 tick=00001941 mode=0015) alone before the bind, rows 119..121
+        # are port 4295's (f=1867 tick=00001942) and rows 122..199 port 4296's
+        # (f=1868 tick=00001943); (4295, 4296) unique. Neighbours 5026 clean at 4294
+        # and 5028 clean at 4296.
+        (5027, 119, 122, '4fdc50e09875fafc1716dd46e40518e75cea280a5770b81daca0e8103c542927'),
+        # Capture 5033 (raw 8994), the same fade: rows 0..129 are port 4300's
+        # (f=186C tick=00001947 mode=0015) alone before the bind, rows 130..197 are
+        # port 4302's (f=186E tick=00001949) and rows 198..199 port 4303's (f=186F
+        # tick=0000194A); (4302, 4303) unique. Port 4301 is nowhere on the frame (its
+        # whole present fell between two scans). Neighbours 5032 clean at 4300 and
+        # 5034 clean at 4302.
+        (5033, 130, 198, '9a5cd9bd7b6dc2c14642eab62211a5d64a5928dec2abb29b2002725ee333c17e'),
+    ),
 }
 
 
@@ -522,6 +613,23 @@ OVERLAY_ALLOWED = {
         # 166 indices, so T1's identity is not unique (T2 is only the mask's
         # indicator); the capture's pixels are the same under either.
         (2217, 1799, 1798, 1800,
+         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
+    ),
+    'gp-u22-diablo-ending': (
+        # Capture 2191 (raw 5152): DIABLO's own loader presentation at the mode-0x17 ->
+        # 0x12 entry, the same §G7 composition as U9/U10/U13/U18/U19/U20/U21: port
+        # 1822's (f=0C12 tick=00000C66 mode=0017) 166 glyph pixels at rows 192..197,
+        # x 0..85 over port 1823's (f=0C12 tick=00000C6C mode=0012) screen; port 1821
+        # (f=0C12 tick=00000C66 mode=0017) is the same indices under the stale black
+        # palette (the mask's source). The capture shows the composition over the new
+        # screen, where the replay's own presentation 1822 is over the stale one: no
+        # clean match or two-frame splice expresses it (2190 is clean at port 29, the
+        # still-black early screen, and 2192 clean at 1823). The glyph fingerprint is
+        # the loader string's (de1c1bb2..), measured on this dump. Named limit: the
+        # later mode-0x12 pair (1825, 1824) carries the same glyph bytes at the same
+        # 166 indices, so T1's identity is not unique (T2 is only the mask's
+        # indicator); the capture's pixels are the same under either.
+        (2191, 1822, 1821, 1823,
          'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
     ),
 }

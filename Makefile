@@ -68,7 +68,7 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
-        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle \
+        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1709,6 +1709,59 @@ gp-u21-oracle: build ## Endgame truth U21 oracle: ARMADON's ending (character 4,
 			--win-min-first "$(GP_U21_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U21_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u21-armadon-ending; exit $$rc; fi
 
+# Endgame truth Task 7 (plan docs/superpowers/plans/2026-10-23-endgame-truth.md; record §E1.1,
+# §E7): gp-u22-diablo-ending is DIABLO's ending. P1 confirms character-select cell 6
+# (ending_menu(6): six p1.right presses), which 0xC8882 = 00 02 03 01 06 04 05 maps to class 5
+# DIABLO (0x43D6E/0x43D74), whose ending is DS_0010782A[DS_00104AD4 * 0x94] = 5 (title id 0xE3,
+# DIABLO'S HELL — a 0xA80E4 fact and the compared frames' content, not a WIN/S field).
+# Its first poke writes DIABLO's seven land marks (0x85, not u10's SAURON 0x80: 0x41C28 state 1
+# tallies (mark & 0x7F) == DS_0010782A[side] | side << 6, 0x41D39/0x41D5C), and the rest are
+# gp-u10-ending's from its second poke on. `gp_win.py check` finds 30/30 milestones including the
+# mode-0x1F row's ad4=0,c0=5 under the label "DIABLO's ending".
+# Measured on the 2026-10-23 capture (5,811 frames, raw 1450..14592, wall 210.6 s, memsize=64):
+# the window starts at capture 74 (raw 1737); every content-bearing capture frame through 5797 is
+# explained (3,561 clean, 2,064 splice, 62 transition) plus fifteen named per-frame allowances,
+# each its own byte recipe (tools/gp_compare.py): eight BANDS_ALLOWED present-copy scan-outs
+# (1988/2014/2020 on the match-result screen, 5008/5013/5015/5016/5024 at the ending's mode-0x15
+# fade), six SCAN3_ALLOWED three-present scans (380 on round 1's mode-8 screen, 1267 on mode 5,
+# 4136/4228 on the final and 5027/5033 at the fade — the recipe binding all 200 rows is used
+# where one is unique) and the loader's 166-px glyph strip at capture 2191 (OVERLAY_ALLOWED, port
+# 1822 over 1823, mask from 1821). The first unexplained is 5798 (raw 14536): 5798..5810 are the
+# post-script tail (the replay's dump ends at port frame 4929 and its trace at f=0x2769, where the
+# capture's X record sits) and are NOT claimed; MIN_FIRST = 5798, and 5799 fails (the ratchet
+# fails only when the first unexplained precedes N). The comparison's window reach is port 4929
+# (the dump's last frame), so MIN_REACH = 4929 and 4930 fails as unreachable beyond the dump.
+# Trace and WIN fields agree through f=0x2769 (10089), so their end pins are 10090; the moves
+# comparison is reported by gp_compare (0 differing through 10089) and is not pinned. The
+# capture has 5,811 frames with this poll.log sha256 (e53bef4f..be0355).
+# An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
+# capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
+# WIN_MIN_FIRST when they improve.
+GP_U22_MIN_FIRST = 5798
+GP_U22_TRACE_MIN_FIRST = 10090
+GP_U22_MAX_START = 74
+GP_U22_MIN_REACH = 4929
+GP_U22_CAPTURE_SHA256 = e53bef4f6f4ef23e1c6046c453236d51b54575916cebd71259a3b9b8dbbe0355
+GP_U22_CAPTURE_FRAMES = 5811
+GP_U22_MILESTONES = 30
+GP_U22_WIN_MIN_FIRST = 10090
+gp-u22-oracle: build ## Endgame truth U22 oracle: DIABLO's ending (character 5, cell 6; skips without data/k11-captures/gp-u22-diablo-ending)
+	@echo "== gameplay oracle: gp-u22-diablo-ending (DIABLO's ending under pokes) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u22-diablo-ending ]; then echo "gp-u22-oracle: no capture at $(K11_CAPTURES)/gp-u22-diablo-ending (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u22-diablo-ending --capture $(K11_CAPTURES)/gp-u22-diablo-ending \
+			--capture-sha256 "$(GP_U22_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u22-diablo-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u22-diablo-ending --capture $(K11_CAPTURES)/gp-u22-diablo-ending \
+			--port $(GP_DUMP)/gp-u22-diablo-ending --min-first "$(GP_U22_MIN_FIRST)" \
+			--trace-min-first "$(GP_U22_TRACE_MIN_FIRST)" --max-start "$(GP_U22_MAX_START)" \
+			--min-reach "$(GP_U22_MIN_REACH)" \
+			--capture-sha256 "$(GP_U22_CAPTURE_SHA256)" --capture-frames "$(GP_U22_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u22-diablo-ending --capture $(K11_CAPTURES)/gp-u22-diablo-ending \
+			--port $(GP_DUMP)/gp-u22-diablo-ending --min-milestones "$(GP_U22_MILESTONES)" \
+			--win-min-first "$(GP_U22_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U22_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u22-diablo-ending; exit $$rc; fi
+
 # Host input truth U17 (plan docs/superpowers/plans/2026-10-21-host-input-truth.md Task 6;
 # gp_session.SCENARIOS['gp-u17-device2'], record §H6.6/§H6.9): the K11 service-menu walk to MODIFY
 # CONTROLS (0x31F24) with the K11 walk's own keys, one 5-frame Down, Esc (leave MODIFY CONTROLS) and
@@ -1883,6 +1936,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory gp-u20-oracle
 	@echo "== endgame truth U21: ARMADON's ending (character 4, cell 5); skips without its capture =="
 	@$(MAKE) --no-print-directory gp-u21-oracle
+	@echo "== endgame truth U22: DIABLO's ending (character 5, cell 6); skips without its capture =="
+	@$(MAKE) --no-print-directory gp-u22-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify

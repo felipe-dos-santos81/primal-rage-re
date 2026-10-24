@@ -454,6 +454,56 @@ class TestArmadonEnding(unittest.TestCase):
         self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
 
 
+class TestDiabloEnding(unittest.TestCase):
+    """gp-u22-diablo-ending (endgame truth Task 7; record §E1.1/§E7): DIABLO is
+    character 5, character-select cell 6, title id 0xE3 (DIABLO'S HELL). The mode-0x1F
+    row's label is the character name, not the title; the land mark is
+    0x80 | side 0 | 5 = 0x85."""
+
+    def test_the_milestones_end_with_diablos_ending(self):
+        rows = gw.MILESTONES['gp-u22-diablo-ending']
+        self.assertEqual(len(rows), 30)
+        # the start rows are start_char(5, 6)'s: character-select mode 0x10 and round 1's
+        # mode 0x06 c0=5/b1e=1, with the character and the cursor in the label (Task 4/5/6
+        # cover the helper's generic shape; these are DIABLO's own cell and class)
+        self.assertEqual([r[:3] for r in rows[:2]], [r[:3] for r in gw.start_char(5, 6)])
+        self.assertEqual([(r[1], r[2]) for r in rows[:2]], [(0x10, 1), (0x06, 1)])
+        self.assertIn('character 5', rows[1][0])
+        self.assertIn('cursor 6', rows[1][0])
+        self.assertTrue(rows[1][3](dict(c0=5, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=4, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c0=5, b1e=2)))
+        ending = [r for r in rows if (r[1], r[2]) == (0x1F, 1)]
+        self.assertEqual(len(ending), 1)
+        label, _, _, pred = ending[0]
+        self.assertTrue(label.startswith("DIABLO's ending"), label)
+        self.assertIn('c0=5', label)
+        self.assertNotIn('HELL', label)          # the title is a 0xA80E4 fact, not the label
+        self.assertTrue(pred(dict(ad4=0, c0=5)))
+        self.assertFalse(pred(dict(ad4=0, c0=4)))
+        self.assertFalse(pred(dict(ad4=1, c0=5)))
+
+    def test_the_round_1_row_expects_diablos_land_marks(self):
+        rows = gw.MILESTONES['gp-u22-diablo-ending']
+        round1 = [r for r in rows if (r[1], r[2]) == (0x08, 1)]
+        self.assertEqual(len(round1), 1)
+        marks85 = _marks(l0=0x85, l1=0x85, l2=0x85, l3=0x85, l4=0x85, l5=0x85, l6=0x85)
+        self.assertTrue(round1[0][3](dict(c0=5, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                          **marks85)))
+        self.assertFalse(round1[0][3](dict(c0=5, s1_5a=0x78, w2=1, w3=0, ad4=gw.NO_RESULT,
+                                           **_marks(l0=0x84, l1=0x84, l2=0x84, l3=0x84,
+                                                    l4=0x84, l5=0x84, l6=0x84))))
+
+    def test_the_seventh_land_row_is_the_t104_tally(self):
+        rows = gw.MILESTONES['gp-u22-diablo-ending']
+        seventh = [r for r in rows if (r[1], r[2]) == (0x12, 1)
+                   and r[0].startswith('0x41C28 state 3')]
+        self.assertEqual(len(seventh), 1)
+        self.assertEqual(seventh[0][3](dict(t104=7)), True)
+        self.assertEqual(seventh[0][3](dict(t104=6)), False)
+        self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
+
+
 class TestPath(unittest.TestCase):
     def test_a_capture_without_mode_27_fails_cleanly(self):
         cap = _log([(0x100, 0x140, 0x03, {}), (0x141, 0x150, 0x10, {})])
@@ -483,13 +533,14 @@ class TestPath(unittest.TestCase):
         self.assertEqual(sorted(gw.MILESTONES),
                          ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live',
                           'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
-                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending', 'gp-u9-win'])
+                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
+                          'gp-u22-diablo-ending', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():
             for label, mode, k, pred in rows:
                 self.assertTrue(0 < mode < 0x40 and k >= 1, (name, label))
         for name in ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
                      'gp-u19-vertigo-ending', 'gp-u20-chaos-ending',
-                     'gp-u21-armadon-ending'):
+                     'gp-u21-armadon-ending', 'gp-u22-diablo-ending'):
             rows = [(m, k) for _, m, k, _ in gw.MILESTONES[name]]
             self.assertEqual(len(rows), 30)
             self.assertEqual(rows.count((0x0D, 7)), 1)

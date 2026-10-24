@@ -555,6 +555,21 @@ SCENARIOS['gp-u21-armadon-ending'] = dict(
          ('poke', ((0x108106, lands_marked(0, 4)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
 
+# Endgame truth Task 7 (record §E1.1): DIABLO's ending, character 5 on character-select
+# cell 6 (ending_menu(6): six p1.right presses from cell 0, then the confirm). The land
+# marks are DIABLO's (0x80 | side 0 | 5 = 0x85), not u10's SAURON 0x80: 0x41C28 state 1
+# tallies a mark only when (mark & 0x7F) == DS_0010782A[side] | side << 6
+# (0x41D39/0x41D5C). The rest is gp-u10-ending's from its second poke on (a new tuple:
+# neither WIN_MENU nor u10's steps are mutated); time_limit 240, WIN_EXTRA and memsize 64
+# are its (record §W.13: the poked final OOMs at 16 MB). The ending title id 0xE3 is
+# DIABLO'S HELL (0xA80E4; a compared-frames fact, not a WIN/S field).
+SCENARIOS['gp-u22-diablo-ending'] = dict(
+    time_limit=240, extra=WIN_EXTRA, memsize=64,
+    steps=ending_menu(6) + (
+        ('after_entry', 0x06, 1, 10,
+         ('poke', ((0x108106, lands_marked(0, 5)), (0x10789E, b'\x78')))),
+    ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
+
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec §W5): a match
 # won by fought hits, so the win path's pokes are not needed. The menu path is gp-idle-loss's
 # with WIN_MENU's immediate confirm of character 0 (SAURON); the two rounds are punched.
@@ -990,6 +1005,8 @@ class Schedule:
 # after the high-score entry (u10's until_mode), and nothing past it is compared.
 # gp-u21-armadon-ending (endgame truth Task 6) stops the same way: its end is mode 3
 # after the high-score entry (u10's until_mode), and nothing past it is compared.
+# gp-u22-diablo-ending (endgame truth Task 7) stops the same way: its end is mode 3
+# after the high-score entry (u10's until_mode), and nothing past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -998,7 +1015,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u15-join', 'gp-u16-twop2', 'gp-u17-device2',
                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
-                         'gp-u23-u16-finisher'})
+                         'gp-u22-diablo-ending', 'gp-u23-u16-finisher'})
 
 
 class ScriptError(Exception):

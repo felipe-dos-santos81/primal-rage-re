@@ -680,6 +680,34 @@ class BandAllowance(Dirs):
                           (5119, 0, 2,
                            '287a61f4cc91a282bfdd583a0ebf510b90d87de913545aeaa8ed76d60b0e950a')))
 
+    def test_the_table_names_the_measured_u22_frames(self):
+        # Endgame truth Task 7 (record §E7): DIABLO's ending's eight present-copy
+        # scan-outs of the 4,930-frame dump, each binding one unique adjacent pair by its
+        # byte-equal segment(s) with its band pinned. 1988/2014/2020 are on the
+        # match-result screen (ports 1638/1639, 1660/1661, 1665/1666) and
+        # 5008/5013/5015/5016/5024 at the ending's mode-0x15 fade (4270/4271, 4276/4277,
+        # 4278/4279, 4280/4281, 4291/4292, the U13 5120 class). PIN only, as the U13/U21
+        # entries: the recipe's mutations are proved on the fixture by this class's
+        # sub-tests and on the real dump by the manual run record §E7 reports; the dump
+        # is not retained.
+        self.assertEqual(gc.BANDS_ALLOWED['gp-u22-diablo-ending'],
+                         ((1988, 117, 122,
+                           '8910a572dd6de6db88203905a608459ef595d210c64ffb39498a76e4270365b9'),
+                          (2014, 0, 66,
+                           '62708bc21c8c9429e72c92b7786eeb331ec4429ec7d909fe2100a4456475e71a'),
+                          (2020, 0, 13,
+                           '4e2d273ec17c1c645cde62e95f74cc75bb427a67ce58fb11fb5edffff58fdf54'),
+                          (5008, 177, 191,
+                           '3e0e4a3ce88a017d190e8f06e26b2f60e0a243210d3853dde3b3a304603021ef'),
+                          (5013, 0, 2,
+                           '0ba833920723fcc0d3cd9e8e408c84af8a78ac80139d448173a3f935ba7d9144'),
+                          (5015, 0, 2,
+                           'd6a7f2bc5434edc9cb86ec6fe81e32f44b09891dfadbf99206cee5c1b4fb69b6'),
+                          (5016, 94, 134,
+                           'b0f6fe0c5e29acab29da07a98ad2ffd274f39bbfc4ad9b2fc9809481ac4c7f06'),
+                          (5024, 149, 189,
+                           'f5d6102f0b72f59341a505962e2541e1fd83203c3f4fe1560b4d9c62cec2b673')))
+
 
 class Scan3Allowance(Dirs):
     # Track G task 6 (record §G6): the named three-frame scan-out allowance, the
@@ -885,6 +913,30 @@ class Scan3Allowance(Dirs):
                            '706572f06c0cdb32aa3e8efd4a52fb42da0bd30f2b4730b9b70ac28987103c68'),
                           (4272, 19, 91,
                            '9744b9869a3b9e4b749ddbdacba395ad527c0f3fbef5e40ff88eae19013e30be')))
+        # endgame truth Task 7 (record §E7): DIABLO's ending's six three-present scans —
+        # 380 is round 1's mode-8 screen (0..10 port 284's, 11..60 port 286's, 61..199
+        # port 287's), 1267 mode 5 (0..24 the earlier holders 218..221 and 1026, 25..178
+        # port 1027's, 179..199 port 1028's), 4136/4228 the final (0..23 port 3496's /
+        # 24..149 3497's / 150..199 3498's; and 0..41 port 3579's / 42..144 3580's /
+        # 145..199 3581's) and 5027/5033 the ending's mode-0x15 fade (0..118 port 4294's /
+        # 119..121 4295's / 122..199 4296's; and 0..129 port 4300's / 130..197 4302's /
+        # 198..199 4303's, 4301 nowhere on the frame). PIN only, as the U18/U19/U20
+        # entries: the recipe's mutations are proved on the fixture by this class's
+        # sub-tests and on the real dump by the manual run record §E7 reports; the dump is
+        # not retained.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u22-diablo-ending'],
+                         ((380, 11, 61,
+                           'e9a10eb395f6b88c1d97654ecd76d736f8f6a08c9c5617867912719dc4be4ccc'),
+                          (1267, 25, 179,
+                           '9f20c2ce81c05a414a7b6fa5d0b2766944eef64f9ba8fe06b8b74ca70e8bb2a8'),
+                          (4136, 24, 150,
+                           '221c7921fd2463f65fb8a482b6c928207aaac3bf322b42e6e825abec17483240'),
+                          (4228, 42, 145,
+                           '13f698a7b1bebc862720e22041862f02b4c5f315540e3e86911a52f7f7370000'),
+                          (5027, 119, 122,
+                           '4fdc50e09875fafc1716dd46e40518e75cea280a5770b81daca0e8103c542927'),
+                          (5033, 130, 198,
+                           '9a5cd9bd7b6dc2c14642eab62211a5d64a5928dec2abb29b2002725ee333c17e')))
 
 
 class OverlayAllowance(Dirs):
@@ -1108,6 +1160,17 @@ class OverlayAllowance(Dirs):
         # later mode-0x12 pair (1802, 1801) has the same glyph bytes at the same indices.
         self.assertEqual(gc.OVERLAY_ALLOWED['gp-u21-armadon-ending'],
                          ((2217, 1799, 1798, 1800,
+                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+        # endgame truth Task 7 (record §E7): DIABLO's ending's own loader presentation at
+        # capture 2191 (raw 5152), port 1822's 166 glyph pixels over port 1823's mode-0x12
+        # screen, the mask from port 1821 (1821/1822 both mode 0x17 at tick 00000C66).
+        # PIN only, as the U18/U19/U20/U21 entries: the recipe's mutations are proved on
+        # the fixture by this class's sub-tests and on the real dump by the manual run
+        # record §E7 reports; the dump is not retained, so this case does not run a dump
+        # test. Named limit: the later mode-0x12 pair (1825, 1824) has the same glyph bytes
+        # at the same indices.
+        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u22-diablo-ending'],
+                         ((2191, 1822, 1821, 1823,
                            'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
 
 

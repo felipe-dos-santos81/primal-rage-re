@@ -466,13 +466,13 @@ class TestStopAtEnd(unittest.TestCase):
 class TestMemsize(unittest.TestCase):
     """The poked final runs DOSBox-X with memsize=64, a harness value of those scenarios
     only (record §W.13): gp-u13-ending2, gp-u18-talon-ending, gp-u19-vertigo-ending,
-    gp-u20-chaos-ending and gp-u21-armadon-ending share gp-u10-ending's final and its
-    seven poked KOs, and every other scenario's argv is the one its capture was taken
-    with."""
+    gp-u20-chaos-ending, gp-u21-armadon-ending and gp-u22-diablo-ending share
+    gp-u10-ending's final and its seven poked KOs, and every other scenario's argv is
+    the one its capture was taken with."""
     MEM = ['-set', 'dosbox memsize=64']
     POKED_FINAL = ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
                    'gp-u19-vertigo-ending', 'gp-u20-chaos-ending',
-                   'gp-u21-armadon-ending')
+                   'gp-u21-armadon-ending', 'gp-u22-diablo-ending')
 
     def cmd(self, name, root='/r'):         # as gp_capture.main builds it
         scn = gs.SCENARIOS[name]
