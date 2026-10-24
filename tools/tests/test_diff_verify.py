@@ -33068,5 +33068,231 @@ class H2DeclaredTests(unittest.TestCase):
 # h2 end
 
 
+# ---- proof completion §P2: the span-writer census ----------------------------------------------------
+# The five tables the span blit 0x51E5C and its renderers read, decoded from the FIXUP-APPLIED image
+# (`diffrun --image-out`), the same bytes the game runs. The raw file's dwords are pre-fixup, so a
+# raw-file read would name other addresses (AGENTS.md, "Address model").
+#
+# Index formulas (record §P2.1): 0x51E5C dispatches `call [0x80C8C + (node->type & 0x7F) * 4]` (32
+# slots, six renderers and the bare `ret` 0x51E58; a type >= 0x20 indexes past the table, a domain
+# exclusion). The unclipped/mirrored RLE renderers call `[0x80D0C/0x80E0C + n * 4]` with n = the
+# 7-bit literal control byte or `b & 0x3F` (fill), the forward ones `[0x81010/0x81110 + n * 4]`; the
+# raw and shear renderers copy `vis` bytes in 128-byte chunks and then a remainder, so they index
+# 0x81110[128] (the bank dword 0x81310) as well as 1..127.
+SPAN_TABLES = {"renderer": (0x80C8C, 32), "fill_bwd": (0x80D0C, 64), "lit_bwd": (0x80E0C, 129),
+               "fill_fwd": (0x81010, 64), "lit_fwd": (0x81110, 128)}
+SPAN_WRITERS = ("fill_fwd", "fill_bwd", "lit_fwd", "lit_bwd")
+SPAN_RET = 0x51E58          # the renderer table's bare `ret` (types 0, 3, 5, 0xA, 0x15, 0x1A, 0x1F)
+SPAN_DEAD = 0x57E3C         # 0x80E0C[128]: a 7-bit literal index never reaches 128
+SPAN_CHUNK = 0x5D110        # 0x81110[128] == the bank dword 0x81310[0], a reachable 128-byte writer
+SPAN_RENDERERS = (0x51E58, 0x5D218, 0x58CBD, 0x5215C, 0x57F80, 0x5D28F, 0x57FFB)
+E2_TRIAGE = os.path.join(ROOT, "docs", "superpowers", "plans", "2026-10-01-reverse-e2-triage.md")
+
+
+def span_class(table, n):
+    """The 27-entry class key's writer half (record §P2.2): the table a control byte selects and the
+    run length it names. `n<4` is the tail-only runs. A fill's 2/3-byte tail becomes a WORD write at
+    n >= 14 (0x585F0/0x58600, 0x52284/0x52294) where n=6/7 write bytes; a literal's tail is a word
+    at 2 and 3 forward (0x58D20/0x58D2C) and two/three bytes backward (0x52990/0x529A0); 128 is the
+    raw/shear renderers' chunk index (no literal control byte reaches it)."""
+    if n == 128:
+        return (table, "chunk128")
+    if n < 4:
+        return (table, "n<4")
+    r = n % 4
+    if table.startswith("fill") and r == 2 and n >= 14:
+        return (table, "wordtail2")
+    if table.startswith("fill") and r == 3 and n >= 15:
+        return (table, "wordtail3")
+    return (table, {0: "4mod4", 1: "1mod4", 2: "2mod4", 3: "3mod4"}[r])
+
+
+# class key -> slot count and representative target (the class's first slot), measured (record §P2.2)
+SPAN_CLASS_COUNTS = {
+    ("fill_fwd", "n<4"): 4, ("fill_fwd", "4mod4"): 15, ("fill_fwd", "1mod4"): 15,
+    ("fill_fwd", "2mod4"): 2, ("fill_fwd", "3mod4"): 2,
+    ("fill_fwd", "wordtail2"): 13, ("fill_fwd", "wordtail3"): 13,
+    ("fill_bwd", "n<4"): 4, ("fill_bwd", "4mod4"): 15, ("fill_bwd", "1mod4"): 15,
+    ("fill_bwd", "2mod4"): 2, ("fill_bwd", "3mod4"): 2,
+    ("fill_bwd", "wordtail2"): 13, ("fill_bwd", "wordtail3"): 13,
+    ("lit_fwd", "n<4"): 4, ("lit_fwd", "4mod4"): 31, ("lit_fwd", "1mod4"): 31,
+    ("lit_fwd", "2mod4"): 31, ("lit_fwd", "3mod4"): 31, ("lit_fwd", "chunk128"): 1,
+    ("lit_bwd", "n<4"): 4, ("lit_bwd", "4mod4"): 31, ("lit_bwd", "1mod4"): 31,
+    ("lit_bwd", "2mod4"): 31, ("lit_bwd", "3mod4"): 31, ("lit_bwd", "chunk128"): 1,
+    ("ret",): 1,
+}
+SPAN_CLASS_REP = {
+    ("fill_fwd", "n<4"): 0x58550, ("fill_fwd", "4mod4"): 0x58570, ("fill_fwd", "1mod4"): 0x58578,
+    ("fill_fwd", "2mod4"): 0x58580, ("fill_fwd", "3mod4"): 0x5858C,
+    ("fill_fwd", "wordtail2"): 0x585F0, ("fill_fwd", "wordtail3"): 0x58600,
+    ("fill_bwd", "n<4"): 0x521DC, ("fill_bwd", "4mod4"): 0x521FC, ("fill_bwd", "1mod4"): 0x52204,
+    ("fill_bwd", "2mod4"): 0x52210, ("fill_bwd", "3mod4"): 0x5221C,
+    ("fill_bwd", "wordtail2"): 0x52284, ("fill_bwd", "wordtail3"): 0x52294,
+    ("lit_fwd", "n<4"): 0x58CBC, ("lit_fwd", "4mod4"): 0x58D40, ("lit_fwd", "1mod4"): 0x58D4C,
+    ("lit_fwd", "2mod4"): 0x58D60, ("lit_fwd", "3mod4"): 0x58D74, ("lit_fwd", "chunk128"): SPAN_CHUNK,
+    ("lit_bwd", "n<4"): 0x52980, ("lit_bwd", "4mod4"): 0x529B4, ("lit_bwd", "1mod4"): 0x529C4,
+    ("lit_bwd", "2mod4"): 0x529DC, ("lit_bwd", "3mod4"): 0x529F8, ("lit_bwd", "chunk128"): SPAN_DEAD,
+    ("ret",): SPAN_RET,
+}
+# the store-width signature of each class (consecutive dword stores collapsed): the class key is a
+# CODE-SHAPE key, so the census asserts the shapes too, not only the arithmetic (record §P2.6)
+SPAN_SHAPES = {
+    ("fill_fwd", "4mod4"): "d", ("fill_fwd", "1mod4"): "db", ("fill_fwd", "2mod4"): "dbb",
+    ("fill_fwd", "3mod4"): "dbbb", ("fill_fwd", "wordtail2"): "dw", ("fill_fwd", "wordtail3"): "dwb",
+    ("fill_bwd", "4mod4"): "d", ("fill_bwd", "1mod4"): "db", ("fill_bwd", "2mod4"): "dbb",
+    ("fill_bwd", "3mod4"): "dbbb", ("fill_bwd", "wordtail2"): "dw", ("fill_bwd", "wordtail3"): "dwb",
+    ("lit_fwd", "4mod4"): "d", ("lit_fwd", "1mod4"): "db", ("lit_fwd", "2mod4"): "dw",
+    ("lit_fwd", "3mod4"): "dwb", ("lit_fwd", "chunk128"): "d",
+    ("lit_bwd", "4mod4"): "d", ("lit_bwd", "1mod4"): "db", ("lit_bwd", "2mod4"): "dbb",
+    ("lit_bwd", "3mod4"): "dbbb", ("lit_bwd", "chunk128"): "d",
+}
+# the tail-only runs are one class but four shapes: n=0 is the bare `ret`, and the literal tables
+# write a word at 2/3 forward where they write bytes backward
+SPAN_TAIL_SHAPES = {
+    "fill_fwd": ("", "b", "bb", "bbb"), "fill_bwd": ("", "b", "bb", "bbb"),
+    "lit_fwd": ("", "b", "w", "wb"), "lit_bwd": ("", "b", "bb", "bbb"),
+}
+
+
+@unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
+                     "build/diffrun or PRAGE.EXE absent")
+class SpanCensusTests(unittest.TestCase):
+    """The span-writer census (proof-completion record §P2): the five tables, their 385 writer slots,
+    the 27 code-shape classes and the dead/reachable edge cases, from the fixup-applied image."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        img = os.path.join(cls.tmp.name, "image.bin")
+        subprocess.run([DIFFRUN, "--exe", EXE, "--image-out", img], check=True, capture_output=True)
+        cls.img = E.Image.load(img)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def u32(self, addr):
+        return int.from_bytes(self.img.bytes_at(addr, 4), "little")
+
+    def slots(self):
+        """(table, index, target) for every counted slot; `lit_fwd` stops at its 128 counted entries
+        (its index 128 is the separate bank dword 0x81310, asserted apart)."""
+        return [(name, i, self.u32(T + 4 * i)) for name, (T, n) in SPAN_TABLES.items()
+                for i in range(n)]
+
+    def classes(self):
+        """class key -> [(table, index, target)]. The renderer table is not a writer class (only its
+        bare `ret` is one), and the out-of-table 0x81110[128] is the literal-forward 128 chunk."""
+        out = {}
+        for table, i, t in self.slots():
+            if table in SPAN_WRITERS:
+                out.setdefault(span_class(table, i), []).append((table, i, t))
+        out.setdefault(("lit_fwd", "chunk128"), []).append(("lit_fwd", 128, self.u32(0x81310)))
+        out.setdefault(("ret",), []).append(("ret", 0, SPAN_RET))
+        return out
+
+    def test_the_five_tables_and_their_slots(self):
+        slots = self.slots()
+        self.assertEqual(len(slots), 417)                       # 32 + 64 + 129 + 64 + 128
+        self.assertEqual(len({t for _, _, t in slots}), 392)    # the 25 duplicate slots are all renderer
+        rt = [self.u32(0x80C8C + 4 * i) for i in range(32)]
+        self.assertEqual(set(rt), set(SPAN_RENDERERS))          # six renderers + the bare `ret`
+        self.assertEqual(len(rt) - len(set(rt)), 25)
+        self.assertEqual(self.img.bytes_at(SPAN_RET, 1), b"\xC3")
+
+    def test_the_writer_slots_and_the_dead_and_reachable_edges(self):
+        writers = [(name, i, t) for name, i, t in self.slots() if name in SPAN_WRITERS]
+        targets = {t for _, _, t in writers}
+        self.assertEqual(len(writers), 385)                     # 64 + 129 + 64 + 128
+        self.assertEqual(len(targets), 385)                     # no writer slot is a duplicate
+        self.assertIn(SPAN_DEAD, targets)
+        self.assertEqual(len(targets - {SPAN_DEAD}), 384)       # 384 reachable
+        # the dead slot: 0x80E0C[128], the 129th literal-backward entry. A literal control byte is
+        # 7-bit (b < 0x80, 0x57FAA's index) and a clipped straddle remainder is <= 127, so no read
+        # reaches index 128; the walker counts the slot because 0x8100C is not a known table base.
+        self.assertEqual(self.u32(0x80E0C + 128 * 4), SPAN_DEAD)
+        self.assertNotIn(SPAN_DEAD, [t for _, i, t in writers if i != 128])
+        # the reachable one: 0x81110[128] is the bank dword 0x81310[0] (0x81310 is a direct
+        # displacement at 0x51E91/0x51F07, which is why the walker stops the table at 128 slots).
+        self.assertEqual(self.u32(0x81110 + 128 * 4), self.u32(0x81310))
+        self.assertEqual(self.u32(0x81310), SPAN_CHUNK)
+        self.assertNotIn(SPAN_CHUNK, [t for _, _, t in writers])
+
+    def test_the_class_census_is_27_classes_26_reachable(self):
+        classes = self.classes()
+        self.assertEqual(set(classes), set(SPAN_CLASS_COUNTS))
+        self.assertEqual(len(classes), 27)
+        self.assertEqual({k: len(v) for k, v in classes.items()}, SPAN_CLASS_COUNTS)
+        self.assertEqual({k: v[0][2] for k, v in classes.items()}, SPAN_CLASS_REP)
+        dead = {k for k, v in classes.items() if all(t == SPAN_DEAD for _, _, t in v)}
+        self.assertEqual(dead, {("lit_bwd", "chunk128")})
+        self.assertEqual(len(classes) - len(dead), 26)          # 26 reachable classes
+
+    def test_the_e2_triage_split_is_227_and_158(self):
+        # The 231 span-writer rows of the committed E2 table are 227 of these writers plus the four
+        # renderers whose only slot is a span table (0x5215C, 0x57F80, 0x57FFB, 0x58CBD); the other
+        # 158 writer targets E2's `ret` rule never triaged. 0x5D110 is not a slot, so not a row.
+        rows = {}
+        with open(E2_TRIAGE, encoding="utf-8") as f:
+            for line in f:
+                f0 = [x.strip() for x in line.split("|")]
+                if len(f0) >= 7 and len(f0[1]) == 5 and f0[2].isdigit():
+                    try:
+                        rows[int(f0[1], 16)] = f0[3]
+                    except ValueError:
+                        pass
+        writers = {t for name, _, t in self.slots() if name in SPAN_WRITERS}
+        self.assertEqual(len(writers & set(rows)), 227)
+        self.assertEqual(len(writers - set(rows)), 158)
+        self.assertEqual({a for a, c in rows.items() if c == "span-writer"} - writers,
+                         {0x5215C, 0x57F80, 0x57FFB, 0x58CBD})
+        self.assertIn(SPAN_DEAD, rows)
+        self.assertNotIn(SPAN_CHUNK, rows)
+
+    @unittest.skipUnless(E.capstone is not None, "capstone not installed")
+    def test_the_class_key_is_the_code_shape(self):
+        """The class key is not arithmetic on the index: each class's slots share one store-width
+        shape. The fills' 14/15 word tail and the literals' word-vs-byte tail are code facts, so a
+        key that regrouped them would fail here."""
+        cs = E.capstone.Cs(E.capstone.CS_ARCH_X86, E.capstone.CS_MODE_32)
+        classes = self.classes()
+        for key, want in SPAN_SHAPES.items():
+            for table, n, addr in classes[key]:
+                got, swaps = self.shape(cs, addr)
+                self.assertEqual(got, want, "%s[%d] 0x%X" % (table, n, addr))
+                if table == "lit_bwd":
+                    self.assertTrue(swaps and all(swaps), "%s[%d] 0x%X bswap" % (table, n, addr))
+                else:
+                    self.assertFalse(any(swaps), "%s[%d] 0x%X bswap" % (table, n, addr))
+        for table, wants in SPAN_TAIL_SHAPES.items():
+            for n, want in enumerate(wants):
+                got, _ = self.shape(cs, self.u32(SPAN_TABLES[table][0] + 4 * n))
+                self.assertEqual(got, want, "%s[%d]" % (table, n))
+        self.assertEqual(self.shape(cs, SPAN_RET)[0], "")
+
+    def shape(self, cs, addr):
+        """A writer body's store-width signature up to its `ret`, consecutive dword stores collapsed,
+        and per dword store whether a `bswap` immediately precedes it (the backward literal table's)."""
+        sig, swaps, prev = [], [], None
+        for ins in cs.disasm(self.img.bytes_at(addr, 800), addr):
+            if ins.mnemonic.startswith("ret"):
+                break
+            if ins.mnemonic == "bswap":
+                prev = "swap"
+                continue
+            if ins.mnemonic == "mov":
+                dst = ins.op_str.split(",")[0]
+                if "ptr [" in dst and "[esi" not in dst:
+                    w = {"byte": "b", "word": "w", "dword": "d"}[dst.split(" ptr")[0]]
+                    if w == "d":
+                        swaps.append(prev == "swap")
+                        if not sig or sig[-1] != "d":
+                            sig.append("d")
+                    else:
+                        sig.append(w)
+            prev = ins.mnemonic
+        return "".join(sig), swaps
+
+
 if __name__ == "__main__":
     unittest.main()
