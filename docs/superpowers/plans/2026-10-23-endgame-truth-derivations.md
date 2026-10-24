@@ -1620,3 +1620,102 @@ No conflict with §E1 was found: cell 6 is class 5 DIABLO, the mark is `0x85`, t
 id is `0xE3` (DIABLO'S HELL) and the label is the character name. The old scenarios,
 `WIN_MENU1`, the U13/U18/U19/U20/U21 recipes and every existing pin (the 4248/4320/5120
 pins included) are unchanged.
+
+---
+
+## §E8 The U14 fought live win stays a named gap (Task 8)
+
+**Task 8 is skipped: the go-ahead was declined.** The retake was conditional
+(spec §G3, §7.4, §11's "The U14 retake needs a new go-ahead"). The two permitted
+attempts are spent (record `2026-10-20-gameplay-truth-ii-derivations.md` §J6,
+§E1.4) and no third attempt was authorized, so the plan's Task 8 Step 1 "if
+declined" branch is the outcome. No capture was run and none exists: there is no
+`data/k11-captures/gp-u14-win-live`, and no port dump was produced for it.
+
+### R1 is open
+
+**R1 — the fought, no-poke live win — remains a named gap** (spec §10's first
+item; §9 acceptance #3's second arm). What is missing is not the mode path but
+the fight: the game must raise P2's `+0x5A` to `0x78` by landed `1A`/`1B` hits
+and then set its own death-done byte `DS_00104B0C = 1` at `0x37FF6` (the
+`0x37EA0` remains-stream `0xD100` target). No capture exhibits that sequence.
+
+### The evidence is the preserved failed artifact, not a capture
+
+§E1.4's U14 measurements rest on `/tmp/pr_gp_failed/gp-u14-win-live-run2/`, the
+second attempt's failed artifact (record gameplay-truth-ii §J6), re-measured for
+this section:
+
+| Fact | Measured |
+|---|---|
+| frames | 7,287 `frame_*.raw.gz` (`frame_00000..frame_07286`) |
+| `S` records | 9,761, `f=0x4` (4) .. `f=0x265D` (9821) |
+| `X` / `W` records | 0 / 0 — the run never reached its end and wrote no poke |
+| the end | `E ms=200522 reason=time-limit rc=0` (the scenario's own 200 s limit) |
+| round 1 | mode `0x08` at `f=0x9B3`, `s0_5a=0x78`, `s1_5a=0x00` (P1 KO'd, P2 undamaged) |
+| round 2 | mode `0x09` at `f=0x12DC`, `s0_5a=0x78`, `s1_5a=0x38`, `ad4=1` (P1 KO'd again; P2 at `0x38`, P2 won) |
+| `b0c` | never non-zero in any of the 9,761 `S` records |
+| after the result | mode `0x17` at `0x140D`, `0x15` at `0x14FC`, `0x13` at `0x1575`, `0x1E` at `0x1801` |
+| back to attract | mode `0x03` at `f=0x1D68`, running to the last `S` `f=0x265D` |
+
+With no `X` record and no stopped-at-end check the artifact was never published
+as a capture, so there is nothing to pin: a capture is the `X` record plus the
+checks. It records the failed attempt's shape only — this section claims no
+frame, pin or pixel from it. The artifact lives under `/tmp` and is not durable:
+if it is lost, §E1.4 above stands as the record's measurements and this table
+cannot be re-measured.
+
+### The pins stay empty and the scenario is unchanged
+
+All eight `GP_U14_*` pins are empty (`Makefile:1322-1329`:
+`GP_U14_MIN_FIRST`, `GP_U14_TRACE_MIN_FIRST`, `GP_U14_MAX_START`,
+`GP_U14_MIN_REACH`, `GP_U14_CAPTURE_SHA256`, `GP_U14_CAPTURE_FRAMES`,
+`GP_U14_MILESTONES`, `GP_U14_WIN_MIN_FIRST`), and `gp-u14-oracle`
+(`Makefile:1330-1345`, still in `make verify` at `Makefile:1921-1922`) keeps its
+`[ ! -d … ]` skip: it prints `no capture at data/k11-captures/gp-u14-win-live
+(skipped)` and exits 0. A present capture with an empty pin would still fail
+first in `gp_win.py check`'s sha comparison (the Makefile's own note), so the
+empty pins are a declared gap, not a bypass.
+
+The scenario is the measured one (`tools/gp_session.py:594-605`; §E1.4's
+citation `504-516` predates Tasks 3-7's insertions, the bytes are the same):
+`U14_PUNCH`/`U14_KICK` = `1A`/`1B`, `U14_GAP=16`, `U14_ATTEMPTS=32`, 31
+`U14_PRESSES`, `time_limit=200`, `extra=WIN_EXTRA`, `WIN_MENU` + both rounds +
+`until_mode 0x12`, and **no `poke` step** (69 steps, 0 pokes, measured from the
+loaded module for this section). `git diff 4605e0f0..HEAD` (the phase base to the
+Task 7 tip) changes no `U14_*`/`gp-u14-win-live` line and no `GP_U14_*` pin, so
+Task 8's own change set is these two documentation files: the U14 scenario, the
+Makefile target and pins, the unit tests and `tools/gp_win.py` are untouched.
+
+### `live_death` stays the acceptance test
+
+The rule is unchanged (`tools/gp_win.py:299` `LIVE_WIN`, `:302-327`
+`live_death`): it fails on any `W` record writing `DS_00104B0C` (the
+`DEATH_DONE` poke U9/U10 use), fails when no `(0x09, 1)` round-2 KO row anchors
+it, and fails unless some `S` at or after that frame has `b0c=1`. Its claim is
+the game's own `0x37EA0 -> 0x37FF6` write after a real KO — the byte proves a
+death animation ended by the match-end screen, and the frames/WIN trace carry
+which one (`gp_win.py`'s comment; record gameplay-u9-u10 §W.5, §W.9). A third
+attempt would be judged by this rule alone; it stays the acceptance test whether
+or not the attempt happens.
+
+### A third attempt needs a new explicit go-ahead
+
+The revised script is known and unmeasured: `U14_ATTEMPTS` 160 (spec §7.4's
+160-200), a `p1.right` re-approach every 8 attempts (the `_u16_round` pattern,
+`gp_session.py:669-685`), `time_limit ~260`, no pokes (spec §7.4, §8's **U14
+(G3)** paragraph, the plan's Task 8 Steps 2-4). Whether that script lands the
+KO, the game-set `b0c` and the land **has not been measured** — the attempt
+limit is spent, so the `GP_U14_*` pins stay empty until a new, explicit go-ahead
+authorizes the capture and its measurement (spec §G3, §11; record §E1.4).
+
+### What the phase does and does not claim
+
+U14 R1 is a named gap and the phase does not claim it (spec §10). The phase's
+other capture wins are different claims and do not close it: §E2's
+`gp-u23-u16-finisher` is the labelled poked-damage fallback whose claim is the
+finisher reaction, and §E3-§E7's five ending captures are U13-style poked wins
+whose claim is the ending content — none is a fought win, and none is a U14
+substitute (§E1.3 says the same of U9/U10). The game-set `b0c` is not itself a
+gap: U10's `GP_ENDING_WIN_MIN_FIRST=9954` pins the game's write (spec §10's last
+item); what stays open is the fought (no-poke) win that reaches it.
