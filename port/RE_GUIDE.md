@@ -251,8 +251,10 @@ true original, and ported the divergence. Two pieces:
    `0x0006627E`). The AIL PIT writer `0x663A4` sends mode `0x36` to port `0x43`
    (`0x663AC`) and the divisor's low and high bytes to port `0x40`; `0x663D4`
    computes `period*10000/0x20BC` (8,380), and the measured 16,666 µs period
-   (`0x66BD0`, `1,000,000/60`) gives the divisor 19,887 (59.998 Hz with the
-   standard 1,193,182 Hz PIT clock). `0x2D62C` is **not** the ISR: it is the
+   (`0x66BD0`, `1,000,000/60`) gives the 60 Hz timer's divisor 19,887 (59.998 Hz
+   with the standard 1,193,182 Hz PIT clock; `0x66407` programs the PIT from
+   AIL's minimum period over its 16 timer slots, so this is that timer's rate,
+   not one global PIT rate). `0x2D62C` is **not** the ISR: it is the
    9-byte run-clock counter the AIL callback `0x1BDF4` calls at `0x1BE28`.
    Record `../docs/superpowers/plans/2026-10-23-endgame-truth-derivations.md`
    §E1.6/§E10.

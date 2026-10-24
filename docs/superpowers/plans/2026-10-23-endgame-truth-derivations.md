@@ -1839,22 +1839,36 @@ plan conflicts and the static raw-byte test.
 - The brief says "Record the addresses in §E6". **§E6 is the ARMADON ending
   capture**; the plan's numbering is wrong. The task's record is this §E10, and
   it cites §E1.6's measured block instead of restating a new measurement.
-- The brief's INT 8 range `0x66519..0x6652C` is one byte short: the block is
-  **21 bytes, `0x66519..0x6652D`**, ending `cd 21` (`cd` at `0x6652C`, `21` at
-  `0x6652D`). §E1.6's range is used verbatim. The brief's individual opcode
-  offsets are otherwise right.
+- The stale INT 8 range `0x66519..0x6652C` is not only in the git-ignored brief:
+  the committed `docs/superpowers/plans/2026-10-23-endgame-truth.md:55,327,334`
+  and `docs/superpowers/specs/2026-10-23-endgame-truth-design.md:383` carry it
+  too (the design's `:101-105` lists the same block's bytes offset by offset).
+  It is one byte short, and the correction recorded here applies to all of them:
+  the block is **21 bytes, `0x66519..0x6652D`**, ending `cd 21` (`cd` at
+  `0x6652C`, `21` at `0x6652D`). §E1.6's range is used verbatim; the brief's (and
+  the plan's) individual opcode offsets are otherwise right.
 - §E1.6's own correction stands and the brief inherits the error: `0x1CFFA` is
   the `push 0x3C` and `0x1CFFF` is the `call 0x5DA87`, so "`0x1CFFF` sets 0x3C"
-  names the call, not the push.
+  names the call, not the push. The committed documents repeat that wording too
+  — `docs/superpowers/plans/2026-10-23-endgame-truth.md:330` and the design's G5
+  block, `docs/superpowers/specs/2026-10-23-endgame-truth-design.md:107` — and
+  this section's correction applies to them.
 
 ### The addresses (re-read for this task)
 
 Read from `data/game/C/PRAGE.EXE` at `VA + 0x52E54` (pre-fixup) and from the
 `build/diffrun --image-out` image (fixup applied; the image's index is
 `VA - 0x10000` — its installer bytes sit at `0x56519`). Every address and
-target agrees with §E1.6; the two byte strings noted under the table are
-§E1.6's fixup-applied form, and the raw file, which the test reads, differs
-only in the pointer field.
+target agrees with §E1.6; the byte strings noted under the table are §E1.6's
+fixup-applied form, and the raw file, which the test reads, differs only in the
+pointer fields.
+
+The installer's containing function is `FUN_0006646C` (238 bytes, so
+`0x66519` lies inside it); it is called at `0x6615F` from `FUN_0006603E`, which
+`0x5D861` in `FUN_0005D851` calls, itself called at `0x1CF4D` from the AIL timer
+init `FUN_0001CF40`. That chain substantiates the PROGRESS claim that the AIL
+timer init at `0x1CF40` installs INT 8 (the intermediate `0x5D851`/`0x6603E` are
+AIL's own registration path, not game code).
 
 | Address | Bytes | Reading |
 |---|---|---|
@@ -1877,13 +1891,17 @@ only in the pointer field.
 | `0x2D62C` | `ff 05 88 5d 08 00 8b c0 c3` | `inc dword [0x105D88]; mov eax,eax; ret` — the run-clock **counter**, not the ISR |
 | `0x1BE28` | `e8 ff 17 01 00` | `call 0x2D62C` from the callback `0x1BDF4` (which calls `0x1BBAC` at `0x1BE1C`) |
 
-Two byte strings in §E1.6 are its **image** form, not raw: its `0x2D62C` block
-reads `ff 05 88 5d 10 00` and its `0x1CFED` row `68 f4 bd 01 00`, while the raw
-file holds `ff 05 88 5d 08 00` and `68 f4 bd 00 00` (the fixups add the data
-object base `0x80000` to a data pointer and the code object base `0x10000` to a
-code pointer, giving the same `0x105D88` and `0x1BDF4`). The handler's guard at
-`0x6627E` is likewise `12 fd 06 00` raw and `12 fd 0e 00` image. The test pins
-the raw form; the docs' prose names the linear addresses.
+Several byte strings in §E1.6 are its **image** form, not raw: its `0x2D62C`
+block reads `ff 05 88 5d 10 00`, its `0x1CFED` row `68 f4 bd 01 00`, and its
+handler listings at `0x66296` (`66 2e 8e 1d 1a fd 0e 00`), `0x662A6`
+(`ff 05 12 fd 0e 00`) and `0x663B3` (`a3 0a fd 0e 00`), with the guard at
+`0x6627E` likewise `12 fd 0e 00`. The raw file holds the `... 06 00`
+displacement instead (`ff 05 88 5d 08 00`, `68 f4 bd 00 00`,
+`66 2e 8e 1d 1a fd 06 00`, `ff 05 12 fd 06 00`, `a3 0a fd 06 00`,
+`2e 83 3d 12 fd 06 00 00`); the fixups add the data object base `0x80000` to a
+data pointer and the code object base `0x10000` to a code pointer, giving the
+same `0x105D88`, `0x1BDF4`, `0xEFD1A`, `0xEFD12` and `0xEFD0A`. The test pins the
+raw form; the docs' prose names the linear addresses.
 
 **The rate is not fitted.** `16666*10000 = 166,660,000`; `/8380 = 19,887`
 remainder `6,940`; `1,193,182/19,887 = 59.99809 Hz`. The divisor and the period
@@ -1911,11 +1929,21 @@ not as a second rate.
   `config_isr_tick` (track S §S.9), `0x1BDF4` stays host-owned and `host.c`'s
   `g_tick` is the host's own pacing counter. The old "`0x2D62C` is host-owned"
   sentence is stale and is gone. The two earlier corrections ("exactly one
-  reference" is wrong; the `0x109A0` lock is not an install) are kept. Two more
+  reference" is wrong; the `0x109A0` lock is not an install) are kept. Three more
   places in the same file carried the old wording and are corrected here: the
-  landmark table's `0x2D62C` row (was "interrupt handler; vector unresolved")
-  and Open questions item 5 (was "still open: which interrupt vector carries
-  the tick `0x2D62C`"); both now name the `0x66519` install and `0x6627E`.
+  landmark table's `0x2D62C` row (was "interrupt handler; vector unresolved"),
+  Open questions item 5 (was "still open: which interrupt vector carries the
+  tick `0x2D62C`"), and Open questions item 3's lock list, which called
+  `0x2D62C` "ISR code" and now says "counter code"; all three now name the
+  `0x66519` install and `0x6627E`. Two further honesty edits are in the same
+  section: the install's absence from the static search is attributed to that
+  search's `0x10000..0x5FFFF` range while the earlier DOSBox-X `-log-int21`
+  run's absent `AX=25` is stated as **not reconciled** here rather than dropped,
+  and the rate is written as "the 60 Hz timer's divisor is 19,887 (59.998 Hz)"
+  — `0x66407` programs the PIT from AIL's minimum period over its 16 timer
+  slots, so it is not one global PIT rate (`port/spec/audio.md` documents a
+  second sequencer driver timer). The Tick section also points at Open
+  question 5, so the resolution is reachable from the section it belongs to.
 
 ### The static test
 
@@ -1940,8 +1968,13 @@ skips all six.
 
 No port code, no capture and no pin changed. Every address in the two docs
 matches §E1.6 and the raw bytes re-read here; the range is `0x66519..0x6652D`;
-`0x2D62C` is called the counter everywhere, never the ISR; the rate is derived
-(`16,666·10,000/8,380` with the standard clock), not fitted; the RE_GUIDE item
-4, its Remaining-work bullet and the game_flow tick section agree with each
-other and with §E1.6. `port_progress.py` and the differential counter are
-unmoved (no `FN_` function was added; the test lives in `tools/tests/`).
+`0x2D62C` is called the counter everywhere, never the ISR (the three sites in
+`game_flow.md` — the Tick section, the landmark row and Open questions item 3's
+lock list — were re-checked for the word); the rate is derived
+(`16,666·10,000/8,380` with the standard clock), not fitted, and is stated as
+the 60 Hz timer's (not one global PIT rate); the RE_GUIDE item 4, its
+Remaining-work bullet and the game_flow tick section agree with each other and
+with §E1.6. The `-log-int21` observation the old Tick paragraph carried is kept
+as an explicitly unreconciled observation, not dropped.
+`port_progress.py` and the differential counter are unmoved (no `FN_` function
+was added; the test lives in `tools/tests/`).

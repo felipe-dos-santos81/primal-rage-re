@@ -1,9 +1,9 @@
 # tools/tests/test_tick_vector.py
 """The INT 8 tick vector's raw bytes (record docs/superpowers/plans/2026-10-23-endgame-truth-derivations.md
-§E1.6, §E10). Documentation pin only: the original's install site, the AIL period and the PIT divisor, with
-no port counterpart (the port models the callback, not the vector). Pre-fixup code bytes are read at
-VA + 0x52E54 (AGENTS.md), so a code or data pointer immediate in them is still an object offset: the code
-object's base 0x10000 and the data object's 0x80000 are added where a pointer is checked."""
+§E1.6, §E10). Raw-byte pin only: it recomputes the record's addresses and arithmetic from the original's
+bytes, and has no port counterpart (the port models the callback, not the vector). Pre-fixup code bytes are
+read at VA + 0x52E54 (AGENTS.md), so a code or data pointer immediate in them is still an object offset: the
+code object's base 0x10000 and the data object's 0x80000 are added where a pointer is checked."""
 import os
 import unittest
 
@@ -80,7 +80,6 @@ class TickVectorTests(unittest.TestCase):
         self.assertEqual((divisor, rem), (19887, 6940))
         rate = PIT_CLOCK / divisor
         self.assertAlmostEqual(rate, 59.998, places=3)                # standard clock / the bytes' divisor
-        self.assertNotEqual(rate, 60.0)
 
     def test_the_ail_callback_is_registered_and_started_at_60_hz(self):
         b = code(0x1CFED, 0x20)

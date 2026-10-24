@@ -113,7 +113,10 @@ frame loop is reached through `0x20C10`:
   **vector 8 points at `0x6627E`** — a runtime AIL handler (re-entrancy guard
   `cmp dword cs:[0xEFD12],0` at `0x6627E`, then `pushal`/`push ds/es/fs/gs`).
   The install is at `0x66519`, above the `0x10000..0x5FFFF` range the earlier
-  search covered, which is why no `int 21h` turned up there.
+  static search covered, which is why no `int 21h` turned up there; the earlier
+  DOSBox-X `-log-int21` run that saw only vector `0x15` get/set and no
+  `AX=25` timer-vector set is **not reconciled** with this install here (it is
+  not claimed to cover it).
   The PIT programmer `0x663A4` writes mode `0x36` to port `0x43`
   (`0x663AC b0 36`, `0x663AE e6 43`) and the divisor's low and high bytes to
   port `0x40` (`0x663BA`/`0x663C0`); `0x663D4` converts a period in µs to the
@@ -122,9 +125,12 @@ frame loop is reached through `0x20C10`:
   `1,000,000/60 = 16666` at `0x66BD0`, and `0x1CF40` registers `0x1BDF4` as
   the timer callback (`0x1CFED push 0x1BDF4`; `0x1CFF2 call 0x5DA12`), asks for
   60 Hz (`0x1CFFA push 0x3C`; `0x1CFFF call 0x5DA87`) and starts the timer
-  (`0x1D008`). `16666*10000/8380` = **19,887** (remainder 6,940), so the PIT
-  rate is 1,193,182/19,887 = **59.998 Hz** — the input clock is the standard PC
-  constant, the divisor is what the bytes give. The 60.05 Hz count above is the
+  (`0x1D008`). `16666*10000/8380` gives the 60 Hz timer's divisor **19,887**
+  (remainder 6,940), and 1,193,182/19,887 = **59.998 Hz** — the input clock is
+  the standard PC constant, the divisor is what the bytes give. That is the
+  60 Hz timer's rate, not one global PIT rate: `0x66407` programs the PIT from
+  AIL's minimum period over its 16 timer slots, and a second sequencer driver
+  timer exists (`port/spec/audio.md`). The 60.05 Hz count above is the
   emulator's observation of the same tick (0.09% apart, not a second rate).
   **Correction (all-gaps records `2026-09-29-todo-verify-derivations.md` §1 and
   `2026-09-29-k1-k9-derivations.md` §K9.5):** "`0x2D62C` has exactly one
@@ -141,7 +147,8 @@ frame loop is reached through `0x20C10`:
   callback `0x1BDF4` stays host-owned (`tools/port_classification.txt`), its
   tick modelled rather than executed. How AIL's handler `0x6627E` reaches the
   registered callback `0x1BDF4` is AIL's internal dispatch and is not traced
-  here.
+  here. The full resolution (the install, the handler and the rate) is written
+  under Open question 5, which also carries the aperture's resolution.
 * **Pacing** — counter pair `DAT_00101508` (advanced asynchronously, presumably
   by the same tick source) and `DAT_0010150C` (loop-local), compared in
   `0x255CC`. `0x1C740` additionally busy-polls VBlank around the present work.
@@ -3228,7 +3235,7 @@ record §34).**
 3. ~~`FUN_000109A0` / `FUN_00010830` semantics~~ — **resolved**: DPMI region
    **lock/unlock**. `0x109A0(ptr,size)` → `0x10830(ptr, ptr+size)`; the unlock
    twin is `0x109CA` → `0x108E8`. Both thunk `0x61564`. 36 vs 29 callers.
-   `main` locks 8 regions (ISR code `0x2D62C`, `0x1B610`+`0x4000`,
+   `main` locks 8 regions (counter code `0x2D62C`, `0x1B610`+`0x4000`,
    `0x62451`+`0x1000`; data `0x101508`, `0x105D88`, `0xEF6DE`).
 4. `DAT_00101524` memory-block list layout and the `0x600` / `0x200` block sizes.
 5. ~~Which code the framebuffer write path uses~~ — **resolved**: the write
