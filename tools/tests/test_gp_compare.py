@@ -623,16 +623,17 @@ class BandAllowance(Dirs):
                            'd9c0ac62f7e0c0d4082fba8d195eae4f767c56a7887bdf7346450511f998cad8'),))
 
     def test_the_table_names_the_measured_u13_frame(self):
-        # Task 3 (record §P3): U13's capture 5120 (raw 8839) at the ending's
-        # mode-0x15 fade. Rows 1..4 are the 4940-frame dump's ONLY unheld rows,
-        # row 0 is port 4316/4317/4318's (identical there) and the whole range
-        # rows 5..199 is port 4317's alone, so the pair (4316, 4317) is the
-        # unique match. The band is the unheld run's ends (1..4), 1280 pixels
-        # (3840 bytes) of which exactly 13 pixels differ from port 4317's rows;
-        # its cause is a named gap (§P3). This test pins the tuple only: the
-        # mutation proof is delegated to the class fixture's sub-tests (a mutated
-        # band byte / bound port frame un-explains it) and the manual real-dump
-        # run in record §P3.5.
+        # Task 3 (record §P3), re-derived in §E1.5 (endgame truth Task 9): U13's
+        # capture 5120 (raw 8839) at the ending's mode-0x15 fade. Rows 1..4 are
+        # the 4954-frame dump's ONLY unheld rows, row 0 is port 4316/4317/4318's
+        # (identical there) and the whole range rows 5..199 is port 4317's alone,
+        # so the pair (4316, 4317) is the unique match. The band is the unheld
+        # run's ends (1..4), 1280 pixels (3840 bytes) of which exactly 13 pixels
+        # differ from port 4317's rows — 8 at index 0x32, 1 at 0x2E, 4 at 0x4D
+        # (§E1.5's table); its cause is a named gap (§E1.5 withdraws the
+        # 0x01047345 corner-ornament candidate). This test pins the tuple only:
+        # the mutation proof is the Band5120 fixture below (the 13-pixel shape,
+        # and a mutated bound byte) and the manual real-dump run in record §P3.5.
         self.assertEqual(gc.BANDS_ALLOWED['gp-u13-ending2'],
                          ((5120, 1, 5,
                            '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),))
@@ -707,6 +708,88 @@ class BandAllowance(Dirs):
                            'b0f6fe0c5e29acab29da07a98ad2ffd274f39bbfc4ad9b2fc9809481ac4c7f06'),
                           (5024, 149, 189,
                            'f5d6102f0b72f59341a505962e2541e1fd83203c3f4fe1560b4d9c62cec2b673')))
+
+
+class Band5120(Dirs):
+    # Endgame truth Task 9 (record §E1.5): the U13 5120 shape, the one band entry
+    # whose band is NOT a copy of a port present: of its four rows' 1280 pixels,
+    # exactly 13 differ from the only adjacent pair that binds the rows outside
+    # them — 8 at port index 0x32, 1 at 0x2E and 4 at 0x4D (the record's table).
+    # The fixture builds the shape synthetically (no capture is read): port 1's
+    # rows 1..4 carry those indices under DAC 000000/100000/00000c, the capture's
+    # band has 00001c at the 8 and black at the 5. A band no port frame holds is
+    # still explained by its name, and one mutated byte of the bottom-bound frame
+    # un-explains it again (the BandAllowance harness).
+    R = tc.ROW
+    W = tc.FRAME_W
+    PX_32 = ((1, 23), (1, 24), (1, 295), (1, 296), (2, 22), (2, 297), (3, 21), (3, 298))
+    PX_2E = ((3, 74),)
+    PX_4D = ((4, 27), (4, 28), (4, 291), (4, 292))
+    run_band = BandAllowance.run_band
+
+    def setUp(self):
+        super().setUp()
+        dac = bytearray(DAC)
+        for i, c in ((0x32, b'\x00\x00\x00'), (0x2E, b'\x10\x00\x00'), (0x4D, b'\x00\x00\x0c')):
+            dac[3 * i:3 * i + 3] = c
+        idx = bytearray(ipx(2)[:self.W * tc.FRAME_H])
+        for r, x in self.PX_32:
+            idx[r * self.W + x] = 0x32
+        for r, x in self.PX_2E:
+            idx[r * self.W + x] = 0x2E
+        for r, x in self.PX_4D:
+            idx[r * self.W + x] = 0x4D
+        self.p1 = bytes(idx) + bytes(dac)
+        self.p1_rgb = gc.expand_ipx(self.p1)
+        band = bytearray(self.p1_rgb[self.R:5 * self.R])
+        for r, x in self.PX_32:
+            o = ((r - 1) * self.W + x) * 3
+            band[o:o + 3] = b'\x00\x00\x1c'
+        for r, x in self.PX_2E + self.PX_4D:
+            o = ((r - 1) * self.W + x) * 3
+            band[o:o + 3] = b'\x00\x00\x00'
+        self.c = rgb(1)[:self.R] + bytes(band) + self.p1_rgb[5 * self.R:]
+        self.sha = hashlib.sha256(bytes(band)).hexdigest()
+        self.bands = ((1, 1, 5, self.sha),)
+
+    def write_fixture(self):
+        for i, data in enumerate((ipx(1), self.p1, ipx(3))):
+            with open(os.path.join(self.port, 'frame_%05d.ipx' % i), 'wb') as f:
+                f.write(data)
+        for j, c in enumerate((rgb(1), self.c, rgb(3))):
+            with gzip.open(os.path.join(self.cap, 'frame_%05d.raw.gz' % j), 'wb') as f:
+                f.write(c)
+        with open(os.path.join(self.cap, 'window.txt'), 'w') as f:
+            f.write(''.join('%05d %d\n' % (j, 100 + j) for j in range(3)))
+
+    def test_the_fixture_carries_the_5120_shape(self):
+        port_band = self.p1_rgb[self.R:5 * self.R]
+        cap_band = self.c[self.R:5 * self.R]
+        diff = [i for i in range(4 * self.W) if cap_band[3 * i:3 * i + 3] != port_band[3 * i:3 * i + 3]]
+        self.assertEqual([(1 + i // self.W, i % self.W) for i in diff],
+                         sorted(self.PX_32 + self.PX_2E + self.PX_4D))
+        idx = self.p1[:self.W * tc.FRAME_H]
+        at = [idx[(1 + i // self.W) * self.W + i % self.W] for i in diff]
+        self.assertEqual((at.count(0x32), at.count(0x2E), at.count(0x4D)), (8, 1, 4))
+
+    def test_a_band_no_port_frame_holds_is_explained(self):
+        self.write_fixture()
+        rc, first, out = self.run_band(3)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('allowed by name as a band splice: port 0/1' in l for l in out), out)
+        self.assertTrue(any('1 band-allowed' in l for l in out), out)
+
+    def test_a_mutated_bound_byte_unexplains_it_again(self):
+        self.write_fixture()
+        self.assertEqual(self.run_band(3)[0], 0)
+        data = bytearray(self.p1)
+        data[5 * self.W] ^= 1                      # one byte of the bottom-bound row
+        with open(os.path.join(self.port, 'frame_00001.ipx'), 'wb') as f:
+            f.write(data)
+        rc, first, out = self.run_band(3)
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in l and 'no unique adjacent port pair' in l
+                            for l in out), out)
 
 
 class Scan3Allowance(Dirs):

@@ -240,8 +240,9 @@ BANDS_ALLOWED = {
         # 4317's rows: 8 are 00001c where 4317's index is 0x32 (black in the
         # frame's DAC), 1 is black where it is 0x2E (100000) and 4 are black
         # where it is 0x4D (00000c). The band is not a stale copy of any present
-        # (no frame holds those rows) and the port's content at the 13 pixels is
-        # corroborated on both sides: capture 5119 (clean at 4315) shows exactly
+        # (no frame holds those rows). The neighbours 5119/5122 corroborate the
+        # port's rendered colours at its own indices; they do not reproduce the
+        # capture's 13 pixels: capture 5119 (clean at 4315) shows exactly
         # DAC_4315[0x32]/[0x2E]/[0x4D] = 000000/180000/000014 there and capture
         # 5122 (clean at 4318) shows 000000/100000/00000c.
         # Named limit (as the U11 entry): the band has no port binding, and its

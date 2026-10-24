@@ -485,7 +485,11 @@ own sha256 — an animated screen); frame 5889 is all-black and 5890 is nearly
 black (166 px). The port's dump stops at 4939 because the generated script's
 `--end` is the `X`'s `f`, so those 13 states have no port frame. The caption
 "the attract's `CREDITS: 5` screen" is the last `S` record's `mode=3, cred=5`;
-the *pixels* of the tail are not claimed by this record.
+the *pixels* of the tail are not claimed by this section.
+
+*Superseded by §E9*: the tail is replayed with the script extended to the last
+`S` (`end_to_last_s=True`); the dump is 4954 frames and 5891..5903 are
+byte-identical to port 4940..4952, so those 13 states are claimed there.
 
 *Correction to the spec's reading of the guard's lines*: the guard is
 `gp_session.py:967-973` (the spec's `970-977` includes the `end < p27`
@@ -1726,3 +1730,98 @@ whose claim is the ending content — none is a fought win, and none is a U14
 substitute (§E1.3 says the same of U9/U10). The game-set `b0c` is not itself a
 gap: U10's `GP_ENDING_WIN_MIN_FIRST=9954` pins the game's write (spec §10's last
 item); what stays open is the fought (no-poke) win that reaches it.
+
+---
+
+## §E9 The U13 tail claimed and the 5120 wording (Task 9)
+
+### The last `S` lies past the `X`, so the script needed an opt-in
+
+§E1.4 measured the capture's shape; this section is what the replay does with it.
+`data/k11-captures/gp-u13-ending2`'s last `S` record is `f=0x2754` (10068), 55
+records past the `X` record's `f=0x271D` (10013), and `port_script`'s guard
+(`last = xrec['f']`; `--end %d is past the capture end f=%X`) capped every
+script at the `X`, so the dump's last frame was 4939 and the capture's 13 tail
+frames had no port frame to match. `port_script(name, lines, end=None,
+end_to_last_s=False)` now takes the opt-in: when true, `last = max(xrec['f'],
+max(r['f'] for r in recs if r['kind'] == 'S'))` before the `end` clamp. The
+default path is byte-identical to before (the X-last-S scenario is the
+regression test), `gp-replay` already appends `$(GP_SCRIPT_ARGS)` to the
+`port-script` call, and `gp-u13-oracle` is its only setter
+(`GP_SCRIPT_ARGS=--end-to-last-s`); no new make variable.
+
+| Fact | Measured |
+|---|---|
+| the script | `end 10068` (decimal; the `poll.log` `f` values are hex) |
+| the dump | 4954 `frame_*.ipx` (0..4953); it was 4940 (0..4939) |
+| the tail 5891..5903 | each capture frame is byte-identical to port frame `4940 + (j - 5891)`, consecutively — the replay's own presented ending frames |
+| 5889 / 5890 | all-black / nearly black (166 px), as §E1.4 measured |
+| the window reach | port 4952 (port 4953 is exhibited by no content-bearing capture frame) |
+| the frame report | window from capture 96; 5786 classified: 3505 clean, 2270 splice, 7 transition, 1 band, 2 scan3, 1 overlay, 0 unexplained, 22 all-black |
+| the trace/win report | 9722 frames compared (f 130..10068; 43 without an S snapshot), 0 differing through 10068 |
+| milestones | 30/30 (unchanged) |
+
+The 13 tail frames are not a named allowance: each is a clean (byte-identical)
+match of a port frame, so the tail's pixels **are** reproduced by the replay and
+the claim for them is stronger than the window's narrow one. What the tail's
+content means (the attract's `CREDITS: 5` screen, the last `S`'s `mode 3`,
+`cred=5`) remains §E1.4's caption; this section claims the frames, not a reading
+of the screen.
+
+### The pins, each proved one step above
+
+| Pin | Value | One step above |
+|---|---|---|
+| `GP_U13_MIN_FIRST` | 5904 (`N = 5904 is the exact pin`) | 5905: `FAIL: N 5905 > end 5904: N is unreachable` |
+| `GP_U13_MIN_REACH` | 4952 | 4953: `FAIL: window reach port 4952 < pinned reach 4953 (the port exhibited fewer port frames)` |
+| `GP_U13_TRACE_MIN_FIRST` | 10069 | 10070: `FAIL: N 10070 > end 10069: N is unreachable` |
+| `GP_U13_WIN_MIN_FIRST` | 10069 | 10070: `FAIL: N 10070 > end 10069: N is unreachable` |
+
+`GP_U13_MAX_START=96` (the window start did not move), `GP_U13_MILESTONES=30`,
+the capture identity (`poll.log` sha256 `e581916f…2b69c6`, 5904 frames) and the
+4248/4320/5120 allowances are unchanged; the 5905/4953/10070 failures were run
+against the kept dump, and `GP_WIN_KEEP=1 make gp-u13-oracle` passes at the new
+pins (all four checks `rc=0`).
+
+### The 5120 wording corrected
+
+The entry's sentence "the port's content at the 13 pixels is corroborated on
+both sides" overstated what the neighbours show. It now reads: "The neighbours
+5119/5122 corroborate the port's rendered colours at its own indices; they do
+not reproduce the capture's 13 pixels." The 8/1/4 table (8 at port index `0x32`,
+1 at `0x2E`, 4 at `0x4D`) and the capture-pinned bounds (1, 5) stand. Re-measured
+on the 4954-frame dump: rows 1..4 are still the only rows no port frame holds,
+no port frame holds the whole 4-row band, rows 5..199 are port 4317's alone, row
+0 is 4316/4317/4318's, and `band_explain` returns the pair `(4316, 4317)` — the
+bind did not depend on the dump stopping at 4939. The corner-ornament handle
+`0x01047345` stays withdrawn (§E1.5: zero occurrences) and this section claims
+no cause.
+
+### Tests
+
+- `test_gp_session.TestPortScript.test_end_to_last_s_accepts_the_capture_tail`
+  (synthetic: `X f=0x130`, `S` records to `f=0x160`): the default raises
+  `--end 352 is past the capture end f=130`, the flag accepts it (`end 352`), and
+  the X-last-S log produces a byte-identical script with and without the flag.
+  RED before Step 2 (`TypeError: port_script() got an unexpected keyword
+  argument 'end_to_last_s'`), green after.
+- `test_gp_compare.Band5120`: a synthetic 5120 fixture — 13 pixels in rows 1..4,
+  x 21..298, 8 at port index `0x32`, 1 at `0x2E`, 4 at `0x4D` (the shape itself
+  is asserted, `(8, 1, 4)`) — a band no port present holds, explained by the
+  name against the unique pair `(0, 1)`, and unexplained again when one byte of
+  the bottom-bound port frame is mutated. The fixture reads no capture.
+- Mutation proofs: disabling the band branch in `frame_claim` fails the two new
+  band cases; making `band_pair` return a pair without checking the bytes fails
+  the mutated-byte case; ignoring `end_to_last_s` fails the session case.
+- `tools/tests/test_gp_session.py` + `tools/tests/test_gp_compare.py`: 137
+  tests, all pass.
+
+### Self-review
+
+The default `port_script` output is unchanged (the X-last-S equality test), the
+only `GP_SCRIPT_ARGS` setter for the flag is `gp-u13-oracle` (the other two set
+`--end N` as before), there is no new make variable, the 4248/4320/5120 recipes
+and every other U13 pin are untouched, and the claim is the measured tail: the
+13 frames are byte-identical to the replay's own frames, and the 5120 band keeps
+its named-gap status with no cause. No ported function changed, so
+`port_progress.py` and the differential counter are unmoved.

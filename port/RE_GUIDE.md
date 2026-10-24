@@ -272,12 +272,13 @@ true original, and ported the divergence. Two pieces:
   `gp-u16-twop2` are captured and pinned; their `gp-u1x-oracle` targets skip
   only on a checkout without the git-ignored captures. The remaining open
   gameplay-evidence gaps are the U14 live win (R1, §J6) and the U16 finisher
-  reaction (R2, §J8). U13's pixel claim now reaches capture 5890: frames 4248,
-  4320 and 5120 are explained by named, byte-pinned and mutation-tested
-  per-frame recipes, the first unexplained frame is the post-script tail
-  5891..5903 (unclaimed) and the enforced reach is port 4939 — `GP_U13_MIN_FIRST`
-  = 5891, `GP_U13_MIN_REACH` = 4939 (R3, §J5; record
-  `2026-10-22-pixel-and-proof-closure-derivations.md` §P4/§P11.5).
+  reaction (R2, §J8). U13's pixel claim now reaches the capture's last frame
+  (5903): frames 4248, 4320 and 5120 are explained by named, byte-pinned and
+  mutation-tested per-frame recipes, the tail 5891..5903 is byte-identical to
+  the replay's own frames (the script now ends at the last `S`, f=10068, via
+  `--end-to-last-s`), and the enforced reach is port 4952 — `GP_U13_MIN_FIRST`
+  = 5904, `GP_U13_MIN_REACH` = 4952, trace/WIN = 10069 (R3, §J5; record
+  `2026-10-23-endgame-truth-derivations.md` §E9).
 - The differential audit: 31 of the 844 rows stay open (all on recorded stubs
   outside the portable set), and 45 `FN_` functions the port implements have no
   differential row (8 portable — 5 registry-visible and 3 header-shape

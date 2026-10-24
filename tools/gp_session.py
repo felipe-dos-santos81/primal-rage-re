@@ -1046,13 +1046,19 @@ def pad_arm(snap, keys):
     return dict(f=f, st=snap[f]['st'], mode=snap[f]['mode'])
 
 
-def port_script(name, lines, end=None):
+def port_script(name, lines, end=None, end_to_last_s=False):
     """poll.log v2 -> port script v2 (spec §4.1). Keys at their consumption
     frame (the H record paired FIFO with the I press, pinned by S(f-1) showing
     the old head); bits at each change of S.raw, pinned by S(f-1). The key loop
     0x24D08..0x24EE7 drains every queued word in one iteration, so the poller
     writes one H record per consumed word and S(f) must show the head of the
     last H record of frame f (record §G.4).
+
+    The script ends at the X record's frame by default. `end_to_last_s` lifts
+    that guard to the capture's last S record instead, for a capture whose last
+    S lies past its X (U13's gp-u13-ending2, record §E1.4: X f=271D, last S
+    f=2754): `--end` may then name any frame up to the last S, so the replay can
+    reach the states past the X. Only `gp-u13-oracle` opts in.
 
     A wall-paced scenario (`wall=True`, such as gp-u17-device2's service-menu
     walk) has no port script yet: its steps fire on the poller's wall clock
@@ -1120,6 +1126,8 @@ def port_script(name, lines, end=None):
     if xrec is None:
         raise ScriptError('the scenario end (X record) was not reached')
     last = xrec['f']
+    if end_to_last_s:
+        last = max(last, max(r['f'] for r in recs if r['kind'] == 'S'))
     if end is not None:
         if end > last:
             raise ScriptError('--end %d is past the capture end f=%X' % (end, last))
@@ -1162,6 +1170,7 @@ def main():
     ap.add_argument('--a')
     ap.add_argument('--b')
     ap.add_argument('--end', type=int)
+    ap.add_argument('--end-to-last-s', action='store_true')
     a = ap.parse_args()
     if a.cmd == 'trace-diff':
         with open(os.path.join(a.a, 'poll.log')) as fa, open(os.path.join(a.b, 'poll.log')) as fb:
@@ -1173,7 +1182,8 @@ def main():
         return 0
     with open(os.path.join(a.capture, 'poll.log')) as f:
         try:
-            text = port_script(a.scenario, f.read().splitlines(), end=a.end)
+            text = port_script(a.scenario, f.read().splitlines(), end=a.end,
+                               end_to_last_s=a.end_to_last_s)
         except ScriptError as e:
             print('gp_session: port-script: %s: %s' % (a.scenario, e))
             return 1

@@ -1257,33 +1257,39 @@ gp-win-one: build
 # (raw 1739), and every content-bearing capture frame through 5890 is explained by name —
 # 2188 by the loader's glyph overlay, 4248 (raw 7887) and 4320 (raw 8019) as three-present
 # scan-outs, 5120 (raw 8839) as a four-row band (record 2026-10-22-pixel-and-proof-closure
-# §P1, §P2, §P3). The first unexplained is 5891 (raw 14361); 5891..5903 are the post-script
-# tail (the replay's dump ends at f=0x271B and its trace at f=0x271D, X f=10013; record §P1.6)
-# and are NOT claimed: MIN_FIRST = 5891, and 5892 fails. The enforced comparison's window
-# reach is port 4939 (the highest port frame any classified capture frame exhibits through
-# capture 5890; report mode's reach is the same because the unexplained tail is the capture's
-# last frames), so MIN_REACH = 4939 and 4940 fails. Trace and win fields agree through
-# f=10013, so their end pins are 10014. gp_win.py finds 30/30 milestones including BLIZZARD
+# §P1, §P2, §P3). Endgame truth Task 9 (§E9) extends the claim over the capture's tail:
+# the last S record is f=0x2754 (10068), 55 S records past the X record's f=0x271D (10013),
+# so gp-u13-oracle's gp-replay opts in to the script's last-S end
+# (GP_SCRIPT_ARGS=--end-to-last-s; gp_session.port_script's default still ends at the X).
+# The replay now dumps 4954 frames (0..4953) and its trace/win comparisons run through
+# f=10068, so capture 5891..5903 are each byte-identical to port frames 4940..4952,
+# consecutively: MIN_FIRST = 5904 (N = 5904 is
+# the exact pin) and 5905 fails. The window reach is port 4952 (port 4953 is exhibited by
+# no content-bearing capture frame), so MIN_REACH = 4952 and 4953 fails. Trace and win
+# fields agree through f=10068, so their end pins are 10069 and 10070 fails. The window's
+# claim is the same narrow one: no content-bearing capture frame is unexplained (each is a
+# clean, splice or named-allowance match against the replay's own states), not that the
+# ending's animation content is reproduced. gp_win.py finds 30/30 milestones including BLIZZARD
 # c0=1, and the capture has 5904 frames with this poll.log sha256 (unchanged since the
 # capture: e581916f..2b69c6).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
-GP_U13_MIN_FIRST = 5891
-GP_U13_TRACE_MIN_FIRST = 10014
+GP_U13_MIN_FIRST = 5904
+GP_U13_TRACE_MIN_FIRST = 10069
 GP_U13_MAX_START = 96
-GP_U13_MIN_REACH = 4939
+GP_U13_MIN_REACH = 4952
 GP_U13_CAPTURE_SHA256 = e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6
 GP_U13_CAPTURE_FRAMES = 5904
 GP_U13_MILESTONES = 30
-GP_U13_WIN_MIN_FIRST = 10014
+GP_U13_WIN_MIN_FIRST = 10069
 gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 ending (skips without data/k11-captures/gp-u13-ending2)
 	@echo "== gameplay oracle: gp-u13-ending2 (BLIZZARD's ending under pokes) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_win
 	@if [ ! -d $(K11_CAPTURES)/gp-u13-ending2 ]; then echo "gp-u13-oracle: no capture at $(K11_CAPTURES)/gp-u13-ending2 (skipped)"; else \
 		$(PYTHON) tools/gp_win.py check --scenario gp-u13-ending2 --capture $(K11_CAPTURES)/gp-u13-ending2 \
 			--capture-sha256 "$(GP_U13_CAPTURE_SHA256)" && \
-		$(MAKE) --no-print-directory gp-replay scenario=gp-u13-ending2 GP_OPTIONAL=1 && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u13-ending2 GP_OPTIONAL=1 GP_SCRIPT_ARGS=--end-to-last-s && \
 		$(PYTHON) tools/gp_compare.py --scenario gp-u13-ending2 --capture $(K11_CAPTURES)/gp-u13-ending2 \
 			--port $(GP_DUMP)/gp-u13-ending2 --min-first "$(GP_U13_MIN_FIRST)" \
 			--trace-min-first "$(GP_U13_TRACE_MIN_FIRST)" --max-start "$(GP_U13_MAX_START)" \

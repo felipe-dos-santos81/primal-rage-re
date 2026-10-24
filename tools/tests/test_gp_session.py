@@ -329,6 +329,20 @@ class TestPortScript(unittest.TestCase):
         with self.assertRaises(gs.ScriptError):
             gs.port_script('_t', L)
 
+    def test_end_to_last_s_accepts_the_capture_tail(self):
+        # U13's shape (record §E1.4): the capture's last S record (f=271D's X,
+        # then 55 more S records to f=2754) lies past its X record, so a script
+        # that replays the tail needs the opt-in; the default refuses it as before.
+        L = _log(extra_after=[_s(f, head=0x22) for f in range(0x131, 0x161)])
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('_t', L, end=0x160)
+        lines = [l for l in gs.port_script('_t', L, end=0x160, end_to_last_s=True).splitlines()
+                 if not l.startswith('#')]
+        self.assertEqual(lines[-1], 'end 352')
+        # a scenario whose X is its last S: the flag changes nothing
+        self.assertEqual(gs.port_script('_t', _log(), end_to_last_s=True),
+                         gs.port_script('_t', _log()))
+
     def test_a_press_the_full_ring_dropped_is_named(self):
         L = _log()
         k = next(i for i, l in enumerate(L) if 'press=p1.up' in l)
