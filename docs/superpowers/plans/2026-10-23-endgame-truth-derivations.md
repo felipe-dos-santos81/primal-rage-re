@@ -1825,3 +1825,123 @@ and every other U13 pin are untouched, and the claim is the measured tail: the
 13 frames are byte-identical to the replay's own frames, and the 5120 band keeps
 its named-gap status with no cause. No ported function changed, so
 `port_progress.py` and the differential counter are unmoved.
+
+---
+
+## §E10 The tick vector documented (Task 10)
+
+Task 10 is documentation only: no port code, no capture, no pin. Its authority is
+§E1.6 above; this section records the address set the two docs now carry, the
+plan conflicts and the static raw-byte test.
+
+### Three plan corrections
+
+- The brief says "Record the addresses in §E6". **§E6 is the ARMADON ending
+  capture**; the plan's numbering is wrong. The task's record is this §E10, and
+  it cites §E1.6's measured block instead of restating a new measurement.
+- The brief's INT 8 range `0x66519..0x6652C` is one byte short: the block is
+  **21 bytes, `0x66519..0x6652D`**, ending `cd 21` (`cd` at `0x6652C`, `21` at
+  `0x6652D`). §E1.6's range is used verbatim. The brief's individual opcode
+  offsets are otherwise right.
+- §E1.6's own correction stands and the brief inherits the error: `0x1CFFA` is
+  the `push 0x3C` and `0x1CFFF` is the `call 0x5DA87`, so "`0x1CFFF` sets 0x3C"
+  names the call, not the push.
+
+### The addresses (re-read for this task)
+
+Read from `data/game/C/PRAGE.EXE` at `VA + 0x52E54` (pre-fixup) and from the
+`build/diffrun --image-out` image (fixup applied; the image's index is
+`VA - 0x10000` — its installer bytes sit at `0x56519`). Every address and
+target agrees with §E1.6; the two byte strings noted under the table are
+§E1.6's fixup-applied form, and the raw file, which the test reads, differs
+only in the pointer field.
+
+| Address | Bytes | Reading |
+|---|---|---|
+| `0x66519` | `b8 08 00 00 00` | `mov eax,8` — AL = vector 8 (INT 8) |
+| `0x6651E` | `ba 7e 62 05 00` raw / `ba 7e 62 06 00` image | `mov edx,0x0005627E` raw; the object-0 fixup (`+0x10000`) gives `0x0006627E` |
+| `0x66523` | `66 8c cb` | `mov bx,cs` |
+| `0x66526` | `b4 25` | `mov ah,0x25` — DOS set-interrupt-vector |
+| `0x66528` | `1e` | `push ds` |
+| `0x66529` | `66 8e db` | `mov ds,bx` |
+| `0x6652C` | `cd 21` | `int 0x21`; the block ends at `0x6652D` (21 bytes) |
+| `0x6627E` | `2e 83 3d 12 fd 06 00 00` | the vector's target: AIL's INT 8 handler, `cmp dword cs:[0xEFD12],0` (raw disp32 `0x6FD12` + data base `0x80000`); not a `prage.functions.csv` entry |
+| `0x663A4` | `b0 36 e6 43` at `0x663AC..0x663AF` | the PIT writer: `mov al,0x36; out 0x43,al`, then the divisor low/high to port `0x40` (`0x663BA`/`0x663C0`) |
+| `0x663D4` | `bb bc 20 00 00` at `0x663EB`, `b9 10 27 00 00` at `0x663F0`, `f7 f3` at `0x663F7` | divisor = `period*10000/0x20BC` (8,380; 10,000) |
+| `0x66BB8` | `b8 40 42 0f 00` at `0x66BC8`, `8b 5d 0c` at `0x66BCD`, `f7 f3` at `0x66BD0` | the period: `1,000,000/60 = 16666` µs |
+| `0x1CFED` | `68 f4 bd 00 00` | `push 0x1BDF4` (raw `0xBDF4`; the callback) |
+| `0x1CFF2` | `e8 1b 0a 04 00` | `call 0x5DA12` (AIL register_timer) |
+| `0x1CFFA` | `6a 3c` | `push 0x3C` — the 60 Hz rate |
+| `0x1CFFF` | `e8 83 0a 04 00` | `call 0x5DA87` (AIL set_timer_frequency) |
+| `0x1D008` | `e8 99 0a 04 00` | `call 0x5DAA6` (AIL start_timer) |
+| `0x2D62C` | `ff 05 88 5d 08 00 8b c0 c3` | `inc dword [0x105D88]; mov eax,eax; ret` — the run-clock **counter**, not the ISR |
+| `0x1BE28` | `e8 ff 17 01 00` | `call 0x2D62C` from the callback `0x1BDF4` (which calls `0x1BBAC` at `0x1BE1C`) |
+
+Two byte strings in §E1.6 are its **image** form, not raw: its `0x2D62C` block
+reads `ff 05 88 5d 10 00` and its `0x1CFED` row `68 f4 bd 01 00`, while the raw
+file holds `ff 05 88 5d 08 00` and `68 f4 bd 00 00` (the fixups add the data
+object base `0x80000` to a data pointer and the code object base `0x10000` to a
+code pointer, giving the same `0x105D88` and `0x1BDF4`). The handler's guard at
+`0x6627E` is likewise `12 fd 06 00` raw and `12 fd 0e 00` image. The test pins
+the raw form; the docs' prose names the linear addresses.
+
+**The rate is not fitted.** `16666*10000 = 166,660,000`; `/8380 = 19,887`
+remainder `6,940`; `1,193,182/19,887 = 59.99809 Hz`. The divisor and the period
+are the bytes' (`0x663EB`/`0x663F0`, `0x66BD0`); the 1,193,182 Hz input clock is
+the standard PC constant. The older 60.05 Hz line in `spec/game_flow.md` is a
+DOSBox-X observation of the same tick (0.09 % apart) and is now labelled as one,
+not as a second rate.
+
+### The docs
+
+- `port/RE_GUIDE.md`: the landmark row for `0x2D62C` now reads "run-clock counter
+  … called by the 60 Hz AIL callback `0x1BDF4` at `0x1BE28` — **not** the ISR;
+  the INT 8 vector is set at `0x66519` and points at `0x6627E`". "Next steps"
+  item 4 is struck through as done with the install, the handler and the PIT
+  constants. The "Remaining work" tick bullet drops "the tick interrupt vector
+  (item 4)" and keeps the one thing still untraced: AIL's own dispatch from
+  `0x6627E` to the registered callback `0x1BDF4`.
+- `port/spec/game_flow.md` ("Tick"): "Interrupt vector: unresolved" and "the
+  vector that installs `0x1BDF4` is still unread" are replaced by the measured
+  install (`0x66519..0x6652D` → `0x6627E`), the handler's first bytes, the PIT
+  writer/converter, the measured 16,666 µs period, the divisor 19,887 and the
+  port's model: `game_isr_ticks` (`flow.c`) and `config.c`'s key wait advance
+  the ISR's three counters (`0x101508`, `0x101500`, `0x105D88`), the run clock
+  `0x32970` (`config_run_clock`) reads `0x105D88`, `0x2D62C` is ported as
+  `config_isr_tick` (track S §S.9), `0x1BDF4` stays host-owned and `host.c`'s
+  `g_tick` is the host's own pacing counter. The old "`0x2D62C` is host-owned"
+  sentence is stale and is gone. The two earlier corrections ("exactly one
+  reference" is wrong; the `0x109A0` lock is not an install) are kept. Two more
+  places in the same file carried the old wording and are corrected here: the
+  landmark table's `0x2D62C` row (was "interrupt handler; vector unresolved")
+  and Open questions item 5 (was "still open: which interrupt vector carries
+  the tick `0x2D62C`"); both now name the `0x66519` install and `0x6627E`.
+
+### The static test
+
+`tools/tests/test_tick_vector.py` (6 tests, read-only, no port counterpart):
+the installer bytes `0x66519..0x6652D` including `ba 7e 62 05 00` and the
+`0x5627E + 0x10000 = 0x6627E` fixup; the handler's guard bytes; the `0x663AC`
+mode command and the two `out 0x40` bytes; the `0x663D4` constants and
+`divmod(16666*10000, 8380) == (19887, 6940)` with the period from `0x66BD0`;
+the AIL registration/frequency/start calls; and `0x2D62C`'s counter body with
+`0x1BE28 → 0x2D62C`. It skips without `data/game/C/PRAGE.EXE`
+(`PR_GAME_DIR` respected) and is on demand, not in `make verify`:
+
+```text
+python3 -m unittest tools.tests.test_tick_vector -v   ->  Ran 6 tests ... OK
+```
+
+Mutation proof: shifting the code file offset by one byte (`0x52E54` →
+`0x52E55`) in a copy fails all six; pointing `PR_GAME_DIR` at an empty directory
+skips all six.
+
+### Self-review
+
+No port code, no capture and no pin changed. Every address in the two docs
+matches §E1.6 and the raw bytes re-read here; the range is `0x66519..0x6652D`;
+`0x2D62C` is called the counter everywhere, never the ISR; the rate is derived
+(`16,666·10,000/8,380` with the standard clock), not fitted; the RE_GUIDE item
+4, its Remaining-work bullet and the game_flow tick section agree with each
+other and with §E1.6. `port_progress.py` and the differential counter are
+unmoved (no `FN_` function was added; the test lives in `tools/tests/`).

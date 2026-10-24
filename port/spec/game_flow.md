@@ -89,7 +89,7 @@ frame loop is reached through `0x20C10`:
   7 `0x2910C`, 8 `0x34648`, 9 `0x3800C`, 10 `0x28F08`, 11 `0x4F890`, 12
   `0x24150`, 13 `0x40554`, 14 `0x407EC`, 15 `0x260BC`, 16 `0x26194`, 17
   `0x45D98` (all-gaps ledger §B.2).
-* **Tick** — `DAT_00105D88` is incremented by the 9-byte handler `0x2D62C`
+* **Tick** — `DAT_00105D88` is incremented by the 9-byte counter `0x2D62C`
   (`DAT_00105D88++`); `main` locks that code page and the `DAT_00105D88` data
   page. **Tick rate = 60 Hz (measured + static).** Static: `0x32B00` converts a
   tick delta to seconds by dividing by `0x3c` = 60
@@ -103,19 +103,45 @@ frame loop is reached through `0x20C10`:
   identification is probable, not certain. The counter kept running while the
   master loop was idle (all per-frame counters stayed 0) — consistent with an
   interrupt-driven tick.
-  **Interrupt vector: unresolved.** `0x2D62C` has exactly one reference in the
-  whole binary — `main`'s region lock; the game code (`0x10000..0x5FFFF`)
-  contains **no** `int 21h`/`int 31h` instruction (all DOS/DPMI calls live in
-  the `0x6xxxx+` runtime), so no install site names the handler. A dosbox-x
-  `-log-int21` run showed only vector `0x15` get/set (DOS4GW's own hook) and
-  no `int 21h AX=25` for a timer vector. What would settle it: break at
-  `0x2D62C` in the dosbox-x debugger and read the vector/IDT entry, or trace
-  the DPMI `int 31h AX=0205` call that installs it.
+  **The vector is read (record
+  `2026-10-23-endgame-truth-derivations.md` §E1.6, §E10).** The INT 8 vector is
+  set by the AIL timer init at `0x66519..0x6652D`: `mov eax,8` (AL = vector 8),
+  `mov edx,0x0005627E` at `0x6651E`, `mov bx,cs` (`0x66523`), `mov ah,0x25`
+  (`0x66526`, DOS set-interrupt-vector), `push ds` (`0x66528`), `mov ds,bx`
+  (`0x66529`), `int 0x21` (`0x6652C`). The immediate is a code-object offset;
+  the object-0 fixup adds `0x10000`, so the loaded image holds `0x0006627E` and
+  **vector 8 points at `0x6627E`** — a runtime AIL handler (re-entrancy guard
+  `cmp dword cs:[0xEFD12],0` at `0x6627E`, then `pushal`/`push ds/es/fs/gs`).
+  The install is at `0x66519`, above the `0x10000..0x5FFFF` range the earlier
+  search covered, which is why no `int 21h` turned up there.
+  The PIT programmer `0x663A4` writes mode `0x36` to port `0x43`
+  (`0x663AC b0 36`, `0x663AE e6 43`) and the divisor's low and high bytes to
+  port `0x40` (`0x663BA`/`0x663C0`); `0x663D4` converts a period in µs to the
+  divisor as `period*10000/0x20BC` (8,380 at `0x663EB`, 10,000 at `0x663F0`).
+  The period is measured, not nominal: AIL's rate setter `0x66BB8` computes
+  `1,000,000/60 = 16666` at `0x66BD0`, and `0x1CF40` registers `0x1BDF4` as
+  the timer callback (`0x1CFED push 0x1BDF4`; `0x1CFF2 call 0x5DA12`), asks for
+  60 Hz (`0x1CFFA push 0x3C`; `0x1CFFF call 0x5DA87`) and starts the timer
+  (`0x1D008`). `16666*10000/8380` = **19,887** (remainder 6,940), so the PIT
+  rate is 1,193,182/19,887 = **59.998 Hz** — the input clock is the standard PC
+  constant, the divisor is what the bytes give. The 60.05 Hz count above is the
+  emulator's observation of the same tick (0.09% apart, not a second rate).
   **Correction (all-gaps records `2026-09-29-todo-verify-derivations.md` §1 and
-  `2026-09-29-k1-k9-derivations.md` §K9.5):** "exactly one reference" is wrong.
-  The timer ISR `0x1BDF4` calls it directly (`0x1BE28 call 0x2d62c`), and
-  `0x1BEC4` passes it to the lock `0x109A0` at `0x1BF5B`. The vector that
-  installs `0x1BDF4` is still unread. `0x2D62C` is host-owned (§K9.5).
+  `2026-09-29-k1-k9-derivations.md` §K9.5):** "`0x2D62C` has exactly one
+  reference" is wrong, and `0x2D62C` is **not** the ISR entry: it is the
+  run-clock counter `inc dword [0x105D88]; ret`, and the 60 Hz AIL callback
+  `0x1BDF4` calls it at `0x1BE28` (after calling the input sampler `0x1BBAC` at
+  `0x1BE1C` and incrementing the word `0xEF6DE` at `0x1BE21`). `0x1BEC4` also
+  passes it to the lock `0x109A0` at `0x1BF5B` — a memory lock, not an install.
+  The port models the callback, not the vector: `game_isr_ticks` (`flow.c`) and
+  `config.c`'s key wait add one tick to the ISR's three counters (`0x101508`,
+  `0x101500` and `0x105D88`), the run clock `0x32970` (`config_run_clock`)
+  reads `0x105D88`, and `host.c`'s `g_tick` is the host's own pacing counter.
+  `0x2D62C` is ported as `config_isr_tick` (`config.c`, track S §S.9); the
+  callback `0x1BDF4` stays host-owned (`tools/port_classification.txt`), its
+  tick modelled rather than executed. How AIL's handler `0x6627E` reaches the
+  registered callback `0x1BDF4` is AIL's internal dispatch and is not traced
+  here.
 * **Pacing** — counter pair `DAT_00101508` (advanced asynchronously, presumably
   by the same tick source) and `DAT_0010150C` (loop-local), compared in
   `0x255CC`. `0x1C740` additionally busy-polls VBlank around the present work.
@@ -3186,7 +3212,7 @@ record §34).**
 | `0x11000` | per-state render/play dispatch (13 cases) |
 | `0x1C740` | VBlank-gated animation/FLIC blit of `DAT_000E87A4` (not the screen write) |
 | `0x1C470` | palette dirty-list flush → VGA DAC |
-| `0x2D62C` | tick handler `DAT_00105D88++` (interrupt handler; vector unresolved) |
+| `0x2D62C` | run-clock counter `DAT_00105D88++` (9 bytes; called by the 60 Hz AIL callback `0x1BDF4` at `0x1BE28` — **not** the ISR; the INT 8 vector is set at `0x66519` → `0x6627E`) |
 | `0x51F45` | 320x200 double-buffer + scanline table setup (`&DAT_001088F8`) |
 | `0x50188` | swap back/fore buffers `DAT_000E87A0` ↔ `DAT_000E87A4` |
 | `0x501A3` | dirty-dword blit `DAT_000E87A4` → literal aperture `0xA0000` |
@@ -3218,9 +3244,11 @@ record §34).**
    (live pointer table / LUTs), so screen output must never target it; the port
    keeps its frame buffer outside the mapped data object and renders the
    320×200 index buffer to the window.
-   **Still open:** which interrupt vector carries the tick `0x2D62C` (the rate
-   is settled — 60.05 Hz measured, agreeing with the static ÷`0x3c` conversion;
-   see "Tick" — but no install site names the handler). This is the one item
-   Task 13 could not settle.
+   **Resolved (record `2026-10-23-endgame-truth-derivations.md` §E1.6/§E10):**
+   the interrupt vector is INT 8, set at `0x66519..0x6652D` to `0x6627E` (the
+   AIL handler), not to `0x2D62C`; `0x2D62C` is the counter the AIL callback
+   `0x1BDF4` calls. The rate is settled too — 59.998 Hz from the bytes' PIT
+   divisor 19,887 (`0x663D4`), agreeing with the static ÷`0x3c` conversion; the
+   older 60.05 Hz figure is the same tick seen by DOSBox-X (see "Tick").
 6. Why `main` gates on `int 10h` mode `0x13` (320x200, matching the `0x51F45`
    surface) while the installed set is `S16` (640x480).

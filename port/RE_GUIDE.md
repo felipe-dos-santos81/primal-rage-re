@@ -118,7 +118,7 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `0x11000` | per-state render/play dispatch (13 cases) |
 | `0x1C740` | VBlank-gated animation/FLIC-style blit of `DAT_000E87A4` (**not** the screen write) |
 | `0x1C470` | palette dirty-list flush → VGA DAC |
-| `0x2D62C` | tick handler `DAT_00105D88++`; rate 60.05 Hz measured, **interrupt vector unresolved** |
+| `0x2D62C` | run-clock **counter** `DAT_00105D88++` (9 bytes), called by the 60 Hz AIL timer callback `0x1BDF4` at `0x1BE28` — **not** the ISR; the INT 8 vector is set at `0x66519` and points at `0x6627E` (§E1.6) |
 | `0x51F45` | 320x200 double-buffer + scanline-table setup (`&DAT_001088F8`) |
 | `0x50188` | swap back/fore buffers `DAT_000E87A0` ↔ `DAT_000E87A4` |
 | `0x501A3` | dirty-dword blit `DAT_000E87A4` → literal aperture `0xA0000` |
@@ -244,8 +244,18 @@ true original, and ported the divergence. Two pieces:
    the descriptor `x`/`y` anchor stay `likely`, not proven. See `../docs/FORMATS.md`.
 3. ~~Name the hot core functions~~ (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`) — done:
    all four have `FN_` symbols in `symbols.h`, and the port calls them (`actors.c`, `menu.c`).
-4. Pin the tick **interrupt vector** (the rate is measured at 60.05 Hz; the
-   framebuffer write path has since been resolved as a literal `0xA0000`).
+4. ~~Pin the tick **interrupt vector**~~ — done: `0x66519..0x6652D` sets INT 8
+   (`mov eax,8`; `mov edx,0x0005627E`; `mov bx,cs`; `mov ah,0x25`; `push ds`;
+   `mov ds,bx`; `int 0x21`), so the vector's target is `0x6627E` (`0x5627E` +
+   the object-0 base `0x10000`; the loaded image holds the immediate
+   `0x0006627E`). The AIL PIT writer `0x663A4` sends mode `0x36` to port `0x43`
+   (`0x663AC`) and the divisor's low and high bytes to port `0x40`; `0x663D4`
+   computes `period*10000/0x20BC` (8,380), and the measured 16,666 µs period
+   (`0x66BD0`, `1,000,000/60`) gives the divisor 19,887 (59.998 Hz with the
+   standard 1,193,182 Hz PIT clock). `0x2D62C` is **not** the ISR: it is the
+   9-byte run-clock counter the AIL callback `0x1BDF4` calls at `0x1BE28`.
+   Record `../docs/superpowers/plans/2026-10-23-endgame-truth-derivations.md`
+   §E1.6/§E10.
 5. The SDL3 port lives in `port/`: engine core (sub-project 1), audio/AIL
    (sub-project 2a, report at
    `../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`), Smacker
@@ -287,4 +297,7 @@ true original, and ported the divergence. Two pieces:
   `docs/PROGRESS.md`; `make diff-verify` prints it.
 - Host and product work: audio audibility (no device-recording oracle), CI and
   packaging, SDL pad hot-plug, and the save-path documentation.
-- The tick interrupt vector (item 4).
+- The tick install is pinned (item 4: INT 8 → `0x6627E`, PIT divisor 19,887 at
+  `0x663D4`; `0x2D62C` is the counter, not the ISR). AIL's own dispatch from
+  `0x6627E` to the registered callback `0x1BDF4` is not traced byte by byte
+  (record `2026-10-23-endgame-truth-derivations.md` §E1.6).
