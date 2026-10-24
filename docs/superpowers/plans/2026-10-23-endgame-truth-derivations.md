@@ -1627,10 +1627,11 @@ pins included) are unchanged.
 
 **Task 8 is skipped: the go-ahead was declined.** The retake was conditional
 (spec §G3, §7.4, §11's "The U14 retake needs a new go-ahead"). The two permitted
-attempts are spent (record `2026-10-20-gameplay-truth-ii-derivations.md` §J6,
-§E1.4) and no third attempt was authorized, so the plan's Task 8 Step 1 "if
-declined" branch is the outcome. No capture was run and none exists: there is no
-`data/k11-captures/gp-u14-win-live`, and no port dump was produced for it.
+attempts are spent (record `2026-10-20-gameplay-truth-ii-derivations.md` §J6;
+this record's §E1.4 above) and no third attempt was authorized, so the plan's
+Task 8 Step 1 "if declined" branch is the outcome. No capture was run and none
+exists: there is no `data/k11-captures/gp-u14-win-live`, and no port dump was
+produced for it.
 
 ### R1 is open
 
@@ -1644,7 +1645,9 @@ and then set its own death-done byte `DS_00104B0C = 1` at `0x37FF6` (the
 
 §E1.4's U14 measurements rest on `/tmp/pr_gp_failed/gp-u14-win-live-run2/`, the
 second attempt's failed artifact (record gameplay-truth-ii §J6), re-measured for
-this section:
+this section; it repeats §E1.4's rows and adds the artifact's identity rows, and
+the repeated rows are identical to §E1.4's, re-measured on the same artifact, so
+a correction to either copy must move both:
 
 | Fact | Measured |
 |---|---|
@@ -1682,10 +1685,13 @@ citation `504-516` predates Tasks 3-7's insertions, the bytes are the same):
 `U14_PUNCH`/`U14_KICK` = `1A`/`1B`, `U14_GAP=16`, `U14_ATTEMPTS=32`, 31
 `U14_PRESSES`, `time_limit=200`, `extra=WIN_EXTRA`, `WIN_MENU` + both rounds +
 `until_mode 0x12`, and **no `poke` step** (69 steps, 0 pokes, measured from the
-loaded module for this section). `git diff 4605e0f0..HEAD` (the phase base to the
-Task 7 tip) changes no `U14_*`/`gp-u14-win-live` line and no `GP_U14_*` pin, so
-Task 8's own change set is these two documentation files: the U14 scenario, the
-Makefile target and pins, the unit tests and `tools/gp_win.py` are untouched.
+loaded module for this section). `git diff 4605e0f0..HEAD` (the phase base to
+this commit) changes no `U14_*` definition, no `gp-u14-win-live` scenario line
+and no `GP_U14_*` pin; the U14 scenario, the Makefile target and pins and
+`gp_win.py`'s rule are byte-identical, so Task 8's own change set is these two
+documentation files (the phase's other U14 mentions are new unit-case uses of
+`live_death`, `U14_PUNCH`/`U14_KICK` in the U18-U22 tests and one reflowed
+scenario-list assertion — not definitions, scenario lines or pins).
 
 ### `live_death` stays the acceptance test
 
@@ -1707,7 +1713,8 @@ The revised script is known and unmeasured: `U14_ATTEMPTS` 160 (spec §7.4's
 (G3)** paragraph, the plan's Task 8 Steps 2-4). Whether that script lands the
 KO, the game-set `b0c` and the land **has not been measured** — the attempt
 limit is spent, so the `GP_U14_*` pins stay empty until a new, explicit go-ahead
-authorizes the capture and its measurement (spec §G3, §11; record §E1.4).
+authorizes the capture and its measurement (spec §G3, §11; this record's §E1.4
+above).
 
 ### What the phase does and does not claim
 

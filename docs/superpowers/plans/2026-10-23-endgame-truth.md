@@ -265,6 +265,9 @@ The spec implies these failure modes; each gets a test in the task named.
 
 ### Task 8: U14 fought live win retake (conditional)
 
+**Status: skipped (declined)** — Step 1's "if declined" branch is the outcome
+(record §E8); Steps 2–5 were not executed.
+
 **Files:**
 - Modify: `tools/gp_session.py` (`U14_ATTEMPTS`, the `gp-u14-win-live` steps, `time_limit`)
 - Modify: `Makefile` (`GP_U14_*` pins; the target already exists)
@@ -276,15 +279,15 @@ The spec implies these failure modes; each gets a test in the task named.
 - Consumes: `U14_PUNCH`, `U14_KICK`, `WIN_MENU`, `_START`, `_MATCH1`, `LIVE_WIN`, `live_death` (already anchors on `(0x09,1)`, rejects any `DEATH_DONE` write and requires `b0c=1` after the KO).
 - Produces: the revised `gp-u14-win-live` scenario and the `GP_U14_*` pins, or a recorded named gap. No pokes.
 
-- [ ] **Step 1: Ask for the new go-ahead.** The phase record says the two permitted attempts are spent. Ask the user explicitly whether a third attempt is authorized. If declined, write the named-gap paragraph in the record (R1 remains; no capture, all `GP_U14_*` empty) and mark this task skipped; do not run the capture.
+- [x] **Step 1: Ask for the new go-ahead.** The phase record says the two permitted attempts are spent. Ask the user explicitly whether a third attempt is authorized. If declined, write the named-gap paragraph in the record (R1 remains; no capture, all `GP_U14_*` empty) and mark this task skipped; do not run the capture. **Declined: done** — the go-ahead was not given, so the named-gap paragraph is record §E8 and no capture was run.
 
-- [ ] **Step 2: Write the failing test (if authorized).** In `test_gp_session.py`, assert `U14_ATTEMPTS` is 160, the scenario has a `p1.right` re-approach every 8 attempts, `time_limit=260`, and no `poke` step; in `test_gp_win.py`, assert `gp-u14-win-live` is in `LIVE_WIN` and `live_death` returns 1 on a `DEATH_DONE` W or no `b0c=1` after the KO, and 0 on `b0c=1` with no poke. Run the tests; expected FAIL for the attempt/re-approach assertions; the `live_death` test may already pass.
+- [ ] **Step 2: Write the failing test (if authorized).** N/A (declined). In `test_gp_session.py`, assert `U14_ATTEMPTS` is 160, the scenario has a `p1.right` re-approach every 8 attempts, `time_limit=260`, and no `poke` step; in `test_gp_win.py`, assert `gp-u14-win-live` is in `LIVE_WIN` and `live_death` returns 1 on a `DEATH_DONE` W or no `b0c=1` after the KO, and 0 on `b0c=1` with no poke. Run the tests; expected FAIL for the attempt/re-approach assertions; the `live_death` test may already pass.
 
-- [ ] **Step 3: Revise the scenario (if authorized).** Change `U14_ATTEMPTS` and add the re-approach (the `_u16_round` pattern with `1A/1B`); keep the `WIN_MENU` path and the no-poke rule; `time_limit=260`. Run the tests; expected PASS.
+- [ ] **Step 3: Revise the scenario (if authorized).** N/A (declined). Change `U14_ATTEMPTS` and add the re-approach (the `_u16_round` pattern with `1A/1B`); keep the `WIN_MENU` path and the no-poke rule; `time_limit=260`. Run the tests; expected PASS.
 
-- [ ] **Step 4: Capture and pin (if authorized).** `make gp-capture scenario=gp-u14-win-live`; all checks, stopped-at-end, and `check-input` clean. Measure with `GP_WIN_KEEP=1 make gp-u14-oracle`; `gp_win.live_death` must pass (game-set `b0c=1`, no `DEATH_DONE`); fill the `GP_U14_*` pins and prove each one step above; adjust the Makefile comment provenance.
+- [ ] **Step 4: Capture and pin (if authorized).** N/A (declined). `make gp-capture scenario=gp-u14-win-live`; all checks, stopped-at-end, and `check-input` clean. Measure with `GP_WIN_KEEP=1 make gp-u14-oracle`; `gp_win.live_death` must pass (game-set `b0c=1`, no `DEATH_DONE`); fill the `GP_U14_*` pins and prove each one step above; adjust the Makefile comment provenance.
 
-- [ ] **Step 5: Confirm and commit.** If captured: the fought KO by hits, the game-set `b0c`, the land, the end; update the record/PROGRESS; commit `gameplay: capture the fought live win`. If declined/failed: commit the named-gap record only.
+- [ ] **Step 5: Confirm and commit.** N/A (declined; the named-gap-only commit is `docs: record the U14 R1 named gap`). If captured: the fought KO by hits, the game-set `b0c`, the land, the end; update the record/PROGRESS; commit `gameplay: capture the fought live win`. If declined/failed: commit the named-gap record only.
 
 ---
 
