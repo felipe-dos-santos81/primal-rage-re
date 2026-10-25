@@ -190,8 +190,9 @@ on the runtime flush `0x6C4CF`, so the census gains `config_file_save` as a
 20th terminal. `0x51ED8` joins `WEAKER` (one declared byte difference),
 `0x249F0` joins it too (its `unhit_named` `0x24A9C` restart arm is a
 reachable block left out), and `0x1D0BC` joins it (its `0x1D10E`/`0x1D183`
-buffer-failure arms are unhit). The full-row count therefore moves down by
-two, not one.
+buffer-failure arms are unhit). The full-row count moves down by **one**
+(`0x51ED8` was counted full; `0x1D0BC` was already neither full nor closed, so
+it moves no full-row figure), to the measured 807.
 
 **Terminal census.** The 20 rows still open after the short-write case are
 15 AIL thunks, `sound_buffers_alloc` (`0x1D0BC`, blocked by `0x1C308`),

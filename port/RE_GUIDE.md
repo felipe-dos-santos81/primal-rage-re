@@ -125,7 +125,7 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `0xA0000` | screen-write target, a **literal immediate** (no LE fixup) — literal-target and not-a-data-object are verified; the "VGA mode-13h aperture" reading is inferred (see `spec/game_flow.md`, verified-with-caveat). Hardware, never `mem[0xA0000]` |
 | `PTR_FUN_000A8644` / `_DAT_00104AE8` | update process table / bitmask |
 | `PTR_FUN_000A86C4` / `_DAT_00104AEC` | render process table / bitmask |
-| `0x1C500` | small leaf called 181× — likely a getter/accessor |
+| `0x1C500` | `game_string_get` — the string decode's tail (`0x474E4`/`0x1C500`), ported; called 181× |
 | `0x2BC30`, `0x2AE14`, `0x2F198` | very hot code (150–190 callers) |
 | `0x5D7DC` | **not audio**: the Watcom C runtime `rand()` — a 32-bit LCG `seed = seed*0xB90D12B9 + 0x38CE051F`. 33 game callers, 0 AIL callers (spec `audio.md` "AIL surface"). Earlier "allocator/memory helper" was wrong |
 | `0x121A0` | title state (switch case 1): phases on `DS_000F0A6F`, spawns the logo/second objects, counts down `DS_000F0A66` |
@@ -224,9 +224,10 @@ true original, and ported the divergence. Two pieces:
   list primitives `0x249B0`/`0x249C0`/`0x249D0`, free-list build `0x13ADC`,
   spawn `0x13C70`, per-entry teardown `0x13420`, clear `0x13DF0` and step/age
   `0x134C0`. Wired in `actors_reset` (`0x2BBB8`/`0x2BB2B`) and the title's
-  `0x123EA` (`effects_spawn(node, 3u, 0x419786C)`). `0x13C70`'s render path is
-  unported, so the spawn is a declared coverage gap carried by unit tests;
-  `0x134C0`'s drain is unit-proven. Full record:
+  `0x123EA` (`effects_spawn(node, 3u, 0x419786C)`). The effect render path —
+  `0x134C0`'s per-frame step/age (`effects_step`, animating each record's
+  `+0x10` block through `0x33734`'s palette append) — is ported and
+  unit-proven, as is `0x13DF0`'s drain. Full record:
   `../docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
 
 ## Next steps
@@ -272,17 +273,23 @@ true original, and ported the divergence. Two pieces:
    `../docs/superpowers/plans/2026-09-18-title-residuals-report.md`). Streamed
    Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5), the
    deferred attract subsystem (4d: `0x11000`, `0x38A38`, `0x389C4`, `0x292AC`,
-   `0x4F644`) and the `0x13xxx` effect **render** path were the open list; the
+   `0x4F644`) were the open list; the
    open work is the "Remaining work" list below. The AIL sound-id
-   table `DAT_000BBDC8` is **static in the EXE** (stride 12; byte 0 = case,
-   dword +4 = handle), so its id → resource mapping is extractable; it is not
-   yet extracted.
+   table `DAT_000BBDC8` is **static in the EXE** (244 records, ids `0x00..0xF3`;
+   stride 12; byte 0 = case, dword +4 = handle); its id → resource mapping was
+   extracted (record `2026-09-29-k7-k12-derivations.md` §0.1): case counts
+   0 ×5, 1 ×29, 2 ×154, 3 ×3 (`0x46 0x4D 0x5D`), 4 ×1, 5 ×18, 6 ×34, and the
+   only case-1 records naming S16TITLE.GRA are ids `0x54`/`0x56`, both handle
+   `0x03836102`.
 
 ### Remaining work (2026-10-24; counter re-measured at the endgame truth phase gate)
 
 - The captures `gp-u12-endurance`, `gp-u13-ending2`, `gp-u15-join` and
   `gp-u16-twop2` are captured and pinned; their `gp-u1x-oracle` targets skip
-  only on a checkout without the git-ignored captures. **All seven character
+  only on a checkout without the git-ignored captures. `gp-u17-device2` (host
+  input truth) pins the no-pad clear and the device-2 selection's screen proof,
+  with empty frame/trace ratchets (the wall-paced walk has no replay, record
+  §H6.9). **All seven character
   endings are now captured**: SAURON's by U10 (poked), BLIZZARD's by U13, and
   TALON's, VERTIGO's, CHAOS's, ARMADON's and DIABLO's by the endgame truth
   phase (`gp-u18-oracle`…`gp-u22-oracle`, each in `make verify` and each
@@ -306,10 +313,15 @@ true original, and ported the divergence. Two pieces:
   trace/WIN = 10069 (R3, §J5; record `2026-10-23-endgame-truth-derivations.md`
   §E9). The game-set `b0c` is U10's (`GP_ENDING_WIN_MIN_FIRST=9954`), not a
   gap; only the fought no-poke win is open (§E1.3).
-- The differential audit: 31 of the 844 rows stay open (all on recorded stubs
-  outside the portable set), and 45 `FN_` functions the port implements have no
-  differential row (8 portable — 5 registry-visible and 3 header-shape
-  exceptions — plus 37 runtime; the scan-visible subset is 42 = 5 + 37). The
+- The differential audit (proof-completion phase, record
+  `2026-10-24-proof-completion-derivations.md` §P5–§P8): `make diff-verify`
+  reads `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named
+  gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on
+  full rows; 8 ported functions with no row`. The **20 open rows** are declared
+  terminals (15 AIL thunks, `sound_buffers_alloc`, `input_sampler`, and the
+  three runtime-flush rows `config_file_load`/`config_file_save`/
+  `menu_fatal_error`), **15 rows are `WEAKER`**, and **8 portable functions are
+  `UNROWED`** (45 `FN_` ported-unrowed: 8 portable + 37 runtime). The
   counter and its clauses are in `AGENTS.md`, the phase record in
   `docs/PROGRESS.md`; `make diff-verify` prints it.
 - Host and product work: audio audibility (no device-recording oracle), CI and

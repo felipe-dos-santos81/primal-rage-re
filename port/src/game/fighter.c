@@ -14047,8 +14047,9 @@ void fighter_3f77c(u32 rec)
 }
 
 /* 0x40434 — record §54-A. The 0xD000 target (opcode 0x10) at 0xD4FFC, in the
- * stream 0xD4FF8 (the dword 0xC92B0[5] = 0xC92C4, which only the unported
- * finisher code at 0x377DD copies to DS_001078E4): the confetti pool's starter,
+ * stream 0xD4FF8 (the dword 0xC92B0[5] = 0xC92C4, which only the finisher
+ * callback 0x37774 — `fighter_37774`, ported, record gameplay-u0 §U0.4; its
+ * store is at 0x377DD — copies to DS_001078E4): the confetti pool's starter,
  * the only setter of DS_00104AE8 bit 13. Nothing without the record's +0x14
  * (its slot, EBP). The mover 0x2AE14(0xBB2CC, x = the record's +0x18 +/-
  * 0x1000, the high word of its +0x30 (signed), y = its +0x1C + 0x1300, the

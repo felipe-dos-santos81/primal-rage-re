@@ -1,6 +1,6 @@
 # Sub-project A — make the gate mean what it says (2026-10-16)
 
-Status: DRAFT — written from an eight-lane read-only recon of the current tree
+Status: implemented (2026-10-16) — written from an eight-lane read-only recon of the current tree
 (2026-10-16, HEAD `bffb779e`) plus three focused fix-surface analyses of the same
 rev; builder-checked. The open calls below are the controller's, overturnable.
 

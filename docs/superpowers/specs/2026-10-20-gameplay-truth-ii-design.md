@@ -1,8 +1,18 @@
 # Gameplay truth II — the unexplained tail and the held captures (2026-10-20)
 
-Status: implemented; evidence closeout complete (2026-10-22): four captures are taken and pinned (U15, U12, U13, U16); U14 live win is the R1 named gap (§J6), U16 finisher is the R2 named gap (§J8), and U13's pixel claim ends at capture 4248 (§J5). No existing pin moved.
+Status: implemented; evidence closeout complete (2026-10-22): four captures are taken and pinned (U15, U12, U13, U16); U14 live win is the R1 named gap (§J6). The U16 finisher (R2) and U13's pixel claim are superseded by the endgame truth phase, noted below. No existing pin moved.
 
-**Superseded in part (2026-10-23, pixel-and-proof closure):** U13's pixel claim now reaches capture 5890. The in-replay frames 4248, 4320 and 5120 are explained by named, byte-pinned and mutation-tested per-frame recipes, and the pins are `GP_U13_MIN_FIRST=5891` (the post-script tail 5891..5903 stays unclaimed) and `GP_U13_MIN_REACH=4939`; see `docs/PROGRESS.md` and `docs/superpowers/plans/2026-10-22-pixel-and-proof-closure-derivations.md` §P4 and §P11.5. The rest of this design and its record stand.
+**Superseded in part (2026-10-23, endgame truth phase):** U13's pixel claim now
+reaches capture 5903 — the in-replay frames 4248, 4320 and 5120 are explained
+by named, byte-pinned and mutation-tested per-frame recipes, the `--end-to-last-s`
+tail 5891..5903 is byte-identical to the replay's own frames, and the pins are
+`GP_U13_MIN_FIRST=5904`, `GP_U13_MIN_REACH=4952` and
+`GP_U13_TRACE_MIN_FIRST`/`WIN_MIN_FIRST=10069`. The endgame truth phase also
+captured the U16 finisher (`gp-u23-oracle`, §E2) and the five remaining endings
+(`gp-u18-oracle`…`gp-u22-oracle`, §E3–§E7); U14 live win stays the R1 named gap
+(§J6/§E8). See `docs/PROGRESS.md` and
+`docs/superpowers/plans/2026-10-23-endgame-truth-derivations.md` §E2–§E9. The
+rest of this design and its record stand.
 
 Written from the 2026-10-14 next-phase recon, the track G/J/A records, and a
 2026-10-20 re-read of the current pins and tools. Builder-checked 2026-10-20: its three findings are folded in (W1 is a tail pass, not a single
@@ -17,8 +27,8 @@ Tasks 8-13 (the held capture contracts; Task 13 is re-scoped to a raw verdict in
 W8), the track-G record
 `2026-10-14-reverse-g-derivations.md` §G6/§G7, and the U9/U10 record
 `2026-10-02-gameplay-u9-u10-derivations.md` §W.12-§W.16. Current pins are the
-`Makefile`'s: U9 2452/3503, U10 4113/9954, keys 1136/2164, idle-loss 7559/8320,
-charsel 516/1513, moves 2139/3248, twop 612/1506.
+`Makefile`'s (at design time): U9 2452/3503, U10 5437/9954, keys 1136/2164,
+idle-loss 7559/8320, charsel 516/1513, moves 2139/3248, twop 612/1506.
 
 ## Intent and the why
 

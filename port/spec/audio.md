@@ -249,9 +249,11 @@ game calls directly (it links the driver binaries, not a separate sound engine):
   (`FUN_0005ddd0`/`FUN_0005de1f`), and installs a timer callback with period
   `0x3c` = **60 Hz** (`FUN_0005da12`/`FUN_0005da87(h,0x3c)`/`FUN_0005daa6`).
   `verified (cmd: prage.c FUN_0001cf40)`.
-  * This is the likely sequencer pacing answer for Task 8: **60 Hz**.
-    `TODO(verify): confirm `FUN_0005da87`'s second argument is a Hz period (vs ms)
-    by reading the AIL timer wrapper at `0x5da87`.`
+  * This is the sequencer pacing answer for Task 8: **60 Hz**, now verified —
+    AIL's rate setter `0x66BB8` computes `1,000,000/60 = 16666` µs at
+    `0x66BD0`, so the divisor is 19,887 and the rate is
+    1,193,182/19,887 = **59.998 Hz** (record
+    `2026-10-23-endgame-truth-derivations.md` §E1.6/§E10).
 * `FUN_0005de48` → `FUN_0006a410` (878 B) is the **XMIDI loader**: it parses the
   `FORM`/`CAT`/`XMID` container, walks the `XMID` records, and on failure
   raises `"Invalid XMIDI sequence\n"`. `verified (cmd: prage.c 0x5de48 /
@@ -297,8 +299,9 @@ Pro 2 → OPL FM), sample driver = **SB16.DIG** (16-bit DMA).
 * The design's Task 7 (samples) should read WAV/PCM from the GRA resources;
   `S16SOUND.GRA` proves the format (8-bit unsigned mono 11025 Hz) and the rate
   matches the AIL preference.
-* Task 8's pacing discovery is answered (likely **60 Hz**); confirm the timer
-  argument semantics as noted.
+* Task 8's pacing discovery is answered and verified: **60 Hz (59.998 Hz)**,
+  from AIL's rate setter `0x66BB8` (record
+  `2026-10-23-endgame-truth-derivations.md` §E1.6/§E10).
 
 ## Open items
 
@@ -310,7 +313,7 @@ Pro 2 → OPL FM), sample driver = **SB16.DIG** (16-bit DMA).
 | WAV sample format/rate in `S16SOUND.GRA` | **verified** |
 | Exact `S16SND2` / `S16TITLE` type-2 body split | `TODO(verify)` |
 | Other (raw, headerless) sound-effect sample locations | `TODO(verify)` |
-| AIL timer `0x3c` == 60 Hz (vs ms) | `likely`, `TODO(verify)` |
+| AIL timer `0x3c` == 60 Hz (vs ms) | **verified** (59.998 Hz; `0x66BB8`, record §E1.6/§E10) |
 
 ---
 

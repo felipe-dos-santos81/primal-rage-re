@@ -259,10 +259,11 @@ frame loop is reached through `0x20C10`:
   `game_restart_longjmp()` (`0x65431`) jumps there, and the landing runs
   `game_init_resume()` and `game_loop_begin()` (`0x255D4/0x255DA`), then the
   loop body from its top. `game_init_resume()` holds the tail's stores and
-  calls except: the controller checks (a named gap: `0x4FBBB`'s game-port
-  answer is the hardware's), `0x32970` (host-owned), and the direct
+  calls except: the direct
   `0x38B70`/`0x2F920`/`0x2BAF4(1)` calls, which are unobservable because
-  `0x10E80` re-runs `0x2BAF4(1)` with nothing reading that state in between;
+  `0x10E80` re-runs `0x2BAF4(1)` with nothing reading that state in between
+  (the controller checks `0x20D0F..0x20DE3` are ported as `game_boot_ports`,
+  record §H6.2, and the run clock `0x32970` as `config_run_clock`, track S);
   `0x47370` runs later in the port's order (record named-gaps-b §B.2,
   §B.11). After a restart
   the port's attract palettes sit one slot lower than on the first boot (no
@@ -339,7 +340,10 @@ presents 121 frames and TWG 41. The headless drivers step the loop with
 `game_loop_step()`, which leaves the quit flag alone. The collapsed smk capture
 holds TWI5's first 120 only, because the 121st is blanked before a whole
 scanout; the front-end capture's 2094 splices it (demo-pose record §36, which
-settles the old `TODO(verify)`). Streamed Smacker audio is sub-project 2b-ii and not ported. See
+settles the old `TODO(verify)`). Streamed Smacker audio is a zero-payload finding, not a port gap: both shipped
+movies declare zero audio tracks, so no stream opens (record
+`2026-10-21-host-input-truth-derivations.md` §H1; the 13 movie-audio rows in
+`tools/port_classification.txt` are `deferred` for that reason). See
 `../../docs/superpowers/plans/2026-09-17-smacker-video-report.md` and
 `../../docs/superpowers/plans/2026-09-19-attract-report.md`.
 
@@ -557,7 +561,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `0x2D`-`0x2F` first spending one credit (`config_credit_spend`) —
     are no longer named gaps), and cases 1/2/`0x20` run the bare `ret`
     `0x29B70`;
-  - the other 10 cases are named gaps.
+  - the remaining entries are all dispatched too (below): **all 52 jump-table
+    entries dispatch, none is a named gap**.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -871,8 +876,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     branches on the byte `DS_00108174`. With 0 it runs the character
     select's per-frame pass `0x43B24` (`fight_char_select_pass`), or
     `0x44798` (`fight_char_team_pass`) when `DS_00104B1D == 3`; both are
-    ported with their callees (record §48-S), and their voices and the
-    character-pick audit count `0x2E934` are named gaps. With 1 it runs the
+    ported with their callees (record §48-S), and their voices are named gaps
+    (the character-pick audit count `0x2E934` is ported by track S). With 1 it runs the
     join test `0x43928`, the skip test `0x4F790` and the countdown
     `DS_0010816C`, then copies `DS_00108172` into `DS_00108174`. No
     instruction stores a non-zero value there by displacement (record
@@ -1099,8 +1104,8 @@ raw's logic, voices aside). No task in this plan owns the
 match cycle as a whole. States 6/7
 (the attract demo
 fight: `0x11A8C`, `0x263F4`) were ported by the demo-fight cycle 1 (see the
-next section); state 8 (`0x11EAC`: the run clock `0x32970(0)`, a named gap,
-then `0x257A4(3)` and the shared tails) is wired since record §48-W but
+next section); state 8 (`0x11EAC`: the run clock `0x32970(0)`, ported by track
+S, then `0x257A4(3)` and the shared tails) is wired since record §48-W but
 unreachable without `DS_00108173 != 0`; state 9's semantics beyond the
 countdown handoff (`0x10EE4`'s `DS_000F0A71` arm) remain the **next cycle**. The countdown
 itself is ported and faithful; the state-9 hold's render divergence is in the
@@ -1258,7 +1263,9 @@ story: the ignored coverage is exactly what lets a port that **under-renders**
 the front-end pass (counterexamples above). Passing the gate therefore means "no
 content-bearing capture frame inside the port-exhibited window is unexplained",
 NOT "every dumped port frame was exhibited" and NOT "the front-end was
-rendered".
+rendered". The window's END is nonetheless ratcheted: `FRONTEND_END` (= 1884)
+holds the capture's last content-bearing frame, so a port that stops early
+fails; the interior coverage stays unclaimed.
 
 ## Demo fight states 6/7 (demo-fight cycles 1–2, report-only window)
 

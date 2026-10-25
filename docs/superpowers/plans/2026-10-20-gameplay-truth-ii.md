@@ -1,6 +1,6 @@
 # Gameplay Truth II — Implementation Plan
 
-Status: implemented; evidence closeout complete (2026-10-22): four captures are taken and pinned (U15, U12, U13, U16); U14 live win is the R1 named gap (§J6), U16 finisher is the R2 named gap (§J8), and U13's pixel claim ends at capture 4248 (§J5). No existing pin moved.
+Status: implemented; evidence closeout complete (2026-10-22): four captures are taken and pinned (U15, U12, U13, U16); U14 live win is the R1 named gap (§J6). The U16 finisher (R2) and U13's pixel claim are superseded by the endgame truth phase (`gp-u23-oracle` §E2; `gp-u18-oracle`…`gp-u22-oracle` §E3–§E7; U13 `GP_U13_MIN_FIRST=5904`/`MIN_REACH=4952`, §E9). No existing pin moved.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps

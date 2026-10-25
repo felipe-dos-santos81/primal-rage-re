@@ -289,7 +289,8 @@ for `lit_bwd` (its 129 counted slots); 4+31+31+31+31+1 = 129 for `lit_fwd`
 is the control byte itself, and a literal control byte is 7-bit (`b < 0x80`;
 0x57FAA `call [eax*4+0x80E0C]` after 0x57F93 `test al,al; jns`), so index 128 is
 unreachable there; the clipped mirrored renderer's straddle path passes an
-overhang remainder (`neg edx`, 0x581AC/0x5817C), which is at most the run
+overhang remainder (`neg edx`, 0x5821F/0x5823C/0x58250; `0x581AC` is `add
+eax, ecx`), which is at most the run
 length, 127. The slot exists physically because the 129-slot walk continues
 past `0x80E0C`'s last reachable entry: `0x8100C` is not a known table base (the
 next table starts at `0x81010`), so `0x8100C` reads as `0x80E0C[128]` and holds
@@ -339,8 +340,9 @@ the 385 writer slots gives **227 triaged** and **158 untriaged**:
   (`[9]`), `0x57FFB` (`[25]`), `0x58CBD` (`[2]`/`[18]`); 231 - 4 = 227;
 - `0x57E3C` (the dead writer) **is** triaged (it is a slot);
 - `0x5D110` is **not** triaged (not a slot, §P2.3);
-- `0x51E58` (the `ret`) and the other renderers `0x5D218`/`0x5D28F` are not E2
-  rows (a `ret`-only body and bodies with no table slot).
+- `0x51E58` (the `ret`) is **not** an E2 row (a `ret`-only body); the renderers
+  `0x5D218`/`0x5D28F` are E2 supplement entries (renderer slots `0x80C90`/
+  `0x80CD0` of table `0x80C8C`, not writer slots).
 
 The E2 universe is **not** extended: `--expect 579 --expect-u0 575` stays
 byte-identical (NG5). The 158 untriaged writers are a named gap of this phase:
@@ -892,7 +894,7 @@ EAX and preserves the rest (the `_CALLEE_CLOBBER_FIXES` entry, record §C2b.3).
 |---|---|---|---|
 | p0 | 0x0EF0 | 0x0FF0 | below the clamp: no write to `+0x2C`, `0x104AE8` unchanged |
 | p1 | 0x0F00 | 0x1000 | at it: word 0x1000, `0x104AE8` 0xFF -> 0xBF |
-| p2 | 0x7F10 | 0x8010 | zero-extended, still clamps: word 0x1000, `0x104AE8` 0x7F -> 0x3F |
+| p2 | 0x7F10 | 0x8010 | zero-extended, still clamps: word 0x1000, `0x104AE8` 0xFF -> 0xBF (the helper's default) |
 | p3 | 0xFF10 | 0x0010 | `+0x2D` wraps, no carry into `+0x2E`: no clamp |
 
 Every case seeds `+0x2E`/`+0x2F` (`aa bb`) and `0x104AE8`, so a carry out of
@@ -902,7 +904,7 @@ Every case seeds `+0x2E`/`+0x2F` (`aa bb`) and `0x104AE8`, so a carry out of
 
 | case | state `0x104B0F` | word | timer | expected |
 |---|---|---|---|---|
-| q0 | 0 | 0x0F00 | 0x55 | 0x0F80 < 0x1000: return, no write |
+| q0 | 0 | 0x0F00 | 0x55 | 0x0F80 < 0x1000: return after the word store (`0x261CA`), no clamp |
 | q1 | 0 | 0x0F80 | 0x00 | 0x1000: clamp, word 0x1000, timer 0x3C, state 1 |
 | q2 | 0 | 0xFFF0 | 0x55 | 0x0070: the truncated word, no clamp |
 | q3 | 0 | 0x7F90 | 0x00 | 0x8010: zero-extended, still clamps |
@@ -2285,4 +2287,89 @@ was needed. This run used the explicitly permitted non-full-scan form; the
 separate full-scan attempt was terminated by the foreground tool's one-hour
 limit while still in the differential unittest, before its differential driver,
 and is not claimed as a completed gate.
+
+---
+
+## P12 — The docs truth sweep and span accounting (Task 11)
+
+Task 11 is the phase's documentation pass: it applies Appendix A's C/E checklist
+and the measured counters to `README.md`, `AGENTS.md`, `docs/PROGRESS.md`,
+`port/RE_GUIDE.md`, `port/spec/game_flow.md`, `port/spec/audio.md`, the
+sub-project-A and gameplay-truth-II specs, the GT2 plan,
+`tools/port_classification.txt` (reason text only) and the `0x377DD` comment in
+`port/src/game/fighter.c`, then appends this section. It changes no engine code,
+pin, capture or test.
+
+### P12.1 The measured current state
+
+Every figure below is the driver/tool's own line, not a prediction:
+
+- **Differential** (`make diff-verify`): `1033/1033 functions VERIFIED; 14993/14993
+  mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have
+  none); 807/845 closed on full rows; 8 ported functions with no row (45 FN_
+  ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] +
+  37 runtime; the scan-visible subset is 42 = 5 + 37)`. The **20 open rows** are
+  declared terminals (§P8.1), **15 rows are `WEAKER`** (§P8.3) and **8 portable
+  functions are `UNROWED`** (§P8.2); `diff-verify` prints 0 named gaps. The
+  design's §7 arithmetic predicted `14990` mutants — the measured line is
+  `14993` (recorded for Task 12 to correct the design status).
+- **Span census** (§P2–§P4): 417 slots, 392 distinct targets (six renderers, one
+  bare `ret`, 385 writer slots) plus the reachable out-of-table
+  `0x81110[128] = 0x81310[0] = 0x5D110` = **386 distinct writer targets, 385
+  reachable** (384 reachable slots + `0x5D110`) and one dead (`0x57E3C`). The
+  minimal fixture proves **26/26 code-shape classes**; the exhaustive fixture
+  proves **385/386 distinct targets (all 385 reachable)**, including both-edges
+  clipping at `0x5D580`/`0x582F4` and the clipped 14/15 word tails. E2 triages
+  227 of the writers and leaves 158 to this census (231 span rows minus four
+  renderers); `0x24B54` is live, `0x24B08` dead. The E2 table and its
+  `--expect 579 --expect-u0 575` gate are unchanged.
+- **Oracles** (§P9/§P10): 24/24 gameplay replays pass the occurrence-aware
+  content-order check with 0 order failures; every enforced scenario has a
+  measured `--max-missing` pin. K11 pins capture identity by `poll.log` sha256
+  plus frame count (walk 171, menuesc 766); the bounded-missing pins are
+  front-end 30, attract 74 and attract cycle 2 126.
+- **Gate** (§P11): 35 explicit capture paths, 34/35 present + the declared U14
+  gap; 3 enforced directories (`smk/twi5`, `smk/twg`, `title`), `title2`/
+  front-end compare-if-present, 30 skip; `GATE_STRICT`/`PR_PINS_EXACT` exported,
+  exact pins default to strict; `PR_FN_MISS_REQUIRED` is verify-only.
+- `python3 tools/port_progress.py` stays `799 1203 66` / `759 759 100`;
+  `make entry-triage` stays `579 candidates (575 by U0's rule)`;
+  `make diff-verify` stays the line above.
+
+### P12.2 The deferred record nits (cleared here)
+
+- **Task 1, §P2.3:** the clipped mirrored straddle path's `neg edx` is at
+  `0x5821F`/`0x5823C`/`0x58250`, and `0x581AC` is `add eax, ecx` (the earlier
+  `0x581AC`/`0x5817C` was wrong); §P2.4's renderer note now says `0x5D218`/
+  `0x5D28F` are E2 supplement entries (renderer slots `0x80C90`/`0x80CD0`), not
+  "not E2 rows".
+- **Task 4, §P5:** `p2` seeds the arm byte through `d1c_ramp_case`'s default
+  `0xFF`, so its `0x104AE8` result is `0xFF -> 0xBF`, not the recorded
+  `0x7F -> 0x3F`; `q0` stores the word at `0x261CA` before the `jl`, so it
+  returns **after the word store** (no clamp), not "return, no write".
+- **Task 6:** the design's "full-row count moves down by two, not one" is
+  corrected to **one** (`0x51ED8` alone; `0x1D0BC` was already neither full nor
+  closed), the measured full figure being 807.
+
+### P12.3 Verification
+
+```
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+$ make entry-triage
+Ran 44 tests ... OK
+entry-triage: 579 candidates (575 by U0's rule); ...
+
+$ make diff-verify
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 807/845 closed on full rows;
+8 ported functions with no row (45 FN_ ported-unrowed: 8 portable
+[5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible
+subset is 42 = 5 + 37). ...
+```
+
+All three are byte-identical to the §P5.4/§P7.5 pins: the docs pass adds no
+`FN_` function, no row and no E2 row.
 

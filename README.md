@@ -1,4 +1,4 @@
-# Primal Rage (DOS, 1995) — Reverse Engineering 66%
+# Primal Rage (DOS, 1995) — Reverse Engineering 66% of Ghidra's 1203 indexed functions
 
 ![Primal Rage](docs/intro.jpg)
 
@@ -16,8 +16,9 @@ The original game files are **not included** in this repository and are
 required to build, run, or reverse-engineer anything here. Download them (e.g.
 from [myabandonware](https://www.myabandonware.com/game/primal-rage-2vr)) and
 place them under `data/game/C/` (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound
-drivers). `data/` is git-ignored and read-only — the tools and tests never
-write to it.
+drivers). `data/` is git-ignored; `data/game/` is read-only input. The capture
+harness writes only its own capture directories under `data/` and must leave
+`data/game/` untouched.
 
 ## Status
 
@@ -28,11 +29,11 @@ and covers the whole game — boot, title, attract cycles, front end, service
 menu, character select, one- and two-player matches, the win path, all seven
 character endings, the game-over/high-score flows. Two claims back that:
 
-- **Porting — 66% raw, 100% portable.** 799 of the original's 1203 real
+- **Porting — 66% raw, 100% portable.** 799 of Ghidra's 1203 indexed
   functions have a ported, header-commented counterpart in `port/src/` (see
   `AGENTS.md` for how that figure is computed). The 404 that are not are not
-  porting targets: 53 are host-owned or deferred (`tools/port_classification.txt`,
-  each with its evidence) and 351 are WATCOM libc / DOS/4GW runtime code (at or
+  porting targets: 53 are classified host-owned or deferred (41 + 12;
+  `tools/port_classification.txt`, each with its evidence) and 351 are WATCOM libc / DOS/4GW runtime code (at or
   above `0x5D000`, served by the host libc). Excluding them, **100%** (759 of
   759) of the portable functions are ported. The last 12 were the input sampler
   and its keyboard/game-port readers (the host input truth phase); the 16 before
@@ -41,40 +42,44 @@ character endings, the game-over/high-score flows. Two claims back that:
 - **Verification — differential.** `make diff-verify` runs the original's own
   bytes in unicorn against the port's C functions from the same image,
   comparing every changed byte, the return register, the ordered calls (with
-  the memory changed so far at each) and the block coverage:
-  **1031/1031 functions VERIFIED; 14983/14983 mutants detected**, with **813 of
-  the 844 rows that have callees closed** (the 187 with none are counted apart);
-  806 of those 813 rest on full rows and 31 stay open (by blocker, in
-  `AGENTS.md`). C3g closed the
-  callee-row frontier at 322 rows; track D rowed every ported function the
-  callee scan never reached (751 of 759 have a row after its sixth wave, tracks
-  S, I, N, H, F, G and the host input truth phase — 739 a full one (`0x51ED8`
-  with one declared difference), and
-  12 a row that runs the original under code pokes, leaves reachable blocks out
-  or declares a terminal difference: `0x2CADC`, `game_loop`, `0x1AFE8`,
-  `0x1B084`, `0x1BE30`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
-  `0x1B544`, `0x2EA30`; the other 8 are named gaps, none is open; records
-  `2026-10-11-reverse-d-derivations.md` and `2026-10-14-reverse-g-derivations.md`).
-  The 2026-10-22 pixel-and-proof closure plan added 12 rows for game and runtime
-  code whose callees were VERIFIED or allow-mode — `0x5D812`/`0x28D68`, the fighter callbacks
-  `0x3E484`/`0x29D04`/`0x3E4C4`, the actor entrances `0x24568`/`0x40CB0`/`0x24804`,
-  the menu/loop/memset entries `0x2CB74`/`0x4F5C8`/`0x61A70` and the `+0x10` hook
-  `0x3A6D4` (the spec's `0x3D0BC` is alignment padding, not a function) — and 28
-  of the rows that were open on those callees closed (59 open → 31), moving the
-  counter to 844 rows with callees, 813 closed and 806 full. The counter's
-  "ported functions with no row" clause now measures the frontier from the
-  repo's own tables: 45 `FN_` ported-unrowed, the declared portable 8 (5
-  registry-visible + 3 header-shape exceptions) plus 37 runtime. The
-  differential rows have found 172 raw-over-port corrections (track D; 174
-  program-wide including track N's two — see the Track N paragraph in
-  `PROGRESS.md`). The E2 triage's
-  remaining rows are the 231 table-driven span-writers — not ported one by one
-  (decision D2: the port blits a span as one routine) — and 2 classified
-  host-owned/deferred callbacks (`0x1BDF4`, `0x10604`).
+  the memory changed so far at each) and the block coverage. Its `functions
+  VERIFIED` label counts **1033/1033 specs over 907 distinct original entries**;
+  **14993/14993 mutants are detected** and there are **0 named gaps**. Of the
+  845 rows with callees, **825 are closed** (188 callee-less rows are counted
+  apart) and **807 are closed on full rows**. The **20 open rows** are declared
+  terminals (19 distinct addresses; the two volume specs share `0x2C8F0`):
+  15 AIL thunks, `sound_buffers_alloc`, `input_sampler`, `config_file_load`,
+  `config_file_save` and `menu_fatal_error`. **15 entries are `WEAKER`**, now
+  including `0x51ED8` (declared renderer node-scratch difference), `0x249F0`
+  and `0x1D0BC`; **8 portable functions are `UNROWED`**, not "8 named gaps".
+  The wider measurement is 45 `FN_` ported-unrowed (8 portable + 37 runtime;
+  scan-visible subset 42 = 5 + 37). The terminal, weaker and unrowed reasons
+  are censused in `AGENTS.md` and the proof-completion record. The differential
+  rows have found 172 raw-over-port corrections (track D; 174 program-wide
+  including track N's two).
+- **Verification — span writers.** The independent census has **417 slots and
+  392 distinct targets**: six renderers, one bare `ret`, and 385 writer slots.
+  Adding the reachable out-of-table `0x81110[128] = 0x81310[0] = 0x5D110` gives
+  **386 distinct writer targets**, of which **385 are reachable** (384 reachable
+  slots plus `0x5D110`) and one, `0x57E3C`, is dead. There are 27 code-shape
+  classes, 26 reachable: the minimal fixture proves **26/26 classes**, and the
+  exhaustive fixture proves **385/386 distinct targets (all 385 reachable
+  targets)**, including both-edges clipping at `0x5D580`/`0x582F4` and the
+  clipped 14/15 word tails. E2 triages 227 of the writers and leaves 158 to this
+  separate census (231 E2 span rows minus four renderers); `0x24B54` is live
+  and `0x24B08` is dead. The E2 table and its 579/575 gate are unchanged.
 
 Byte-exact oracles gate the rendering and timing: the Smacker logo, title,
 attract, front end and demo fight, the service menu, and every captured
 gameplay scenario are compared against the original's own captured frames.
+All 24 gameplay replays pass the occurrence-aware content-order check with
+**0 order failures**, and every one has a measured exact `--max-missing` pin.
+K11 pins capture identity by `poll.log` hash plus frame count (walk 171,
+menuesc 766) and order; the bounded-missing pins are front-end 30, attract 74
+and attract cycle 2 126. These are **bounded-missing claims, not complete
+coverage**: an unsampled state or a same-count class substitution remains
+outside them.
+
 The endgame is captured end to end: all seven character endings are pinned —
 SAURON and BLIZZARD by the earlier U10/U13 captures, TALON, VERTIGO, CHAOS,
 ARMADON and DIABLO by the endgame truth phase (`gp-u18-oracle`…`gp-u22-oracle`)
@@ -82,14 +87,14 @@ ARMADON and DIABLO by the endgame truth phase (`gp-u18-oracle`…`gp-u22-oracle`
 `gp-u23-oracle` (under a labelled poked-damage fallback). Each capture has its
 own oracle in `make verify`, and the claim is the ending content and the
 finisher reaction, not the KO by hits (U23's moves ratchet records the port's
-`r0=0x27` where the capture reaches `0x33`; endgame truth record §E2): the U14
-fought live win (R1) remains a named gap, as do the 5120 band's cause and the
-differential frontier. The same phase claimed U13's
-post-script tail from its existing capture and documented the INT 8 tick vector.
-The detailed, continuously-updated status — what's ported, what's verified,
-and every named gap with its evidence — is in
-**[`docs/PROGRESS.md`](docs/PROGRESS.md)**; the frame loop and pixel path are
-in `port/spec/game_flow.md`.
+`r0=0x27` where the capture reaches `0x33`; endgame truth record §E2). Named
+gaps remain the U14 fought live win (R1), the U16 live finisher without that
+fallback, the per-hit death streams the clean traces cannot see, the 5120
+band's unisolated cause, rendered-audio audibility (no device-recording
+oracle), and the bounded-missing limits above. U13's post-script tail is
+claimed and the INT 8 tick vector is documented. The detailed,
+continuously-updated status is in **[`docs/PROGRESS.md`](docs/PROGRESS.md)**;
+the frame loop and pixel path are in `port/spec/game_flow.md`.
 
 ## Layout
 
@@ -176,22 +181,32 @@ demo fight, attract cycle 2, K11 service menu, the gameplay captures —
 idle-loss, character select, moves, keys, two-human, the U8 modes, the U12/U13
 and U9/U10 win/ending paths, the five ending captures and the U16 finisher),
 the differential harness, the E2 triage check, the tool unit tests, and
-`symbols.h` idempotence. The capture-based oracles are **git-ignored copies of
-the game's own bytes**, so they skip when their capture is absent:
-`PR_ORACLE_REQUIRED=1` turns that absence into a failure where the Makefile
-marks the oracle required, and `make verify` sets it. The comparison model
-(DOSBox captures run at 70.09 Hz while the game ticks at 60.05 Hz) treats a
-capture frame as a byte-offset splice of two adjacent port frames; the
-ratchets (`DEMO_FIGHT_MIN_FIRST`, `ATTRACT2_MIN_FIRST`, the `gp_*` pins) hold
-the measured first unexplained frame and are raised as the port improves. Each
+`symbols.h` idempotence. `make gate-check` inventories **35 explicit capture
+paths** before that ladder. In the default `GATE_STRICT=1` mode an undeclared
+absence fails preflight; the measured full checkout has 34/35, with only the
+declared U14 gap. At the oracle-command level, strict mode requires three
+capture directories (`smk/twi5`, `smk/twg`, `title`), compares `title2` and the
+front-end family if present, and leaves 30 capture directories with their
+individual absent-capture skips. `GATE_STRICT=0` is the partial mode that
+tolerates undeclared absences so those skips can run. `GATE_STRICT` and
+`PR_PINS_EXACT` are exported, exact pins default to the strict mode, and an
+improvement in exact mode requires a re-pin. The unit run is sanitized against
+stray driver selectors; `PR_FN_MISS_REQUIRED=1` is verify-only.
+
+The comparison model (DOSBox captures run at 70.09 Hz while the game ticks at
+60.05 Hz observed, 59.998 Hz from the PIT bytes) treats a capture frame as a
+byte-offset splice of two adjacent port frames. The ratchets
+(`DEMO_FIGHT_MIN_FIRST`, `ATTRACT2_MIN_FIRST`, the `gp_*` pins) hold the
+measured first unexplained frame and are raised as the port improves. Each
 pin's provenance is in the `Makefile`.
 
 Prerequisites for the full gate: `port/tests/ghidra_data.bin` (git-ignored;
 `make re-oracle` regenerates it), `unicorn` and `capstone` for the differential
 harness (`pip install -r tools/requirements-diff.txt`), and `data/game/C/CMOS`
 absent or 2040 zero bytes (the `make verify` precondition). `make deps` checks
-each one and warns when one is missing or wrong. The capture-based oracles skip without
-their git-ignored captures.
+each one and warns when one is missing or wrong. Individual capture-backed
+oracle targets retain the skip behavior described above; strict `make verify`
+preflights their directories first.
 
 To produce the title/attract captures yourself:
 

@@ -10,7 +10,8 @@ frame loop and pixel path) before changing engine code.
 ```bash
 make help                  # the authoritative target list
 make build                 # cmake -S port -B build && cmake --build build
-make verify                # THE gate: frames + oracle-required tests + all oracles + symbols.h idempotence
+make gate-check            # inventory 35 capture paths; strict/partial modes; reports the declared U14 gap
+make verify                # THE gate: gate-check + frames + oracle-required tests + all oracles + symbols.h idempotence
 PR_ORACLE_REQUIRED=1 ./build/run_tests    # tests alone, with the byte-exact oracles enabled
 make check frames=60       # headless run → frames/frame_*.ppm/.pal/.idx
 make run                   # windowed
@@ -46,7 +47,7 @@ make gp-u23-oracle         # endgame truth U23: the U16 finisher reaction under 
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
-make entry-triage          # E2: triage of the non-Ghidra entry candidates; the committed table must equal a fresh run (in make verify; skips without capstone or PRAGE.EXE; fails under PR_ORACLE_REQUIRED=1)
+make entry-triage          # E2: committed table must equal a fresh run (in make verify; skips without capstone or PRAGE.EXE; a caller-set PR_ORACLE_REQUIRED=1 makes that a failure, but verify does not export it globally)
 ```
 - **A fresh git worktree needs the git-ignored test fixture copied in** (`port/tests/ghidra_data.bin`;
   `make re-oracle` regenerates it) before any `PR_ORACLE_REQUIRED=1` run or `make verify` — it lives
@@ -59,8 +60,8 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
 - **The byte-exact oracles SKIP silently unless `PR_ORACLE_REQUIRED=1`** — the
   oracle fixtures are copies of the game's own bytes and are git-ignored. A run
   without it proves much less than it appears to. `make verify` sets it.
-- `make verify`'s `--check` step **must precede** the tests that read
-  `frames/frame_*.idx`.
+- `make verify`'s `--check` step **must precede** the unit suite: `test_fn_misslog`
+  reads `frames/fn_miss.txt` (the run's `fn_resolve` miss log) from the CWD.
 - There is no per-test filter: `run_tests` is one binary. The drivers that call
   `game_init()` are selected by env var and run alone (`PR_TITLE_DUMP`,
   `PR_ATTRACT_DUMP`, `PR_FRONTEND_DUMP`, `PR_FRONTEND_DET`, `PR_K11_DUMP`, `PR_GP_DUMP`,
@@ -447,7 +448,16 @@ consolidation gate).
   capture's `CMOS`, and the port booted from a copy of that `CMOS` holds, at the pinned frame
   (`f=0x1EB`) and every later dumped frame, the five storage ranges (the `config` image, the kind-0
   counters and the three high-score tables, §J3.3) boot 2's `poll.log` holds at the pin;
-  `data/game/C` is proven untouched (the capture's own `CHECK staging`).
+  `data/game/C` is proven untouched (the capture's own `CHECK staging`). Two more named
+  gaps (record §S.10 and §S.8's PLAUSIBLE items): the slot-13..35 bookkeeping low
+  bytes are wrong at boot (the port's `config_storage_touch` stops the encode at
+  the first store outside the image, so the low-byte record is written nowhere,
+  where the original exits; the raw defect that makes the slot step past the
+  image is §S.10), and the PLAUSIBLE items stay open — whether the original can
+  itself save a slot byte of 13+ (the runtime's exit-routine walk `0x6C4CF` is
+  not traced), the two "nothing else stores it" absolute-operand scans, which
+  statistics screens a capture compares, and the 39 `config_field_get` consumers
+  a checksum-valid save feeds, none audited for an index leaving `mem[]`.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
   adjacent port frames rather than a 1:1 match. (60.05 Hz is the capture model's
@@ -497,9 +507,31 @@ consolidation gate).
    dictionary (whose `0x3A6D4: ("ebx", "ecx", "edx")` entry replaces the padding's `0x3D0BC`); the
    hook's ported function opens with `PR_SEAM(0x3A6D4u, slot, side)`, inert outside `build/diffrun`
    (`run_tests` passes, record §P9.4).
+   The 2026-10-24 proof-completion phase (record
+   `docs/superpowers/plans/2026-10-24-proof-completion-derivations.md` §P5-§P8) re-pinned the
+   counter at **`1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845
+   rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported functions with no
+   row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37
+   runtime; the scan-visible subset is 42 = 5 + 37)`** — +2 functions and +10 mutants (the two
+   ported card-step rows, §P5); the rows that close are Task 5's twelve (§P6, one full sprintf row and
+   eleven weak scan-stop rows) minus `config_file_save`'s reopen (§P7.3). It declared the **20 open rows** terminal with a per-row
+   reason (`TERMINAL_CENSUS`, §P8.1): 15 AIL runtime thunks, `sound_buffers_alloc` (`0x1D0BC`),
+   `input_sampler` (the four host-owned PIT/game-port probes), and the three runtime exit-flush rows
+   `config_file_load`, `config_file_save` and `menu_fatal_error` (all on the unrowed `0x6C4CF`
+   flush; `config_file_save` reopened by the short-write case). The 20 rows are 19 distinct
+   addresses — `attract_config_volumes_unscaled` and `attract_config_volumes` are two specs at
+   `0x2C8F0`. `WEAKER` grew 12 → **15** (`0x249F0`, `0x1D0BC` and `0x51ED8` join the 12, §P6.3/
+   §P7.4) and `UNROWED` stays **8**: `diff-verify` prints 0 named gaps, not 8. The phase's second
+   proof is the **span-writer census** (§P2-§P4): 417 slots, 392 distinct targets (six renderers, one
+   bare `ret`, 385 writer slots) plus the reachable out-of-table `0x81110[128] = 0x81310[0] =
+   0x5D110`, for **386 distinct writer targets, 385 reachable** (384 reachable slots + `0x5D110`) and
+   one dead (`0x57E3C`); the minimal fixture proves **26/26 code-shape classes** and the exhaustive
+   fixture **385/386 distinct targets**, including both-edges clipping (`0x5D580`/`0x582F4`) and the
+   clipped 14/15 word tails. E2 triages 227 of the writers and leaves 158 to the census (231 span rows
+   minus four renderers); `0x24B54` is live, `0x24B08` dead.
    The two new clauses count the explicit frozensets `tools/diff_verify.py`
-   keeps: `WEAKER` (12 — the rowed functions whose row is not full: a code poke, a reachable block left out,
-   or a declared terminal difference) and `UNROWED` (8 — the ported functions with no differential row at
+   keeps: `WEAKER` (15 — the rowed functions whose row is not full: a code poke, a reachable block left out,
+   a declared terminal difference, or a declared byte difference; §P6.3/§P7.4) and `UNROWED` (8 — the ported functions with no differential row at
    all, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
    g4 (`game_loop`'s recorded RNG stub, `@rng`). The counter's unrowed clause no longer prints only
    `UNROWED`'s literal: `ported_unrowed()` intersects `symbols.h`'s 1203 `FN_` addresses with the
@@ -523,41 +555,31 @@ consolidation gate).
    the rule would have closed them on a row that can exist (716→774, +58). The 2026-10-22 plan gave
    all four E2-class entries rows (`0x28D68`, `0x3E484`, `0x29D04`, `0x3E4C4`), so no open row
    blocks on a port-code implementation now. The
-   counter does not tell a full row from a weaker one: 12 of the 751 portable rowed functions have a row that runs
-   the original under code pokes, leaves reachable blocks out, or declares a terminal difference on some or
-   all of its cases (which then compare nothing
-   on the port's side, §G1's skip) (`0x2CADC`, whose pokes are runtime or omitted calls, and `game_loop`, whose
-   two pokes became recorded stubs in track G g4 and whose two named unhits `0x25680`/`0x256D4` leave 18/20 blocks;
-   `0x1AFE8`, its l6 the declared short-read exit difference (the original exits with code 1 where the port takes
-   the failed-open path and returns, config.c PORT — the port's side of that case is compared nowhere on the row,
-   §G1's skip; it is pinned only by the `test_game.c` load case); `0x1B084`,
-   still missing the exit block (its `0x1B0F7` arm needs a short fwrite count and the modelled fwrite never comes
-   back short, so no case reaches it even with the exit chain modelled, §G2); track N's `0x1BE30` (`int 0x10` poked) and `0x1C740` (4 of 23 blocks);
-   `0x24C5C`, `0x2EA78` and `0x2EA74`, unpoked since track H but missing the key paths into `0x5004A`, the
-   port's documented omission; `0x2EA68`, every case declaring the terminal difference, so the row compares
-   nothing on the port's side and carries no mutant, §G2; `0x1B544`, the resident arm only — its
-   tail-jump-to-host slow arm named unhit (2 of 11 blocks); `0x2EA30`, the SET-lock clear `0x2EA49` named unhit
-   (7 of 8 blocks)): count 739 of those 751 full rows, of which `0x51ED8`'s carries one declared difference (the
-   renderers' node scratch `+0x14`/`+0x38`, exact on both sides; record §H.3). A closed row may rest on a weaker
-   callee row (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
-   The still-open rows are measured, not asserted: after the closure rule 31 of the 844 rows stay open. Every
-   one of them blocks on a recorded *stub* outside the portable set (the recorded `real` mode's rows and the
-   four port-code E2-class entries closed when the 2026-10-22 plan rowed `0x5D812`, `0x28D68`, `0x3E484`,
-   `0x29D04` and `0x3E4C4`). By blocker (a row may name more than one, so these row
-   counts sum above the 31): the stubs `0x65431` (11 rows), `0x5DD03` (10),
-   `0x5DEED` (7), `0x5DCC5` (6), `0x5DECA` (5),
-   `0x5DC0F`/`0x5DC8B` (4 each), `0x5DEAF` (3), `0x6C4CF` (2) and one each for
-   `0x1C308`, `0x25FAC`, `0x26194`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5`,
-   `0x5D86A`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`,
-   `0x5DCA6`, `0x5DCE4` and `0x65546` (the four presence stubs are the sampler's row alone,
-   a recorded stub; record §H4.2) — 23 distinct blockers, 66 incidences (record §P9.6). The 58 rows
-   the rule closed had only allow-mode blockers
-   (49 runtime alone, 4 E2-field + runtime, 3 host-owned + runtime, 1 E2-field alone, 1 host-owned alone —
-   §J1 has the per-row table). No row blocks on a ported function in the portable set by accident: the 8
-   named-gap functions are callees of none (the runtime-region `0x65431`/`0x5DC0F` family is stubbed).
+   counter does not tell a full row from a weaker one: **15** of the portable rowed functions have a row
+   that runs the original under code pokes, leaves reachable blocks out, declares a terminal
+   difference, or declares a byte difference on some or all of its cases (which then compare nothing
+   on the port's side, §G1's skip): the twelve the 2026-10-22 plan named (`0x2CADC`, `game_loop`,
+   `0x1AFE8`, `0x1B084`, `0x1BE30`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
+   `0x1B544`, `0x2EA30`), plus the three the phase added — `0x249F0` (its `0x24A9C` restart arm
+   unexercised after the longjmp became scan-only, §P6.3), `0x1D0BC` (its `0x1D10E`/`0x1D183`
+   buffer-failure arms unhit, §P7.4) and `0x51ED8` (the aperture row's declared renderer node-scratch
+   `+0x14`/`+0x38` byte difference, §P7.4; the counter had counted it full). The one-line reason for
+   each of the 15 is the record's §P8.3 table. A closed row may rest on a weaker callee row
+   (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
+   The still-open rows are measured, not asserted: after the closure rule **20 of the 845 rows stay
+   open**, and every one is a declared terminal with a per-row reason (`TERMINAL_CENSUS`, record
+   §P8.1) — 15 AIL runtime thunks, `sound_buffers_alloc` (`0x1D0BC`, blocked by `0x1C308`),
+   `input_sampler` (the four host-owned PIT/game-port probes `0x4FBBB`/`0x4FC05`/`0x4FCFD`/
+   `0x4FDF5`), and the three runtime exit-flush rows `config_file_load`, `config_file_save` and
+   `menu_fatal_error` (all blocked by the unrowed `0x6C4CF`; `config_file_save` reopened by the
+   short-write case §P7.3). The 20 rows are 19 distinct addresses
+   (`attract_config_volumes_unscaled` and `attract_config_volumes` are two specs at `0x2C8F0`). No
+   row blocks on a ported function in the portable set by accident: the 8
+   `UNROWED` functions are callees of none (the runtime-region `0x65431`/`0x5DC0F` family is stubbed).
    §G3's 116-row census was the pre-rule reading (96 ≥0x5D000, 17 E2-class, none
    on the six); the rule closed 58 of the 116, host input truth's sampler row made 59 open (record §H4.5),
-   and the 2026-10-22 plan's 12 rows closed 28 of the 59, leaving the 31 above.
+   the 2026-10-22 plan's 12 rows closed 28 of the 59, leaving 31, and the proof-completion phase closed
+   eleven more (Task 5's twelve minus `config_file_save`'s reopen), leaving the 20 terminals above.
    A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool
@@ -605,12 +627,13 @@ consolidation gate).
   `787 1203 65` / `747 747 100`; the 12 input functions left the
   classification, 65 → 53 host-owned, record §H7):
   - **Raw:** 799 ported of 1203 real functions (66%). The 404 unported functions
-    are not porting targets: 53 are host-owned or deferred (the rows of
-    `tools/port_classification.txt` that are not ported, one evidence line each)
+    are not porting targets: 53 are classified host-owned or deferred — 41
+    host-owned + 12 deferred (the rows of `tools/port_classification.txt` that
+    are not ported, one evidence line each)
     and 351 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
     port serves from the host libc.
   - **Portable:** 759 of 759 (100%). The denominator leaves out the 53
-    host-owned/deferred functions and everything at or above 0x5D000; the
+    host-owned/deferred functions (41 + 12) and everything at or above 0x5D000; the
     other 40 ported functions (799 - 759) sit in that runtime region, so they
     count in the raw figure only.
   `--unported` lists what is left (addr, size, callers, callees), largest
