@@ -1151,6 +1151,20 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
     while j < len(cap):
         c = cap[j]
         if not any(c):
+            # A black named frame is a changed frame, not a valid allowance.
+            # Audit every allowance kind before the ordinary artifact skip.
+            if j in bands:
+                out('gp_compare: %s: frames: FAIL: capture %d (raw %d) is named in the '
+                    'allowance but artifact now; retire the name' % (name, j, raws[j]))
+                allow_bad = 1
+            if j in scan3:
+                out('gp_compare: %s: frames: FAIL: capture %d (raw %d) is named in the '
+                    'scan-out allowance but artifact now; retire the name' % (name, j, raws[j]))
+                allow_bad = 1
+            if j in overlay:
+                out('gp_compare: %s: frames: FAIL: capture %d (raw %d) is named in the '
+                    'overlay allowance but artifact now; retire the name' % (name, j, raws[j]))
+                allow_bad = 1
             black += 1
             j += 1
             continue

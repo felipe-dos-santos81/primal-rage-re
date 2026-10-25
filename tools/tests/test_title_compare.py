@@ -219,6 +219,37 @@ class AllowanceHonestyTest(unittest.TestCase):
         self.assertEqual(self.tc.splice3_stale('attract2', 1, 'unexplained', 0, 2,
                                                out.append), 0)
 
+    def test_attract2_all_black_named_frame_is_stale(self):
+        # Mutating the named capture frame to all-black must reach the stale
+        # allowance failure, not pass as an ordinary black capture artifact.
+        with tempfile.TemporaryDirectory() as d:
+            capture = os.path.join(d, 'capture')
+            port = os.path.join(d, 'port')
+            cycle2 = os.path.join(port, 'cycle2')
+            for path in (capture, cycle2):
+                os.makedirs(path)
+            write_frame(port, 0, 0x11)
+            write_frame(port, 1, 0x22)
+            write_frame(capture, 0, 0x11)
+            write_frame(capture, 1, 0x55)
+            write_frame(capture, 1, 0)  # the black-frame mutation
+            write_frame(capture, 2, 0x33)
+            write_frame(cycle2, 0, 0x33)
+            write_frame(cycle2, 1, 0x44)
+            saved = self.tc.ATTRACT2_SPLICE3_ALLOWED, sys.argv
+            out = io.StringIO()
+            try:
+                self.tc.ATTRACT2_SPLICE3_ALLOWED = (1,)
+                sys.argv = ['title_compare.py', '--attract2', '--attract2-min-first', '2',
+                            '--capture', capture, '--port', port]
+                with contextlib.redirect_stdout(out):
+                    rc = self.tc.main()
+            finally:
+                self.tc.ATTRACT2_SPLICE3_ALLOWED, sys.argv = saved
+            self.assertEqual(rc, 1, out.getvalue())
+            self.assertIn('ATTRACT2_SPLICE3_ALLOWED but is artifact now; retire the name',
+                          out.getvalue())
+
     def test_attract2_coverage_credits_splice3_and_excludes_beyond_reach(self):
         port = [bytes([v]) * FRAME_BYTES for v in (0x10, 0x20, 0x30, 0x40, 0x50)]
         missing, reach = self.tc.attract2_coverage(port, {0, 1, 3}, [])

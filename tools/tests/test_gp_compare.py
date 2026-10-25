@@ -753,6 +753,16 @@ class BandAllowance(Dirs):
         self.assertEqual((rc, first), (1, None), out)
         self.assertTrue(any('FAIL:' in l and 'retire the name' in l for l in out), out)
 
+    def test_an_all_black_named_frame_is_a_stale_name(self):
+        self.write_fixture()
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(bytes(tc.FRAME_BYTES))
+        rc, first, out = self.run_band()
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('named in the allowance but artifact now; retire the name' in l
+                            for l in out), out)
+        self.assertFalse(any('FIRST UNEXPLAINED capture 1' in l for l in out), out)
+
     def test_the_table_names_the_measured_gp_keys_fight_frame(self):
         # the pinned recipe of record §G5: capture 835 (raw 3934), rows 0..80 to
         # port f=0x832 / 92..199 to f=0x833, band sha d9c0ac62.. (§K.12's finding
@@ -1048,6 +1058,16 @@ class Scan3Allowance(Dirs):
         self.assertEqual((rc, first), (1, None), out)
         self.assertTrue(any('FAIL:' in l and 'retire the name' in l for l in out), out)
 
+    def test_an_all_black_named_frame_is_a_stale_name(self):
+        self.write_fixture()
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(bytes(tc.FRAME_BYTES))
+        rc, first, out = self.run_scan3()
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('named in the scan-out allowance but artifact now; retire the name' in l
+                            for l in out), out)
+        self.assertFalse(any('FIRST UNEXPLAINED capture 1' in l for l in out), out)
+
     def test_u13_scan3_recipe_is_pinned_and_mutations_fail(self):
         # Task 2 (record §P2): U13's capture 4248 is its own three-segment
         # recipe — rows 0..45 to port 3549, 46..96 to 3550, 97..199 to 3551,
@@ -1333,6 +1353,14 @@ class OverlayAllowance(Dirs):
         rc, first, out = self.run_overlay()
         self.assertEqual((rc, first), (1, None), out)
         self.assertTrue(any('FAIL:' in l and 'retire the name' in l for l in out), out)
+
+    def test_an_all_black_named_frame_is_a_stale_name(self):
+        self.write_fixture(cap_frame=bytes(tc.FRAME_BYTES))
+        rc, first, out = self.run_overlay()
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('named in the overlay allowance but artifact now; retire the name' in l
+                            for l in out), out)
+        self.assertFalse(any('FIRST UNEXPLAINED capture 1' in l for l in out), out)
 
     def test_the_table_names_the_measured_overlays(self):
         # the pinned recipes of record §G7: gp-u9-win 2209 (port 1776's glyphs

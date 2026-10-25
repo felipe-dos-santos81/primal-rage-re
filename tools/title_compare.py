@@ -648,8 +648,8 @@ def frontend_allowances(res, out=print):
 
 
 def splice3_stale(name, j, kind, lo, hi, out=print):
-    """Fail when a named three-frame splice no longer needs its allowance."""
-    if lo <= j <= hi and kind not in ('unexplained', 'artifact'):
+    """Fail when a named splice is explained or black, hence no longer allowed."""
+    if lo <= j <= hi and kind != 'unexplained':
         out('title_compare: %s: FAIL: frame %d is named in '
             'ATTRACT2_SPLICE3_ALLOWED but is %s now; retire the name'
             % (name, j, kind))
