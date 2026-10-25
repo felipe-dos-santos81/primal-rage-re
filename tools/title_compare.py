@@ -113,6 +113,10 @@ def canonical_missing(port, reach, seen, rows=None, black_row=None):
     return list(representatives.values())
 
 
+def pins_exact():
+    return os.environ.get('PR_PINS_EXACT') == '1'
+
+
 def coverage_check(name, missing, max_missing, out=print, tool='title_compare'):
     """Ratchet a canonical bounded-missing count in the tested direction."""
     count = len(missing)
@@ -124,6 +128,10 @@ def coverage_check(name, missing, max_missing, out=print, tool='title_compare'):
             % (tool, name, count, max_missing))
         return 1
     if count < max_missing:
+        if pins_exact():
+            out('%s: %s: coverage: FAIL: %d missing class(es) < pinned %d; '
+                're-pin to %d (PR_PINS_EXACT=1)' % (tool, name, count, max_missing, count))
+            return 1
         out('%s: %s: coverage: %d missing class(es) < pinned %d '
             '(improved: lower the pin)' % (tool, name, count, max_missing))
     else:
@@ -780,6 +788,10 @@ def main():
                   "(the port exhibited fewer frames)" % (b_win, a.frontend_end))
             return 1
         if b_win > a.frontend_end:
+            if pins_exact():
+                print("title_compare: frontend: FAIL: window ends at capture %d > pinned end %d; "
+                      "re-pin to %d (PR_PINS_EXACT=1)" % (b_win, a.frontend_end, b_win))
+                return 1
             print("title_compare: frontend: window ends at capture %d > pinned end %d "
                   "(improved: raise the pin)" % (b_win, a.frontend_end))
         a_win = res['window'][0]
@@ -997,6 +1009,11 @@ def main():
                 print("title_compare: demo-fight: FAIL: N %d > window end + 1 "
                       "(%d): N is unreachable" % (ratchet, end + 1))
                 return 1
+            if ratchet < end + 1 and pins_exact():
+                print("title_compare: demo-fight: FAIL: the fight window is fully explained "
+                      "through %d but ratchet N is %d; re-pin N to %d (PR_PINS_EXACT=1)"
+                      % (end, ratchet, end + 1))
+                return 1
             print("title_compare: demo-fight: 0 unexplained in the fight window")
             print("title_compare: demo-fight: fully explained; the window "
                   "claim is now exact%s"
@@ -1035,12 +1052,21 @@ def main():
                   "ratchet N %d" % (first, ratchet))
             return 1
         if first is None:
+            if ratchet < end + 1 and pins_exact():
+                print("title_compare: demo-fight: FAIL: the fight window is fully explained "
+                      "through %d but ratchet N is %d; re-pin N to %d (PR_PINS_EXACT=1)"
+                      % (end, ratchet, end + 1))
+                return 1
             print("title_compare: demo-fight: fully explained; the window "
                   "claim is now exact%s"
                   % ("" if ratchet == end + 1 else
                      " — N = %d (window end + 1) is the exact pin"
                      % (end + 1)))
         elif first > ratchet:
+            if pins_exact():
+                print("title_compare: demo-fight: FAIL: first unexplained %d > ratchet N %d; "
+                      "re-pin N to %d (PR_PINS_EXACT=1)" % (first, ratchet, first))
+                return 1
             print("title_compare: demo-fight: ratchet improved: first "
                   "unexplained %d > %d — raise N" % (first, ratchet))
         return 0
@@ -1183,6 +1209,11 @@ def main():
                 return 1
         first = unexpl[0] if unexpl else None
         if first is None:
+            if ratchet < hi + 1 and pins_exact():
+                print("title_compare: attract2: FAIL: the region is fully explained through %d "
+                      "but ratchet N is %d; re-pin N to %d (PR_PINS_EXACT=1)"
+                      % (hi, ratchet, hi + 1))
+                return 1
             print("title_compare: attract2: 0 unexplained in the region")
         else:
             print("title_compare: attract2: first unexplained captured frame "
@@ -1193,6 +1224,10 @@ def main():
                   "ratchet N %d" % (first, ratchet))
             return 1
         if first is not None and first > ratchet:
+            if pins_exact():
+                print("title_compare: attract2: FAIL: first unexplained %d > ratchet N %d; "
+                      "re-pin N to %d (PR_PINS_EXACT=1)" % (first, ratchet, first))
+                return 1
             print("title_compare: attract2: ratchet improved: first "
                   "unexplained %d > %d — raise N" % (first, ratchet))
         return 0

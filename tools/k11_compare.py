@@ -198,6 +198,8 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
     bad_missing = [m for m in full_missing if m not in allowed_missing]
     stale_missing = [m for m in allowed_missing if m not in full_missing]
     short_exh = min_exh is not None and len(port_exh) < min_exh
+    improved_exh = min_exh is not None and len(port_exh) > min_exh
+    exact_exh = improved_exh and gc.pins_exact()
 
     # A named unexplained frame is admitted only at its pinned bytes. If the
     # ordinary model explains it now, the name is stale and fails instead of
@@ -240,6 +242,13 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
     if short_exh:
         print('k11_compare: %s: FAIL: port frames exhibited %d < pinned %d '
               '(the port rendered fewer frames)' % (name, len(port_exh), min_exh))
+    if improved_exh:
+        if exact_exh:
+            print('k11_compare: %s: FAIL: port frames exhibited %d > pinned %d; '
+                  're-pin to %d (PR_PINS_EXACT=1)' % (name, len(port_exh), min_exh, len(port_exh)))
+        else:
+            print('k11_compare: %s: port frames exhibited %d > pinned %d '
+                  '(improved: raise the pin)' % (name, len(port_exh), min_exh))
     if bad_missing:
         print('k11_compare: %s: FAIL: non-black port frame(s) up to the final '
               'settled screen not exhibited: %s' % (name, bad_missing))
@@ -249,11 +258,21 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
     if allowed_used:
         print('k11_compare: %s: allowed by name: %s' % (name, allowed_used))
     short = False
+    exact_end = False
     if name in K11_OPEN_END:
         min_end, why = K11_OPEN_END[name]
         short = end < min_end
+        improved_end = end > min_end
+        exact_end = improved_end and gc.pins_exact()
         print('k11_compare: %s: open end by name (%s): END %d must be >= %d: %s'
-              % (name, why, end, min_end, 'FAIL' if short else 'ok'))
+              % (name, why, end, min_end, 'FAIL' if short or exact_end else 'ok'))
+        if improved_end:
+            if exact_end:
+                print('k11_compare: %s: FAIL: open END %d > pinned %d; '
+                      're-pin to %d (PR_PINS_EXACT=1)' % (name, end, min_end, end))
+            else:
+                print('k11_compare: %s: open END %d > pinned %d '
+                      '(improved: raise the pin)' % (name, end, min_end))
     if past is not None:
         print("k11_compare: %s: capture continues past the port's final screen at %d (raw %d)%s"
               % (name, past, raws[past], ' (open end)' if name in K11_OPEN_END else ''))
@@ -269,7 +288,8 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
         print('k11_compare: %s: %s capture %d (raw %d): nearest port %d, differs in rows %d..%d, x %d..%d (%d px)'
               % ((name, label, j, raws[j], m) + box))
     return 0 if not bad and not missing and not bad_missing and not stale_missing \
-        and not short_exh and not allow_bad and not order_rc and past is None and not short else 1
+        and not short_exh and not exact_exh and not allow_bad and not order_rc \
+        and past is None and not short and not exact_end else 1
 
 
 def capture_identity(name, cap_dir, n_frames, sha, frames, out=print):

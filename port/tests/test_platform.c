@@ -532,7 +532,10 @@ int test_fn_misslog(void)
      * runs --check before this suite): exactly the pinned known-set. */
     FILE *f = fopen("frames/fn_miss.txt", "r");
     if (f == NULL) {
-        printf("test_fn_misslog: frames/fn_miss.txt absent, --check log not compared\n");
+        if (getenv("PR_FN_MISS_REQUIRED") != NULL)
+            CHECK(0, "PR_FN_MISS_REQUIRED=1 but frames/fn_miss.txt is absent");
+        else
+            printf("test_fn_misslog: frames/fn_miss.txt absent, --check log not compared\n");
     } else {
         char line[256];
         int n = 0;

@@ -28,7 +28,8 @@ def call_target(va):
     return (va + 5 + int.from_bytes(b[1:5], 'little', signed=True)) & 0xFFFFFFFF
 
 
-@unittest.skipUnless(os.path.isfile(EXE), 'needs data/game/C/PRAGE.EXE')
+@unittest.skipUnless(os.path.isfile(EXE) or os.environ.get('PR_ORACLE_REQUIRED') == '1',
+                     'needs data/game/C/PRAGE.EXE')
 class TickVectorTests(unittest.TestCase):
     def test_the_installer_sets_vector_8_to_0x6627e(self):
         b = code(0x66519, 0x15)                                  # 0x66519..0x6652D, 21 bytes

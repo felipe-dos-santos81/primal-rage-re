@@ -118,6 +118,13 @@ def check_capture(capture, port_attract, port_attract_rows,
         print("attract_compare: %s: FAIL: port attract frames exhibited %d < pinned %d "
               "(the port rendered fewer frames)" % (capture, len(port_exh), min_port_exh))
         return 1, None
+    if min_port_exh is not None and len(port_exh) > min_port_exh:
+        if tc.pins_exact():
+            print("attract_compare: %s: FAIL: port attract frames exhibited %d > pinned %d; "
+                  "re-pin to %d (PR_PINS_EXACT=1)" % (capture, len(port_exh), min_port_exh, len(port_exh)))
+            return 1, None
+        print("attract_compare: %s: port attract frames exhibited %d > pinned %d "
+              "(improved: raise the pin)" % (capture, len(port_exh), min_port_exh))
     if first is not None:
         f = frames[first]
         print("attract_compare: %s: FIRST DIVERGENCE at capture frame %d "

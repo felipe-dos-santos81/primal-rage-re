@@ -1051,6 +1051,10 @@ def canonical_missing(port, rows, reach, seen):
     return tc.canonical_missing(port, reach, seen, rows, BLACK_ROW)
 
 
+def pins_exact():
+    return os.environ.get('PR_PINS_EXACT') == '1'
+
+
 def coverage_check(name, missing, max_missing, out=print):
     """Ratchet the bounded-missing claim, failing closed when it is unpinned."""
     count = len(missing)
@@ -1063,6 +1067,10 @@ def coverage_check(name, missing, max_missing, out=print):
             % (name, count, max_missing))
         return 1
     if count < max_missing:
+        if pins_exact():
+            out('gp_compare: %s: frames: coverage: FAIL: %d missing class(es) < pinned %d; '
+                're-pin to %d (PR_PINS_EXACT=1)' % (name, count, max_missing, count))
+            return 1
         out('gp_compare: %s: frames: coverage: %d missing class(es) < pinned %d '
             '(improved: lower the pin)' % (name, count, max_missing))
     else:
@@ -1086,8 +1094,13 @@ def start_check(name, start, raws, max_start, min_first, out=print):
             % (name, start, raws[start], max_start))
         rc = 1
     elif start < max_start:
-        out('gp_compare: %s: frames: window start %d < pinned start %d (improved: lower the pin)'
-            % (name, start, max_start))
+        if pins_exact():
+            out('gp_compare: %s: frames: FAIL: window start %d < pinned start %d; '
+                're-pin to %d (PR_PINS_EXACT=1)' % (name, start, max_start, start))
+            rc = 1
+        else:
+            out('gp_compare: %s: frames: window start %d < pinned start %d (improved: lower the pin)'
+                % (name, start, max_start))
     if min_first is not None and start >= min_first:
         out('gp_compare: %s: frames: FAIL: window start %d >= ratchet N %d: the window claims nothing below N'
             % (name, start, min_first))
@@ -1110,8 +1123,13 @@ def reach_check(name, reach, min_reach, out=print):
             '(the port exhibited fewer port frames)' % (name, reach, min_reach))
         rc = 1
     elif reach > min_reach:
-        out('gp_compare: %s: frames: window reach port %d > pinned reach %d '
-            '(improved: raise the pin)' % (name, reach, min_reach))
+        if pins_exact():
+            out('gp_compare: %s: frames: FAIL: window reach port %d > pinned reach %d; '
+                're-pin to %d (PR_PINS_EXACT=1)' % (name, reach, min_reach, reach))
+            rc = 1
+        else:
+            out('gp_compare: %s: frames: window reach port %d > pinned reach %d '
+                '(improved: raise the pin)' % (name, reach, min_reach))
     return rc
 
 
@@ -1301,11 +1319,19 @@ def ratchet(name, what, first, end, n, out=print, noun='unexplained'):
         if n > end:
             out('gp_compare: %s: %s: FAIL: N %d > end %d: N is unreachable' % (name, what, n, end))
             return 1
+        if n < end and pins_exact():
+            out('gp_compare: %s: %s: FAIL: every item is explained through %d but ratchet N is %d; '
+                're-pin N to %d (PR_PINS_EXACT=1)' % (name, what, end - 1, n, end))
+            return 1
         out('gp_compare: %s: %s: 0 %s through %d; ratchet N %d ok%s'
             % (name, what, noun, end - 1, n, '' if n == end else ' (every item is explained: N = %d is the exact pin)' % end))
         return 0
     if first < n:
         out('gp_compare: %s: %s: FAIL: first %s %d < ratchet N %d' % (name, what, noun, first, n))
+        return 1
+    if first > n and pins_exact():
+        out('gp_compare: %s: %s: FAIL: first %s %d > ratchet N %d; '
+            're-pin N to %d (PR_PINS_EXACT=1)' % (name, what, noun, first, n, first))
         return 1
     out('gp_compare: %s: %s: first %s %d, ratchet N %d ok%s'
         % (name, what, noun, first, n, '' if first == n else ' (improved: raise N)'))

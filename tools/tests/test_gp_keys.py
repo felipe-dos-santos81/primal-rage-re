@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
@@ -15,6 +16,20 @@ import gp_session as gs
 FIELDS = gs.SNAP_FIELDS + gs.SCENARIOS['gp-keys-fight']['extra']
 STEPS = gs.SCENARIOS['gp-keys-fight']['steps']
 BASE = 0x266000
+_SAVED_EXACT = None
+
+
+def setUpModule():
+    global _SAVED_EXACT
+    _SAVED_EXACT = os.environ.get('PR_PINS_EXACT')
+    os.environ['PR_PINS_EXACT'] = '0'
+
+
+def tearDownModule():
+    if _SAVED_EXACT is None:
+        os.environ.pop('PR_PINS_EXACT', None)
+    else:
+        os.environ['PR_PINS_EXACT'] = _SAVED_EXACT
 
 
 def _word(step):
@@ -233,6 +248,18 @@ class TestEffects(unittest.TestCase):
         rc, out = self._run(L, _port(L), len(gk.EVENTS))
         self.assertEqual(rc, 0, out)
         self.assertIn('first not reproduced 11, ratchet N 11 ok', out)
+
+    def test_an_improved_effects_ratchet_requires_a_repin_in_exact_mode(self):
+        L = _fight()
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):
+            rc, out = self._run(L, _port(L), 10)
+        self.assertEqual(rc, 0, out)
+        self.assertIn('improved: raise N', out)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '1'}):
+            rc, out = self._run(L, _port(L), 10)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('FAIL:', out)
+        self.assertIn('re-pin', out)
 
     def test_the_ratchet_fails_below_n_and_unpinned(self):
         L = _fight()

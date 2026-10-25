@@ -40,6 +40,65 @@ PROJ_DIR = _tools/ghidra_proj
 PROJECT_NAME = prage
 PYTHON = python3
 
+# Strict verify preflights every oracle input, not a glob of the capture roots
+# (which also hold evidence and superseded captures no oracle target consumes).
+# `GATE_STRICT=0 make verify` is the documented partial mode: undeclared capture
+# absences are listed and tolerated, while a declared gap that appears is stale.
+GATE_STRICT ?= 1
+GATE_NAMED_GAPS ?= $(K11_CAPTURES)/gp-u14-win-live
+PR_PINS_EXACT ?= $(GATE_STRICT)
+export GATE_STRICT
+export PR_PINS_EXACT
+CAPTURE_DIRS = \
+	$(K11_CAPTURES)/gp-idle-loss \
+	$(K11_CAPTURES)/gp-u5-charsel \
+	$(K11_CAPTURES)/gp-u6-moves-b \
+	$(K11_CAPTURES)/gp-keys-fight \
+	$(K11_CAPTURES)/gp-twop \
+	$(K11_CAPTURES)/gp-u8-attract-start \
+	$(K11_CAPTURES)/gp-u8-endurance \
+	$(K11_CAPTURES)/gp-u8-handicap \
+	$(K11_CAPTURES)/gp-u8-left-training \
+	$(K11_CAPTURES)/gp-u8-right-arcade \
+	$(K11_CAPTURES)/gp-u8-right-training \
+	$(K11_CAPTURES)/gp-u8-tug-of-war \
+	$(K11_CAPTURES)/gp-u9-win \
+	$(K11_CAPTURES)/gp-u10-ending \
+	$(K11_CAPTURES)/gp-u12-endurance \
+	$(K11_CAPTURES)/gp-u13-ending2 \
+	$(K11_CAPTURES)/gp-u14-win-live \
+	$(K11_CAPTURES)/gp-u15-join \
+	$(K11_CAPTURES)/gp-u16-twop2 \
+	$(K11_CAPTURES)/gp-u17-device2 \
+	$(K11_CAPTURES)/gp-u18-talon-ending \
+	$(K11_CAPTURES)/gp-u19-vertigo-ending \
+	$(K11_CAPTURES)/gp-u20-chaos-ending \
+	$(K11_CAPTURES)/gp-u21-armadon-ending \
+	$(K11_CAPTURES)/gp-u22-diablo-ending \
+	$(K11_CAPTURES)/gp-u23-u16-finisher \
+	$(K11_CAPTURES)/walk \
+	$(K11_CAPTURES)/menuesc \
+	$(K11_CAPTURES)/save-reload \
+	$(K11_CAPTURES)/gp-pads \
+	$(SMK_CAPTURES)/twi5 \
+	$(SMK_CAPTURES)/twg \
+	$(TITLE_CAPTURES)/title \
+	$(TITLE_CAPTURES)/title2 \
+	$(TITLE_CAPTURES)/frontend
+
+# Only the three capture-oracle invocations are oracle-required in strict mode.
+# Partial mode must also override a caller-exported PR_ORACLE_REQUIRED. The
+# front-end family stays compare-if-present in strict mode and is unset in partial.
+ifeq ($(GATE_STRICT),1)
+GATE_ORACLE_ENV = PR_ORACLE_REQUIRED=1
+GATE_FRONTEND_ENV =
+else
+GATE_ORACLE_ENV = env -u PR_ORACLE_REQUIRED
+GATE_FRONTEND_ENV = env -u PR_ORACLE_REQUIRED
+endif
+UNIT_ENV = env -u PR_ATTRACT_DUMP -u PR_TITLE_DUMP -u PR_FRONTEND_DUMP \
+	-u PR_FRONTEND_DET -u PR_K11_DUMP -u PR_GP_DUMP -u PR_RESTART
+
 # Ghidra needs JDK 25 (12.2 refuses older runtimes).
 JAVA_HOME_DIR ?= /Library/Java/JavaVirtualMachines/temurin-25.jdk/Contents/Home
 GHIDRA_HOME ?= $(HOME)/ghidra_12.2_DEV
@@ -60,7 +119,7 @@ verify_frames ?= 820
 gra ?= S16TITLE.GRA
 chunk ?= 0
 
-.PHONY: help deps build test verify check run clean audio-render \
+.PHONY: help deps build gate-check test verify check run clean audio-render \
         smk-oracle title-pin title-capture title-oracle attract-oracle \
         frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report \
@@ -126,14 +185,41 @@ build: ## Configure and build the SDL3 port (CMake → build/)
 	cmake -S $(PORT_DIR) -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 
+gate-check: ## Inventory all 35 oracle captures (GATE_STRICT=0 tolerates undeclared absences)
+	@present=0; missing=0; declared=""; undeclared=""; stale=""; \
+	for d in $(CAPTURE_DIRS); do \
+		if [ -d "$$d" ]; then \
+			present=$$((present + 1)); \
+			case " $(GATE_NAMED_GAPS) " in *" $$d "*) stale="$$stale $$d" ;; esac; \
+		else \
+			missing=$$((missing + 1)); \
+			case " $(GATE_NAMED_GAPS) " in \
+				*" $$d "*) declared="$$declared $$d" ;; \
+				*) undeclared="$$undeclared $$d" ;; \
+			esac; \
+		fi; \
+	done; \
+	echo "gate: captures $$present/35 present, $$missing missing (strict=$(GATE_STRICT), pins_exact=$(PR_PINS_EXACT))"; \
+	if [ $$((present + missing)) -ne 35 ]; then \
+		echo "gate: FAIL: CAPTURE_DIRS holds $$((present + missing)) paths, expected 35"; exit 1; \
+	fi; \
+	for d in $$declared; do echo "gate: declared gap (absent): $$d"; done; \
+	for d in $$undeclared; do echo "gate: undeclared absence: $$d"; done; \
+	for d in $$stale; do echo "gate: FAIL: declared gap is present (stale): $$d"; done; \
+	if [ -n "$$stale" ]; then exit 1; fi; \
+	if [ "$(GATE_STRICT)" = 1 ] && [ -n "$$undeclared" ]; then \
+		echo "gate: FAIL: undeclared capture absence(s) in strict mode"; exit 1; \
+	fi; \
+	if [ -n "$$undeclared" ]; then echo "gate: partial mode tolerates the undeclared absence(s)"; fi
+
 # The oracle fixtures are git-ignored, so the suite SKIPS those checks unless
 # asked. Pass oracle=1 (or use `verify`); pass nothing otherwise — the test
 # treats even an empty PR_ORACLE_REQUIRED as "required".
 test: build ## Run the assertion suite (oracle=1 requires the byte-exact oracles)
 	@if [ -n "$(oracle)" ]; then \
-		PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+		$(UNIT_ENV) PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
 	else \
-		PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+		$(UNIT_ENV) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
 	fi
 
 check: build ## Run N frames headless, writing frames/frame_*.ppm/.pal/.idx (frames=60)
@@ -190,8 +276,9 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 # pin is MEASURED from both captures: `attract_compare.py --min-port-exh 99999`
 # on data/title-captures/title and .../title2 prints
 # "port attract frames exhibited 173/690" for each, so the pin is 173. Raise it
-# when the number grows (the tool prints no "improved" line; a measured count
-# below the pin fails). Both captures also measure 74 canonical non-black
+# when the number grows (the tool prints "improved"; PR_PINS_EXACT=1 makes that
+# a re-pin failure). A measured count below the pin fails. Both captures also
+# measure 74 canonical non-black
 # missing-occurrence classes up to reach (proof-completion record §P10).
 ATTRACT_MIN_PORT_EXH ?= 173
 ATTRACT_MAX_MISSING = 74
@@ -1912,7 +1999,7 @@ diff-verify: build ## Differential verification: original x86 bytes vs the port'
 # E2 (record docs/superpowers/plans/2026-10-01-reverse-e2-derivations.md): triage of the entry
 # candidates Ghidra never listed. The committed table must equal a fresh run on the image the port's
 # loader dumps, so a port change that ports a target regenerates it in the same commit. Skips without
-# capstone or PRAGE.EXE, and fails instead under PR_ORACLE_REQUIRED=1 (make verify sets it).
+# capstone or PRAGE.EXE, and fails instead when the caller sets PR_ORACLE_REQUIRED=1.
 entry-triage: build ## E2 triage of the non-Ghidra entry candidates: unit tests + the committed table must equal a fresh run (skips without capstone or PRAGE.EXE; fails under PR_ORACLE_REQUIRED=1)
 	@echo "== entry triage (the non-Ghidra entry candidates; record E2) =="
 	@if ! $(PYTHON) -c "import capstone" 2>/dev/null; then \
@@ -1933,29 +2020,28 @@ AUDIO_SECONDS ?= 12
 audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV, AUDIO_SECONDS)
 	PR_AUDIO_WAV=$(AUDIO_WAV) PR_AUDIO_WAV_SECONDS=$(AUDIO_SECONDS) ./$(BUILD_DIR)/run_tests
 
-# The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
-# from the CWD, so the ladder has to produce them (frames >= 25) before the suite
-# consumes them — otherwise that four-frame comparison never runs.
-verify: build ## Full ladder: --check frames, oracle-required tests, every pixel and ratchet oracle, differential verification, E2 triage, symbols.h idempotence
+# The --check run must come immediately before the unit suite: test_fn_misslog
+# reads frames/fn_miss.txt from the CWD and verifies the run's pinned known-set.
+verify: gate-check build ## Full ladder: capture preflight, --check frames, oracle-required tests, every pixel and ratchet oracle, differential verification, E2 triage, symbols.h idempotence
 	@echo "== the game dir's cmos (every capture ran on 2040 zero bytes; the port's drivers read it since track S) =="
 	@$(PYTHON) -c "import sys; sys.path.insert(0, 'tools'); import k11_capture as k; print('cmos=%s' % k.check_cmos('$(GAME_DIR)'))"
-	@echo "== headless frames (must precede the tests that read frames/frame_*.idx) =="
+	@echo "== headless frames (must precede test_fn_misslog's frames/fn_miss.txt check) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
+	$(UNIT_ENV) PR_ORACLE_REQUIRED=1 PR_FN_MISS_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
 	@echo "== restart driver (the 0x65431 soft restart, record named-gaps-b §B.3) =="
-	PR_RESTART=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
-	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle
+	$(UNIT_ENV) PR_RESTART=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
+	@$(GATE_ORACLE_ENV) $(MAKE) --no-print-directory smk-oracle
 	@echo "== title oracle (pixel-exact) =="
-	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory title-oracle
+	@$(GATE_ORACLE_ENV) $(MAKE) --no-print-directory title-oracle
 	@echo "== front-end oracle (pixel-exact, states 3/4; enforced) =="
-	@$(MAKE) --no-print-directory frontend-oracle
+	@$(GATE_FRONTEND_ENV) $(MAKE) --no-print-directory frontend-oracle
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame) =="
-	@$(MAKE) --no-print-directory demo-fight-oracle
+	@$(GATE_FRONTEND_ENV) $(MAKE) --no-print-directory demo-fight-oracle
 	@echo "== attract cycle-2 oracle (ratchet; the demo-fight run's dump) =="
-	@$(MAKE) --no-print-directory attract2-compare
+	@$(GATE_FRONTEND_ENV) $(MAKE) --no-print-directory attract2-compare
 	@echo "== attract prefix oracle (pixel-exact) =="
-	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
+	@$(GATE_ORACLE_ENV) $(MAKE) --no-print-directory attract-oracle
 	@echo "== K11 service-menu oracles (the walk and the menuesc restart; each skips without its capture) =="
 	@$(MAKE) --no-print-directory k11-oracle
 	@echo "== save-reload oracle (boot 1's write and boot 2's load; skips without its capture) =="
@@ -1999,7 +2085,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, every pixel
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
@@ -2015,7 +2101,7 @@ run: build ## Run the port windowed, reading the original assets
 
 clean: ## Remove build outputs and locally generated oracles (keeps the SDD ledger)
 	rm -rf $(BUILD_DIR)
-	rm -f $(PORT_DIR)/tests/ghidra_data.bin $(PORT_DIR)/tests/title_screen_ref.ppm
+	rm -f $(PORT_DIR)/tests/ghidra_data.bin
 	rm -rf frames/
 	@echo "Cleanup complete. (.superpowers/ deliberately kept — it holds the plan ledger.)"
 

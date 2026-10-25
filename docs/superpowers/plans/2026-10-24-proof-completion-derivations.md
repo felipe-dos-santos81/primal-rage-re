@@ -2080,3 +2080,148 @@ Ran 103 tests in 1.701s
 OK
 ```
 
+---
+
+## P11 — Strict gate preflight, unit-suite trust, and exact pins (Task 10)
+
+### P11.1 The explicit inventory and strict/partial modes
+
+`CAPTURE_DIRS` is the 35-path list measured in §P1.3, in the same order: the 26
+gp-oracle directories, `walk`, `menuesc`, `save-reload`, `gp-pads`, the two
+Smacker directories and the three title directories. It does not glob either
+capture root. `verify` depends on `gate-check`; direct oracle targets keep their
+own absent-capture behavior. `GATE_STRICT` and `PR_PINS_EXACT` are exported, so
+recursive makes and the Python comparators receive them.
+
+The real checkout measured:
+
+```
+$ make gate-check
+gate: captures 34/35 present, 1 missing (strict=1, pins_exact=1)
+gate: declared gap (absent): data/k11-captures/gp-u14-win-live
+```
+
+(The first explicit exact gate printed the same counts with `pins_exact=1`
+while the Makefile default was still 0; the line above is the post-flip default.)
+A scratch title-capture root held symlinks to `title` and `frontend` but no
+`title2`. Against that root, strict mode printed 33/35, named both the declared
+U14 gap and the undeclared `title2` absence, and exited 2 through make;
+`GATE_STRICT=0` printed the same inventory plus `partial mode tolerates the
+undeclared absence(s)` and exited 0. Adding the present `walk` directory to
+`GATE_NAMED_GAPS` failed even in partial mode with `declared gap is present
+(stale)`. Thus both failure directions were exercised without writing to
+`data/`.
+
+`GATE_ORACLE_ENV` is `PR_ORACLE_REQUIRED=1` in strict mode and `env -u
+PR_ORACLE_REQUIRED` in partial mode for the smk/title/attract recursive makes.
+The front-end family remains compare-if-present in strict mode and gets the same
+`env -u` in partial mode, so a caller-exported value cannot defeat partial mode.
+The unit, tool and re-extract commands keep their explicit
+`PR_ORACLE_REQUIRED=1`, as the task requires.
+
+### P11.2 Unit-suite trust
+
+The verify unit command, the restart command and both `make test` arms clear all
+seven driver selectors with `env -u`; verify alone adds
+`PR_FN_MISS_REQUIRED=1`. An actual stray-selector run was a full suite, not the
+title driver:
+
+```
+$ PR_TITLE_DUMP=/tmp/opencode/task10-stray-title make test
+test_title: PR_TITLE_DUMP unset, title dump driver skipped
+all checks passed
+# exit 0
+```
+
+For the miss-log negative, a background loop continuously removed
+`frames/fn_miss.txt` throughout `make verify`'s `--check`/unit prelude (a
+one-shot watcher lost the race and is not evidence). The check completed, the
+unit run failed as required, and make exited 2:
+
+```
+FAIL .../test_platform.c:536: PR_FN_MISS_REQUIRED=1 but frames/fn_miss.txt is absent
+make: *** [Makefile:2031: verify] Error 1
+```
+
+A following `make test`, without `PR_FN_MISS_REQUIRED` and without the file,
+printed the absent-log informational line and `all checks passed` (exit 0). The
+standalone binary showed the same split before the Makefile wiring: required
+exit 1 on the missing file, ordinary exit 0.
+
+The `CHECK(1, ...)` after the `0x129FC` sweep is deleted. Its enclosing test is
+not assertion-less: every character/reaction mismatch still executes the real
+`CHECK(0, ...)` at the sweep, and the surrounding dust/hit cases retain their
+assertions. `tools.tests.test_tick_vector` joined the verify tool command with
+`PR_GAME_DIR=$(GAME_DIR)`. With a nonexistent `PR_GAME_DIR` and
+`PR_ORACLE_REQUIRED=1`, its six tests ran and failed on the absent EXE instead
+of reporting six skips; with the real EXE they ran `......`, `Ran 6 tests`, `OK`.
+The verify comment/echo now name `test_fn_misslog` and `frames/fn_miss.txt`, the
+entry-triage comment no longer says verify exports `PR_ORACLE_REQUIRED`, and
+`make clean` no longer names the unread/unproduced `title_screen_ref.ppm`.
+
+### P11.3 Exact-mode failure branches and their RED/GREEN proof
+
+With `PR_PINS_EXACT=1`, an improvement prints `FAIL` and `re-pin` and returns 1;
+with it 0, the prior informational `improved:` behavior remains. The guarded
+measurements are:
+
+- gp window start, window reach, frame/trace/moves ratchets, and the canonical
+  coverage count; a fully explained ratchet whose N is below the measured end
+  also requires re-pinning;
+- front-end window END, demo-fight and attract2 ratchets (including their fully
+  explained forms), and the shared title/attract coverage count;
+- K11 distinct exhibited count and `K11_OPEN_END` END (the two previously
+  missing non-exact `improved:` reports were added first);
+- attract prefix distinct port-exhibited count;
+- gp-keys effects ratchet.
+
+The coverage guards are included because spec §6.3 says every
+`improved: raise/lower` branch, including the branches introduced by Task 8.
+No comparison threshold changed in non-exact mode.
+
+The first focused run, before implementation, had 14 failures at the new exact
+or missing-improvement assertions. After implementation the same four modules
+passed 146 tests; they also passed 146 with `PR_PINS_EXACT=1` in the invoking
+environment. Their module setup selects partial mode for legacy synthetic cases
+with deliberately loose pins, while each exact case opts in explicitly, so the
+gate's exported mode cannot make a test depend on its caller. The final focused
+run, including the tick vector, was:
+
+```
+$ python3 -m unittest tools.tests.test_gp_compare tools.tests.test_title_compare \
+    tools.tests.test_k11_compare tools.tests.test_gp_keys tools.tests.test_tick_vector
+Ran 154 tests in 3.531s
+OK
+```
+
+The same 154 also passed with `PR_PINS_EXACT=1` in the caller's environment.
+The reachable fully explained demo/attract2 assertions were mutation-tested:
+disabling those two guards made both fail (`0 != 1`), restoring the guards made
+them pass. The K11 open-end exact failure also asserts that no contradictory
+`END ...: ok` line remains.
+
+### P11.4 The explicit exact full gate and default flip
+
+While the Makefile default was still `PR_PINS_EXACT=0`, the complete gate ran:
+
+```
+$ PR_PINS_EXACT=1 make verify
+gate: captures 34/35 present, 1 missing (strict=1, pins_exact=1)
+...
+Ran 340 tests in 3.743s                         # k11/gp tools + tick vector
+OK
+...
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported functions with no row ...
+entry-triage: 579 candidates (575 by U0's rule); ...
+all checks passed
+# exit 0
+```
+
+The complete log is `/tmp/opencode/task10-exact-full-gate.log`. A read-back found
+no `improved:`, `ratchet improved` or `re-pin` line. Every measured value already
+equalled its pin, so **no pixel/state/coverage pin moved and no re-pin commit was
+needed**. Only after that green run did the default become
+`PR_PINS_EXACT ?= $(GATE_STRICT)`. A post-flip `GATE_STRICT=0 make gate-check`
+printed `pins_exact=0`; strict printed 1. No capture was created or modified, and
+no portable game source changed.
+

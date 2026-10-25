@@ -21081,7 +21081,6 @@ static void check_dust_consume(void)
             }
         }
     }
-    CHECK(1, "0x129FC's 8 x 49 character/reaction pairs were classified");
 
     /* D: the hit side. Both boxes hit (result 3): side 0's pair counts. Only
      * side 1 hit (mode 0x22, DS_00104B1A = 1, result 2): side 1's pair. A miss

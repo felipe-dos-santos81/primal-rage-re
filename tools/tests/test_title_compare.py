@@ -6,6 +6,20 @@ TOOL = os.path.join(ROOT, "tools", "title_compare.py")
 
 FRAME_W, FRAME_H = 320, 200
 FRAME_BYTES = FRAME_W * FRAME_H * 3
+_SAVED_EXACT = None
+
+
+def setUpModule():
+    global _SAVED_EXACT
+    _SAVED_EXACT = os.environ.get('PR_PINS_EXACT')
+    os.environ['PR_PINS_EXACT'] = '0'
+
+
+def tearDownModule():
+    if _SAVED_EXACT is None:
+        os.environ.pop('PR_PINS_EXACT', None)
+    else:
+        os.environ['PR_PINS_EXACT'] = _SAVED_EXACT
 
 
 def write_frame(d, i, fill):
@@ -27,14 +41,20 @@ def run_tool(capture, port, frames):
         capture_output=True, text=True, env=env)
 
 
-def run_frontend(capture, port, frames, pin, *extra):
+def run_mode(args, env=None):
+    e = dict(os.environ)
+    e.pop("PR_ORACLE_REQUIRED", None)
+    e["PR_PINS_EXACT"] = "0"
+    e.update(env or {})
+    return subprocess.run([sys.executable, TOOL] + args,
+                          capture_output=True, text=True, env=e)
+
+
+def run_frontend(capture, port, frames, pin, *extra, env=None):
     # The enforced front-end gate with its window-end pin (sub-project A A1b).
-    env = dict(os.environ)
-    env.pop("PR_ORACLE_REQUIRED", None)
-    return subprocess.run(
-        [sys.executable, TOOL, "--frontend", "--frontend-end", str(pin),
-         "--capture", capture, "--port", port, "--frames", str(frames)] + list(extra),
-        capture_output=True, text=True, env=env)
+    return run_mode(["--frontend", "--frontend-end", str(pin),
+                     "--capture", capture, "--port", port, "--frames", str(frames)] + list(extra),
+                    env=env)
 
 
 class FrontendEndPinTest(unittest.TestCase):
@@ -72,6 +92,17 @@ class FrontendEndPinTest(unittest.TestCase):
             self.assertIn("window ends at capture 0 < pinned end 1", r.stdout)
             self.assertIn("0 unexplained", r.stdout)
 
+    def test_an_improved_window_end_requires_a_repin_in_exact_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            r = run_frontend(capture, port, 2, 0)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("improved: raise the pin", r.stdout)
+            r = run_frontend(capture, port, 2, 0, env={"PR_PINS_EXACT": "1"})
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("FAIL:", r.stdout)
+            self.assertIn("re-pin", r.stdout)
+
     def test_coverage_pin_requires_the_measured_window_start(self):
         with tempfile.TemporaryDirectory() as d:
             port, capture = self._fixtures(d)
@@ -89,6 +120,10 @@ class FrontendEndPinTest(unittest.TestCase):
                              '--max-missing', '2')
             self.assertEqual(r.returncode, 0, r.stdout)
             self.assertIn('improved: lower the pin', r.stdout)
+            r = run_frontend(capture, port, 3, 1, '--frontend-start', '0',
+                             '--max-missing', '2', env={'PR_PINS_EXACT': '1'})
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn('re-pin', r.stdout)
             r = run_frontend(capture, port, 3, 1, '--max-missing', '1')
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn('window-start pin is not set', r.stdout)
@@ -96,6 +131,74 @@ class FrontendEndPinTest(unittest.TestCase):
                              '--max-missing', '1')
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn('window starts at capture 0 != pinned start 1', r.stdout)
+
+    def test_a_stale_empty_demo_fight_pin_requires_a_repin_in_exact_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            write_frame(capture, 2, 0)
+            args = ['--demo-fight', '--demo-fight-min-first', '2',
+                    '--capture', capture, '--port', port, '--frames', '2']
+            r = run_mode(args)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('N = 3 (window end + 1) is the exact pin', r.stdout)
+            r = run_mode(args, env={'PR_PINS_EXACT': '1'})
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn('FAIL:', r.stdout)
+            self.assertIn('re-pin N to 3', r.stdout)
+
+    def test_a_stale_fully_explained_attract2_pin_requires_a_repin_in_exact_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            cycle2 = os.path.join(port, 'cycle2')
+            os.mkdir(cycle2)
+            write_frame(capture, 2, 0)
+            write_frame(capture, 3, 0x33)
+            write_frame(cycle2, 0, 0x33)
+            write_frame(cycle2, 1, 0x44)
+            args = ['--attract2', '--attract2-min-first', '3',
+                    '--capture', capture, '--port', port]
+            r = run_mode(args)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('0 unexplained in the region', r.stdout)
+            r = run_mode(args, env={'PR_PINS_EXACT': '1'})
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn('FAIL:', r.stdout)
+            self.assertIn('re-pin N to 4', r.stdout)
+
+    def test_an_improved_demo_fight_ratchet_requires_a_repin_in_exact_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            write_frame(capture, 2, 0x55)
+            write_frame(capture, 3, 0)
+            args = ['--demo-fight', '--demo-fight-min-first', '1',
+                    '--capture', capture, '--port', port, '--frames', '2']
+            r = run_mode(args)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('ratchet improved', r.stdout)
+            r = run_mode(args, env={'PR_PINS_EXACT': '1'})
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn('FAIL:', r.stdout)
+            self.assertIn('re-pin', r.stdout)
+
+    def test_an_improved_attract2_ratchet_requires_a_repin_in_exact_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            cycle2 = os.path.join(port, 'cycle2')
+            os.mkdir(cycle2)
+            write_frame(capture, 2, 0)
+            write_frame(capture, 3, 0x33)
+            write_frame(capture, 4, 0x55)
+            write_frame(cycle2, 0, 0x33)
+            write_frame(cycle2, 1, 0x44)
+            args = ['--attract2', '--attract2-min-first', '3',
+                    '--capture', capture, '--port', port]
+            r = run_mode(args)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('ratchet improved', r.stdout)
+            r = run_mode(args, env={'PR_PINS_EXACT': '1'})
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn('FAIL:', r.stdout)
+            self.assertIn('re-pin', r.stdout)
 
     def test_demo_fight_also_rejects_a_stale_frontend_allowance(self):
         # --demo-fight uses the same two front-end names when it decides whether

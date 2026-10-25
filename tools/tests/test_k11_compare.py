@@ -1,10 +1,25 @@
 # tools/tests/test_k11_compare.py
 import contextlib, hashlib, io, os, subprocess, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOL = os.path.join(ROOT, 'tools', 'k11_compare.py')
 W, H = 320, 200
 ROW = W * 3
+_SAVED_EXACT = None
+
+
+def setUpModule():
+    global _SAVED_EXACT
+    _SAVED_EXACT = os.environ.get('PR_PINS_EXACT')
+    os.environ['PR_PINS_EXACT'] = '0'
+
+
+def tearDownModule():
+    if _SAVED_EXACT is None:
+        os.environ.pop('PR_PINS_EXACT', None)
+    else:
+        os.environ['PR_PINS_EXACT'] = _SAVED_EXACT
 
 
 def frame(v):
@@ -26,6 +41,7 @@ def put(d, frames):
 def run(capture, port, *extra, env=None):
     e = dict(os.environ)
     e.pop('PR_ORACLE_REQUIRED', None)
+    e['PR_PINS_EXACT'] = '0'
     e.update(env or {})
     return subprocess.run([sys.executable, TOOL, '--capture', capture, '--port', port] + list(extra),
                           capture_output=True, text=True, env=e)
@@ -243,6 +259,20 @@ class K11Compare(unittest.TestCase):
         self.assertIn("capture continues past the port's final screen at 5", out)
         self.assertIn('END 4 must be >= 4: ok', out)
 
+    def test_an_improved_open_end_requires_a_repin_in_exact_mode(self):
+        cap = [self.X, self.A, self.B, self.C, self.B, self.A]
+        port = [self.A, self.B, self.C, self.B]
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '1'}):
+            rc, out = self.open_end(cap, port, [0], 1, 3)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('FAIL:', out)
+        self.assertIn('re-pin', out)
+        self.assertNotIn('END 4 must be >= 3: ok', out)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):
+            rc, out = self.open_end(cap, port, [0], 1, 3)
+        self.assertEqual(rc, 0, out)
+        self.assertIn('improved: raise the pin', out)
+
     def test_open_end_fails_a_short_window(self):
         # a port that stops early (never restarts) ends the window before the pin
         rc, out = self.open_end([self.X, self.A, self.B, self.C, self.B, self.A], [self.A, self.B, self.C],
@@ -270,6 +300,17 @@ class K11Compare(unittest.TestCase):
         r = self.case([self.X, self.A, self.B], [self.A, self.B], screens, '--min-exh', '3')
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn('FAIL: port frames exhibited 2 < pinned 3', r.stdout)
+
+    def test_an_improved_port_exh_pin_requires_a_repin_in_exact_mode(self):
+        screens = 'key 0 settled 0\nend settled 1\n'
+        cap, port = [self.X, self.A, self.B], [self.A, self.B]
+        r = self.case(cap, port, screens, '--min-exh', '1', env={'PR_PINS_EXACT': '1'})
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('FAIL:', r.stdout)
+        self.assertIn('re-pin', r.stdout)
+        r = self.case(cap, port, screens, '--min-exh', '1')
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('improved: raise the pin', r.stdout)
 
     def test_an_unexhibited_non_black_port_frame_fails_the_coverage(self):
         # a non-black port frame below the final settled screen that no capture

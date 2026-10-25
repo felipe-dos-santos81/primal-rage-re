@@ -1,5 +1,6 @@
 # tools/tests/test_gp_compare.py
 import contextlib, gzip, hashlib, io, os, shutil, subprocess, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
@@ -9,6 +10,20 @@ import title_compare as tc
 
 DAC = bytes(i for i in range(256) for _ in range(3))   # grey: index i -> (i, i, i)
 NOT_REQUESTED = object()
+_SAVED_EXACT = None
+
+
+def setUpModule():
+    global _SAVED_EXACT
+    _SAVED_EXACT = os.environ.get('PR_PINS_EXACT')
+    os.environ['PR_PINS_EXACT'] = '0'
+
+
+def tearDownModule():
+    if _SAVED_EXACT is None:
+        os.environ.pop('PR_PINS_EXACT', None)
+    else:
+        os.environ['PR_PINS_EXACT'] = _SAVED_EXACT
 
 
 def ipx(k):
@@ -117,9 +132,14 @@ class TestFrames(Dirs):
     def test_an_improved_first_unexplained_is_said(self):
         bad = bytes([9]) * tc.FRAME_BYTES
         self.write([1, 2], [rgb(1), rgb(2), bad])
-        rc, first, out = self.run_claim(1)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):
+            rc, first, out = self.run_claim(1)
         self.assertEqual((rc, first), (0, 2), out)
         self.assertTrue(any('first unexplained 2, ratchet N 1 ok (improved: raise N)' in l for l in out), out)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '1'}):
+            rc, first, out = self.run_claim(1)
+        self.assertEqual((rc, first), (1, 2), out)
+        self.assertTrue(any('FAIL:' in l and 're-pin' in l for l in out), out)
 
     def test_report_goes_past_the_first_unexplained(self):
         b1, b2 = bytes([9]) * tc.FRAME_BYTES, bytes([8]) * tc.FRAME_BYTES
@@ -157,9 +177,14 @@ class TestFrames(Dirs):
 
     def test_an_earlier_window_start_is_said(self):
         self.write([1, 2], [rgb(1), rgb(2)])
-        rc, first, out = self.run_claim(2, max_start=1)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):
+            rc, first, out = self.run_claim(2, max_start=1)
         self.assertEqual(rc, 0, out)
         self.assertTrue(any('window start 0 < pinned start 1 (improved: lower the pin)' in l for l in out), out)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '1'}):
+            rc, first, out = self.run_claim(2, max_start=1)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('FAIL:' in l and 're-pin' in l for l in out), out)
 
     def test_an_unset_start_pin_fails(self):
         self.write([1, 2], [rgb(1), rgb(2)])
@@ -174,11 +199,15 @@ class TestFrames(Dirs):
         out = []
         self.assertEqual(gc.reach_check('s', 40, 50, out=out.append), 1)   # shrank -> FAIL
         self.assertEqual(gc.reach_check('s', 50, 50, out=out.append), 0)   # exact -> ok
-        self.assertEqual(gc.reach_check('s', 60, 50, out=out.append), 0)   # grew -> ok (raise)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):
+            self.assertEqual(gc.reach_check('s', 60, 50, out=out.append), 0)   # grew -> ok (raise)
         self.assertEqual(gc.reach_check('s', 40, None, out=out.append), 1)  # unpinned -> FAIL
         self.assertTrue(any('pinned reach 50' in l for l in out), out)
         self.assertTrue(any('improved: raise the pin' in l for l in out), out)
         self.assertTrue(any('reach pin is not set' in l for l in out), out)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '1'}):
+            self.assertEqual(gc.reach_check('s', 60, 50, out=out.append), 1)
+        self.assertTrue(any('FAIL:' in l and 're-pin' in l for l in out), out)
 
     def test_report_mode_prints_no_verdict_and_checks_no_pin(self):
         bad = bytes([9]) * tc.FRAME_BYTES
@@ -189,11 +218,16 @@ class TestFrames(Dirs):
 
     def test_a_fully_explained_run_names_the_exact_pin(self):
         self.write([1, 2], [rgb(1), rgb(2)])
-        rc, first, out = self.run_claim(1)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):
+            rc, first, out = self.run_claim(1)
         self.assertEqual((rc, first), (0, None), out)
         self.assertTrue(any('every item is explained: N = 2 is the exact pin' in l for l in out), out)
         out2 = self.run_claim(2)[2]
         self.assertFalse(any('exact pin' in l for l in out2), out2)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '1'}):
+            rc, first, out = self.run_claim(1)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('FAIL:' in l and 're-pin' in l for l in out), out)
 
     def test_coverage_is_reported_for_a_port_class_the_capture_never_shows(self):
         # A garbage port class between two good ones explains nothing. Repeated
@@ -227,9 +261,14 @@ class TestFrames(Dirs):
         rc, first, out = self.run_claim(2, max_missing=0)
         self.assertEqual(rc, 1, out)
         self.assertTrue(any('FAIL: 1 missing class(es) > pinned 0' in l for l in out), out)
-        rc, first, out = self.run_claim(2, max_missing=2)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):
+            rc, first, out = self.run_claim(2, max_missing=2)
         self.assertEqual(rc, 0, out)
         self.assertTrue(any('improved: lower the pin' in l for l in out), out)
+        with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '1'}):
+            rc, first, out = self.run_claim(2, max_missing=2)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('FAIL:' in l and 're-pin' in l for l in out), out)
         rc, first, out = self.run_claim(2, max_missing=None)
         self.assertEqual(rc, 1, out)
         self.assertTrue(any('coverage pin is not set' in l for l in out), out)
@@ -342,12 +381,14 @@ class AttractPortExh(unittest.TestCase):
     # of the port dump's own length, so it cannot be shrunk away.
     ATTRACT_TOOL = os.path.join(ROOT, 'tools', 'attract_compare.py')
 
-    def _run(self, cap, port, *extra):
-        env = dict(os.environ)
-        env.pop('PR_ORACLE_REQUIRED', None)
+    def _run(self, cap, port, *extra, env=None):
+        e = dict(os.environ)
+        e.pop('PR_ORACLE_REQUIRED', None)
+        e['PR_PINS_EXACT'] = '0'
+        e.update(env or {})
         return subprocess.run(
             [sys.executable, self.ATTRACT_TOOL, '--capture', cap, '--port', port] + list(extra),
-            capture_output=True, text=True, env=env)
+            capture_output=True, text=True, env=e)
 
     def _write(self, d, fills, fmt='frame_%04d.raw'):
         for i, v in enumerate(fills):
@@ -382,6 +423,16 @@ class AttractPortExh(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('FAIL: port attract frames exhibited 1 < pinned 2', r.stdout)
 
+    def test_an_improved_port_exh_pin_requires_a_repin_in_exact_mode(self):
+        cap, port = self._fixtures()
+        r = self._run(cap, port, '--min-port-exh', '0')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('improved: raise the pin', r.stdout)
+        r = self._run(cap, port, '--min-port-exh', '0', env={'PR_PINS_EXACT': '1'})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('FAIL:', r.stdout)
+        self.assertIn('re-pin', r.stdout)
+
     def test_coverage_excludes_frames_beyond_reach(self):
         cap, port = self._fixtures()  # port attract 1 is never reached
         r = self._run(cap, port, '--max-missing', '0')
@@ -402,6 +453,9 @@ class AttractPortExh(unittest.TestCase):
         r = self._run(cap, port, '--max-missing', '2')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('improved: lower the pin', r.stdout)
+        r = self._run(cap, port, '--max-missing', '2', env={'PR_PINS_EXACT': '1'})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('re-pin', r.stdout)
 
 
 class TestTrace(unittest.TestCase):

@@ -252,6 +252,10 @@ def main():
     if first < n:
         print('gp_keys: %s: effects: FAIL: first not reproduced %d < ratchet N %d' % (a.scenario, first, n))
         return 1
+    if first > n and os.environ.get('PR_PINS_EXACT') == '1':
+        print('gp_keys: %s: effects: FAIL: first not reproduced %d > ratchet N %d; '
+              're-pin N to %d (PR_PINS_EXACT=1)' % (a.scenario, first, n, first))
+        return 1
     print('gp_keys: %s: effects: first not reproduced %d, ratchet N %d ok%s'
           % (a.scenario, first, n, ' (improved: raise N)' if first > n else ''))
     return 0
