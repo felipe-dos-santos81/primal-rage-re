@@ -1295,6 +1295,15 @@ static void check_hiscore_screen(void)
     tf_put(sv_data, DATA_BASE, 0x8B0D0u);
 }
 
+static void check_dead_24b08(void)
+{
+    /* The live neighbour proves this is a seeded registry, so the dead block's
+     * NULL cannot pass merely because no hooks were installed (record §P2.5). */
+    CHECK(actors_init() == 1, "0x24B08/0x24B54 registry fixture");
+    CHECK(fn_resolve(0x24B54u) == game_hook_24b54, "0x24B54 seeds the live-hook registry");
+    CHECK(fn_resolve(0x24B08u) == NULL, "0x24B08 is dead and has no port registration");
+}
+
 /* Records §K2.1/§K2.2 (2026-09-29-k2-k5-derivations.md): 0x29B70 and 0x32968
  * are a bare `ret` (`c3`). The data object is filled with 0xA5, which no
  * image byte pattern guarantees, and must hold it after each call. */
@@ -1848,6 +1857,7 @@ int test_flow(void)
      * assertions above. */
     check_timer_exit();
 
+    check_dead_24b08();
     check_null_fns();
 
     return g_failures - before;
@@ -10873,6 +10883,26 @@ static void sm_check_hist(void)
     sm_buf_is("  0-  9:  3   4% ##:", "two cells and a half");
     CHECK_EQ_INT((int)audit_hist_line(19u, SM_HBUF, 0x2A), 7);
     sm_buf_is("190& UP:  7   9% #####:", "five cells and a half");
+
+    /* 0x2E910: the only caller's label at 0x32640 is 03 00, so len = 1.
+     * Seed max = 1 and bar = 5 (width 22 - column 9 - digits 1 - 7). The
+     * clamp makes unit = max(1, 4 * len) = 4, hence exactly one whole 03
+     * cell: units = 5 + (unit >> 1) = 7 and full = 4. Units 1, 2 and 3
+     * would draw 5, 3 and 2 cells respectively, so the exact output proves
+     * the divisor is 4 rather than merely asserting the prose's "unit >= 4". */
+    mem_fill(SM_H0, 0, 20u);
+    DSB(SM_H0) = 1u;
+    memset(mem + SM_HST, 0xA5, sizeof s_st);
+    memset(mem + SM_HBUF, 0xEE, 0x40);
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, 0u, 0u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSB(0x32640u), 0x03);
+    CHECK_EQ_INT((int)DSB(0x32641u), 0x00);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0x20u), 1);                 /* len */
+    CHECK_EQ_INT((int)DSD(SM_HST + 4u), 1);                    /* max before the unit clamp */
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 22), 1);
+    sm_buf_is("  0-  9: 1 100% \x03", "0x2E910 divides by the clamped unit 4");
+    sm_hist_seed();
+
     /* Histogram 1: the unit is at least 4 * L (the largest count is 2, so
      * a count of 1 is 25 / 4 cells, not 25 / 2). */
     CHECK_EQ_INT((int)audit_hist_format(1u, SM_HBUF, 0x2Au, SM_HBUF + 0x30u, SM_HBUF + 0x34u, 0x32640u), 23);
@@ -12799,6 +12829,97 @@ static void vs4_mode12_6(void)
     game_mode_12_step();
 }
 
+/* Proof completion task 7: background +0x2C = 0x180 makes state 6's step zero.
+ * The raw faults on its first idiv, at 0x42203. Run both checks in children:
+ * without the guard a trapping host's SIGFPE, or a non-trapping host's return,
+ * fails the parent test instead of terminating the whole suite. */
+static void vs4_mode12_zero_step(void)
+{
+    vs4_mode12(6u);
+    DSW(DSD(DS_001080F4) + 0x2Cu) = 0x180u;
+    DSB(DS_00107832) = 1u;
+    game_mode_12_step();
+}
+
+typedef struct { u32 exc, eip; } Vs4Fault;
+static int vs4_fault_fd = -1;
+
+static void vs4_fault_hook(u32 exc, u32 eip)
+{
+    Vs4Fault got = { exc, eip };
+    (void)write(vs4_fault_fd, &got, sizeof got);
+    _exit(0);                       /* host_cpu_fault is noreturn; stop its exit here */
+}
+
+static size_t vs4_read_all(int fd, void *dst, size_t cap)
+{
+    size_t got = 0u;
+    while (got < cap) {
+        ssize_t n = read(fd, (u8 *)dst + got, cap - got);
+        if (n <= 0) break;
+        got += (size_t)n;
+    }
+    return got;
+}
+
+static void vs4_check_mode12_fault(void)
+{
+    int fds[2], st = 0;
+    Vs4Fault got = { 0x5Au, 0x5A5Au };
+    int pr = pipe(fds);
+    CHECK(pr == 0, "mode-0x12 fault-hook pipe");
+    if (pr != 0) return;
+    fflush(stdout); fflush(stderr);
+    pid_t pid = fork();
+    CHECK(pid >= 0, "mode-0x12 fault-hook fork");
+    if (pid < 0) { close(fds[0]); close(fds[1]); return; }
+    if (pid == 0) {
+        close(fds[0]);
+        vs4_fault_fd = fds[1];
+        (void)host_set_fault_hook(vs4_fault_hook);
+        vs4_mode12_zero_step();
+        _exit(99);                  /* no fault: the hook was never reached */
+    }
+    close(fds[1]);
+    size_t got_n = vs4_read_all(fds[0], &got, sizeof got);
+    close(fds[0]);
+    waitpid(pid, &st, 0);
+    if (WIFSIGNALED(st)) fprintf(stderr, "mode-0x12 hook child signal %d\n", WTERMSIG(st));
+    else if (WIFEXITED(st) && WEXITSTATUS(st) != 0)
+        fprintf(stderr, "mode-0x12 hook child status %d\n", WEXITSTATUS(st));
+    CHECK_EQ_INT((int)got_n, (int)sizeof got);
+    CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 0, "the fault hook leaves at the first idiv");
+    CHECK_EQ_INT((int)got.exc, 0);
+    CHECK_EQ_INT((int)got.eip, 0x42203);
+
+    pr = pipe(fds);
+    CHECK(pr == 0, "mode-0x12 fault-exit pipe");
+    if (pr != 0) return;
+    fflush(stdout); fflush(stderr);
+    pid = fork();
+    CHECK(pid >= 0, "mode-0x12 fault-exit fork");
+    if (pid < 0) { close(fds[0]); close(fds[1]); return; }
+    if (pid == 0) {
+        dup2(fds[1], 2);
+        close(fds[0]); close(fds[1]);
+        (void)host_set_fault_hook(NULL);
+        vs4_mode12_zero_step();
+        _exit(99);
+    }
+    close(fds[1]);
+    char buf[64];
+    size_t n = vs4_read_all(fds[0], buf, sizeof buf - 1u);
+    close(fds[0]);
+    buf[n] = '\0';
+    st = 0;
+    waitpid(pid, &st, 0);
+    if (WIFSIGNALED(st)) fprintf(stderr, "mode-0x12 exit child signal %d\n", WTERMSIG(st));
+    else if (WIFEXITED(st) && WEXITSTATUS(st) != 1)
+        fprintf(stderr, "mode-0x12 exit child status %d\n", WEXITSTATUS(st));
+    CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 1, "the mode-0x12 #DE exits with status 1");
+    CHECK(strcmp(buf, "divide by zero\n") == 0, "the mode-0x12 #DE uses the raw fault class");
+}
+
 /* The fight fixture with the private pool and the HUD bar records
  * DS_001028F0/F8[side] live (0x1D764 re-seeks them). */
 static void vs4_fight(void)
@@ -12964,6 +13085,7 @@ int test_voice_sites(void)
     tf_voice_sites(k12_c_game, (u32)(sizeof k12_c_game / sizeof k12_c_game[0]));
     CHECK_EQ_INT((int)(sizeof k12_d4 / sizeof k12_d4[0]), K12_D4_ROWS);
     tf_voice_sites(k12_d4, (u32)(sizeof k12_d4 / sizeof k12_d4[0]));
+    vs4_check_mode12_fault();
     return g_failures - before;
 }
 

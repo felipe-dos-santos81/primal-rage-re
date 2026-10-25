@@ -30819,6 +30819,149 @@ PC_CASES = [
 ]   # PC_CASES end
 
 
+# ---- proof completion task 7 (record 2026-10-24-proof-completion §P8): the terminal census ----
+# Each open row is keyed by (name, entry), not by entry alone: attract_config_volumes_unscaled and
+# attract_config_volumes are two rows at 0x2C8F0. The test below derives the actual open set and
+# blockers from closed_rows; these tables are its machine-readable, no-unclassified-residue claim.
+_AIL_REASON = ("The AIL implementation is host-owned (NG4); the runtime thunk has no portable C "
+               "binding, so a callee row would validate a harness-authored audio model, not game code.")
+_AIL_RECORD = "pixel-and-proof §P7.6; proof-completion §P8.1"
+TERMINAL_CENSUS = (
+    {"name": "snd_music_stop", "entry": 0x1CA6C, "blockers": (0x5DEAF,),
+     "class": "AIL runtime stub", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "snd_sample_playing", "entry": 0x1CE70, "blockers": (0x5DD03,),
+     "class": "AIL runtime stub", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "snd_samples_stop_all", "entry": 0x1CD9C, "blockers": (0x5DC0F, 0x5DC8B, 0x5DD03),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "snd_sample_stop", "entry": 0x1CE04, "blockers": (0x5DC0F, 0x5DC8B, 0x5DD03),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "snd_sample_queue", "entry": 0x1CC28, "blockers": (0x5DC0F, 0x5DC8B, 0x5DD03),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "snd_music_playing", "entry": 0x1CA40, "blockers": (0x5DEED,),
+     "class": "AIL runtime stub", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "input_sampler", "entry": 0x1BBAC,
+     "blockers": (0x4FBBB, 0x4FC05, 0x4FCFD, 0x4FDF5),
+     "class": "host-owned PIT/game-port stubs",
+     "reason": ("All 48 sampler blocks are proved with modeled host answers; rows for the four probes "
+                "would verify harness-owned hardware models, which NG4 excludes."),
+     "record": "host-input-truth §H4.2/§H4.5; pixel-and-proof §P7.6"},
+    {"name": "sound_music_pause_toggle", "entry": 0x1D1B0, "blockers": (0x5DEAF,),
+     "class": "AIL runtime stub", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "sound_music_volume", "entry": 0x1CAB8, "blockers": (0x5DECA, 0x5DEED),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "sound_sfx_volume", "entry": 0x1CED4, "blockers": (0x5DCC5, 0x5DD03),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "sound_buffers_alloc", "entry": 0x1D0BC, "blockers": (0x1C308,),
+     "class": "host-owned audio/allocation stub",
+     "reason": ("The driver/allocation boundary is host-owned and has no portable original-C binding; "
+                "its recorded stub stays explicit rather than gaining a harness-only row."),
+     "record": "pixel-and-proof §P7.6; port_classification 0x1C308 (record §50-D)"},
+    {"name": "attract_config_volumes_unscaled", "entry": 0x2C8F0,
+     "blockers": (0x5DCC5, 0x5DD03, 0x5DECA, 0x5DEED),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "attract_config_volumes", "entry": 0x2C8F0,
+     "blockers": (0x5DCC5, 0x5DD03, 0x5DECA, 0x5DEED),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "sound_sample_start", "entry": 0x1CB18,
+     "blockers": (0x5DC0F, 0x5DC2A, 0x5DC4D, 0x5DC70, 0x5DCA6, 0x5DCC5, 0x5DCE4),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "fight_char_screen_open", "entry": 0x43738,
+     "blockers": (0x5DCC5, 0x5DD03, 0x5DECA, 0x5DEED),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "fight_char_screen_open_both", "entry": 0x444C8,
+     "blockers": (0x5DCC5, 0x5DD03, 0x5DECA, 0x5DEED),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+    {"name": "config_file_load", "entry": 0x1AFE8, "blockers": (0x6C4CF,),
+     "class": "runtime exit-flush stub",
+     "reason": ("The original's short-read exit reaches the runtime flush with live host close pointers; "
+                "it has no portable row, and l6 already declares the exit-vs-defaults difference."),
+     "record": "reverse-g §G2; pixel-and-proof §P7.6"},
+    {"name": "config_file_save", "entry": 0x1B084, "blockers": (0x6C4CF,),
+     "class": "runtime exit-flush stub",
+     "reason": ("Task 6's s5 covers the short-write arm but declares its exit difference; the original's "
+                "exit then reaches the unrowed runtime flush, so the covered row is intentionally open."),
+     "record": "proof-completion §P7.2-§P7.3"},
+    {"name": "menu_fatal_error", "entry": 0x2EA68, "blockers": (0x6C4CF,),
+     "class": "runtime exit-flush stub",
+     "reason": ("Every case declares the original's exit versus the port's return; the exit chain reaches "
+                "the same unrowed runtime flush, so no port-side comparison can close the row."),
+     "record": "reverse-g §G2; pixel-and-proof §P7.6"},
+    {"name": "sound_shutdown", "entry": 0x1D018,
+     "blockers": (0x5D86A, 0x5DC8B, 0x5DD03, 0x5DEAF, 0x5DEED),
+     "class": "AIL runtime stubs", "reason": _AIL_REASON, "record": _AIL_RECORD},
+)
+
+# entry -> (why the row is weaker, the record that proves that limit)
+WEAKER_CENSUS = {
+    0x1AFE8: ("l6 declares the short-read exit-versus-defaults difference; that case compares no port side.",
+              "reverse-g §G2"),
+    0x1B084: ("s5 declares the short-write exit-versus-failed-write-return difference; its port side is not compared.",
+              "proof-completion §P7.2"),
+    0x1B544: ("The row covers only the resident arm; the slow tail-jump arm is named unhit (2/11 blocks).",
+              "reverse-g §G3"),
+    0x1BE30: ("The teardown row pokes the BIOS int 0x10 and leaves three 0x1ADE4 blocks unhit (5/8).",
+              "reverse-n §N.2.1"),
+    0x1C740: ("The movie row pokes runtime/Smacker entry points and covers only the port's prefix (4/23 blocks).",
+              "reverse-n §N.3"),
+    0x1D0BC: ("The two buffer-failure arms 0x1D10E/0x1D183, ending in runtime printf, remain unhit.",
+              "proof-completion §P7.4"),
+    0x249F0: ("The reachable restart arm 0x24A9C remains unexercised after the longjmp became scan-only.",
+              "proof-completion §P6.3"),
+    0x24C5C: ("The key rows omit the Alt-J/calibration path through 0x5004A and the restart arm by design.",
+              "reverse-h §H.2"),
+    0x255CC: ("The loop row leaves the full-copy and second-RNG blocks 0x25680/0x256D4 unhit (18/20).",
+              "reverse-g §G4"),
+    0x2CADC: ("Three raw calls the port deliberately omits are nop pokes; only the seven calls the port makes are compared.",
+              "reverse-d6a §4"),
+    0x2EA30: ("The SET-lock clear block 0x2EA49 is named unhit (7/8 blocks).",
+              "reverse-g §G3"),
+    0x2EA68: ("Every case declares exit-versus-return, so the row proves the original but compares no port side.",
+              "reverse-g §G2"),
+    0x2EA74: ("The key wait leaves the 0x5004A calibration path and two other blocks named unhit (20/23).",
+              "reverse-h §H.2"),
+    0x2EA78: ("The key wait leaves the 0x5004A calibration path and two other blocks named unhit (20/23).",
+              "reverse-h §H.2"),
+    0x51ED8: ("The aperture row declares the renderer node-scratch +0x14/+0x38 byte difference (h2_scratch).",
+              "proof-completion §P7.4; reverse-h §H.3"),
+}
+
+# entry -> (the port's replacement, why a row would mask that boundary, evidence)
+UNROWED_CENSUS = {
+    0x1B120: (
+        "res_load_index plus res_load_present and the host INDEX loader",
+        "The withdrawn poked row assigned 0x1B3AC's read/mark work and an invented frame effect to the port; it compared a composition, not the C function.",
+        "reverse-n §N.3.1/§N.4"),
+    0x1B3AC: (
+        "res_load_present's head, res_load_index's host reads/marks, and res_resolve's mark",
+        "No single C function spans the raw body; the port adds the ISR read-stall model and omits the raw driver stores, so a row would bind a synthetic composition.",
+        "reverse-n §N.3/§N.3.5/§N.4"),
+    0x1BEC4: (
+        "game_main, game_init, the host boot loaders, and game_shutdown",
+        "The boot chain has no one C counterpart and immediately reaches the BIOS query; a row would compare a harness-assembled boot against host startup.",
+        "reverse-n §N.1"),
+    0x1C930: (
+        "the host music-request/sequencer path (title_music_start)",
+        "The raw's AIL handle gates, copies, stops and clear have no port counterparts; a row would replace them with fabricated handle state.",
+        "reverse-n §N.2.3"),
+    0x1CF40: (
+        "game_audio_init's host audio objects, mixer reset and FAT.OPL load",
+        "The raw returns and stores ten AIL handles while the port deliberately stores different sentinels and does extra host work; a row would mask those differences.",
+        "reverse-n §N.2.2"),
+    0x20C10: (
+        "game_init, game_init_resume, and game_main's game_loop/restart call",
+        "The raw setjmp frame is split across those functions; entering only the resume tail lacks its stack frame, so no faithful single binding exists.",
+        "reverse-n §N.1"),
+    0x47370: (
+        "game_string_table_load's host file loader and fixed string handle",
+        "The port does not reproduce the raw allocator/pager, language index, free/reload or size stores; a row would validate an invented loader model.",
+        "reverse-n §N.3/§N.3.5"),
+    0x4FBA2: (
+        "int10h_query's host-window mode answer 0x13",
+        "The raw returns BIOS AL from int 0x10; poking it would compare a harness-chosen constant with the port's constant and prove nothing about the BIOS.",
+        "reverse-n §N.1; reverse-d6a §4"),
+}
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -32134,6 +32277,61 @@ class RealFunctionTests(unittest.TestCase):
 
     def spec(self, name, **kw):
         return dataclasses.replace([s for s in V.SPECS if s.name == name][0], **kw)
+
+    def test_the_terminal_census_has_no_unclassified_open_rows(self):
+        # Proof completion task 7 (record §P8): the 20 rows left open after task 6 are all declared
+        # terminals. Compare row identities (name, entry), because two specs share entry 0x2C8F0;
+        # the sorted address lists retain that duplicate as well. Each row's measured unexcused
+        # blockers must equal its census entry, not merely appear in its prose.
+        verdicts = {row.entry: row.verdict for row in self.real.values()}
+        closed, with_callees = V.closed_rows(list(self.real.values()), verdicts)
+        closed_names = {row.name for row in closed}
+        open_rows = [row for row in with_callees if row.name not in closed_names]
+        outside = V.non_portable()
+        self.assertEqual(len(open_rows), 20)
+        self.assertEqual(len(TERMINAL_CENSUS), 20)
+        self.assertEqual({(row.name, row.entry) for row in open_rows},
+                         {(row["name"], row["entry"]) for row in TERMINAL_CENSUS})
+        self.assertEqual(sorted(row.entry for row in open_rows),
+                         sorted(row["entry"] for row in TERMINAL_CENSUS))
+        actual = {(row.name, row.entry): row for row in open_rows}
+        for entry in TERMINAL_CENSUS:
+            with self.subTest(row=entry["name"]):
+                row = actual[(entry["name"], entry["entry"])]
+                blockers = {a for a, mode in row.callees
+                            if verdicts.get(a) != "VERIFIED" and not outside.excused(a, mode)}
+                self.assertEqual(frozenset(entry["blockers"]), blockers)
+                self.assertTrue(entry["class"] and entry["reason"] and entry["record"])
+
+    def test_the_weaker_and_unrowed_census_sets_match_the_harness(self):
+        # The 15 weaker and 8 portable-unrowed declarations are sets in the harness, not counts in
+        # prose. Their census keys must be exact, and every real row's weaker flag must agree with
+        # the same WEAKER set (including rows that share an entry with another spec).
+        self.assertEqual(len(WEAKER_CENSUS), 15)
+        self.assertEqual(frozenset(WEAKER_CENSUS), V.WEAKER)
+        for row in self.real.values():
+            self.assertEqual(row.weaker, row.entry in V.WEAKER, row.name)
+        for entry, (reason, record) in WEAKER_CENSUS.items():
+            self.assertTrue(reason and record, "0x%05X" % entry)
+        self.assertEqual(len(UNROWED_CENSUS), 8)
+        self.assertEqual(frozenset(UNROWED_CENSUS), V.UNROWED)
+        rowed = {spec.entry for spec in V.SPECS}
+        for entry, (replacement, reason, record) in UNROWED_CENSUS.items():
+            self.assertNotIn(entry, rowed)
+            self.assertTrue(replacement and reason and record, "0x%05X" % entry)
+
+    def test_the_live_24b54_hook_is_not_fn_unrowed(self):
+        # R4: 0x24B54 is registered port code, but is not a Ghidra FN_ function and has no SPECS
+        # row. Consequently the FN_-based unrowed guard does not flag it; do not invent a row or
+        # add it to UNROWED. Its dead neighbour 0x24B08 is in none of the port/index populations.
+        outside = V.non_portable()
+        frontier = V.ported_unrowed(specs=V.SPECS, outside=outside)
+        self.assertIn(0x24B54, outside.ported)
+        self.assertNotIn(0x24B54, V.fn_addresses())
+        self.assertNotIn(0x24B54, {spec.entry for spec in V.SPECS})
+        self.assertNotIn(0x24B54, frontier.declared_portable | frontier.runtime)
+        self.assertNotIn(0x24B54, V.UNROWED)
+        self.assertNotIn(0x24B08, outside.ported | outside.functions | V.fn_addresses())
 
     def test_text_number_core_runs_sprintf_from_the_original_bytes(self):
         # Proof completion task 5 (record §P6): the old stub wrote "42" for every case. The real

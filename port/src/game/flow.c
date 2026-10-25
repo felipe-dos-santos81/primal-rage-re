@@ -885,8 +885,10 @@ void game_mode_12_step(void)
         u8 cyc = DSB(field);                                             /* 0x421C2/0x421D2 */
         s32 base_y = (DSB(DS_00104529) & 2u) != 0u ? 0x2600 : 0x2800;   /* 0x421AF..0x421D9 */
         DSW(DS_00108102) = (u16)(base_y - (s32)(cyc - 1) * 0x800);       /* 0x421E1/0x421E3 */
+        if (step == 0) host_cpu_fault(0x00u, 0x42203u, "divide by zero", 1);
         DSW(DSD(DS_001080F4) + 0x34u) = (s16)(((s32)(u16)DSW(DS_00108100)
             - (s32)DSD(DSD(DS_001080F4) + 0x18u)) / step);               /* 0x421FC..0x42213 */
+        if (step == 0) host_cpu_fault(0x00u, 0x4221Cu, "divide by zero", 1);
         DSW(DSD(DS_001080F4) + 0x36u) = (s16)(((s32)(u16)DSW(DS_00108102)
             - (s32)DSD(DSD(DS_001080F4) + 0x1Cu)) / step);               /* 0x42211..0x4221E */
         (void)sound_voice(0xBCu);                                         /* 0x42222/0x42229 0x2C3FC (EDX = the remainder, unread) */

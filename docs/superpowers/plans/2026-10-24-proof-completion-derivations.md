@@ -1350,3 +1350,318 @@ The `s5` case is what proves the model: without it the arm is unreachable, and
 the row's own `unhit_named` reason (deleted here) was the evidence that no
 earlier case could reach it.
 
+---
+
+## P8 — The terminal census, the divide guard, and the dead/live block (Task 7)
+
+### P8.1 The machine-readable terminal census
+
+The census is data in `tools/tests/test_diff_verify.py`: `TERMINAL_CENSUS`,
+`UNROWED_CENSUS` and `WEAKER_CENSUS`. The Markdown tables below are generated
+from those objects, not maintained as a second hand-written list. The test
+computes `closed_rows` over the real results and compares both the open-row
+identities and every row's measured unexcused blockers with the census. It also
+requires the 15 weaker keys to equal `WEAKER`, every real row's `weaker` flag to
+agree with that set, and the eight portable-unrowed keys to equal `UNROWED`.
+
+There are **20 open rows but 19 distinct original addresses**:
+`attract_config_volumes_unscaled` and `attract_config_volumes` are two specs at
+`0x2C8F0`. The identity comparison is therefore `(name, entry)`, and the sorted
+address comparison retains the duplicate. The 20 comprise 15 AIL-thunk rows,
+`sound_buffers_alloc`, `input_sampler`, and the three runtime-flush rows
+(`config_file_load`, `config_file_save`, `menu_fatal_error`). "No row" here means
+no faithful closing row against the existing port and its declared non-goals;
+a harness-authored device or runtime model is not such a row.
+
+Citation abbreviations in the generated tables: `pixel-and-proof` is
+`2026-10-22-pixel-and-proof-closure-derivations.md`; `host-input-truth` is
+`2026-10-21-host-input-truth-derivations.md`; `reverse-g`, `reverse-h` and
+`reverse-n` are the corresponding `2026-10-14` records; `reverse-d6a` is
+`2026-10-13-reverse-d6a-derivations.md`; `proof-completion` is this record.
+
+| row | original | blocker(s) | class | why no closing row can exist | evidence |
+|---|---|---|---|---|---|
+| `snd_music_stop` | `0x1CA6C` | `0x5DEAF` | AIL runtime stub | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `snd_sample_playing` | `0x1CE70` | `0x5DD03` | AIL runtime stub | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `snd_samples_stop_all` | `0x1CD9C` | `0x5DC0F`, `0x5DC8B`, `0x5DD03` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `snd_sample_stop` | `0x1CE04` | `0x5DC0F`, `0x5DC8B`, `0x5DD03` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `snd_sample_queue` | `0x1CC28` | `0x5DC0F`, `0x5DC8B`, `0x5DD03` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `snd_music_playing` | `0x1CA40` | `0x5DEED` | AIL runtime stub | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `input_sampler` | `0x1BBAC` | `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5` | host-owned PIT/game-port stubs | All 48 sampler blocks are proved with modeled host answers; rows for the four probes would verify harness-owned hardware models, which NG4 excludes. | host-input-truth §H4.2/§H4.5; pixel-and-proof §P7.6 |
+| `sound_music_pause_toggle` | `0x1D1B0` | `0x5DEAF` | AIL runtime stub | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `sound_music_volume` | `0x1CAB8` | `0x5DECA`, `0x5DEED` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `sound_sfx_volume` | `0x1CED4` | `0x5DCC5`, `0x5DD03` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `sound_buffers_alloc` | `0x1D0BC` | `0x1C308` | host-owned audio/allocation stub | The driver/allocation boundary is host-owned and has no portable original-C binding; its recorded stub stays explicit rather than gaining a harness-only row. | pixel-and-proof §P7.6; port_classification 0x1C308 (record §50-D) |
+| `attract_config_volumes_unscaled` | `0x2C8F0` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `attract_config_volumes` | `0x2C8F0` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `sound_sample_start` | `0x1CB18` | `0x5DC0F`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCC5`, `0x5DCE4` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `fight_char_screen_open` | `0x43738` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `fight_char_screen_open_both` | `0x444C8` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+| `config_file_load` | `0x1AFE8` | `0x6C4CF` | runtime exit-flush stub | The original's short-read exit reaches the runtime flush with live host close pointers; it has no portable row, and l6 already declares the exit-vs-defaults difference. | reverse-g §G2; pixel-and-proof §P7.6 |
+| `config_file_save` | `0x1B084` | `0x6C4CF` | runtime exit-flush stub | Task 6's s5 covers the short-write arm but declares its exit difference; the original's exit then reaches the unrowed runtime flush, so the covered row is intentionally open. | proof-completion §P7.2-§P7.3 |
+| `menu_fatal_error` | `0x2EA68` | `0x6C4CF` | runtime exit-flush stub | Every case declares the original's exit versus the port's return; the exit chain reaches the same unrowed runtime flush, so no port-side comparison can close the row. | reverse-g §G2; pixel-and-proof §P7.6 |
+| `sound_shutdown` | `0x1D018` | `0x5D86A`, `0x5DC8B`, `0x5DD03`, `0x5DEAF`, `0x5DEED` | AIL runtime stubs | The AIL implementation is host-owned (NG4); the runtime thunk has no portable C binding, so a callee row would validate a harness-authored audio model, not game code. | pixel-and-proof §P7.6; proof-completion §P8.1 |
+
+### P8.2 The eight portable unrowed replacements
+
+| original | replacement | why a row would mask the boundary | evidence |
+|---|---|---|---|
+| `0x1B120` | res_load_index plus res_load_present and the host INDEX loader | The withdrawn poked row assigned 0x1B3AC's read/mark work and an invented frame effect to the port; it compared a composition, not the C function. | reverse-n §N.3.1/§N.4 |
+| `0x1B3AC` | res_load_present's head, res_load_index's host reads/marks, and res_resolve's mark | No single C function spans the raw body; the port adds the ISR read-stall model and omits the raw driver stores, so a row would bind a synthetic composition. | reverse-n §N.3/§N.3.5/§N.4 |
+| `0x1BEC4` | game_main, game_init, the host boot loaders, and game_shutdown | The boot chain has no one C counterpart and immediately reaches the BIOS query; a row would compare a harness-assembled boot against host startup. | reverse-n §N.1 |
+| `0x1C930` | the host music-request/sequencer path (title_music_start) | The raw's AIL handle gates, copies, stops and clear have no port counterparts; a row would replace them with fabricated handle state. | reverse-n §N.2.3 |
+| `0x1CF40` | game_audio_init's host audio objects, mixer reset and FAT.OPL load | The raw returns and stores ten AIL handles while the port deliberately stores different sentinels and does extra host work; a row would mask those differences. | reverse-n §N.2.2 |
+| `0x20C10` | game_init, game_init_resume, and game_main's game_loop/restart call | The raw setjmp frame is split across those functions; entering only the resume tail lacks its stack frame, so no faithful single binding exists. | reverse-n §N.1 |
+| `0x47370` | game_string_table_load's host file loader and fixed string handle | The port does not reproduce the raw allocator/pager, language index, free/reload or size stores; a row would validate an invented loader model. | reverse-n §N.3/§N.3.5 |
+| `0x4FBA2` | int10h_query's host-window mode answer 0x13 | The raw returns BIOS AL from int 0x10; poking it would compare a harness-chosen constant with the port's constant and prove nothing about the BIOS. | reverse-n §N.1; reverse-d6a §4 |
+
+### P8.3 The 15 weaker rows and why none is full
+
+| original | why it cannot be full | evidence |
+|---|---|---|
+| `0x1AFE8` | l6 declares the short-read exit-versus-defaults difference; that case compares no port side. | reverse-g §G2 |
+| `0x1B084` | s5 declares the short-write exit-versus-failed-write-return difference; its port side is not compared. | proof-completion §P7.2 |
+| `0x1B544` | The row covers only the resident arm; the slow tail-jump arm is named unhit (2/11 blocks). | reverse-g §G3 |
+| `0x1BE30` | The teardown row pokes the BIOS int 0x10 and leaves three 0x1ADE4 blocks unhit (5/8). | reverse-n §N.2.1 |
+| `0x1C740` | The movie row pokes runtime/Smacker entry points and covers only the port's prefix (4/23 blocks). | reverse-n §N.3 |
+| `0x1D0BC` | The two buffer-failure arms 0x1D10E/0x1D183, ending in runtime printf, remain unhit. | proof-completion §P7.4 |
+| `0x249F0` | The reachable restart arm 0x24A9C remains unexercised after the longjmp became scan-only. | proof-completion §P6.3 |
+| `0x24C5C` | The key rows omit the Alt-J/calibration path through 0x5004A and the restart arm by design. | reverse-h §H.2 |
+| `0x255CC` | The loop row leaves the full-copy and second-RNG blocks 0x25680/0x256D4 unhit (18/20). | reverse-g §G4 |
+| `0x2CADC` | Three raw calls the port deliberately omits are nop pokes; only the seven calls the port makes are compared. | reverse-d6a §4 |
+| `0x2EA30` | The SET-lock clear block 0x2EA49 is named unhit (7/8 blocks). | reverse-g §G3 |
+| `0x2EA68` | Every case declares exit-versus-return, so the row proves the original but compares no port side. | reverse-g §G2 |
+| `0x2EA74` | The key wait leaves the 0x5004A calibration path and two other blocks named unhit (20/23). | reverse-h §H.2 |
+| `0x2EA78` | The key wait leaves the 0x5004A calibration path and two other blocks named unhit (20/23). | reverse-h §H.2 |
+| `0x51ED8` | The aperture row declares the renderer node-scratch +0x14/+0x38 byte difference (h2_scratch). | proof-completion §P7.4; reverse-h §H.3 |
+
+### P8.4 The divide-fault census and the one guard
+
+All addresses below were re-read from the fixup-applied image written by
+`build/diffrun`; the two `idiv ebx` instructions in mode 0x12 are at **0x42203
+and 0x4221C** (not at the C assignment's start or end):
+
+```
+421FC  29 ca           sub edx,ecx
+421FE  89 d0           mov eax,edx
+42200  c1 fa 1f        sar edx,0x1f
+42203  f7 fb           idiv ebx
+...
+42217  89 d0           mov eax,edx
+42219  c1 fa 1f        sar edx,0x1f
+4221C  f7 fb           idiv ebx
+```
+
+State 6 computes `step = (word[bg+0x2C] - 0x180) / 64` before starting the
+scroll animation. The animation is external INDEX data, so the EXE does not
+exclude `step == 0`. `flow.c` now calls, before the corresponding C division,
+
+```
+if (step == 0) host_cpu_fault(0x00u, 0x42203u, "divide by zero", 1);
+if (step == 0) host_cpu_fault(0x00u, 0x4221Cu, "divide by zero", 1);
+```
+
+The first guard is the observable one for this input; the second names the
+raw's second site rather than reusing the first address. The literal 1 is
+intentional (`SVC_FAULT_EXIT` is file-local to `svcmenu.c`).
+
+The other sites need no code change:
+
+| site | proof and disposition |
+|---|---|
+| `0x39ADF` (`0x39AC8`, `idiv ebx` by `n*n`) | Ghidra finds exactly two callers, `0x39C0D` (launch, `n = word[0x107A60]`) and `0x39DAD` (fall, `m = word[0x107A70]`). Those words are written only by `0x39F65`/`0x39F6C` in `0x39F40`. The 14 direct `0x39F40` sites and the four forwarding `0x3A2A0` callers below give positive 16-bit `n` and `m`, so the divisor cannot be zero on a shipped call path. No guard added. |
+| `0x39C6D` (`0x39B30`, `idiv ebx` by `(s16)(n+m)`) | The same launch-time producer makes both addends positive; the signed-16 sum cannot be zero on those paths. No guard added. |
+| `0x38A59` (`0x38A38`, `idiv ecx` by `word[0x107A40]`) | The only writes to that word are `0x3879A` and `0x38948`; both read `0xBDDFC[i]`. `0x38910`'s only caller passes zero, `0x20DF4` clamps its stage to seven, and the mode-0x12/0x13 stage picks/wraps stay in 0..7. The measured words 0..7 are `60 50 74 50 90 A0 40 50` (hex), all nonzero. The loop call at `0x25606` is gated by `0x107A54`, armed only after `0x38730` has loaded the divisor; the other call is `0x387DD` in that setup. No guard added. |
+| `0x2E910` (`0x2E5E4`, unsigned `div esi`) | `0x2E248` has one production caller, at `0x32C18`; its argument at `0x32BFF` is `push 0x32640`, and the bytes there are `03 00`. Thus `len = 1`. At `0x2E8D5..0x2E8E3`, `edx = len << 2`, `cmp esi,edx; jae 0x2E8E5; mov esi,edx` makes `unit >= 4*len = 4` before `div esi`. The new unit test below proves that arithmetic through the public formatter/line interface. No guard added. |
+| `0x4F55A` in `flow_round_timer_step` (`0x4F4E8`) | Already guarded by `if (DSD(DS_001088D0) == 0u) return;`. The stock divisor is `(v & 0xF)*5 + 0x1E`, hence 0x1E..0x69. The zero-divisor return remains the documented PORT deviation; unchanged. |
+| `0x4F5E0` in `flow_bonus_count_step` (`0x4F5C8`) | The same existing zero return and the same nine stock stores' `(v & 0xF)*5 + 0x1E` proof. The row is full on its exercised domain; the zero-divisor deviation stays separately documented, not folded into this guard. |
+
+The `0x39F40` argument census behind the two fighter proofs is (raw call site,
+`n`, `m`; the stack word is `m`):
+
+| raw site | n | m | raw site | n | m |
+|---|---:|---:|---|---:|---:|
+| `0x3AC00`/`0x3AC4A`/`0x3AC89` | 0x0C | 0x14 | `0x3ACC3` | 0x0F | 0x14 |
+| `0x3A0D4` | 0x0F | 0x14 | `0x39FE6` | 0x0F | 0x14 |
+| `0x3B57C` | 0x0F | 0x14 | `0x21F1A` | 0x1A | 0x24 |
+| `0x221EB` | 0x17 | 0x1D | `0x3F2FA` | 0x1D | 0x27 |
+| `0x3F5AF` | 0x17 | 0x1D | `0x48429` | 0x0F | 0x14 |
+| `0x223D1` (state 6/default/7) | 0x0F/0x0F/0x13 | 0x0D/0x10/0x1E | `0x3A350` (forwards `0x3A2A0`) | see below | see below |
+
+The four `0x3A2A0` callers supply the remaining `(n,m)` pairs: `0x21023`
+`(0x12,0x14)`, `0x44DFF` `(0x0F,0x14)`, `0x45039` `(0x18,0x1A)`, and
+`0x4522B` `(0x0F,0x14)`. In particular `0x22396/0x223A9/0x223BC` visibly push
+`0x10/0x0D/0x1E` and load ECX with `0x0F/0x0F/0x13` before the shared call at
+`0x223D1`; these are raw bytes, not values inferred from a C formula.
+
+For the `0x2E910` test, histogram 0 is seeded with only bucket 0 = 1. After
+`audit_hist_format(..., 0x32640)`, the test checks the raw label bytes and
+`state[+0x20] = 1` (len), with `state[+4] = 1` (the pre-clamp maximum). At
+width 22, `bar = 22 - 9 - 1 - 7 = 5`; with `len = 1`, `max = 1`, and the clamped
+`unit = 4`, `units = 5 + 2 = 7` and `full = 4`, so exactly one whole `03` cell
+is emitted. The exact expected line is `"  0-  9: 1 100% \x03"`. Units 1, 2
+and 3 would emit 5, 3 and 2 such cells, so this is an executable proof of
+`unit = 4`, not a restatement of the caller comment. Temporarily changing the
+clamp to `len*3` made this assertion fail (and temporarily registering
+`0x24B08` made its negative assertion fail); restoring both returned the whole
+C suite to green.
+
+### P8.5 `0x24B08` is dead; `0x24B54` is live, and `0x24B8C` is a table
+
+The gap between Ghidra's `0x249F0` (which ends at `0x24B08`) and `0x24C5C`
+contains three different objects. The dead block is not one function with the
+live hook, and the table is not code. The dead block's complete disassembly is:
+
+```
+24B07  c3                    ret                         ; end of 0x249F0
+24B08  53                    push ebx
+24B09  52                    push edx
+24B0A  b8 29 00 00 00        mov eax,0x29
+24B0F  e8 60 8e 00 00        call 0x2d974
+24B14  89 c2                 mov edx,eax
+24B16  a3 28 45 10 00        mov [0x104528],eax
+24B1B  81 e2 00 01 00 00     and edx,0x100
+24B21  89 c3                 mov ebx,eax
+24B23  c1 ea 04              shr edx,4
+24B26  83 e3 0f              and ebx,0xf
+24B29  88 15 3a 5b 10 00     mov [0x105b3a],dl
+24B2F  8d 14 9d 00 00 00 00  lea edx,[ebx*4]
+24B36  25 f0 00 00 00        and eax,0xf0
+24B3B  01 da                 add edx,ebx
+24B3D  c1 e8 04              shr eax,4
+24B40  83 c2 1e              add edx,0x1e
+24B43  a2 2c 45 10 00        mov [0x10452c],al
+24B48  89 15 d0 88 10 00     mov [0x1088d0],edx
+24B4E  5a                    pop edx
+24B4F  5b                    pop ebx
+24B50  c3                    ret
+24B51  8d 40 00              lea eax,[eax]                ; three-byte alignment pad
+```
+
+This duplicates the head of the inline block at `0x24F09`: field `0x29` and the
+same four stores, with different register allocation. It lacks the inline
+block's `DS_00104AB8 = 1`, `call 0x257A4`, and `jmp 0x2540F` tail, so "partial
+copy" is the accurate correction to the older "duplicate" shorthand. The
+runtime names of its stores are `DS_00104528`, `DS_00105B3A`, `DS_0010452C`,
+`DS_001088D0`; the last one's DS offset is `0x88D0`, not a raw-file address.
+
+There is no entry path to it:
+
+```
+Ghidra get_xrefs_to(0x24B08)                    []
+capstone direct control-flow targets 0x24B08   []  (call/jmp/jcc/loop, rel8/rel32)
+LE-fixup-applied image dword == 0x00024B08     []
+port/decomp/prage.functions.csv entry          absent
+preceding instruction                          0x24B07: ret
+```
+
+The empty dword scan also excludes a fixup record targeting it: such a record
+would have written that value into the fixup-applied image. It has no `FN_`
+symbol, no port header or `fn_register`, and no differential spec. The new C
+check first runs `actors_init()` and proves the live neighbour resolves to
+`game_hook_24b54`, then requires `fn_resolve(0x24B08u) == NULL`; the live
+assertion is what makes the negative non-vacuous. A temporary registration of
+`0x24B08` failed that check.
+
+The next object is the live hook. Its installation and body are:
+
+```
+25B8D  ba 54 4b 02 00        mov edx,0x24b54
+25B97  89 15 e4 4a 10 00     mov [0x104ae4],edx
+
+24B54  52                    push edx
+24B55  31 c0                 xor eax,eax
+24B57  e8 88 a6 02 00        call 0x4f1e4
+24B5C  b8 01 00 00 00        mov eax,1
+24B61  ba 27 00 00 00        mov edx,0x27
+24B66  e8 89 6f 00 00        call 0x2baf4
+24B6B  30 e4                 xor ah,ah
+24B6D  66 89 15 00 4b 10 00  mov [0x104b00],dx
+24B74  88 25 1d 4b 10 00     mov [0x104b1d],ah
+24B7A  31 d2                 xor edx,edx
+24B7C  88 25 1f 4b 10 00     mov [0x104b1f],ah
+24B82  89 15 b8 4a 10 00     mov [0x104ab8],edx
+24B88  5a                    pop edx
+24B89  c3                    ret
+```
+
+`actors.c` registers it as `fn_register(0x24B54u, game_hook_24b54)`. It is not a
+Ghidra `FN_` function and has no `SPECS` row, so the `FN_`-based unrowed guard
+does not flag it; `ported_unrowed` confirms it is in neither the portable nor
+runtime unrowed set. Per R4 that is a record outcome, not a reason to invent a
+row. The installation arm is `DS_00104B1D != 0`; the six existing captures
+exercise every such value (read-only scans of their `poll.log` `b1d=` fields):
+
+| capture | nonzero `b1d` |
+|---|---:|
+| `gp-u8-left-training` | 01 |
+| `gp-u8-right-training` | 01 |
+| `gp-u8-tug-of-war` | 02 |
+| `gp-u8-endurance` | 03 |
+| `gp-u12-endurance` | 03 |
+| `gp-u8-handicap` | 04 |
+
+Finally, `0x24B8C..0x24C5B` is a 52-entry dword table. At `0x24EF2`,
+`cmp ax,0x33; ja 0x2540F` bounds the index, and `0x24F01` is
+`jmp dword ptr cs:[eax*4 + 0x24B8C]`. Its first four entries are
+`0x2540F, 0x2521A, 0x25224, 0x25238`; entries 48..51 are
+`0x2519E, 0x251A8, 0x251B2, 0x251BC`. Thus the 340-byte gap is exactly the dead
+block, alignment, live hook, alignment, and switch table described in §P2.5.
+
+### P8.6 Tests, mutation evidence, and the unchanged counters
+
+The census test was first run with empty machine tables: the terminal and
+weaker assertions failed with `0 != 20` and `0 != 15`; after filling the data,
+the three focused tests passed (`Ran 3 tests ... OK`). A synthetic extra open
+row (`synthetic_open`, `0xDEAD`) then failed exactly the identity comparison:
+
+```
+AssertionError: Items in the first set but not the second:
+('synthetic_open', 57005)
+```
+
+That mutation was restored. The `0x24B54` test also confirms registration from
+the port-tree scan, absence from `FN_`/`SPECS`, and absence from both unrowed
+sets; `0x24B08` is absent from the port, index and `FN_` populations.
+
+The fault test seeds `word[bg+0x2C] = 0x180`. One child installs a fault hook
+and proves `(exc,eip) = (0,0x42203)`; a second runs without a hook and must
+exit 1 with `divide by zero\n`. Before the guard, this host (AArch64, whose
+native divide does not trap here) ran on to state 7: both children returned 99,
+there was no hook report and no status-1 exit, so the new checks failed. With
+the guard they pass. The mutation is therefore proved in the brief's allowed
+"SIGFPE or no fault" form; no x86 SIGFPE is claimed for this host.
+
+Final verification after all restorations:
+
+```
+$ PR_ORACLE_REQUIRED=1 ./build/run_tests
+all checks passed
+
+$ python3 -m unittest tools.tests.test_diff_verify
+Ran 151 tests in 147.230s
+OK
+
+$ make diff-verify
+Ran 234 tests in 181.451s
+OK
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 807/845 closed on full rows;
+8 ported functions with no row (45 FN_ ported-unrowed: 8 portable
+[5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible
+subset is 42 = 5 + 37). ...
+
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+$ make entry-triage
+Ran 44 tests ... OK
+entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
+```
+
+Task 6's figures are unchanged: 20 open rows, 15 `WEAKER`, 8 `UNROWED`, and no
+new spec or counter movement. No capture, `FN_` function, portable function, or
+E2 entry was added; the only production behaviour change is the mode-0x12
+zero-step fault.
+
