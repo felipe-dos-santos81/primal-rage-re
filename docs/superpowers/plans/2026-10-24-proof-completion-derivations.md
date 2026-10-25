@@ -1184,3 +1184,169 @@ entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
 No real-name, EAX-mask, case-set, pixel/state, capture or E2 pin moved. The only
 mutant-kind changes are the three measured `text_number_core` entries above;
 the only stub-clobber removals are the two addresses whose stubs were deleted.
+
+---
+
+## P7 — The short write and the declared differences (Task 6)
+
+Task 6 covers `0x1B084`'s last block with a sixth, terminal case and adds two
+rows to `WEAKER` (one of them a row the counter had counted full). It adds no
+portable game code and no capture: `git diff` touches `tools/diff_emu.py`,
+`tools/diff_verify.py`, `tools/tests/test_diff_verify.py` and this record.
+
+### P7.1 The short-write model
+
+`Machine.short_write = (name, n)` (default `None`) makes each write to the one
+declared file `name` come back after at most `n` bytes. In `_F1Files._fwrite`
+the request's total is still the callee's `imul ebx,edx` (0x62056); the model
+then writes the request's first `min(total, n)` bytes at the stream's position,
+does **not** extend the file over the rest of the request, advances the position
+by what landed, and returns the whole items written, `written // size` — which is
+the callee's item count, not a byte count. With `short_write` absent (every other
+case and every other row) `written == total` and `total // size == count`, so the
+existing behaviour is byte-identical; `sc_save("s5", ...)` is the only case that
+sets it. `Machine.__post_init__` rejects a declaration that names no file, names
+a file the case does not declare, is not a `(name, count)` pair, or has a count
+outside `0..F1_MAXFILE` (0x800): a mis-declared short write must fail at
+construction, not silently write the whole request.
+
+The raw bytes that need it (fixup-applied image, disassembled at base 0x10000):
+
+```
+0x1B0CA  bb f8 07 00 00     mov ebx,0x7f8      ; the item count
+0x1B0DC  ba 01 00 00 00     mov edx,1          ; the item size
+0x1B0E1  e8 4b 6f 04 00     call 0x62031       ; fwrite
+0x1B0E6  89 c2              mov edx,eax        ; the returned count
+0x1B0EA  e8 d1 6d 04 00     call 0x61ec0       ; fclose
+0x1B0EF  81 fa f8 07 00 00  cmp edx,0x7f8
+0x1B0F5  74 0e              je 0x1B105
+0x1B0F7  b8 01 00 00 00     mov eax,1
+0x1B0FC  b2 01              mov dl,1
+0x1B0FE  e8 00 6f 04 00     call 0x62003       ; the exit chain, code 1
+0x1B103  eb 06              jmp 0x1b10b
+```
+
+The scan's eight leaders are `0x1B084`, `0x1B0A2`, `0x1B0BA`, `0x1B0CA`,
+`0x1B0F7`, `0x1B105`, `0x1B109`, `0x1B10B`; before the case the row was 7/8 with
+`0x1B0F7` the one unhit leader (the old `unhit_named` reason said why: the
+modelled fwrite never came back short).
+
+### P7.2 The `s5` case and the block
+
+`s5` writes its own buffer image (`sc_image(7, 3, bad=0x33)`; no byte of it is
+compared, the case being terminal), but its fwrite answers
+`0x7F7` of the `0x7F8` bytes — `SC_LEN - 1`, the row's own buffer length minus
+one (the same one-byte-short shape as the load row's `l6`, record §G2). The case
+is `exits=True` (`E.Machine(exits=True)`), `short=SC_LEN - 1` and
+`terminal=("exit", 1)`; the row's `allow_calls` gained `SC_EXIT` and its call set
+gained `SC_FLUSH` (`E.Call(0x6C4CF, (), clobbers=("ecx","edx","ebp"))`), since the
+exit chain's flush is reached from `0x6271B` and cannot run (its stream table at
+`0xF0A0E` holds live close pointers). Measured from the harness's own run:
+
+```
+s5 terminal   ('exit', 1)   exits True   short_write (b'cmos', 2039 = 0x7F7)
+outcome       exit          detail terminate with code 1 at 0x62723
+executed      0x1B0F7 in the set            (the arm, not the fall-through path)
+calls         [0x2D4EC, 0x2D4EC, 0x6C4CF]   (two touches, then the flush)
+file_opens    [(b'cmos', b'wb')]
+row           VERIFIED, 6 cases, 8/8 blocks, no unnamed unhit
+```
+
+Because the case declares its terminal, §G1's skip applies: its port-side
+values, bytes and calls are compared against nothing, so the arm's exit is
+proved and the port's declared failed-write flag path (config.c, PORT) is not
+claimed to agree. The mutants do not see the case either: `@flag`'s measured
+catching set stays `s0..s4` (a terminal case is skipped before `compare`).
+
+### P7.3 The reopen: the accepted trade
+
+The row now declares `SC_FLUSH` (`0x6C4CF`), a **recorded stub** at a runtime
+address. The closure rule excuses an allow-mode runtime callee but not a recorded
+stub (§J1), and `0x6C4CF` has no row of its own, so the row leaves the closed
+figure. Measured from `closed_rows` over the full run:
+
+```
+config_file_save callees    10D0C allow, 10D34 allow, 2D4EC stub VERIFIED,
+                            61A70 allow VERIFIED, 62002 allow, 62003 allow,
+                            6201B allow, 65490 allow, 654C7 allow, 6C4CF stub
+unverified, not excused     [0x6C4CF]      (the only blocker)
+row weaker                  True            (0x1B084 stays in WEAKER)
+```
+
+So the phase trades a covered block and a closed weak row for a covered block
+and an open row with one named blocker. `0x1B084` becomes one of the 20 open
+rows the terminal census (Task 7) records, beside `config_file_load` and
+`menu_fatal_error`, which were already open on the same flush.
+
+### P7.4 The weaker reclassifications
+
+`WEAKER` gains `0x51ED8` and `0x1D0BC` (`0x249F0` joined in Task 5), 13 -> 15
+entries, and the comment now reads "poked/partial/terminal **or a declared byte
+difference**":
+
+- `0x51ED8` (`sprite_blit_aperture`) is a full, closed row whose cases carry
+  `H2Case.declared` — the renderers' node scratch `+0x14`/`+0x38`, where the
+  original's renderer leaves a value the port's by-value renderers do not
+  (record §H.3, `h2_scratch`). A declared difference is not a full row, so the
+  full figure moves 808 -> 807 (806 -> 805 on the §P1 baseline) on this one
+  address.
+- `0x1D0BC` (`sound_buffers_alloc`) was already neither full nor closed: its two
+  failure arms `0x1D10E`/`0x1D183` are unhit (they end in the runtime's printf
+  `0x62734`) and its row is open on the `0x1C308` stub. It joins the set so the
+  classification names it; the counter does not move for it.
+
+### P7.5 The re-measured pins, the counter and the unchanged gates
+
+`SC_KINDS`/`SC_CASES` were re-measured against the harness's own `problems`
+(`verify_all(..., mutants=True)` on the row) and are **unchanged** for all 19
+mutants: no kind and no case set moved. The call set's order keeps `0x2D4EC` at
+`call #0` and `0x6C4CF` at `call #1`; no non-terminal case reaches the flush, so
+no kind gained a `call #1`. The row's 19 mutants are still detected 19/19.
+
+The direct `--self-check` run and `make diff-verify` exited 0 and printed (the
+counter line wrapped below):
+
+```
+$ python3 tools/diff_verify.py --self-check
+| config_file_save | 0x1B084 | 6 | 8/8 | VERIFIED |
+... 19/19 mutants detected
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported
+functions with no row (45 FN_ ported-unrowed: ... 42 = 5 + 37). ...
+
+$ make diff-verify
+Ran 231 tests in 148.240s
+OK
+... 825/845 ... 807/845 ... exit 0
+
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+$ make entry-triage
+Ran 44 tests ... OK
+entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
+```
+
+Against §P6.4: functions 1033 -> 1033, mutants 14993 -> 14993, the callee-less
+rows 188 -> 188, rows with callees 845 -> 845, closed 826 -> **825**, full
+808 -> **807**, open 19 -> **20**, `WEAKER` 13 -> **15**. The expected figures in
+the plan (825/845, 807/845, 20 open, 15 weaker) are therefore measured, not
+fitted. No real-name, EAX-mask, stub-clobber, pixel/state, capture or E2 pin
+moved; `port_progress` and the E2 table are byte-identical.
+
+The three new tests and their mutation proofs (each mutated, run, and restored):
+
+| test | mutation | failure |
+|---|---|---|
+| `test_the_save_row_covers_the_short_write_and_reopens_on_the_flush` | `_fwrite` returns `count` (ignores `written`) | `('MISMATCH', 7, 8, [110839]) != ('VERIFIED', 8, 8, [])` — 110839 = 0x1B0F7: the terminal declaration is missed and the arm unhit |
+| the same | `s5` built without `exits`/`short` | first assertion: `(None, False, None) != (('exit', 1), True, (b'cmos', 2039))` |
+| the same | `SC_FLUSH` dropped from the call set | `Items in the second set but not the first: 443599` (0x6C4CF) |
+| `test_the_weaker_entries_name_the_declared_differences` | `0x51ED8` removed from `WEAKER` | `AssertionError: 14 != 15` |
+| `test_the_self_check_counts_functions_mutants_gaps_and_closed_rows` | the pin moved 825 -> 826 | the assertion fails against the measured 825 line |
+| `test_a_short_write_needs_a_declared_file_and_a_bounded_byte_count` | the whole `short_write` validation block disabled | `AssertionError: ValueError not raised`, on all four sub-cases |
+
+The `s5` case is what proves the model: without it the arm is unreachable, and
+the row's own `unhit_named` reason (deleted here) was the evidence that no
+earlier case could reach it.
+

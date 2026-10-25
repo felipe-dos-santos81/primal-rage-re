@@ -32189,6 +32189,49 @@ class RealFunctionTests(unittest.TestCase):
                          ("unmodeled", "indirect call to 0x6C8EA at 0x6543A"))
         self.assertEqual(orig.calls, [])
 
+    def test_the_save_row_covers_the_short_write_and_reopens_on_the_flush(self):
+        # Proof completion task 6 (record §P7): s5's modelled short write (0x7F7 of the 0x7F8 bytes:
+        # Machine.short_write, the full-disk answer) makes `cmp edx,0x7f8; je` 0x1B0F5 fall into the
+        # short-write arm 0x1B0F7, whose `call 0x62003` ends the run with exit code 1 (declared, so
+        # the case compares nothing on the port's side, §G1's skip). The row is 8/8; its flush
+        # 0x6C4CF is a recorded stub with no row of its own, so the row is open for that reason
+        # alone (the accepted trade, §P7) and it stays in WEAKER.
+        spec = self.spec("config_file_save")
+        s5 = {c.id: c for c in spec.cases}["s5"]
+        self.assertEqual((s5.terminal, s5.machine.exits, s5.machine.short_write),
+                         (("exit", 1), True, (b"cmos", V.SC_LEN - 1)))
+        self.assertEqual(spec.allow_calls, V.SC_REAL + V.SC_EXIT)
+        self.assertEqual({k.addr for k in spec.calls}, {0x2D4EC, 0x6C4CF})
+        r = self.real["config_file_save"]
+        self.assertEqual((r.verdict, r.hit, r.total, r.unhit), ("VERIFIED", 8, 8, []))
+        self.assertTrue(r.weaker)
+        img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
+        _, origs = V.spec_original(dataclasses.replace(spec, cases=[s5]), img)
+        o = origs[0]
+        self.assertEqual((o.outcome, o.terminal), ("exit", ("exit", 1)))
+        self.assertIn(0x1B0F7, o.executed)                  # the arm itself, not the fall-through path
+        self.assertEqual([a for a, _ in o.calls], [0x2D4EC, 0x2D4EC, 0x6C4CF])
+        verdicts = {row.entry: row.verdict for row in self.real.values()}
+        closed, _ = V.closed_rows(list(self.real.values()), verdicts)
+        self.assertNotIn("config_file_save", {row.name for row in closed})
+        outside = V.non_portable()
+        self.assertEqual([a for a, mode in r.callees
+                          if verdicts.get(a) != "VERIFIED" and not outside.excused(a, mode)], [0x6C4CF])
+        self.assertIn((0x6C4CF, "stub"), r.callees)
+
+    def test_the_weaker_entries_name_the_declared_differences(self):
+        # Proof completion task 6 (record §P7): a declared byte difference is no full row, so the
+        # aperture blit 0x51ED8 (the renderers' node +0x14/+0x38, record §H.3) leaves the full figure;
+        # 0x1D0BC's two unhit buffer-failure arms keep it out too. 0x249F0 joined in task 5. The
+        # figure is derived from the set (V.full_rows), not counted by hand.
+        self.assertEqual(len(V.WEAKER), 15)
+        self.assertTrue({0x51ED8, 0x1D0BC, 0x249F0} <= V.WEAKER)
+        self.assertTrue(self.real["sprite_blit_aperture"].weaker)
+        self.assertTrue(self.real["sound_buffers_alloc"].weaker)
+        verdicts = {row.entry: row.verdict for row in self.real.values()}
+        closed, _ = V.closed_rows(list(self.real.values()), verdicts)
+        self.assertNotIn("sprite_blit_aperture", {row.name for row in V.full_rows(closed)})
+
     def test_a_call_set_callee_without_a_port_seam_is_a_mismatch(self):
         # 0x33950 (fighter_ctx_same) has no PR_SEAM: recorded on the original side only
         spec = self.spec("fighter_23130", allow_calls=(),
@@ -32332,8 +32375,13 @@ class RealFunctionTests(unittest.TestCase):
         # closes full; the ten game_frame rows and game_quit_prompt drop the unreached longjmp stub
         # for Spec.stop and close weak (0x249F0 joins WEAKER for its unhit restart arm). Functions
         # and mutants are unchanged; closed 814 -> 826, full 807 -> 808, open 31 -> 19.
+        # Proof completion task 6 (record §P7): config_file_save's new terminal s5 case
+        # (Machine.short_write, the arm 0x1B0F7) makes the row 8/8 but reopens it on the runtime
+        # flush stub 0x6C4CF (SC_FLUSH), so closed 826 -> 825 and open 19 -> 20; the aperture blit
+        # 0x51ED8 joins WEAKER for its declared byte difference, so full 808 -> 807 (the weaker
+        # entries number 15). Functions, mutants and the callee-less rows are unchanged.
         self.assertIn("diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; "
-                      "826/845 rows with callees closed (188 have none); 808/845 closed on full rows; "
+                      "825/845 rows with callees closed (188 have none); 807/845 closed on full rows; "
                       "8 ported functions with no row (45 FN_ ported-unrowed: 8 portable "
                       "[5 registry-visible + 3 header-shape exceptions] + 37 runtime; "
                       "the scan-visible subset is 42 = 5 + 37). "
@@ -33079,6 +33127,16 @@ class F1WiringTests(unittest.TestCase):
     def test_files_is_a_machine_part_the_other_lines_ignore(self):
         # the DAC/keys text of a files-only Machine is empty (no keys, no outs, no aperture)
         self.assertEqual(V.h0_machine_text(E.Machine(files={b"cmos": b"1"})), [])
+
+    def test_a_short_write_needs_a_declared_file_and_a_bounded_byte_count(self):
+        # Proof completion task 6 (record §P7): a mis-declared short write must fail at construction
+        # rather than silently write the whole request, which would make an s5-shaped case vacuous.
+        for kw in ({"short_write": (b"cmos", 8)},                       # no declared files
+                   {"files": {b"cmos": b""}, "short_write": (b"x", 8)},  # an undeclared name
+                   {"files": {b"cmos": b""}, "short_write": b"cmos"},    # not a (name, count) pair
+                   {"files": {b"cmos": b""}, "short_write": (b"cmos", E.F1_MAXFILE + 1)}):
+            with self.subTest(kw), self.assertRaises(ValueError):
+                E.Machine(**kw)
 
 
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,

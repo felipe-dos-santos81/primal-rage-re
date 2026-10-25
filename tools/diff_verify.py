@@ -398,15 +398,15 @@ def compare(orig, port, mask=0xFFFFFFFF):
 
 
 # The rowed functions whose row is not full (record 2026-10-15-reverse-j-derivations.md
-# §J1; the closure-rule paragraph in AGENTS.md): a row that runs the original under code
-# pokes, leaves reachable blocks out, or declares a terminal difference. Function
-# entries, not spec names; keep in step with AGENTS.md. The counter could not tell these
-# from a full row. `0x4F5C8` is not here: its row covers 4/4 blocks and the stock divisor
-# 0x1088D0 is never zero; its zero-divisor deviation (the port returns where the raw's idiv
-# would fault) is named separately in record 2026-10-22-pixel-and-proof-closure §P8.3,
+# §J1; the closure-rule paragraph in AGENTS.md): a row that is poked/partial/terminal or carries
+# a declared byte difference. Function entries, not spec names; keep in step with AGENTS.md. The
+# counter could not tell these from a full row. `0x4F5C8` is not here: its row covers 4/4 blocks and the
+# stock divisor 0x1088D0 is never zero; its zero-divisor deviation (the port returns where the raw's
+# idiv would fault) is named separately in record 2026-10-22-pixel-and-proof-closure §P8.3,
 # not a weaker row.
 WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1BE30, 0x1C740,
-                    0x249F0, 0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30})
+                    0x249F0, 0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30,
+                    0x51ED8, 0x1D0BC})
 # The 8 ported functions with no differential row at all (record §J1:26; AGENTS.md's
 # WEAKER/UNROWED paragraph): "1 named gaps" is the spec NAMED_GAP count and never named
 # these.
@@ -444,7 +444,8 @@ class SpecResult:
     diffs: int = 0                                   # eax, call and byte differences (not port errors)
     callees: list = field(default_factory=list)      # (addr, how) for every allowed or call-set callee
     gap: str = ""                                    # the named gap's blocking instruction, when the spec is one
-    weaker: bool = False                             # a poked/partial/terminal row (WEAKER)
+    weaker: bool = False                             # a poked/partial/terminal row or a declared byte
+                                                     # difference (WEAKER)
 
 
 def verify_gap(spec, image):
@@ -34024,17 +34025,24 @@ def sc_load(cid, content, image, regs=None, exits=False):
                 opens=((b"cmos", b"rb"),), terminal=("exit", 1) if exits else None)
 
 
-def sc_save(cid, content, image, regs=None, touch=None):
+def sc_save(cid, content, image, regs=None, touch=None, exits=False, short=None):
     """0x1B084: `content` = the directory's state (E.F1_GONE for the missing directory whose fopen the
     model answers 0, E.F1_ABSENT for a write that creates the file, bytes for a stale file the
     write-mode open replaces); the model starts a write-open's file at offset 0 — a declared model
     rule: the raw's truncate-on-open was not pinned (f-conventions.md OPEN Q1) and every case's stale
     file is shorter than the 0x7F8 write, so truncate and write-at-0 cannot be told apart here. The
-    buffer holds the image the original's fwrite copies; `touch` = the EAX of the 0x2D4EC stub."""
+    buffer holds the image the original's fwrite copies; `touch` = the EAX of the 0x2D4EC stub.
+    `exits` and `short` (s5, record 2026-10-24-proof-completion §P7): the machine also answers the
+    runtime's exit chain and its fwrite on the case's file comes back after `short` bytes, so the
+    original reaches the short-write arm 0x1B0F7 and declares its terminal difference — the original
+    ends in `terminate with code 1` and the port takes its documented failed-write flag path
+    (config.c, PORT)."""
     p = d1d_chunks(SC_IMAGE - 4, b"\xc1\xc2\xc3\xc4" + image + b"\xd1\xd2\xd3\xd4")
     p.update(SC_NO_CD)
     return Case(cid, regs or {}, p, {} if touch is None else {0x2D4EC: touch},
-                machine=E.Machine(files={b"cmos": content}), opens=((b"cmos", b"wb"),))
+                machine=E.Machine(files={b"cmos": content}, exits=exits,
+                                  short_write=None if short is None else (b"cmos", short)),
+                opens=((b"cmos", b"wb"),), terminal=("exit", 1) if exits else None)
 
 
 # 0x2D4EC as 0x1B084's stub: it stores two bytes at the image's offset 0x20 + kind (kind 1: 0x21 and 0x22,
@@ -34084,6 +34092,12 @@ SC_SPECS = [
     # a port write of another length, from another address, before the XOR store, into another file, or
     # in append instead of at offset 0 differs there (append differs under either reading of the
     # unpinned open-time behaviour — f-conventions.md OPEN Q1 — because s4's stale file is non-empty).
+    # s5 (record 2026-10-24-proof-completion §P7): the same write comes back one byte short (0x7F7 of
+    # the 0x7F8: Machine.short_write, the full-disk answer), so `cmp edx,0x7f8; je` 0x1B0F5 falls into
+    # the short-write arm 0x1B0F7 (`mov eax,1; mov dl,1; call 0x62003`), the exit chain ends the run
+    # with code 1 and the case declares that terminal difference against the port's documented
+    # failed-write flag path (config.c, PORT): the arm is reached and its exit is proved, the case
+    # itself compares no port value, bytes or calls (§G1's skip).
     # Mask 0xFF: `mov al,dl` 0x1B110; no call site
     # reads it (`call 0x10d34` 0x1BEBA, `mov edx,1; mov eax,0x1044f4` 0x24AA6, `call 0x2c304` 0x2CBB4).
     Spec("config_file_save", 0x1B084, [
@@ -34092,13 +34106,8 @@ SC_SPECS = [
         sc_save("s2", E.F1_ABSENT, sc_image(5, 0x81, bad=0x01), regs=D2E_DIRTY),
         sc_save("s3", E.F1_ABSENT, bytes(SC_LEN), regs=D2E_DIRTY),
         sc_save("s4", b"stale cmos!!", bytes(SC_LEN)),
-    ], unhit_named={0x1B0F7: "a count other than 0x7F8: the modelled fwrite never comes back short (a "
-                             "memory-backed file has no full disk) and its count's sources are the body's "
-                             "own constants — `mov ebx,0x7f8` 0x1B0CA, `mov edx,1` 0x1B0DC, the buffer "
-                             "0x100CE4..0x1014DB wholly in the image — so no case reaches the arm even with "
-                             "the exit chain modelled (§G2; the load row's l6 shows the arm's shape). The "
-                             "port's failed write takes the flag path instead (config.c, PORT)"},
-       allow_calls=SC_REAL, calls=(SC_TOUCH,),
+        sc_save("s5", E.F1_ABSENT, sc_image(7, 3, bad=0x33), exits=True, short=SC_LEN - 1),
+    ], allow_calls=SC_REAL + SC_EXIT, calls=(SC_TOUCH, SC_FLUSH),
        eax_mask=0xFF,
        mutants=tuple("@" + m for m in "gatelate nogate sumfirst summid notouch1 notouch2 touchorder touch0 nosum "
                                       "len6 len8 add sumat flag nowrite writefirst wlen wsrc wmode".split())),

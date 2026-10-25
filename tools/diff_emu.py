@@ -220,6 +220,12 @@ class Machine:
       file's final name, mode and bytes into mem[] at F1_SHADOW so the comparison sees the real file
       content. A name the case does not declare, a mode other than rb/wb, a write on a read stream, a
       read on a write stream and anything else the two rows never do stop the run as `unmodeled`.
+    short_write: (name, n) makes each write to that declared name come back after at most `n` bytes
+      (a full disk, record 2026-10-24-proof-completion §P7): the model writes the request's first `n`
+      bytes at the stream's position, leaves the rest of the request unwritten (the file is not
+      extended over it) and returns the whole items written, `n // size`, which is the callee's item
+      count (`imul ebx,edx` 0x62056). None (the default) is the memory-backed file that never comes
+      back short, so every other case is unchanged.
     exits: the runtime's exit chain answers DOS Terminate Process (track G, record
       2026-10-14-reverse-g §G1). The chain 0x62003..0x62723 (record §S.7.1; the bytes re-verified over
       the fixup-applied image and in Ghidra on 2026-10-14) keeps the caller's EAX, the exit code,
@@ -237,6 +243,7 @@ class Machine:
     outs: tuple = ()
     aperture: bool = False
     files: dict = None
+    short_write: tuple = None
     exits: bool = False
 
     def __post_init__(self):
@@ -257,6 +264,17 @@ class Machine:
                         not (isinstance(v, bytes) and len(v) <= F1_MAXFILE):
                     raise ValueError("machine: the file %r needs at most %d content bytes, F1_ABSENT or F1_GONE"
                                      % (name, F1_MAXFILE))
+        if self.short_write is not None:
+            if self.files is None:
+                raise ValueError("machine: short_write names a file but the case declares no files")
+            if not (isinstance(self.short_write, tuple) and len(self.short_write) == 2):
+                raise ValueError("machine: short_write is a (name, byte count) pair: %r" % (self.short_write,))
+            name, n = self.short_write
+            if name not in self.files:
+                raise ValueError("machine: short_write names %r, which the case does not declare" % (name,))
+            if not (isinstance(n, int) and 0 <= n <= F1_MAXFILE):
+                raise ValueError("machine: short_write %r needs a byte count in 0..%d: %r"
+                                 % (name, F1_MAXFILE, n))
 
 
 class _Devices:
@@ -358,8 +376,9 @@ class _F1Files:
     result (0x61EC2 `mov edx,eax`; 0x61ECD answers 0xFFFFFFFF for a stream not on the list). The model
     clobbers nothing but EAX: the rows read only EAX and the count ESI/EDX they reload before the calls,
     and fclose really keeps EDX (pushes it at 0x61EC1). Only what the two rows rely on is modelled:
-    modes rb and wb, a memory-backed file that never comes back short, and an undeclared name, another
-    mode, or a read on a write stream stop the run as unmodeled. fclose mirrors the file's final name,
+    modes rb and wb, a memory-backed file that never comes back short (unless Machine.short_write
+    names it, §P7), and an undeclared name, another mode, or a read on a write stream stop the run as
+    unmodeled. fclose mirrors the file's final name,
     mode, length and bytes to its F1_SHADOW slot (0x61EC0 is the row's last act on the file); no other
     call mirrors: a mirror written at the save row's fopen would land in the memory reported at its two
     stubbed calls, where the port cannot show bytes until after its return (§E3.12)."""
@@ -378,6 +397,7 @@ class _F1Files:
         self.streams = {}                       # handle -> [name, "r"/"w", mode, pos]
         self.handles = 0
         self.opens = []
+        self.short = m.short_write              # (name, byte count): the one short write, or None
 
     def _mem_write(self, uc, at, data):
         """An API write does not fire the memory hooks: seed `before` the way a stub's writes do."""
@@ -470,16 +490,19 @@ class _F1Files:
         total = size * count                    # the callee's `imul ebx,edx` (0x62056)
         if total == 0:
             return self._ret(uc, 0)             # the same total-0 shape as fread (0x62059..0x6205F)
+        written = total
+        if self.short is not None and self.short[0] == st[0]:
+            written = min(total, self.short[1])  # the device's short write: only this prefix lands
         try:
-            data = bytes(uc.mem_read(buf, total))
+            data = bytes(uc.mem_read(buf, written))
         except UcError:
-            return ("unmodeled", "fwrite at 0x%X: the buffer 0x%X+%d is not mapped" % (addr, buf, total))
+            return ("unmodeled", "fwrite at 0x%X: the buffer 0x%X+%d is not mapped" % (addr, buf, written))
         f = self.content[st[0]]
-        if len(f) < st[3] + total:
-            f.extend(bytes(st[3] + total - len(f)))
-        f[st[3]:st[3] + total] = data
-        st[3] += total
-        return self._ret(uc, count)             # a memory-backed file never comes back short
+        if len(f) < st[3] + written:
+            f.extend(bytes(st[3] + written - len(f)))
+        f[st[3]:st[3] + written] = data
+        st[3] += written
+        return self._ret(uc, written // size)   # whole items written (a full request without short_write)
 
     def _fclose(self, uc, addr):
         handle = uc.reg_read(ux.UC_X86_REG_EAX)
