@@ -30,23 +30,27 @@ class Dirs(unittest.TestCase):
         os.makedirs(self.cap)
         os.makedirs(self.port)
 
-    def write(self, port_ks, cap_frames):
-        for i, k in enumerate(port_ks):
+    def write_frames(self, port_frames, cap_frames):
+        for i, data in enumerate(port_frames):
             with open(os.path.join(self.port, 'frame_%05d.ipx' % i), 'wb') as f:
-                f.write(ipx(k))
+                f.write(data)
         for j, c in enumerate(cap_frames):
             with gzip.open(os.path.join(self.cap, 'frame_%05d.raw.gz' % j), 'wb') as f:
                 f.write(c)
         with open(os.path.join(self.cap, 'window.txt'), 'w') as f:
             f.write(''.join('%05d %d\n' % (j, 100 + j) for j in range(len(cap_frames))))
 
-    def run_claim(self, n, report=False, max_start=100, max_unexplained=gc.REPORT_MAX):
+    def write(self, port_ks, cap_frames):
+        self.write_frames([ipx(k) for k in port_ks], cap_frames)
+
+    def run_claim(self, n, report=False, max_start=100, max_unexplained=gc.REPORT_MAX,
+                  bands=None, scan3=None, overlay=None):
         cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
         rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report,
-                                         out.append, max_start,
+                                         out.append, max_start, bands, scan3, overlay,
                                          max_unexplained=max_unexplained)
         return rc, first, out
 
@@ -198,13 +202,93 @@ class TestFrames(Dirs):
         self.assertTrue(any('1 non-black port frame(s) up to port 2 not exhibited' in l and '[1]' in l
                             for l in out), out)
 
-    def test_named_gap_order_is_not_claimed(self):
-        # review 1, Important 3: the claim is order-free (record §I item 9). These pass on
-        # purpose; if an order check is ever added, this test must change with the record.
-        self.write([1, 99, 2], [rgb(1), rgb(2)])
-        self.assertEqual(self.run_claim(2)[:2], (0, None))        # an inserted, wrong port frame
+    def test_order_rejects_a_rewind_at_capture_2(self):
         self.write([1, 2, 3], [rgb(1), rgb(3), rgb(2), rgb(1)])
-        self.assertEqual(self.run_claim(4)[:2], (0, None))        # a capture that goes back in time
+        rc, first, out = self.run_claim(4)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('order failure capture 2 (raw 102)' in l and 'kind=clean' in l
+                            and 'last=2' in l and 'candidates=[1]' in l for l in out), out)
+
+    def test_order_uses_the_earliest_feasible_occurrence(self):
+        # The second rgb(1) is the same held screen at port 2, not a rewind to port 0.
+        self.write([1, 2, 1, 3], [rgb(1), rgb(2), rgb(1), rgb(3)])
+        rc, first, out = self.run_claim(4)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('order: 0 failures' in l for l in out), out)
+
+    def test_order_accepts_a_forward_mid_update_splice(self):
+        # U8 585 / U9 1896 shape: capture 2 is clean at the older port 1, but is
+        # also a mid-update splice of the forward pair (2, 3), with both sides
+        # contributing bytes that differ from the other side.
+        split = 10 * tc.FRAME_W
+        low, high = ipx(3), ipx(4)
+        middle = low[:split] + high[split:]
+        middle_rgb = gc.expand_ipx(middle)
+        self.write_frames([ipx(1), middle, low, high],
+                          [rgb(1), rgb(3), middle_rgb, rgb(4)])
+        rc, first, out = self.run_claim(4)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('order: 0 failures' in l for l in out), out)
+
+    def test_order_search_window_follows_the_chosen_occurrence(self):
+        # Several pairs explain the first splice. The minimum-feasible choice is
+        # (0, 1), not the later (4, 5); using the coverage cursor's later pair
+        # makes capture 3 look like a rewind. This is the U22 repeated-screen
+        # shape in a small model, with no capture or dump dependency.
+        saved = (tc.FRAME_W, tc.FRAME_H, tc.ROW, tc.FRAME_BYTES, gc.BLACK_ROW)
+        try:
+            tc.FRAME_W, tc.FRAME_H = 2, 3
+            tc.ROW = tc.FRAME_W * 3
+            tc.FRAME_BYTES = tc.ROW * tc.FRAME_H
+            gc.BLACK_ROW = hashlib.md5(bytes(tc.ROW)).digest()
+            a = bytes.fromhex('010301020101040104020201020203040202')
+            b = bytes.fromhex('040304020101040201030403040203010103')
+            port = [a, b, b, a, a, b]
+            cap = [a, a[:3] + b[3:], a[:9] + b[9:],
+                   b[:9] + a[9:], b[:11] + a[11:], b]
+            rows = [tc.row_hashes(p) for p in port]
+            out = []
+            rc, first, _, _ = gc.frame_claim('t', cap, list(range(len(cap))), port, rows,
+                                             len(cap), False, out.append, 0)
+            self.assertEqual((rc, first), (0, None), out)
+            self.assertTrue(any('order: 0 failures' in line for line in out), out)
+        finally:
+            tc.FRAME_W, tc.FRAME_H, tc.ROW, tc.FRAME_BYTES, gc.BLACK_ROW = saved
+
+    def test_order_rejects_a_degenerate_splice_rewind(self):
+        # Capture 2 is clean at port 1 after port 2 was exhibited. It can be
+        # written as a suffix splice of (1, 2), but the suffix is identical in
+        # both frames: port 2 contributes no later-frame-unique byte. Counting
+        # that degenerate splice as exhibiting port 2 would launder the rewind.
+        split = 10 * tc.FRAME_W
+        later = bytearray(ipx(3))
+        later[split:64000] = ipx(2)[split:64000]
+        later = bytes(later)
+        self.write_frames([ipx(1), ipx(2), later],
+                          [rgb(1), gc.expand_ipx(later), rgb(2)])
+        rc, first, out = self.run_claim(3)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('order failure capture 2 (raw 102)' in l and 'kind=clean' in l
+                            and 'last=2' in l and 'candidates=[1]' in l for l in out), out)
+
+    def test_order_treats_band_and_scan3_as_neutral(self):
+        # U22 5033/5034 shape: the mixed frame binds later port frames, but the
+        # next clean frame is still allowed to be the earlier occurrence. If a
+        # mixed allowance advanced the order cursor, capture 2 would rewind.
+        r = tc.ROW
+        band = rgb(2)[:81 * r] + bytes([7]) * (11 * r) + rgb(3)[92 * r:]
+        bands = ((1, 81, 92, hashlib.sha256(band[81 * r:92 * r]).hexdigest()),)
+        self.write([1, 2, 3, 4], [rgb(1), band, rgb(2), rgb(3), rgb(4)])
+        rc, first, out = self.run_claim(5, bands=bands)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('order: 0 failures' in l for l in out), out)
+
+        scan = rgb(2)[:2 * r] + rgb(3)[2 * r:4 * r] + rgb(4)[4 * r:]
+        scan3 = ((1, 2, 4, hashlib.sha256(rgb(2)[:2 * r]).hexdigest()),)
+        self.write([1, 2, 3, 4], [rgb(1), scan, rgb(2), rgb(3), rgb(4)])
+        rc, first, out = self.run_claim(5, scan3=scan3)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('order: 0 failures' in l for l in out), out)
 
 
 def _t(f, **kw):
@@ -1072,7 +1156,9 @@ class OverlayAllowance(Dirs):
         return bytes(c)
 
     def write_fixture(self, cap_frame=None):
-        ks = [1, None, None, 9]
+        # Keep the original capture's final rgb(1), with a later identical port
+        # occurrence so this allowance fixture is valid under content order too.
+        ks = [1, None, None, 9, 1]
         for i, k in enumerate(ks):
             data = self.t1 if i == 1 else self.t2 if i == 2 else ipx(k)
             with open(os.path.join(self.port, 'frame_%05d.ipx' % i), 'wb') as f:

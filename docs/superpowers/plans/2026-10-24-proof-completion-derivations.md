@@ -1665,3 +1665,207 @@ new spec or counter movement. No capture, `FN_` function, portable function, or
 E2 entry was added; the only production behaviour change is the mode-0x12
 zero-step fault.
 
+---
+
+## P9 — Existential gameplay content order (Task 8)
+
+### P9.1 The measured rule and the two cursors
+
+`tools/gp_compare.py` now builds an `md5(port[m]) -> [m]` occurrence map. For a
+clean frame it chooses the smallest occurrence whose index is at least `last`.
+For splices and transitions it enumerates the model-valid candidates and chooses
+the smallest highest exhibited index at least `last`. If the local search has no
+feasible candidate, `all_order_candidates` enumerates clean, splice and
+transition explanations over the whole dump. A failure reports capture, raw,
+kind, `last` and the candidate high indices. The check covers exactly
+`[start, first_unexplained)`, excluding all-black frames; band, scan3 and overlay
+frames are order-neutral.
+
+The meaningful-contribution test uses the earliest valid splice boundary `lo`
+(the model admits `low[:b] + high[b:]` for `lo <= b <= hi`). It is deliberately
+not the inverted capture-vs-high test:
+
+```
+low contribution:  first_diff(low, high) < lo
+high contribution: common_suffix(low, high) < FRAME_BYTES - lo
+```
+
+Thus some byte before the boundary differs from the high frame, and some byte
+at/after it differs from the low frame. Transition contribution uses its
+`from_low`/`from_high` byte counts. A degenerate suffix cannot exhibit a later
+frame merely because the two frames share bytes there.
+
+The order pass has its own local-search cursor, advanced with the chosen
+minimum-feasible candidate. The older pixel/coverage pass keeps its separate
+`p = max(exhibited)` cursor and its reach/coverage behaviour. Sharing that older
+cursor is incorrect for repeated screens: it can select a later duplicate and
+make a valid earlier occurrence look like a rewind. This separation leaves the
+existing pixel and state pins untouched. The docstring now claims content order,
+not display order, maps repeats to the earliest feasible occurrence, and calls
+mixed allowances neutral; it still does not claim that every port frame appears.
+
+### P9.2 RED/GREEN and mutation evidence
+
+The five requested tests were added before the implementation. The first run
+was RED for the intended missing behavior:
+
+```
+$ python3 -m unittest tools.tests.test_gp_compare
+Ran 74 tests in 1.316s
+FAILED (failures=5)
+```
+
+The failures were the rewind, occurrence-map, forward-splice, degenerate-splice
+and neutral-allowance tests. After the first implementation, the real U22 run
+exposed a separate cursor defect. A reduced six-frame A/B fixture was added and
+watched fail before the cursor fix:
+
+```
+gp_compare: t: order: order failure capture 3 (raw 3): kind=transition last=5 candidates=[3]
+```
+
+The fixture has two valid pairs for its first splice; choosing the minimum
+feasible `(0,1)` rather than the coverage cursor's later `(4,5)` makes the rest
+of the sequence align. After the independent-cursor fix its focused test passed,
+and the final full tool suite passed:
+
+```
+$ python3 -m unittest tools.tests.test_gp_compare
+Ran 75 tests in 1.615s
+OK
+```
+
+The pre-existing overlay fixture's final `rgb(1)` capture was retained; a later
+identical port occurrence was added so that its old capture bytes are valid
+under the new content-order claim. No allowance assertion was removed.
+
+The degenerate-splice assertion was also mutation-tested in-process by replacing
+`order_splice_exhibited` with the old unfiltered `exhibited` behavior. The mutant
+was caught (the test fails when the guard is removed):
+
+```
+mutant=unfiltered-splice tests=1 failures=1 errors=0
+```
+
+### P9.3 All 24 existing scenario dumps
+
+No capture was made or regenerated. The report-only runs used the existing
+`/tmp/pr_gp_dump` dumps for idle-loss, charsel, moves-b, keys-fight, twop and
+U12, and `/tmp/opencode/gp_dumps` for the other 18 scenarios. The harness ran
+`python3 tools/gp_compare.py --report` for each scenario (four workers), saved
+logs under `/tmp/opencode/task8-order-final`, and checked both the process status
+and the order line:
+
+```
+SCENARIOS=24 ORDER_FAILURE_SCENARIOS=0
+```
+
+Every scenario printed `order: 0 failures`; the classified-frame counts were:
+
+| scenario | order-classified frames |
+|---|---:|
+| `gp-idle-loss` | 7454 |
+| `gp-u5-charsel` | 406 |
+| `gp-u6-moves-b` | 2042 |
+| `gp-keys-fight` | 1024 |
+| `gp-twop` | 519 |
+| `gp-u12-endurance` | 622 |
+| `gp-u8-right-arcade` | 974 |
+| `gp-u8-left-training` | 983 |
+| `gp-u8-right-training` | 998 |
+| `gp-u8-tug-of-war` | 993 |
+| `gp-u8-handicap` | 932 |
+| `gp-u8-endurance` | 182 |
+| `gp-u8-attract-start` | 1001 |
+| `gp-u9-win` | 2338 |
+| `gp-u10-ending` | 5333 |
+| `gp-u13-ending2` | 5786 |
+| `gp-u15-join` | 707 |
+| `gp-u16-twop2` | 7957 |
+| `gp-u18-talon-ending` | 5628 |
+| `gp-u19-vertigo-ending` | 5884 |
+| `gp-u20-chaos-ending` | 5670 |
+| `gp-u21-armadon-ending` | 5822 |
+| `gp-u22-diablo-ending` | 5702 |
+| `gp-u23-u16-finisher` | 3979 |
+
+The three measured anomalies were then traced through the production helper,
+not inferred from the green summary:
+
+| scenario / capture (raw) | local state | full-dump feasible explanation | result |
+|---|---|---|---|
+| U8 right-training 585 (3336) | clean 392, `last=393` | high 394, exhibits `{393,394}` | chose 394; 0 order failure |
+| U9 win 1896 (4508) | clean 1534, `last=1535` | high 1536, exhibits `{1535,1536}` | chose 1536; 0 order failure |
+| U22 diablo 5033 (8994) | scan3, `last=4300` | named scan exhibits `{4300,4302,4303}` | neutral; 5034 (8995) clean 4302 passes |
+
+For the two forward splices, the byte measurements at the selected pair were:
+
+```
+U8  pair 393/394:  lo=80229  hi=184320  differences before lo=1260  after lo=497
+U9  pair 1535/1536: lo=22446  hi=98388   differences before lo=12    after lo=9487
+```
+
+Both sides therefore make a meaningful contribution. The capture SHA256s are
+`e79b7c7d0921cdf1109f498f0812c147fed4c5e3c313f18c953409de377c315b` (U8 585)
+and `447c9a298387205250ab8aee5eaa0dc753e975d5a25f76735a205f6678215606`
+(U9 1896). U22's 5033 recipe is the already-pinned scan3 allowance; it does not
+advance `last`, so the following clean frame is not falsely called a rewind.
+
+### P9.4 The discarded shared-cursor attempt (exact bytes)
+
+The first implementation reused the legacy classifications and failed U22 at
+capture 5429 (raw 12999), rather than adding an allowance. Its exact report was:
+
+```
+kind=splice last=4770 candidates=[4671, 4691, 4711, 4731, 4751]
+data=[(4670,69699,70554), (4690,69699,70554),
+      (4710,69699,70554), (4730,69699,70554), (4750,69699,70554)]
+capture sha256=f01a50e04e51173fd86ee37d14d24ccecba7846900b10e47bc4abaecfe0c1f8b
+```
+
+For the last candidate pair (4750,4751), the capture and port bytes around the
+boundaries were:
+
+```
+capture[69680:69720] 301018300404040404041018301018301010283c41793c41793c41794141823c41793c41793c4179
+low4750[69680:69720] 301018300404040404041018301018301010283c41793c41793c41794141823c41793c41793c4179
+high4751[69680:69720] 300404040404040000000404041018301414243c41793c41793c41794141823c41793c41793c4179
+capture[70540:70580] 0c0c1010280c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0000000000000000000c0c0c141424141c2c141c
+low4750[70540:70580] 0c0c1010280c0c0c0c0c0c0c0c0c0000000c0c0c0000000000000000000c0c0c101028141c2c141c
+high4751[70540:70580] 0c0c1010280c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0000000000000000000c0c0c141424141c2c141c
+```
+
+The pair's full hashes are
+`a76028e595e9e29e0fecdfc60711e473a8b29da25d5cc55d26cf25182d42ca6d` (4750)
+and `bbf2de6ecb0682e637b07f62e3d16c7f5e7ad4f3e24ece8cdf81362a9b041d71`
+(4751). The failure was a search-cursor artifact, not a new pixel allowance:
+the independent-cursor regression test and all 24 final runs pass with no new
+named bytes and no Makefile pin changes.
+
+### P9.5 Scope and unchanged gates
+
+Only `tools/gp_compare.py`, `tools/tests/test_gp_compare.py` and this record
+changed. No capture, portable function, `FN_` registration, Makefile pin or E2
+entry was added. The final independent checks were:
+
+```
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+$ make entry-triage
+Ran 44 tests in 6.844s
+OK
+entry-triage: 579 candidates (575 by U0's rule); ...
+
+$ make diff-verify
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 807/845 closed on full rows;
+8 ported functions with no row (45 FN_ ported-unrowed: 8 portable
+[5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible
+subset is 42 = 5 + 37). ...
+
+$ git diff --check
+# no output
+```
+

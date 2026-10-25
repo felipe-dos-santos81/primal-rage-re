@@ -24,8 +24,14 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
           The first unexplained capture frame must be >= --min-first N, and the
           window start (the first capture frame that shows the port's first frame)
           must be <= --max-start and < N, so a regressed port cannot slide the window
-          forward past the frame that set N. Not claimed: the order of the port's
-          frames, and that every port frame appears (a coverage count is reported).
+          forward past the frame that set N. Content order is claimed over
+          [start, first_unexplained): at each capture frame an existential,
+          occurrence-aware explanation must have a highest meaningfully exhibited
+          port index >= the previous one, choosing the smallest feasible index.
+          This is content order, not display order: repeating screens map to the
+          earliest feasible occurrence, and band/scan3/overlay mixed allowances
+          are order-neutral. Not claimed: that every port frame appears (a
+          coverage count is reported).
   trace   the capture's S records (poll.log) against the port's T records
           (trace.txt) by the frame counter f, over gp_session.TRACE_FIELDS;
           the first differing f must be >= --trace-min-first F. tick is
@@ -38,7 +44,9 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
 The search for a frame's explanation tries the port frames [p - BACK, p +
 AHEAD) around the last explained index p first, then the whole dump, so the
 result is the unwindowed classification (the window is a search order, a
-harness value). Enforced runs stop at the first unexplained frame; --report
+harness value). The independent order pass uses the same window around its
+last chosen occurrence, then the whole dump when no feasible candidate is
+local. Enforced runs stop at the first unexplained frame; --report
 goes on (up to REPORT_MAX; --max-unexplained overrides, 0 lifts the cap) and
 always exits 0. An absent capture skips (exit 0); a present capture with an
 unpinned N or start fails. Stdlib only; title_compare and gp_session are
@@ -848,6 +856,171 @@ def exhibited(kind, data):
     return s
 
 
+def order_occurrences(port):
+    """(md5 -> port indices, port md5s), including repeated held screens."""
+    digests = [hashlib.md5(port[m]).digest() for m in range(len(port))]
+    occurrences = collections.defaultdict(list)
+    for m, digest in enumerate(digests):
+        occurrences[digest].append(m)
+    return occurrences, digests
+
+
+def order_splice_exhibited(port, N, lo, hi):
+    """The frames with a meaningful contribution at the earliest valid boundary.
+
+    A splice is low[:boundary] + high[boundary:]. The high frame is exhibited
+    only when a byte at/after that boundary differs from the low frame; the low
+    frame is exhibited only when a byte before it differs from the high frame.
+    Comparing the suffix to the high frame instead would reject every valid
+    splice, and omitting these tests would let a degenerate splice launder a
+    clean rewind.
+    """
+    low, high = port[N], port[N + 1]
+    ex = set()
+    if hi > 0 and tc.first_diff(low, high) < lo:
+        ex.add(N)
+    if lo < tc.FRAME_BYTES and tc.common_suffix(low, high) < tc.FRAME_BYTES - lo:
+        ex.add(N + 1)
+    return ex
+
+
+def order_candidates(kind, data, port, occurrences, digests):
+    """(highest exhibited index, exhibited indices) for local explanations."""
+    candidates = []
+    if kind == 'clean':
+        for m in occurrences.get(digests[data], ()):
+            candidates.append((m, {m}))
+    elif kind == 'splice':
+        for N, lo, hi in data:
+            ex = order_splice_exhibited(port, N, lo, hi)
+            if ex:
+                candidates.append((max(ex), ex))
+    elif kind == 'transition':
+        for N, _r, from_low, from_high in data:
+            ex = set()
+            if from_low:
+                ex.add(N)
+            if from_high:
+                ex.add(N + 1)
+            if ex:
+                candidates.append((max(ex), ex))
+    return candidates
+
+
+def all_order_candidates(c, port, rows, occurrences):
+    """Enumerate every clean, splice and transition explanation in the dump."""
+    candidates = [(m, {m}) for m in occurrences.get(hashlib.md5(c).digest(), ())]
+    n = len(port)
+    ch = tc.row_hashes(c)
+    pref, suff = [], []
+    for ph in rows:
+        a, b = tc.row_common(ch, ph)
+        pref.append(a)
+        suff.append(b)
+    for N in range(n - 1):
+        if pref[N] + suff[N + 1] < tc.FRAME_H:
+            continue
+        pb = tc.first_diff(c, port[N])
+        sb = tc.common_suffix(c, port[N + 1])
+        if pb + sb >= tc.FRAME_BYTES:
+            lo, hi = tc.FRAME_BYTES - sb, pb
+            ex = order_splice_exhibited(port, N, lo, hi)
+            if ex:
+                candidates.append((max(ex), ex))
+    for N in range(n - 1):
+        if pref[N] + suff[N + 1] != tc.FRAME_H - 1:
+            continue
+        r = pref[N]
+        row = c[r * tc.ROW:(r + 1) * tc.ROW]
+        low = port[N][r * tc.ROW:(r + 1) * tc.ROW]
+        high = port[N + 1][r * tc.ROW:(r + 1) * tc.ROW]
+        from_low = from_high = 0
+        for x, y, z in zip(row, low, high):
+            if x == y:
+                if x != z:
+                    from_low += 1
+            elif x == z:
+                from_high += 1
+            else:
+                break
+        else:
+            if (c[:r * tc.ROW] == port[N][:r * tc.ROW] and
+                    c[(r + 1) * tc.ROW:] == port[N + 1][(r + 1) * tc.ROW:]):
+                ex = set()
+                if from_low:
+                    ex.add(N)
+                if from_high:
+                    ex.add(N + 1)
+                if ex:
+                    candidates.append((max(ex), ex))
+    return candidates
+
+
+def order_claim(name, cap, raws, port, rows, start, end, out=print,
+                bands=None, scan3=None, overlay=None):
+    """Check existential content order over ``[start, end)``.
+
+    Each step takes the smallest candidate whose highest meaningfully exhibited
+    port index is at least the previous one. A local miss retries against the
+    whole dump. The local search cursor follows that chosen candidate, not the
+    legacy coverage cursor: repeated screens can otherwise make a valid early
+    occurrence look like a rewind. Mixed allowances are deliberately neutral;
+    their presentations do not establish a display-order position.
+    """
+    bands = {} if bands is None else bands
+    scan3 = {} if scan3 is None else scan3
+    overlay = {} if overlay is None else overlay
+    occurrences, digests = order_occurrences(port)
+    last = p = 0
+    classified = 0
+    j = start
+    while j < end:
+        c = cap[j]
+        if not any(c):
+            j += 1
+            continue
+        kind, data = classify(c, port, rows, p)
+        if j in bands and kind == 'unexplained':
+            P, _why = band_explain(c, port, bands[j])
+            if P is not None:
+                kind, data = 'band', P
+        if kind == 'unexplained' and j in scan3:
+            ex, _why = scan3_explain(c, port, scan3[j])
+            if ex is not None:
+                kind, data = 'scan3', ex
+        if kind == 'unexplained' and j in overlay:
+            info, _why = overlay_explain(c, port, overlay[j])
+            if info is not None:
+                kind, data = 'overlay', (overlay[j][1], overlay[j][3])
+        if kind == 'unexplained':
+            out('gp_compare: %s: order: order failure capture %d (raw %d): '
+                'kind=unexplained last=%d candidates=[]' % (name, j, raws[j], last))
+            return 1
+        classified += 1
+        if kind in ('band', 'scan3', 'overlay'):
+            ex = exhibited(kind, data)
+            if ex:
+                p = max(p, max(ex))
+            j += 1
+            continue
+        candidates = order_candidates(kind, data, port, occurrences, digests)
+        feasible = [(high, ex) for high, ex in candidates if high >= last]
+        if not feasible:
+            candidates = all_order_candidates(c, port, rows, occurrences)
+            feasible = [(high, ex) for high, ex in candidates if high >= last]
+        if not feasible:
+            highs = sorted({high for high, _ex in candidates})
+            out('gp_compare: %s: order: order failure capture %d (raw %d): '
+                'kind=%s last=%d candidates=%s'
+                % (name, j, raws[j], kind, last, highs))
+            return 1
+        last = min(feasible, key=lambda candidate: candidate[0])[0]
+        p = max(p, last)
+        j += 1
+    out('gp_compare: %s: order: 0 failures (%d classified frames)' % (name, classified))
+    return 0
+
+
 def classify(c, port, rows, p):
     """(kind, data) for capture frame c, the window around p first."""
     ch = tc.row_hashes(c)
@@ -916,8 +1089,10 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
     always stops at the first). `bands`, `scan3` and `overlay` are the scenario's
     named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED, OVERLAY_ALLOWED); a
     named frame that is not its named bytes prints its FAIL in both modes and
-    fails the enforced run. `reach` is `p`, the highest exhibited port frame, the
-    window's end (sub-project A §A1)."""
+    fails the enforced run. The independent order claim covers [start,
+    first_unexplained), and joins the enforced return code; report mode prints
+    its result without changing report-mode exit semantics. `reach` is `p`, the
+    highest exhibited port frame, the window's end (sub-project A §A1)."""
     bands = {} if bands is None else {b[0]: b for b in bands}
     scan3 = {} if scan3 is None else {s[0]: s for s in scan3}
     overlay = {} if overlay is None else {o[0]: o for o in overlay}
@@ -1019,9 +1194,12 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         out('gp_compare: %s: frames: %s capture %d (raw %d): nearest port %d, rows %d..%d, x %d..%d (%d px)'
             % ((name, 'FIRST UNEXPLAINED' if k == 0 else 'UNEXPLAINED', u, raws[u], m) + box))
     first = unexpl[0] if unexpl else None
+    order_end = first if first is not None else len(cap)
+    order_rc = order_claim(name, cap, raws, port, rows, start, order_end, out,
+                           bands, scan3, overlay)
     # Coverage, reported and NOT ratcheted (record §I item 9, a named gap): the port's
     # non-black frames up to the last one the capture exhibits that no classified capture
-    # frame exhibits. Order is not claimed either.
+    # frame exhibits. The order claim above is independent of this reported count.
     missing = [m for m in range(min(p + 1, len(rows))) if m not in seen and any(h != BLACK_ROW for h in rows[m])]
     out('gp_compare: %s: frames: coverage (reported, not ratcheted): %d non-black port frame(s) up to port %d '
         'not exhibited by any classified capture frame%s'
@@ -1033,7 +1211,7 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
             out('gp_compare: %s: frames: FAIL: an allowance named its frame but not its bytes' % name)
         return 0, first, j, p
     rc = max(ratchet(name, 'frames', first, len(cap), min_first, out),
-             start_check(name, start, raws, max_start, min_first, out), allow_bad)
+             start_check(name, start, raws, max_start, min_first, out), allow_bad, order_rc)
     return rc, first, j, p
 
 
