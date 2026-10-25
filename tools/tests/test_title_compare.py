@@ -1,5 +1,6 @@
 # tools/tests/test_title_compare.py
 import contextlib, hashlib, io, os, subprocess, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOL = os.path.join(ROOT, "tools", "title_compare.py")
@@ -145,6 +146,50 @@ class FrontendEndPinTest(unittest.TestCase):
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn('FAIL:', r.stdout)
             self.assertIn('re-pin N to 3', r.stdout)
+
+    def test_a_stale_classified_demo_fight_pin_requires_a_repin_in_exact_mode(self):
+        # Control both classifier results to reach the non-empty fight window's
+        # first-is-None arm directly: captures 2..3 are clean and black capture
+        # 4 ends the window, so END + 1 = 5 while the stale ratchet is 2.
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import title_compare as tc
+        with tempfile.TemporaryDirectory() as d:
+            port, capture = self._fixtures(d)
+            frames = [bytes([v]) * FRAME_BYTES for v in (0x11, 0x22, 0x33, 0x44, 0)]
+            fe_res = {
+                'frames': frames,
+                'kinds': [('clean', 0)] * len(frames),
+                'window': (0, 1),
+                'covered': {0},
+                'unexpl': [],
+            }
+            demo_res = {
+                'frames': frames,
+                'kinds': [('excluded', None), ('excluded', None),
+                          ('clean', 0), ('clean', 0), ('artifact', None)],
+            }
+
+            def run(exact):
+                out = io.StringIO()
+                argv = ['title_compare.py', '--demo-fight', '--demo-fight-min-first', '2',
+                        '--capture', capture, '--port', port, '--frames', '2']
+                with mock.patch.object(tc, 'check_capture',
+                                       side_effect=[(0, fe_res), (0, demo_res)]), \
+                        mock.patch.object(sys, 'argv', argv), \
+                        mock.patch.dict(os.environ, {'PR_PINS_EXACT': str(exact)}), \
+                        contextlib.redirect_stdout(out):
+                    rc = tc.main()
+                return rc, out.getvalue()
+
+            rc, out = run(0)
+            self.assertEqual(rc, 0, out)
+            self.assertIn('fight window distinct [2..3]', out)
+            self.assertIn('2 frames in window: 2 clean, 0 splice, 0 transition, 0 unexplained', out)
+            self.assertIn('N = 5 (window end + 1) is the exact pin', out)
+            rc, out = run(1)
+            self.assertEqual(rc, 1, out)
+            self.assertIn('FAIL: the fight window is fully explained through 4 '
+                          'but ratchet N is 2; re-pin N to 5', out)
 
     def test_a_stale_fully_explained_attract2_pin_requires_a_repin_in_exact_mode(self):
         with tempfile.TemporaryDirectory() as d:

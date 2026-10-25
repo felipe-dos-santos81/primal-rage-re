@@ -2225,3 +2225,64 @@ needed**. Only after that green run did the default become
 printed `pins_exact=0`; strict printed 1. No capture was created or modified, and
 no portable game source changed.
 
+### P11.5 The classified fully explained demo-fight branch (review R12)
+
+The review identified that the empty-window test did not cover the second,
+classified-window `first is None` exact guard. The new controlled test patches
+the two `check_capture` results, not a real capture: the front-end window is
+[0..1] with covered port 0, capture frames 2 and 3 are clean in the demo result,
+and all-black capture 4 ends the non-empty fight window [2..3]. Ratchet 2 is
+therefore stale against END + 1 = 5. Partial mode returns 0 after printing the
+two-clean-frame window and `N = 5 ... is the exact pin`; exact mode returns 1
+with `fully explained through 4 ... re-pin N to 5`.
+
+The mutation disabled only this second guard (the empty-window guard stayed
+live). The test then reached the intended classified window but exact mode
+returned 0 and unittest failed `0 != 1`, proving that the case catches deletion
+of the guard. Restoring it gave:
+
+```
+$ python3 -m unittest \
+    tools.tests.test_title_compare.FrontendEndPinTest.test_a_stale_classified_demo_fight_pin_requires_a_repin_in_exact_mode
+Ran 1 test in 0.009s
+OK
+
+$ python3 -m unittest tools.tests.test_title_compare
+Ran 25 tests in 0.612s
+OK
+
+$ PR_PINS_EXACT=1 python3 -m unittest tools.tests.test_gp_compare \
+    tools.tests.test_title_compare tools.tests.test_k11_compare \
+    tools.tests.test_gp_keys tools.tests.test_tick_vector
+Ran 155 tests in 3.544s
+OK
+```
+
+### P11.6 The fixed-tree exact gate after R12
+
+With the R12 case present, the same explicit exact gate used in §P11.4 ran to
+completion on the fixed tree:
+
+```
+$ GATE_STRICT=1 PR_PINS_EXACT=1 make verify
+gate: captures 34/35 present, 1 missing (strict=1, pins_exact=1)
+...
+Ran 25 tests in 0.543s                           # title_compare, including R12
+OK
+...
+Ran 340 tests in 3.822s
+OK
+...
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported functions with no row ...
+entry-triage: 579 candidates (575 by U0's rule); ...
+all checks passed
+# exit 0
+```
+
+The log is `/tmp/opencode/task10-r12-exact-full-gate.log`. Its read-back found no
+`improved:`, `ratchet improved` or `re-pin` line. No pin drifted, so no re-pin
+was needed. This run used the explicitly permitted non-full-scan form; the
+separate full-scan attempt was terminated by the foreground tool's one-hour
+limit while still in the differential unittest, before its differential driver,
+and is not claimed as a completed gate.
+
