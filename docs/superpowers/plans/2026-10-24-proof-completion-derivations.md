@@ -990,3 +990,197 @@ row — record E3 §E3.8).
 `python3 tools/port_progress.py` stays `799 1203 66` / `759 759 100` and
 `make entry-triage` stays `579 candidates (575 by U0's rule); ... span-writer=231 ...`:
 the task adds no `FN_` function, no `fn_register` and no capture/pixel pin.
+
+---
+
+## P6 — The sprintf allow and the scan-only longjmp stop (Task 5)
+
+Task 5 closes twelve rows without adding a case, a portable function or a capture:
+`text_number_core` closes **full** by running the real sprintf tree, and the ten
+`game_frame_*` rows plus `game_quit_prompt` close **weak** by declaring the
+unreached longjmp only to the static scanner.
+
+### P6.1 `text_number_core`: the existing cases prove the real formatter
+
+The old row stubbed `0x65546` and made the stub write `42\0`. The replacement is
+`allow_calls=D3A_SPRINTF`, with no `0x65546` call-set entry. `D3A_SPRINTF` moved
+earlier in `tools/diff_verify.py` only because this C3G row is constructed before
+the D3A rows; its nine addresses are unchanged:
+
+```
+0x65546 0x6C8EB 0x6CB6C 0x6CC9F 0x6CE84
+0x6CCFA 0x65533 0x72D20 0x72CD6
+```
+
+The raw's format is present and exercised, so no new format case is needed:
+the fixup-applied image holds `25 69 00 00` (`"%i\0\0"`) at `0x80B40`, and the
+raw instruction at `0x2EF2D` calls sprintf with that string. All three existing
+cases (`n0`/`n1`/`n2`, value 42, three destinations seeded with `A5`) ran the
+original formatter and the port's `snprintf` path to byte-identical output. A
+pre-change one-off `dataclasses.replace(calls=(), allow_calls=D3A_SPRINTF)` run
+and the committed row both measured:
+
+```
+| text_number_core | 0x2EF24 | 3 | 1/1 | VERIFIED |
+problems: []
+unhit: []
+```
+
+`--function text_number_core --self-check` measured **4/4 mutants detected**.
+The exact kinds and catching case sets below come from `verify_all(...,
+mutants=True)`'s own `problems`, not from the old stub pins:
+
+| mutant | measured kinds | cases | representative difference |
+|---|---|---|---|
+| `@val` | `byte` | n0,n1,n2 | original digit `0x32`, port `0x33` (the mutant formats 43) |
+| `@dest` | `byte` | n0,n1,n2 | original writes at EDX, mutant at EDX+4 |
+| `@call` | `byte`, `eax` | n0,n1,n2 | original returns 2 and writes `42\0`; mutant returns 8 over the seeded bytes |
+| `@len` | `eax` | n0,n1,n2 | original 2, mutant 3 |
+
+Thus `@val` moved from a stub-call difference to a real output-byte difference,
+and `@call` lost its call-list kind. The case sets did not move. The pins live
+in **`C3G_KINDS` / `C3G_CASES`** in the current file (the brief's "C3F" names
+the historical batch, not these dictionaries); C3F itself is unchanged. The
+EAX mask stays `0xFFFFFFFF`, the exact real-name and mutant-name sets are
+unchanged, and `0x65546` left the stub-clobber dictionary. The stale
+`actors.c` comment now says that D3A runs this tree in the existing rows and in
+`text_number_core`; only the comment changed, not the C formatting path.
+
+RED/GREEN: before the row change, the new allow test failed with
+`spec.allow_calls == ()` against the nine-entry tuple; after it, the same test
+passes and also requires the row to be full and closed. As a pin mutation,
+restoring `@val`'s expected kind to `{'call #0'}` made
+`test_each_c3g_mutant_is_caught_by_what_it_breaks` fail with `byte` in the
+actual set; the measured pin was then restored.
+
+### P6.2 Zero arrivals at `0x65431`, measured before and after the move
+
+Before removing the stub, a one-off run used its recorded arrival as the
+instrument: every original case of all eleven specs ran with its existing
+`case_calls`, and the run counted both a recorded `0x65431` call and an executed
+`0x65431` instruction. Measured:
+
+```
+game_frame_keys       9 cases, ok 9,  no arrivals
+game_frame_keys2      3 cases, ok 3,  no arrivals
+game_frame_head      10 cases, ok 10, no arrivals
+game_frame_fight     17 cases, ok 17, no arrivals
+game_frame_tails     11 cases, ok 11, no arrivals
+game_frame_m25       11 cases, ok 11, no arrivals
+game_frame_match     12 cases, ok 12, no arrivals
+game_frame_front     14 cases, ok 14, no arrivals
+game_frame_start     12 cases, ok 12, no arrivals
+game_frame_rr         3 cases, ok 3,  no arrivals
+game_quit_prompt     14 cases, ok 14, no arrivals
+TOTAL: 11 rows, 116 cases, recorded_arrivals=0, executed_arrivals=0
+```
+
+The same measurement after the move again gave `outcomes={'ok': 116}` and zero
+recorded/executed arrivals. This is the evidence for removing the declaration;
+it is not an inference from the `unhit_named` text. Those named blocks stay:
+`0x25201` for the game-frame rows and `0x24A9C` for the quit prompt.
+
+### P6.3 `Spec.stop` is scanner-only and fails closed at runtime
+
+`Spec` gains `stop: tuple = ()`. `verify_gap` and `spec_original` pass
+`[k.addr for k in spec.calls] + list(spec.stop)` to `E.static_scan`. Nothing
+else consumes it: not `case_calls`, `cases_text`, `run_original`,
+`SpecResult.callees`, or `closed_rows`. Consequently a stop address limits
+recursive descent but is neither an allowed call nor a recorded stub/real
+callee. The default is empty and every other spec is unchanged.
+
+`D5H_LONGJMP` is now the integer `0x65431`, with `D5H_STOP = (0x65431,)`.
+`D5H_GF_COMMON` lost its former `E.Call`, and `d5h_gf_spec` supplies `stop` to
+exactly the ten game-frame rows. `D6A_PROMPT_CALLS` lost the same `E.Call`, and
+only `game_quit_prompt` uses that tuple and `D5H_STOP`. Measurements over
+`V.SPECS` found 11 stop specs, no other `D5H_GF_COMMON` user outside those rows,
+no `D6A_PROMPT_CALLS` user besides the prompt, and no remaining `0x65431` call
+declaration; no tuple split was needed.
+
+The scan measurements show why both pieces are necessary:
+
+| row | old call-set stop | longjmp removed, no `stop` | scan-only `stop` |
+|---|---:|---:|---:|
+| `game_frame_head` | 161 leaders / 618 instructions | **170 / 656** | **161 / 618** |
+| `game_quit_prompt` | 18 / 84 | **27 / 122** | **18 / 84** |
+
+All scans are untruncated. The no-stop scans add exactly the nine runtime
+leaders `0x65431`, `0x6544F`, `0x65450`, `0x65468`, `0x6546A`, `0x65475`,
+`0x65477`, `0x65482`, `0x65484`; the stop scans contain no leader at or above
+`0x5D000`. The regression test checks both sides of that table, so deleting the
+stop cannot preserve a green claim.
+
+The fail-closed guard starts a synthetic original run at the restart block
+itself. The raw bytes are:
+
+```
+0x25201  mov edx,1
+0x25206  mov eax,0x1044F4
+0x2520B  jmp 0x65431
+```
+
+With the old stub this returned `ok` and recorded
+`0x65431(0x1044F4, 1)` — the RED result. With the new spec's calls it executes
+`0x25201` and `0x65431`, records no call, and stops:
+
+```
+outcome = unmodeled
+ detail = indirect call to 0x6C8EA at 0x6543A
+  calls = []
+```
+
+`0x6543A` is the runtime's `call dword ptr [0xF0900]`. This is an unmodelled
+call, not a returning stub, which is the required behavior if a future case
+reaches the restart arm. The quit arm is the corresponding
+`0x24A9C..0x24AB0` block (resume, save, then the same tail jump). Because that
+reachable block remains unexercised, `0x249F0` joined `WEAKER`; the ten
+`0x24C5C` rows were already weak. The stub-clobber dictionary therefore lost
+`0x65431` as well as `0x65546`. Injecting both addresses as synthetic stubs
+made the dictionary test fail; the injection was confined to the one-off
+process and restored.
+
+### P6.4 The twelve closed rows and the measured counter
+
+The focused real run reported all twelve `VERIFIED`, with no unnamed unhit
+blocks and no `0x65431` callee. `text_number_core` is 1/1 and full; every
+game-frame row keeps its previous hit count out of 161, and `game_quit_prompt`
+is 16/18 with its two existing named unhit blocks. The
+closure assertions name all twelve rows and require the eleven restart rows to
+be weak. This closes one full row and eleven weak rows, not twelve full rows.
+
+The direct full self-check and the final `make diff-verify` both exited 0 and
+printed, verbatim:
+
+```
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 826/845 rows with callees closed (188 have none); 808/845 closed on full rows; 8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37). The closure rule (record J §J1): an allow-mode callee outside the portable set - runtime >= 0x5D000, host-owned/deferred in tools/port_classification.txt, or an address the decomp index never lists as a function - does not keep a row open, provided the port tree does not implement the address in any class (no fn_register, no column-0 `/* 0xADDR` header), while a recorded stub or real callee and a ported function without a row do. Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+```
+
+Against §P5.4: functions 1033 -> 1033, mutants 14993 -> 14993, callee-less
+rows 188 -> 188, rows with callees 845 -> 845, closed 814 -> **826**, full
+807 -> **808**, open 31 -> **19**, and `WEAKER` 12 -> **13**. The expected
+intermediate counter is therefore measured, not fitted. Moving the counter pin
+one step down to 825 made its test fail against the actual 826 line; the pin was
+restored to 826.
+
+Verification totals:
+
+```
+python3 -m unittest tools.tests.test_diff_verify
+Ran 145 tests ... OK                         # includes the three RED/GREEN tests
+
+make diff-verify
+Ran 228 tests ... OK                         # test_diff_emu + test_diff_verify
+... 826/845 ... 808/845 ... exit 0
+
+python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+make entry-triage
+Ran 44 tests ... OK
+entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
+```
+
+No real-name, EAX-mask, case-set, pixel/state, capture or E2 pin moved. The only
+mutant-kind changes are the three measured `text_number_core` entries above;
+the only stub-clobber removals are the two addresses whose stubs were deleted.

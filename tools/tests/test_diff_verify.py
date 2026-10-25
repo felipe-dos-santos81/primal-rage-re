@@ -1868,10 +1868,10 @@ C3G_KINDS = {
     'text_glyph_emit@spawn': {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
     'text_glyph_emit@store': {'byte'},
     'text_glyph_emit@tab': {'byte', 'call #0 memory', 'call #1 memory'},
-    'text_number_core@call': {'byte', 'call #0', 'eax'},
-    'text_number_core@dest': {'byte', 'call #0'},
+    'text_number_core@call': {'byte', 'eax'},
+    'text_number_core@dest': {'byte'},
     'text_number_core@len': {'eax'},
-    'text_number_core@val': {'call #0'},
+    'text_number_core@val': {'byte'},
     'text_number_format@copy': {'byte'},
     'text_number_format@end': {'byte'},
     'text_number_format@fill': {'call #1'},
@@ -31966,7 +31966,7 @@ class RealFunctionTests(unittest.TestCase):
         0x4F318: ("ecx", "esi", "edi", "ebp"), 0x4F4E8: (), 0x4F5C8: (), 0x4F644: (),
         0x4F6E8: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x4F704: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
         0x4F9A0: ("ebx", "ecx", "esi", "edi", "ebp"), 0x4F9C8: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
-        0x500C4: (), 0x50146: (), 0x65431: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
+        0x500C4: (), 0x50146: (),
         # D5 d5h end
         # D5 d5i (record 2026-10-12-reverse-d5i): the stubs its rows add
         0x3C5CC: (), 0x16D58: ("edx",), 0x35658: ("edi", "ebp"), 0x19068: ("edi", "ebp"), 0x12DA8: (), 0x28130: (), 0x292D4: (), 0x4DBEC: (),
@@ -32033,7 +32033,7 @@ class RealFunctionTests(unittest.TestCase):
         0x49444: (), 0x4F434: (), 0x5D7DC: (), 0x5DC0F: ("ebx", "ecx", "edx"),
         0x5DC8B: ("ebx", "ecx", "edx"), 0x5DD03: (), 0x5DEAF: ("ebx", "ecx", "edx"), 0x5DEED: (),
         0x3CD94: ("edx",), 0x2F198: ("ebx", "ecx", "edx"), 0x2F280: ("ebx", "ecx", "edx"),
-        0x2F314: ("ebx", "ecx", "edx"), 0x2EF24: (), 0x65546: (), 0x61A70: ("edx",),
+        0x2F314: ("ebx", "ecx", "edx"), 0x2EF24: (), 0x61A70: ("edx",),
         0x2EFD4: ("ebx", "ecx", "edx"), 0x2F0F0: ("edx",),
         0x2F5A0: ("ebx", "ecx", "edx"), 0x2F830: ("ebx", "ecx", "edx"),
         0x1D1B0: (), 0x2F434: ("ebx", "ecx", "edx"), 0x4F1D0: (),     # track D2 batch d2c
@@ -32134,6 +32134,60 @@ class RealFunctionTests(unittest.TestCase):
 
     def spec(self, name, **kw):
         return dataclasses.replace([s for s in V.SPECS if s.name == name][0], **kw)
+
+    def test_text_number_core_runs_sprintf_from_the_original_bytes(self):
+        # Proof completion task 5 (record §P6): the old stub wrote "42" for every case. The real
+        # D3A_SPRINTF tree must format the same bytes on those cases; the row's comparison is the
+        # assertion, and its only callees are the allow-mode sprintf tree.
+        spec = self.spec("text_number_core")
+        self.assertEqual(spec.allow_calls, V.D3A_SPRINTF)
+        self.assertEqual(spec.calls, ())
+        r = self.real["text_number_core"]
+        self.assertEqual((r.verdict, r.hit, r.total, r.problems, r.unhit, r.weaker),
+                         ("VERIFIED", 1, 1, [], [], False))
+        self.assertEqual(r.callees, sorted((a, "allow") for a in V.D3A_SPRINTF))
+        verdicts = {row.entry: row.verdict for row in self.real.values()}
+        closed, _ = V.closed_rows(list(self.real.values()), verdicts)
+        self.assertIn("text_number_core", {row.name for row in closed})
+
+    def test_longjmp_is_a_scan_only_stop_not_a_callee(self):
+        # Removing 0x65431 from calls without adding Spec.stop follows the tail jumps into nine
+        # runtime leaders (game_frame_head 170, game_quit_prompt 27). The scan-only stop keeps the
+        # old 161/18 leaders while closed_rows sees no longjmp callee.
+        names = {"game_frame_" + row for row in V.D5H_GF_ROWS} | {"game_quit_prompt"}
+        rows = {s.name: s for s in V.SPECS if s.name in names}
+        self.assertEqual({s.name for s in V.SPECS if 0x65431 in getattr(s, "stop", ())}, names)
+        for name, spec in rows.items():
+            self.assertEqual(getattr(spec, "stop", ()), (0x65431,), name)
+            self.assertNotIn(0x65431, {k.addr for k in spec.calls}, name)
+        self.assertEqual({name for name in names if self.real[name].weaker}, names)
+        verdicts = {row.entry: row.verdict for row in self.real.values()}
+        closed, _ = V.closed_rows(list(self.real.values()), verdicts)
+        self.assertTrue(names <= {row.name for row in closed})
+        img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
+        for name, total, without_stop in (("game_frame_head", 161, 170), ("game_quit_prompt", 18, 27)):
+            info, origs = V.spec_original(self.spec(name, cases=[]), img)
+            self.assertEqual(origs, [])
+            self.assertEqual((len(info.leaders), info.truncated), (total, False), name)
+            self.assertEqual([a for a in info.leaders if a >= 0x5D000], [], name)
+            info, _ = V.spec_original(self.spec(name, cases=[], stop=()), img)
+            self.assertEqual(len(info.leaders), without_stop, name)
+            self.assertEqual([a for a in info.leaders if a >= 0x5D000],
+                             [0x65431, 0x6544F, 0x65450, 0x65468, 0x6546A,
+                              0x65475, 0x65477, 0x65482, 0x65484], name)
+
+    def test_entering_the_restart_arm_fails_as_an_unmodeled_call(self):
+        # A future case that reaches 0x25201 must not be made to return by the old longjmp stub.
+        # With no 0x65431 call declaration, its 0x2520B tail jump enters the runtime and fails at
+        # the first unmodelled indirect call; no stub arrival is recorded.
+        spec = self.spec("game_frame_head")
+        img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
+        orig = E.run_original(img, 0x25201, calls=spec.calls)
+        self.assertIn(0x25201, orig.executed)
+        self.assertIn(0x65431, orig.executed)
+        self.assertEqual((orig.outcome, orig.detail),
+                         ("unmodeled", "indirect call to 0x6C8EA at 0x6543A"))
+        self.assertEqual(orig.calls, [])
 
     def test_a_call_set_callee_without_a_port_seam_is_a_mismatch(self):
         # 0x33950 (fighter_ctx_same) has no PR_SEAM: recorded on the original side only
@@ -32274,8 +32328,12 @@ class RealFunctionTests(unittest.TestCase):
         # rows 187 -> 188, rows with callees 844 -> 845, closed 813 -> 814 and full 806 -> 807.
         # game_frame_head's two e2-field blockers 0x25FAC/0x26194 are now VERIFIED stubs; it stays
         # open on the longjmp stub 0x65431 alone (Task 5's scan-only stop).
+        # Proof completion task 5 (record §P6): text_number_core runs D3A_SPRINTF in allow mode and
+        # closes full; the ten game_frame rows and game_quit_prompt drop the unreached longjmp stub
+        # for Spec.stop and close weak (0x249F0 joins WEAKER for its unhit restart arm). Functions
+        # and mutants are unchanged; closed 814 -> 826, full 807 -> 808, open 31 -> 19.
         self.assertIn("diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; "
-                      "814/845 rows with callees closed (188 have none); 807/845 closed on full rows; "
+                      "826/845 rows with callees closed (188 have none); 808/845 closed on full rows; "
                       "8 ported functions with no row (45 FN_ ported-unrowed: 8 portable "
                       "[5 registry-visible + 3 header-shape exceptions] + 37 runtime; "
                       "the scan-visible subset is 42 = 5 + 37). "

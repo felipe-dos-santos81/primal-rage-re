@@ -62,6 +62,7 @@ class Spec:
     mutants: tuple = ("@mutant",)    # diffrun binding suffixes that must be reported as MISMATCH
     eax_mask: int = 0xFFFFFFFF       # the part of the original's EAX the callers read (full = conservative)
     calls: tuple = ()                # E.Call entries: the callees stubbed or run on both sides, recorded (record E3 §E3.4)
+    stop: tuple = ()                 # scan-only tail-call targets: not callees, and not modelled by run_original
     gap: str = ""                    # a named gap (spec §5.2): the blocking instruction every case must stop on
 
     def __post_init__(self):
@@ -405,7 +406,7 @@ def compare(orig, port, mask=0xFFFFFFFF):
 # would fault) is named separately in record 2026-10-22-pixel-and-proof-closure §P8.3,
 # not a weaker row.
 WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1BE30, 0x1C740,
-                    0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30})
+                    0x249F0, 0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30})
 # The 8 ported functions with no differential row at all (record §J1:26; AGENTS.md's
 # WEAKER/UNROWED paragraph): "1 named gaps" is the spec NAMED_GAP count and never named
 # these.
@@ -450,7 +451,7 @@ def verify_gap(spec, image):
     """A named gap (spec §5.2): every case must stop on exactly the instruction the spec names. The
     port is not run. A case that runs through, or stops elsewhere, is a MISMATCH: the gap is stale
     or misnamed, and the function becomes a verification target again."""
-    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls] + list(spec.stop), switches=True,
                          resolved=E.RESOLVED_JUMPS)
     res = SpecResult(spec.name, spec.entry, "NAMED_GAP", len(spec.cases), 0, len(info.leaders), gap=spec.gap)
     res.weaker = spec.entry in WEAKER
@@ -470,7 +471,7 @@ def verify_gap(spec, image):
 def spec_original(spec, image):
     """The original's side of a spec: its static scan and one run per case. It does not depend on the
     binding, so a function and its mutants share it."""
-    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls] + list(spec.stop), switches=True,
                          resolved=E.RESOLVED_JUMPS)
     return info, [E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c),
                               machine=c.machine)
@@ -7544,6 +7545,11 @@ def c3g_glyph_case(ch, col, row, mode, vertical=0, cell=0, free=True, pset_idx=0
     return p
 
 
+# the runtime's sprintf 0x65546 and its tree, run from the original's bytes under the flat segments
+# (diff_emu.FLAT_SEGMENT_CALLEES names its core 0x6C8EB); the port formats with snprintf
+D3A_SPRINTF = (0x65546, 0x6C8EB, 0x6CB6C, 0x6CC9F, 0x6CE84, 0x6CCFA, 0x65533, 0x72D20, 0x72CD6)
+
+
 C3G_SPECS = [
     # 0x3C6A8 hit_slot_seed: EAX = side, EDX = value, EBX = i. 0x3C600 (desc) is a stub.
     Spec("hit_slot_seed", 0x3C6A8, [
@@ -8070,8 +8076,9 @@ C3G_SPECS = [
        eax_mask=0xFFFFFFFF,
        mutants=("@empty", "@spaces", "@rel", "@wargs", "@t30", "@t1e", "@emit", "@stop", "@cnt",
                 "@adv")),
-    # 0x2EF24 text_number_core: EAX = value, EDX = dest. 0x65546 (the libc sprintf wrapper) is a
-    # stub that writes the case's digits; the return is the strlen the raw computes itself.
+    # 0x2EF24 text_number_core: EAX = value, EDX = dest. 0x65546 (the libc sprintf wrapper) and
+    # its tree run from the original's bytes with the raw's "%i" at 0x80B40; the return is the
+    # strlen the raw computes itself.
     Spec("text_number_core", 0x2EF24, [
         Case("n0", {"eax": 42, "edx": C3G_T_DEST},
              {C3G_T_DEST: b"\xA5" * 8}),
@@ -8079,9 +8086,7 @@ C3G_SPECS = [
              {C3G_T_DEST + 0x20: b"\xA5" * 8}),
         Case("n2", {"eax": 42, "edx": C3G_T_DEST + 0x40},
              {C3G_T_DEST + 0x40: b"\xA5" * 8}),
-    ], calls=(E.Call(0x65546, ("s0", "s1", "s2"), mode="stub",
-                     writes=((0, 0, b"42\x00"),)),),
-       eax_mask=0xFFFFFFFF, mutants=("@val", "@dest", "@call", "@len")),
+    ], allow_calls=D3A_SPRINTF, eax_mask=0xFFFFFFFF, mutants=("@val", "@dest", "@call", "@len")),
     # 0x2EFD4 text_number_format: EAX = value, EDX = dest, EBX = width, ECX = pad. 0x2EF24 (the
     # core; its buffer is the raw's zero stack, by value) and 0x61A70 (the libc memset wrapper,
     # EAX/EDX/EBX = dest/fill/len) are stubs; the digits copy and the terminator stay observable.
@@ -19487,9 +19492,6 @@ D3A_SPECS += [
        mutants=("@side", "@tbl", "@c0w", "@noc0", "@noc2", "@swap", "@tie9", "@gt", "@w16", "@sext", "@val", "@second", "@order", "@r1w")),
 ]
 D3A_ERASE = E.Call(0x2C2B0, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))
-# the runtime's sprintf 0x65546 and its tree, run from the original's bytes under the flat segments
-# (diff_emu.FLAT_SEGMENT_CALLEES names its core 0x6C8EB); the port formats with snprintf
-D3A_SPRINTF = (0x65546, 0x6C8EB, 0x6CB6C, 0x6CC9F, 0x6CE84, 0x6CCFA, 0x65533, 0x72D20, 0x72CD6)
 
 
 def d3a_tail_case(ac4, side, b529, v=(0x78, 0x30, 0x77), f41=(0x00, 0x55, 0x01), aec=0xFF, strings=None):
@@ -30621,10 +30623,11 @@ D5H_SPECS += [
 # 0x24D10..0x24D20 fall to the mode switch, as under the poke, and the port's queue is empty too. The key
 # loop 0x24D26..0x24EE7 is the row game_frame_keys (track H h1 block below).
 D5H_INPUT, D5H_TRACK, D5H_UPDATE = E.Call(0x4F644, ()), E.Call(0x38990, ()), E.Call(0x2A31C, (), clobbers=("edi", "ebp"))
-# the runtime's longjmp: a tail jump at 0x2520B that never returns here. No case reaches it; the entry
-# keeps the static scan out of the runtime (a jump to a call-set address is not followed)
-D5H_LONGJMP = E.Call(0x65431, ("eax", "edx"), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
-D5H_GF_COMMON = (D5H_INPUT, D5H_TRACK, D5H_UPDATE, D5H_LONGJMP)
+# the runtime's longjmp: tail jumps at 0x2520B/0x24AB0 never return here. No case reaches either;
+# the scan-only stop keeps the static scans out of the runtime without declaring a returning stub.
+D5H_LONGJMP = 0x65431
+D5H_STOP = (D5H_LONGJMP,)
+D5H_GF_COMMON = (D5H_INPUT, D5H_TRACK, D5H_UPDATE)
 D5H_CMD, D5H_RING = E.Call(0x47208, ("eax",)), E.Call(0x461DC, ())
 D5H_T0, D5H_T6 = E.Call(0x1324C, ()), E.Call(0x25FAC, ())
 D5H_T16 = E.Call(0x26194, (), clobbers=("esi", "edi", "ebp"))
@@ -30737,7 +30740,7 @@ def d5h_gf_unhit(row):
 def d5h_gf_spec(row, cases, calls, mutants, allow=()):
     cases = [c if c.machine else dataclasses.replace(c, machine=E.Machine(keys=())) for c in cases]   # track H h1
     return Spec("game_frame_%s" % row, 0x24C5C, cases, unhit_named=d5h_gf_unhit(row), allow_calls=allow,
-                calls=D5H_GF_COMMON + calls, eax_mask=0, mutants=mutants)
+                calls=D5H_GF_COMMON + calls, stop=D5H_STOP, eax_mask=0, mutants=mutants)
 
 
 D5H_GF_HEAD_CALLS = (D5H_CMD, D5H_RING, D5H_T0, D5H_T6, D5H_T16, D5H_PUSH, D5H_CAMERA, C1_SLOT_LATCH, D5H_PSET,
@@ -33052,7 +33055,7 @@ D6A_SPECS += [
 # through its BIOS-style queue (input.c), loaded with the same words (h0_start).
 D6A_PAUSE, D6A_RESUME = E.Call(0x1D250, ()), E.Call(0x1D270, ())            # seamed here
 D6A_WAIT = E.Call(0x2EA78, ("eax",), clobbers=("edi", "ebp"))               # config_screen_wait, seamed here
-D6A_PROMPT_CALLS = (D6A_PAUSE, D1D_CURSOR, D6A_WAIT, D1D_RELEASE, D6A_RESUME, D5H_LONGJMP)
+D6A_PROMPT_CALLS = (D6A_PAUSE, D1D_CURSOR, D6A_WAIT, D1D_RELEASE, D6A_RESUME)
 D6A_PROMPT_UNHIT = {
     0x24A6F: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24A6D always jumps)",
     0x24A9C: "the soft-restart arm (a yes to ABANDON CONQUEST): 0x1D270, the config writer 0x1B084 "
@@ -33097,7 +33100,8 @@ D6A_SPECS += [
         d6a_prompt("qb", 0x00000000, (0x1E61, 0x3920, 0x1559)),
         d6a_prompt("qc", 0x00000001, (0x316E, 0x1559)),
         d6a_prompt("qd", 0x00000000, (0x4800,), yes=b""),
-    ], unhit_named=D6A_PROMPT_UNHIT, allow_calls=D1D_STR_ALLOW + (0x653ED,), calls=D6A_PROMPT_CALLS, eax_mask=0,
+    ], unhit_named=D6A_PROMPT_UNHIT, allow_calls=D1D_STR_ALLOW + (0x653ED,), calls=D6A_PROMPT_CALLS,
+       stop=D5H_STOP, eax_mask=0,
        mutants=tuple("@" + m for m in "hard32 id noflag nopause col row mode wait0 answers noupper lo hi order "
                                       "flagkeep noquit quitw norelease relid relmode noresume once ax more".split())),
 ]

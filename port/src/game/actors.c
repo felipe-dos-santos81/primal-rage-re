@@ -4315,15 +4315,14 @@ void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
     }
 }
 
-/* PORT: the harness seam for the host-libc pair the C3f text rows stub (record §C3f.2): the WATCOM
- * bodies at 0x65546/0x61A70 cannot run under unicorn (0x65546's chain leaves the image and stops
- * `undecodable bytes at 0xFF56` once its direct callees are followed, §C3f.2 correction 3; 0x61A70
- * enters 0x65490), so the rows run them mode="stub" and the port's calls must be interceptable.
- * Both are inert outside build/diffrun. Each seam records its pointer arguments as mem[] offsets
- * (0x65546's dest included); the P2.7 by-value dword form is for the text rows' own seams, whose
- * buffers are register-passed (record §P2.7). `host_memset` is exported (Task 4) for the 0x2EFD4
- * mutant core, which mirrors its call sites; `host_sprintf` stays internal, reached through
- * `text_number_core`. */
+/* PORT: the harness seams for the host-libc pair the C3f text rows use. The WATCOM sprintf tree
+ * at 0x65546 runs under unicorn through D3A_SPRINTF in the flow_26d4c/config_key_name rows and in
+ * text_number_core's own row; the 0x2EFD4 row still stubs 0x61A70 (its body enters 0x65490). The
+ * port's calls stay interceptable and both seams are inert outside build/diffrun. Each seam records
+ * its pointer arguments as mem[] offsets (0x65546's dest included); the P2.7 by-value dword form is
+ * for the text rows' own seams, whose buffers are register-passed (record §P2.7). `host_memset` is
+ * exported (Task 4) for the 0x2EFD4 mutant core, which mirrors its call sites; `host_sprintf` stays
+ * internal, reached through `text_number_core`. */
 static s32 host_sprintf(u8 *dest, const u8 *fmt, s32 value)
 {
     PR_SEAM_RET(0x65546u, (u32)(dest - mem), (u32)(fmt - mem), value);
