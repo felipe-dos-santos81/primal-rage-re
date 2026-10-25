@@ -7,6 +7,7 @@ either is absent (the other oracles skip the same way) unless PR_ORACLE_REQUIRED
 """
 import contextlib
 import dataclasses
+import hashlib
 import io
 import os
 import stat
@@ -21744,17 +21745,28 @@ D5B_CASES = [
     ("render_list@l1ysext", ['l9']),
     ("render_list@l2xsext", ['l7']),
     ("render_list@l2ysext", ['l6']),
-    ("render_list_blit@bank", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'm0', 'm1', 'm2']),
-    ("render_list_blit@rowtab", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'm0', 'm1', 'm2']),
+    ("render_list_blit@bank", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'c0', 'm0', 'm1', 'm2',
+                                  'r0', 'r1', 'r2', 'r3', 'x00', 'x01', 'x02', 'x03', 'x04', 'x05', 'x06', 'x07',
+                                  'x08', 'x09', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15', 'x16', 'x17', 'x18', 'x19',
+                                  'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26', 'x27', 'x28', 'x29', 'x30', 'x31',
+                                  'x32', 'x33', 'x34', 'x35', 'x36']),
+    ("render_list_blit@rowtab", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'c0', 'm0', 'm1', 'm2',
+                                    'r0', 'r1', 'r2', 'r3', 'x00', 'x01', 'x02', 'x03', 'x04', 'x05', 'x06', 'x07',
+                                    'x08', 'x09', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15', 'x16', 'x17', 'x18', 'x19',
+                                    'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26', 'x27', 'x28', 'x29', 'x30', 'x31',
+                                    'x32', 'x33', 'x34', 'x35', 'x36']),
     ("render_list_blit@clipb", ['b3', 'b4']),
     ("render_list_blit@noshear", ['b5', 'b7']),
     ("render_list_blit@t5", ['b5', 'm0']),
-    ("render_list_blit@nomirror", ['b0', 'b1', 'b6', 'b9', 'm1']),
+    ("render_list_blit@nomirror", ['b0', 'b1', 'b6', 'b9', 'm1', 'x00', 'x01', 'x02', 'x03', 'x04', 'x05', 'x06',
+                                      'x07', 'x08', 'x09', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15', 'x16', 'x17',
+                                      'x18', 'x19', 'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26', 'x27', 'x28',
+                                      'x29', 'x30', 'x31', 'x32', 'x33', 'x34', 'x35', 'x36']),
     ("render_list_blit@t0a", ['b0']),
-    ("render_list_blit@lr", ['b1', 'b4']),
+    ("render_list_blit@lr", ['b1', 'b4', 'c0']),
     ("render_list_blit@notop", ['b2']),
-    ("render_list_blit@nomirrorclip", ['b2', 'b3', 'b4']),
-    ("render_list_blit@stride", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']),
+    ("render_list_blit@nomirrorclip", ['b2', 'b3', 'b4', 'c0']),
+    ("render_list_blit@stride", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'c0']),
     ("sprite_blit@t0", ['k2']),
     ("sprite_blit@t3", ['k3']),
     ("sprite_blit@t5", ['k4']),
@@ -33251,6 +33263,62 @@ class SpanCensusTests(unittest.TestCase):
             "%s/%s (0x%X)" % (target_class[a][0], target_class[a][1], a) for a in missing))
         self.assertEqual(arrived, reps)                         # one per live class, no dead one
         self.assertEqual({target_class[a] for a in arrived}, live)
+
+    @needs_unicorn
+    def test_the_exhaustive_fixture_reaches_every_live_writer_and_both_clip_path(self):
+        """Proof completion §P4: the deterministic 37-row stream, split into one-row differential
+        cases only for diffrun's 40-poke case limit, and the four-part 128-pset raw sweep arrive at
+        every reachable writer target. The 18-pset clipped case also executes both renderers'
+        both-edges entries and calls the 14/15-word-tail writers through those clipped paths."""
+        spec = [s for s in V.SPECS if s.name == "render_list_blit"][0]
+        xids = ["x%02d" % i for i in range(37)]
+        rids = ["r%d" % i for i in range(4)]
+        self.assertEqual([c.id for c in spec.cases if c.id.startswith("x")], xids)
+        self.assertEqual([c.id for c in spec.cases if c.id.startswith("r")], rids)
+        self.assertEqual([c.id for c in spec.cases if c.id == "c0"], ["c0"])
+        self.assertEqual(len(V.D5B_X_ROWS), 37)
+        self.assertEqual(len(V.D5B_X_STREAM), 8434)
+        self.assertEqual(hashlib.sha256(V.D5B_X_STREAM).hexdigest(),
+                         "96d6ddfe14b1aec2dbcac9cb0e7b590806060d54c26971685a16494bf4fc5a11")
+        self.assertEqual(len(V.D5B_X_RAW_ITEMS), 128)
+        self.assertEqual([(i[1], i[2]) for i in V.D5B_X_RAW_ITEMS], [(-k, k) for k in range(128)])
+        self.assertEqual(len(V.D5B_X_CLIP_ITEMS), 18)
+        self.assertEqual(V.D5B_X_CLIP_ITEMS,
+                         tuple((V.D5B_X_CLIP, -a, 2 * (a - 1), 0) for a in range(1, 10))
+                         + tuple((V.D5B_X_CLIP | 0x8000, 329 - a, 18 + 2 * (a - 1), 0)
+                                 for a in range(1, 10)))
+        cases = {c.id: c for c in spec.cases}
+        self.assertEqual([(c.id, len(c.pokes)) for c in [cases[i] for i in xids + rids + ["c0"]]
+                          if len(c.pokes) > 40], [])
+
+        writers = {t for name, _, t in self.slots() if name in SPAN_WRITERS}
+        targets = writers | {SPAN_CHUNK}
+        expected = targets - {SPAN_DEAD}
+        self.assertEqual(len(writers), 385)
+        self.assertEqual(len(targets), 386)
+        self.assertEqual(len(expected), 385)             # 384 reachable slots + the out-of-table chunk
+        self.assertEqual(len(V.D5B_SPAN_REACHABLE), 385)
+        self.assertEqual(set(V.D5B_SPAN_REACHABLE), expected)
+        self.assertEqual(set(V.D5B_BLIT_ALLOW) & targets, expected)
+        self.assertNotIn(SPAN_DEAD, V.D5B_BLIT_ALLOW)
+        calls = tuple(E.Call(a, (), mode="real") for a in sorted(expected))
+        arrived = set()
+        for cid in xids + rids:
+            c = cases[cid]
+            o = E.run_original(self.img, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=calls)
+            self.assertEqual(o.outcome, "ok", "%s: %s" % (cid, o.detail))
+            arrived |= {a for a, _ in o.calls}
+        missing = expected - arrived
+        self.assertEqual(missing, set(), "missing targets: %s" % ", ".join("0x%X" % a for a in sorted(missing)))
+        self.assertEqual(arrived, expected)
+        self.assertNotIn(SPAN_DEAD, arrived)
+
+        tail = {self.u32(SPAN_TABLES[t][0] + 4 * n) for t in ("fill_fwd", "fill_bwd") for n in (14, 15)}
+        o = E.run_original(self.img, spec.entry, cases["c0"].regs, cases["c0"].pokes, spec.allow_calls,
+                           calls=tuple(E.Call(a, (), mode="real") for a in sorted(tail)))
+        self.assertEqual(o.outcome, "ok", "c0: %s" % o.detail)
+        self.assertEqual({0x5D580, 0x582F4} - o.executed, set(), "missing both-edges renderer path")
+        self.assertEqual({a for a, _ in o.calls}, tail, "the clipped paths must reach both 14/15-word tails")
 
     def test_the_e2_triage_split_is_227_and_158(self):
         # The 231 span-writer rows of the committed E2 table are 227 of these writers plus the four

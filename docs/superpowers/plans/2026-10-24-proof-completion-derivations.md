@@ -620,3 +620,220 @@ destination) and keeps its b0..b9 pin. No tail/carry mutant exists in this row
 to add a case for; the bank-carry behaviour is exercised by the byte
 comparison (`m0`..`m2` all draw with bank `0xFE`, and `@bank` now fails in all
 three).
+
+---
+
+## P4 — The exhaustive span-writer and both-edges fixture (Task 3)
+
+Task 3 keeps §P3's class proof and extends the same `render_list_blit` row to
+every reachable writer target, then covers the two clipped renderers'
+both-edges entries. The target arithmetic follows ruling R9: **385 writer
+slots**, plus the reachable out-of-table `0x5D110`, make **386 distinct writer
+targets**; the arrived set is **385 = 384 reachable slots + `0x5D110`**, and the
+one absent target is the dead `0x57E3C`. The plan's `384/385` is the slot-only
+reading, not a reason to omit the 386th target.
+
+### P4.1 The committed generator and the measured stream
+
+`d5b_x_rows()` in `tools/diff_verify.py` is the committed generator. It packs
+literal runs 0..127 followed by fill runs 0..63, whole and in that order, into
+320-pixel rows, then pads each row with transparent runs of at most 63 pixels.
+Literal `n` carries bytes `0x40 + ((n+i)&0x3F)`; fill `n` carries colour
+`0x40+n`. With bank byte `0xFE` (offset `0xFD`), every drawn pixel exercises
+the dword bank carry. The 37 rows are concatenated in `D5B_X_STREAM`.
+
+Measured from that function's own output:
+
+```
+rows                 37
+bytes                8434
+sha256               96d6ddfe14b1aec2dbcac9cb0e7b590806060d54c26971685a16494bf4fc5a11
+unpadded run bytes   8384 (8256 literal + 128 fill)
+transparent controls 50 (8434 - 8384), 1696 transparent padding pixels
+```
+
+Reproduce from the repo root:
+
+```bash
+python3 - <<'PY'
+import hashlib
+import tools.diff_verify as V
+print(len(V.D5B_X_ROWS), len(V.D5B_X_STREAM))
+print(hashlib.sha256(V.D5B_X_STREAM).hexdigest())
+PY
+# 37 8434
+# 96d6ddfe14b1aec2dbcac9cb0e7b590806060d54c26971685a16494bf4fc5a11
+```
+
+The coverage test pins all three of rows, byte length and hash. As a negative
+check, changing only `D5B_X_STREAM`'s final byte in memory made it fail with
+actual hash `a1cc60f26e56a834e3b8fb7c007ca765dd30f625fc9684c22da389ad64d6255a`
+against the pin above; restoring it made the test green again.
+
+### P4.2 Resource, list and destination layout
+
+The fixture uses preloaded resource **entry 3**, whose record starts at
+`0x10A63C`: its payload pointer at `0x10A64C` is `0x100000`, and
+`d4b_at(0x018xxxxx)` resolves into that payload. The earlier two entries and
+all old cases are unchanged apart from carrying this additional resource
+record.
+
+| object | handle | resolved address / extent |
+|---|---|---|
+| RLE descriptor | `0x01800000` | `0x100000` |
+| raw descriptor | `0x01800010` | `0x100010` |
+| clipped descriptor | `0x01800020` | `0x100020` |
+| 8,434-byte RLE stream | `0x01802000` + row offset | `0x102000..0x1040F2` (end exclusive) |
+| 128 raw bytes `0x50..0xCF` | `0x01804100` | `0x104100..0x104180` |
+| 28-byte, two-row clipped stream | `0x01804200` | `0x104200..0x10421C` |
+| list nodes | — | `0x0F0000` |
+| psets | — | `0x0F1000` |
+| back buffer | — | `0x0F2000` |
+
+The list placement is clear of the layer-1 global `0xF0AEC`. Every used row-table
+entry is `y*320+0x40`; `d5b_x_rowtab()` packs those entries into 64-byte pokes.
+The destination is otherwise left at the image's zero bytes (`seed=False`), so
+no large buffer-seed pokes hide the fixture's own writes. The transparent runs
+have no writer target; every nonempty literal/fill run draws nonzero
+bank-adjusted output.
+
+### P4.3 Why the differential cases are split (R10)
+
+`diffrun`'s `case_t` has **40 pokes of 64 bytes**
+(`port/tests/diff_runner.c`). One 8,434-byte stream needs 132 data pokes before
+its descriptor/list pokes, and the 128-pset raw list alone needs 80 packed
+pokes. Raising that limit or adding a generated-poke protocol would be the
+harness rewrite the spec's NG6 excludes. The fixture therefore preserves the
+exact generated stream and sweep but partitions their differential execution:
+
+- **x00..x36:** one row per case, 37 cases. Each has a height-one, width-320
+  descriptor pointing at that row's offset in the one concatenated stream, and
+  two psets: normal `0x0210` at `(0,0)` and hflip `0x8210` at `(319,100)`. The
+  normal pset is at `(0,0)`; the hflip origin rewrite gives `xorg=319` and
+  `node.x=0`. The union covers every literal run 0..127 and fill run 0..63 in
+  both directions. These cases carry 21..26 pokes each.
+- **r0..r3:** 32 psets per case, 128 in all. The raw descriptor is width `-128`,
+  height `-1`; item `k` is at `x=-k, y=k` (`k=0..127`), hence `vis=128-k` and
+  literal-forward writer indices 1..128, including `0x81110[128] = 0x5D110`.
+  Each case carries exactly 40 pokes.
+- **c0:** the 18 clipped psets in one two-row case, 32 pokes.
+
+The coverage test rejects any new case with more than 40 pokes, so a later
+fixture edit cannot silently fall off the C parser's end. This partitioning is
+not a claim that one 37-row sprite was executed in a single case: multi-row
+RLE sequencing remains covered by the existing b* cases and by c0's two rows,
+while the exhaustive claim is the generated stream identity, per-row byte
+equivalence and arrived-target union.
+
+### P4.4 The 18 both-edges clipped psets
+
+`D5B_X_CLIP_STREAM` is two identical 14-byte rows. Each row's fill lengths are
+
+```
+16, 63, 63, 63, 63, 46, 16       # 330 pixels, colours 0x41..0x47
+```
+
+The descriptor is width 330, height 2. For every `a=1..9`:
+
+- normal pset `0x0212` is at `x=-a`, `y=2*(a-1)`;
+- hflip pset `0x8212` is at screen `x=329-a`, `y=18+2*(a-1)`; its origin rewrite
+  gives `xorg=329`, hence `node.x=-a` as required.
+
+Both have `clip_l=a` and `clip_r=10-a`, so both edges are nonzero and the visible
+width is 320. The leading and trailing 16-pixel fills have visible lengths
+`16-a` and `6+a` (swapped by hflip), covering 7..15 and specifically the 14/15
+word tails. The 18 psets occupy distinct pairs of destination rows.
+
+The original run executes **`0x5D580`** (normal clipped RLE's both-edges entry)
+and **`0x582F4`** (mirrored clipped RLE's both-edges entry). The coverage test
+asserts both instruction addresses, and also records the four writer arrivals
+that prove the clipped paths, not merely the unclipped fixture, reach the
+word-tail bodies: forward `0x585F0`/`0x58600` (14/15) and backward
+`0x52284`/`0x52294` (14/15). The test also pins all 18 ids and coordinates;
+duplicating the `a=1` normal pset in place of `a=2` fails that assertion.
+Removing the nine hflip psets in memory made the test fail with `0x582F4` in
+`missing both-edges renderer path`; restoring them made it green.
+
+### P4.5 The measured arrived set and the allow list
+
+The coverage test decodes the five tables from the fixup-applied image, derives
+`targets = (the 385 writer slots) | {0x5D110}`, checks `len(targets) == 386`,
+and expects `targets - {0x57E3C}` exactly. It runs x00..x36 and r0..r3 with all
+385 expected writers as `real` recorded calls. Measured result:
+
+```
+writer slots                  385
+distinct targets              386 (385 slots + 0x5D110)
+expected reachable targets    385 (384 reachable slots + 0x5D110)
+arrived targets               385
+missing targets               none
+dead 0x57E3C arrivals         none
+both-edges entries            0x5D580, 0x582F4
+clipped 14/15 arrivals        0x585F0, 0x58600, 0x52284, 0x52294
+```
+
+`D5B_SPAN_REACHABLE` is the explicit 385-address form of that measured set.
+`D5B_BLIT_ALLOW` is now **395 distinct entries = ten non-writer entries + 385
+writers**, up from 51; the 344 added entries are all reached by the fixture.
+The test also intersects the allow list with the image's 386 targets and
+requires that intersection to equal the arrived set, so neither an unreached
+writer nor the dead writer can be added silently.
+
+The RED/GREEN and mutation evidence is:
+
+1. **RED before the fixture:** the new coverage test failed its first assertion
+   with `Lists differ: [] != ['x00', 'x01', ... 'x36']` (37 missing cases).
+2. **GREEN:** after the fixture landed, the focused test passed in 0.747 s;
+   `SpanCensusTests` then passed 7/7 in 0.795 s. The real row passed
+   **55 cases, 30/30 blocks, VERIFIED**.
+3. **One target drop:** in x36, replacing fill 63's two bytes `BF 7F` with
+   transparent 63 + transparent 0 (`FF C0`) preserves the byte count and pixel
+   count but removes that writer in both directions. The test failed with
+   `missing targets: 0x52948, 0x58C84`; restoring `BF 7F` made it green.
+4. **Clip drop:** removing c0's nine hflip psets failed on missing `0x582F4`.
+5. **Stream identity:** the final-byte mutation in §P4.1 failed the sha256 pin.
+
+No case exposed a port divergence: all 55 real cases compare byte-exactly.
+
+### P4.6 Re-measured `D1_CASES` and the unchanged gate
+
+The exact mutant-catching case sets were re-measured from
+`verify_all(..., mutants=True)`'s own `problems`, not inferred from the fixture:
+
+| mutant | measured case set |
+|---|---|
+| `@bank`, `@rowtab` | b0..b9, c0, m0, m1, m2, r0..r3, x00..x36 |
+| `@nomirror` | b0, b1, b6, b9, m1, x00..x36 |
+| `@lr` | b1, b4, c0 |
+| `@nomirrorclip` | b2, b3, b4, c0 |
+| `@stride` | b0..b9, c0 |
+| `@clipb`, `@noshear`, `@t5`, `@t0a`, `@notop` | unchanged |
+
+All 11 mutants remain `MISMATCH` with kind `byte`. The focused pin check was
+green for all 11; removing c0 from `@lr`'s expected set then failed with
+`['b1', 'b4', 'c0'] != ['b1', 'b4']`, proving the new pin fails in the tested
+direction. The one-row x and raw cases do not catch `@stride`; c0's second row
+does.
+
+Final Task 3 verification:
+
+```
+$ make diff-verify
+Ran 224 tests in 149.221s
+OK
+render_list_blit | 0x14328 | 55 | 30/30 | VERIFIED
+... 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps;
+813/844 rows with callees closed (187 have none); 806/844 closed on full rows;
+8 ported functions with no row ...
+
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+$ make entry-triage
+Ran 44 tests ... OK
+entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
+```
+
+The differential counter is byte-identical to §P1.2, the E2 table is unchanged,
+and no portable function or capture/pixel/state pin moved.

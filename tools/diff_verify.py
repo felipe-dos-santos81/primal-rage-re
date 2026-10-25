@@ -23010,8 +23010,9 @@ D4B_SPECS += [
 
 # ---- 0x16308 / 0x1631C / 0x41030: the sprite resolve, the row clamp and the RLE row decode --------
 # The resource fixture is C2b's (a preloaded INDEX entry, so 0x1B544's fast path 0x1B569 and the
-# port's res_resolve agree), with a second entry so a handle's index is not a constant.
+# port's res_resolve agree), with second and third entries so a handle's index is not a constant.
 D4B_RES2 = 0x10AA00                # entry 2's payload base (entry 1's is C2B_RES_DATA)
+D4B_RES3 = 0x100000                # entry 3's payload base: the exhaustive span fixture (record §P4)
 D4B_SPR = 0x800040                 # the sprite header's handle: entry 1, offset 0x40
 D4B_STREAM, D4B_ALT = 0x800100, 0x1000020    # the stream handles at the header's +8 and (a mutant's) +4
 D4B_TABLE_A, D4B_TABLE_B = 0xFD160, 0xFEDE0  # the two row tables (0x16372/0x16379)
@@ -23020,12 +23021,13 @@ D4B_TABLE_A, D4B_TABLE_B = 0xFD160, 0xFEDE0  # the two row tables (0x16372/0x163
 def d4b_res():
     return {C2B_RES_PTR: le32(C2B_RES_TABLE), C2B_RES_N: le32(0x100),
             C2B_RES_TABLE + 0x14 + 0x0C: le32(0x01000000) + le32(C2B_RES_DATA),
-            C2B_RES_TABLE + 0x28 + 0x0C: le32(0x01000000) + le32(D4B_RES2)}
+            C2B_RES_TABLE + 0x28 + 0x0C: le32(0x01000000) + le32(D4B_RES2),
+            C2B_RES_TABLE + 0x3C + 0x0C: le32(0x01000000) + le32(D4B_RES3)}
 
 
 def d4b_at(handle):
     """The linear address a fixture handle resolves to."""
-    return (C2B_RES_DATA, D4B_RES2)[(handle >> 23) - 1] + (handle & 0x7FFFFF)
+    return (C2B_RES_DATA, D4B_RES2, D4B_RES3)[(handle >> 23) - 1] + (handle & 0x7FFFFF)
 
 
 def d4b_handle_slot(ch, index):
@@ -26614,25 +26616,27 @@ def d5b_rl_item(sid, px, py, layer=0, pal=0x0010A5C0, shifted=False):
 
 
 def d5b_rl(cid, items, g38=0x0040, g3a=0x0100, g3e=0x0200, g4e=0x0030, aec=0x00001940, cam=D5B_RL_CAM,
-           sprites=None, extra=None):
+           sprites=None, extra=None, node_base=D5B_RL_NODE, pset_base=D5B_RL_PSET):
     """The list head 0x105B44 between seeded dwords, one 8-byte node and one 0x20-byte pset per item (the
     pset seeded around the fields 0x14328 reads), the three sprites' table dwords and headers, and the
     globals of the layer 1 and 2 rules: the words 0x107A38, 0x107A3A, 0x107A3E, 0x107A4E and the dword
-    0xF0AEC, each between seeded bytes."""
-    p = {**d4b_res(), 0x105B40: le32(0x40404040) + le32(D5B_RL_NODE if items else 0) + le32(0x48484848),
+    0xF0AEC, each between seeded bytes. `node_base`/`pset_base` relocate the two arrays; both are packed
+    into 64-byte pokes so the exhaustive fixture stays within diffrun's 40-poke case limit."""
+    p = {**d4b_res(), 0x105B40: le32(0x40404040) + le32(node_base if items else 0) + le32(0x48484848),
          0x107A36: le16(0x3636) + le16(g38) + le16(g3a) + le16(0x3C3C) + le16(g3e) + le16(0x4040),
          0x107A4C: le16(0x4C4C) + le16(g4e) + le16(0x5050),
          0xF0AE8: le32(0xE8E8E8E8) + le32(aec) + le32(0xF0F0F0F0)}
     for uid, (h, hdr, pix) in (sprites or D5B_RL_SPRITES).items():
         p[0xA8B30 + uid * 4] = le32(h)
         p[d4b_at(h) - 2] = b"\xee\xee" + b"".join(le16(v) for v in hdr) + le32(pix) + b"\xdd\xdd"
-    nodes = b""
+    nodes, psets = b"", b""
     for i, (sid, x, y, layer, pal) in enumerate(items):
-        nodes += le32(D5B_RL_NODE + (i + 1) * 8 if i + 1 < len(items) else 0) + le32(D5B_RL_PSET + i * 0x20)
-        p[D5B_RL_PSET + i * 0x20] = (le16(sid) + le16(0x0202) + le32(x) + le32(y) + le16(0x0C0C) + le16(layer)
-                                     + le32(0x10101010) + le32(0x14141414) + le32(pal) + le32(0x1C1C1C1C))
+        nodes += le32(node_base + (i + 1) * 8 if i + 1 < len(items) else 0) + le32(pset_base + i * 0x20)
+        psets += (le16(sid) + le16(0x0202) + le32(x) + le32(y) + le16(0x0C0C) + le16(layer)
+                  + le32(0x10101010) + le32(0x14141414) + le32(pal) + le32(0x1C1C1C1C))
     if nodes:
-        d5b_poke(p, D5B_RL_NODE, nodes)
+        d5b_poke(p, node_base, nodes)
+        d5b_poke(p, pset_base, psets)
     p.update(extra or {})
     return Case(cid, {"eax": 0x105B44, "edx": cam[0], "ebx": cam[1]}, p)
 
@@ -26708,39 +26712,114 @@ D5B_R, D5B_W = 0x0200, 0x0201
 D5B_BL_ROWS = {0: 0x40, 2: 0x80, 198: 0xC0}       # the 0x1088F8 row offsets the cases use (the renderers step 320)
 
 
-def d5b_bl(cid, items, off, bank=6, shear=(0x0100, 0x0120, 0x00E0, 0x0141), sprites=None, more=None, **kw):
+def d5b_bl(cid, items, off, bank=6, shear=(0x0100, 0x0120, 0x00E0, 0x0141), sprites=None, more=None,
+           rows=None, seed=True, **kw):
     """A d5b_rl list over the two blit sprites, the back buffer pointer, the row offsets, the palette
     entry (bank byte `bank`), the shear table 0x107900, and the buffer seeded under the rows at `off`:
-    x 0..127 and 296..319 of four rows. `sprites` replaces the sprite table, `more` adds pokes."""
+    x 0..127 and 296..319 of four rows. `sprites` replaces the sprite table, `more` adds pokes, `rows`
+    replaces the row-offset map and `seed=False` leaves the destination at its image bytes."""
     extra = {0xE87A0: le32(0xA0A0A0A0) + le32(D5B_BUF) + le32(0xA8A8A8A8),
              D5B_PAL: le32(0x11111111) + le32(0x22222222) + bytes([bank, 0x33, 0x33, 0x33]) + le32(0x44444444),
              d4b_at(0x800100) - 4: b"\xbf" * 4 + D5B_RLE + b"\xbf" * 16,
              d4b_at(0x800180) - 8: bytes(range(0xE0, 0xE8)) + D5B_RAWPIX + bytes(range(0xF0, 0xFC)),
              0x107900 - 2: le16(0x7777) + b"".join(le16(v) for v in shear) + le16(0x7878)}
-    for y, o in D5B_BL_ROWS.items():
+    for y, o in (D5B_BL_ROWS if rows is None else rows).items():
         extra[0x1088F8 + y * 4] = le32(o)
-    for r in range(4):
-        base = D5B_BUF + off + r * 320
-        extra[base] = d5b_bytes(0x900 + r, 64)
-        extra[base + 64] = d5b_bytes(0x910 + r, 64)
-        extra[base + 296] = d5b_bytes(0x920 + r, 24)
+    if seed:
+        for r in range(4):
+            base = D5B_BUF + off + r * 320
+            extra[base] = d5b_bytes(0x900 + r, 64)
+            extra[base + 64] = d5b_bytes(0x910 + r, 64)
+            extra[base + 296] = d5b_bytes(0x920 + r, 24)
     extra.update(more or {})
     return d5b_rl(cid, [d5b_rl_item(i[0], i[1], i[2], i[3], D5B_PAL, shifted=len(i) > 4) for i in items],
                   sprites=sprites or D5B_BL_SPRITES, extra=extra, **kw)
 
 
-# 0x51E5C, the six renderers of its table 0x80C8C (and the table's `ret` 0x51E58), and every unrolled copy
-# routine (writer) the cases reach by `call [table]` on their run lengths: the b* cases' 13 and the class
-# fixture's 37 (m0..m2, record §P3; 9 overlap, so 28 are new; any other target stops the run).
-D5B_BLIT_ALLOW = (0x14268, 0x1B544, 0x51E5C, 0x51E58, 0x5D218, 0x58CBD, 0x5215C, 0x57F80, 0x5D28F, 0x57FFB,
-                  0x521F0, 0x5222C, 0x529A0, 0x529C4, 0x52A18, 0x58564, 0x58578, 0x5859C, 0x58D20, 0x58D2C, 0x58D40,
-                  0x58D4C, 0x58D90,
-                  # the class fixture: the backward/forward fill and literal tables' runs 0..7, the fills'
-                  # 14/15 word tails, and the raw 128-byte chunk 0x5D110 (0x81110[128] == 0x81310[0])
-                  0x521DC, 0x521E0, 0x521E8, 0x521FC, 0x52204, 0x52210, 0x5221C, 0x52284, 0x52294,
-                  0x52980, 0x52984, 0x52990, 0x529B4, 0x529DC, 0x529F8,
-                  0x58550, 0x58554, 0x5855C, 0x58570, 0x58580, 0x5858C, 0x585F0, 0x58600,
-                  0x58CBC, 0x58D14, 0x58D60, 0x58D74, 0x5D110)
+# Every reachable unrolled copy routine (writer), decoded from the fixup-applied image's four tables
+# (record §P2/§P4): 384 reachable writer slots plus the out-of-table 0x81110[128] = 0x81310[0] =
+# 0x5D110. The dead 0x80E0C[128] = 0x57E3C is deliberately absent. The coverage test decodes the same
+# tables and requires this set to equal the arrivals, so an unreachable or missing entry fails closed.
+D5B_X_FILL_BWD = (
+    0x521DC, 0x521E0, 0x521E8, 0x521F0, 0x521FC, 0x52204,
+    0x52210, 0x5221C, 0x5222C, 0x52238, 0x52244, 0x52254,
+    0x52268, 0x52274, 0x52284, 0x52294, 0x522A8, 0x522B8,
+    0x522CC, 0x522E0, 0x522F8, 0x5230C, 0x52324, 0x5233C,
+    0x52358, 0x52370, 0x52388, 0x523A4, 0x523C0, 0x523D8,
+    0x523F4, 0x52410, 0x52430, 0x5244C, 0x5246C, 0x5248C,
+    0x524B0, 0x524D0, 0x524F4, 0x52518, 0x52540, 0x52564,
+    0x52588, 0x525B0, 0x525D8, 0x525FC, 0x52624, 0x5264C,
+    0x52678, 0x526A0, 0x526CC, 0x526F8, 0x52728, 0x52754,
+    0x52784, 0x527B4, 0x527E8, 0x52818, 0x52848, 0x5287C,
+    0x528B0, 0x528E0, 0x52914, 0x52948,
+)
+D5B_X_LIT_BWD = (
+    0x52980, 0x52984, 0x52990, 0x529A0, 0x529B4, 0x529C4,
+    0x529DC, 0x529F8, 0x52A18, 0x52A30, 0x52A50, 0x52A74,
+    0x52AA0, 0x52AC4, 0x52AF0, 0x52B20, 0x52B54, 0x52B80,
+    0x52BB4, 0x52BEC, 0x52C2C, 0x52C64, 0x52CA4, 0x52CE8,
+    0x52D30, 0x52D70, 0x52DB8, 0x52E04, 0x52E58, 0x52EA4,
+    0x52EF8, 0x52F50, 0x52FAC, 0x53000, 0x5305C, 0x530BC,
+    0x53124, 0x53184, 0x531EC, 0x53258, 0x532C8, 0x53330,
+    0x533A0, 0x53414, 0x53490, 0x53504, 0x53580, 0x53600,
+    0x53684, 0x53700, 0x53784, 0x5380C, 0x5389C, 0x53924,
+    0x539B4, 0x53A48, 0x53AE0, 0x53B70, 0x53C08, 0x53CA4,
+    0x53D48, 0x53DE4, 0x53E88, 0x53F30, 0x53FDC, 0x54080,
+    0x5412C, 0x541DC, 0x54294, 0x54344, 0x543FC, 0x544B8,
+    0x54578, 0x54630, 0x546F0, 0x547B4, 0x54880, 0x54944,
+    0x54A10, 0x54AE0, 0x54BB4, 0x54C80, 0x54D54, 0x54E2C,
+    0x54F0C, 0x54FE4, 0x550C4, 0x551A8, 0x55290, 0x55370,
+    0x55458, 0x55544, 0x55638, 0x55724, 0x55818, 0x55910,
+    0x55A0C, 0x55B00, 0x55BFC, 0x55CFC, 0x55E04, 0x55F04,
+    0x5600C, 0x56118, 0x56228, 0x56330, 0x56440, 0x56554,
+    0x56670, 0x56784, 0x568A0, 0x569C0, 0x56AE4, 0x56C00,
+    0x56D24, 0x56E4C, 0x56F7C, 0x570A4, 0x571D4, 0x57308,
+    0x57440, 0x57570, 0x576A8, 0x577E4, 0x57928, 0x57A64,
+    0x57BA8, 0x57CF0,
+)
+D5B_X_FILL_FWD = (
+    0x58550, 0x58554, 0x5855C, 0x58564, 0x58570, 0x58578,
+    0x58580, 0x5858C, 0x5859C, 0x585A4, 0x585B0, 0x585C0,
+    0x585D4, 0x585E0, 0x585F0, 0x58600, 0x58614, 0x58624,
+    0x58638, 0x5864C, 0x58664, 0x58678, 0x5868C, 0x586A4,
+    0x586BC, 0x586D0, 0x586E8, 0x58700, 0x5871C, 0x58734,
+    0x58750, 0x5876C, 0x5878C, 0x587A8, 0x587C8, 0x587E8,
+    0x5880C, 0x5882C, 0x5884C, 0x58870, 0x58894, 0x588B4,
+    0x588D8, 0x588FC, 0x58924, 0x58948, 0x58970, 0x58998,
+    0x589C4, 0x589EC, 0x58A18, 0x58A44, 0x58A74, 0x58AA0,
+    0x58ACC, 0x58AFC, 0x58B2C, 0x58B58, 0x58B88, 0x58BB8,
+    0x58BEC, 0x58C1C, 0x58C50, 0x58C84,
+)
+D5B_X_LIT_FWD = (
+    0x58CBC, 0x58D14, 0x58D20, 0x58D2C, 0x58D40, 0x58D4C,
+    0x58D60, 0x58D74, 0x58D90, 0x58DA4, 0x58DC0, 0x58DDC,
+    0x58E00, 0x58E1C, 0x58E40, 0x58E64, 0x58E90, 0x58EB4,
+    0x58EE0, 0x58F0C, 0x58F40, 0x58F6C, 0x58FA0, 0x58FD4,
+    0x59010, 0x59044, 0x59080, 0x590BC, 0x59100, 0x5913C,
+    0x59180, 0x591C4, 0x59210, 0x59254, 0x592A0, 0x592EC,
+    0x59340, 0x5938C, 0x593E0, 0x59434, 0x59490, 0x594E4,
+    0x59540, 0x5959C, 0x59600, 0x5965C, 0x596C0, 0x59724,
+    0x59790, 0x597F4, 0x59860, 0x598CC, 0x59940, 0x599AC,
+    0x59A20, 0x59A94, 0x59B10, 0x59B84, 0x59C00, 0x59C7C,
+    0x59D00, 0x59D7C, 0x59E00, 0x59E84, 0x59F10, 0x59F94,
+    0x5A020, 0x5A0AC, 0x5A140, 0x5A1CC, 0x5A260, 0x5A2F4,
+    0x5A390, 0x5A424, 0x5A4C0, 0x5A55C, 0x5A600, 0x5A69C,
+    0x5A740, 0x5A7E4, 0x5A890, 0x5A934, 0x5A9E0, 0x5AA8C,
+    0x5AB40, 0x5ABEC, 0x5ACA0, 0x5AD54, 0x5AE10, 0x5AEC4,
+    0x5AF80, 0x5B03C, 0x5B100, 0x5B1BC, 0x5B280, 0x5B344,
+    0x5B410, 0x5B4D4, 0x5B5A0, 0x5B66C, 0x5B740, 0x5B80C,
+    0x5B8E0, 0x5B9B4, 0x5BA90, 0x5BB64, 0x5BC40, 0x5BD1C,
+    0x5BE00, 0x5BEDC, 0x5BFC0, 0x5C0A4, 0x5C190, 0x5C274,
+    0x5C360, 0x5C44C, 0x5C540, 0x5C62C, 0x5C720, 0x5C814,
+    0x5C910, 0x5CA04, 0x5CB00, 0x5CBFC, 0x5CD00, 0x5CDFC,
+    0x5CF00, 0x5D004,
+)
+D5B_SPAN_REACHABLE = D5B_X_FILL_FWD + D5B_X_FILL_BWD + D5B_X_LIT_FWD + D5B_X_LIT_BWD + (0x5D110,)
+
+# 0x51E5C, the six renderers of its table 0x80C8C (and the table's `ret` 0x51E58), plus every writer
+# above: ten non-writer entries and 385 writer targets, 395 distinct allow entries in all.
+D5B_BLIT_ALLOW = ((0x14268, 0x1B544, 0x51E5C, 0x51E58, 0x5D218, 0x58CBD, 0x5215C, 0x57F80, 0x5D28F, 0x57FFB)
+                  + D5B_SPAN_REACHABLE)
 
 # ---- the minimal class-complete span fixture (record §P3) ----------------------------------------------
 # One 85-pixel RLE row in 56 bytes: literals 0..7 and fills 0..7, 14 and 15. A fill's control byte is
@@ -26758,6 +26837,99 @@ D5B_M_SPRITES = {D5B_M_RLE: (D5B_M_HANDLE, (85, 1, 0, 0), D5B_M_HANDLE | 0x10),
 D5B_M_POKES = {}
 d5b_poke(D5B_M_POKES, d4b_at(D5B_M_HANDLE | 0x10), D5B_M_STREAM)
 d5b_poke(D5B_M_POKES, d4b_at(D5B_M_HANDLE | 0x60), D5B_M_PIX)
+
+# ---- the exhaustive span fixture (record §P4) -----------------------------------------------------------
+# Literal runs 0..127 followed by fill runs 0..63, greedily packed whole into 320-pixel rows and padded
+# with transparent runs (63 pixels maximum per control). Literal n has bytes 0x40 + ((n+i)&0x3F), fill n
+# has colour 0x40+n; bank 0xFE therefore makes every drawn pixel's bank add carry. This generator is the
+# reproducible source of the 37-row / 8,434-byte stream whose length and sha256 the coverage test pins.
+def d5b_x_rows():
+    rows, row, used = [], bytearray(), 0
+    for literal, n in [(True, n) for n in range(128)] + [(False, n) for n in range(64)]:
+        if used + n > 320:
+            rows.append((row, used))
+            row, used = bytearray(), 0
+        if literal:
+            row.append(n)
+            row += bytes(0x40 + ((n + i) & 0x3F) for i in range(n))
+        else:
+            row += bytes((0x80 | n, 0x40 + n))
+        used += n
+    if row:
+        rows.append((row, used))
+    out = []
+    for row, used in rows:
+        left = 320 - used
+        while left:
+            n = min(left, 63)
+            row.append(0xC0 | n)
+            left -= n
+        out.append(bytes(row))
+    return tuple(out)
+
+
+D5B_X_ROWS = d5b_x_rows()
+D5B_X_STREAM = b"".join(D5B_X_ROWS)
+D5B_X_RLE, D5B_X_RAW, D5B_X_CLIP = 0x0210, 0x0211, 0x0212
+D5B_X_HANDLE = 0x01800000                  # resource entry 3 -> 0x100000 (D4B_RES3)
+D5B_X_RLE_DESC = D5B_X_HANDLE
+D5B_X_RAW_DESC, D5B_X_CLIP_DESC = D5B_X_HANDLE + 0x10, D5B_X_HANDLE + 0x20
+D5B_X_RLE_PIX, D5B_X_RAW_PIX, D5B_X_CLIP_PIX = D5B_X_HANDLE + 0x2000, D5B_X_HANDLE + 0x4100, D5B_X_HANDLE + 0x4200
+D5B_X_RAW_BYTES = bytes(range(0x50, 0xD0))
+D5B_X_RAW_ITEMS = tuple((D5B_X_RAW, -k, k, 0) for k in range(128))
+D5B_X_CLIP_ITEMS = (tuple((D5B_X_CLIP, -a, 2 * (a - 1), 0) for a in range(1, 10))
+                    + tuple((D5B_X_CLIP | 0x8000, 329 - a, 18 + 2 * (a - 1), 0) for a in range(1, 10)))
+# Each row is 16 + 4*63 + 46 + 16 = 330 pixels. At x=-a the clips are a and 10-a, so the leading/trailing
+# 16-pixel fills have visible lengths 16-a and 6+a (swapped by hflip): a=1..9 covers 7..15, including the
+# 14/15 word-tail paths through both clipped renderers. Two identical rows make @stride discriminating.
+D5B_X_CLIP_ROW = b"".join(bytes((0x80 | n, 0x41 + i))
+                           for i, n in enumerate((16, 63, 63, 63, 63, 46, 16)))
+D5B_X_CLIP_STREAM = D5B_X_CLIP_ROW * 2
+D5B_X_NODE, D5B_X_PSET = 0x0F0000, 0x0F1000  # clear of the layer-1 global 0xF0AEC and the buffer 0xF2000
+
+
+def d5b_x_rowtab(ys):
+    """Row table entries y*320+0x40, packed by contiguous y range into 64-byte pokes."""
+    p, ys, start = {}, sorted(ys), 0
+    for i in range(1, len(ys) + 1):
+        if i < len(ys) and ys[i] == ys[i - 1] + 1:
+            continue
+        d5b_poke(p, 0x1088F8 + ys[start] * 4,
+                 b"".join(le32(y * 320 + 0x40) for y in ys[start:i]))
+        start = i
+    return p
+
+
+def d5b_x_rle_case(i):
+    """One row of D5B_X_STREAM, forward and mirrored. Splitting rows is only diffrun's 40-poke limit:
+    the concatenation in D5B_X_ROWS is the pinned 37-row stream, and the union is the exhaustive claim."""
+    p = d5b_x_rowtab((0, 100))
+    offset = sum(len(row) for row in D5B_X_ROWS[:i])
+    d5b_poke(p, d4b_at(D5B_X_RLE_PIX + offset), D5B_X_ROWS[i])
+    return d5b_bl("x%02d" % i, [(D5B_X_RLE, 0, 0, 0), (D5B_X_RLE | 0x8000, 319, 100, 0)], 0x40,
+                  bank=0xFE, sprites={D5B_X_RLE: (D5B_X_RLE_DESC, (320, 1, 0, 0), D5B_X_RLE_PIX + offset)},
+                  more=p, rows={}, seed=False, node_base=D5B_X_NODE, pset_base=D5B_X_PSET)
+
+
+def d5b_x_raw_case(part):
+    """32 of the 128 raw psets: x=-k, y=k, hence vis=128-k and literal-forward writers 1..128."""
+    p = d5b_x_rowtab(range(part * 32, (part + 1) * 32))
+    d5b_poke(p, d4b_at(D5B_X_RAW_PIX), D5B_X_RAW_BYTES)
+    return d5b_bl("r%d" % part, D5B_X_RAW_ITEMS[part * 32:(part + 1) * 32], 0x40, bank=0xFE,
+                  sprites={D5B_X_RAW: (D5B_X_RAW_DESC, (-128, -1, 0, 0), D5B_X_RAW_PIX)},
+                  more=p, rows={}, seed=False, node_base=D5B_X_NODE, pset_base=D5B_X_PSET)
+
+
+def d5b_x_clip_case():
+    p = d5b_x_rowtab(range(36))
+    d5b_poke(p, d4b_at(D5B_X_CLIP_PIX), D5B_X_CLIP_STREAM)
+    return d5b_bl("c0", D5B_X_CLIP_ITEMS, 0x40, bank=0xFE,
+                  sprites={D5B_X_CLIP: (D5B_X_CLIP_DESC, (330, 2, 0, 0), D5B_X_CLIP_PIX)},
+                  more=p, rows={}, seed=False, node_base=D5B_X_NODE, pset_base=D5B_X_PSET)
+
+
+D5B_X_CASES = ([d5b_x_rle_case(i) for i in range(len(D5B_X_ROWS))]
+               + [d5b_x_raw_case(i) for i in range(4)] + [d5b_x_clip_case()])
 
 # ---- 0x51E5C: the span blit's own entry, on the paths that leave the node as it was ----------------------
 D5B_SB_NODE = 0x10A900
@@ -26834,6 +27006,10 @@ D5B_SPECS += [
                sprites=D5B_M_SPRITES, more=D5B_M_POKES),
         d5b_bl("m2", [(D5B_M_RAW, 10, 2, 0)], 0x80, bank=0xFE,
                sprites=D5B_M_SPRITES, more=D5B_M_POKES),
+        # x00..x36: the generated 37-row stream, one row per case solely for diffrun's 40-poke limit;
+        # r0..r3: the 128-pset raw vis sweep in four 32-pset cases; c0: the 18 both-edges clipped psets.
+        # Their union reaches every D5B_SPAN_REACHABLE target, and c0 reaches 0x5D580/0x582F4 (record §P4).
+        *D5B_X_CASES,
     ], allow_calls=D5B_BLIT_ALLOW, eax_mask=0xFFFFFFFF,
        mutants=("@bank", "@rowtab", "@clipb", "@noshear", "@t5", "@nomirror", "@t0a", "@lr", "@notop",
                 "@nomirrorclip", "@stride")),
