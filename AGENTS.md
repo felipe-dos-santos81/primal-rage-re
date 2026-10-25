@@ -383,7 +383,7 @@ consolidation gate).
   **The claims are the ending content and the finisher reaction, not the fight**: the WIN_MENU
   path, the seven land marks, the `0x10789E` damage and the `DEATH_DONE` pokes are harness writes,
   so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) is
-  a named gap: Task 8 was declined (its two permitted attempts are spent) and all eight `GP_U14_*`
+  a named gap: the endgame-truth plan's Task 8 was declined (its two permitted attempts are spent) and all eight `GP_U14_*`
   pins are empty, so `gp-u14-oracle` keeps its absent-capture skip. U13's post-script tail is
   claimed (record §E9): `port_script`'s opt-in `--end-to-last-s` runs the script to the capture's
   last `S` (f=10068), the 5891..5903 tail is byte-identical to the replay's own 4940..4952 frames,

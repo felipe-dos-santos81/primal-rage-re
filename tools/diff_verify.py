@@ -35273,7 +35273,8 @@ class NonPortable:
     below it, a classified address reads its own class and one the decomp index never lists as a
     function reads `e2-field` (E2's triage field; the census's "call targets never listed as functions
     in the decomp index", record G §G3). A listed function reads None: a porting target, which never
-    leaves a row open (the 8 ported functions without a row — the named gaps — are in this set).
+    leaves a row open (the 8 ported functions without a row — the `UNROWED` functions, not named
+    gaps — are in this set).
 
     Frozen so a test's flipped table is a new value; the `dict` field makes it unhashable, and
     nothing hashes it."""
@@ -35384,7 +35385,7 @@ def closed_rows(funcs, verdicts, outside=None):
     *and* the port tree does not implement it (`NonPortable.excused`). A recorded *stub* or `real`
     callee outside the portable set still keeps the row open: the declaration a stub applies, and the
     arrival a `real` mode records, are exactly what a row of the callee's own would verify. A ported
-    function with no row of its own (the 8 named gaps) is in the portable set and always keeps the
+    function with no row of its own (the 8 `UNROWED` functions) is in the portable set and always keeps the
     row open. `outside` is `non_portable()`; a flipped `NonPortable` compares under a mutated class
     entry. Rows with no callee are counted apart, so they cannot make the figure look closer than it
     is (record §E3.4)."""

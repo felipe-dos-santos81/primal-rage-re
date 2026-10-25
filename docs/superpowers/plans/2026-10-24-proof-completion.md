@@ -78,7 +78,7 @@ The spec implies these failure modes; each gets a test in the task named.
 
 **Interfaces:**
 - Consumes: the `d5b_bl` helper/resource region and the existing `render_list_blit` b0–b9 cases.
-- Produces: three cases in `render_list_blit` (normal 85×1 RLE, hflip 85×1 RLE, raw 128) that reach all 26 live writer classes; 37 new allow targets; a coverage unittest that proves the class set; re-measured `D1_CASES`/mutant pins.
+- Produces: three cases in `render_list_blit` (normal 85×1 RLE, hflip 85×1 RLE, raw 128) plus a fourth pset (layer-1 `ret`) that reach all 26 live writer classes; 37 writer targets of which 28 are new allow entries (9 of the existing 13 overlap); a coverage unittest that proves the class set; re-measured `D1_CASES`/mutant pins.
 
 - [ ] **Step 1: Write the failing coverage test.** Add a test that runs the original through `E.run_original` on the three new payloads with the writer families as `real` calls and asserts the arrived **target** set covers every live class. (`E.Call` records the target address, not the table slot; the 25 duplicate slots are a separate count.) Expected: FAIL (the cases do not exist).
 
@@ -103,9 +103,9 @@ The spec implies these failure modes; each gets a test in the task named.
   8E 2F
   8F 30
   ```
-  Three psets: normal `0x0230` at `(10,2)` type 1; hflip `0x8230` at `(84,2)` type 9; raw `0x0231` at `(10,2)` with descriptor width `-128`/height `-1`, 128 source bytes, type 2. Use palette bank byte `0xFE` (bank offset `0xFD`) so the dword carries make the word-tail classes observable. The pokes fit `D4B_RES2` (`0x10AA00..0x10B0D0`).
+  Three psets: normal `0x0230` at `(10,2)` type 1; hflip `0x8230` at `(84,2)` type 9; raw `0x0231` at `(10,2)` with descriptor width `-128`/height `-1`, 128 source bytes, type 2. A fourth pset (the same `0x0230` at `(10,99)` layer 1 → type 5 → the bare `ret`) is required to reach the 26th class, which no control byte selects. Use palette bank byte `0xFE` (bank offset `0xFD`) so the dword carries make the word-tail classes observable. The pokes fit `D4B_RES2` (`0x10AA00..0x10B0D0`).
 
-- [ ] **Step 3: Add the allow addresses.** Add the 37 writer targets reached by the three cases to `D5B_BLIT_ALLOW` (the existing 13 overlap). Do not add `0x57E3C` (dead). The row remains allow-mode for the writers; the coverage test is the claim that each arrived.
+- [ ] **Step 3: Add the allow addresses.** Add the 37 writer targets reached by the three cases to `D5B_BLIT_ALLOW` (9 of the existing 13 overlap, so 28 entries are new, not 24). Do not add `0x57E3C` (dead). The row remains allow-mode for the writers; the coverage test is the claim that each arrived.
 
 - [ ] **Step 4: Re-measure the pins.** Run `make diff-verify` and the unittest; update `D1_CASES`/the mutant case lists at `tools/tests/test_diff_verify.py:21747-21757` from the failure output. Confirm `@bank`, `@rowtab` and `@nomirror` are still caught; if a tail/carry mutant is not, add a case rather than weakening a pin.
 
@@ -124,19 +124,19 @@ The spec implies these failure modes; each gets a test in the task named.
 
 **Interfaces:**
 - Consumes: Task 2's helper and coverage test.
-- Produces: a 37-row / 8,434-byte deterministic RLE stream and a 128-pset raw sweep that reach all **384 reachable** writer targets (385 total, one dead); 18 both-edges clipped psets that reach `0x5D580`/`0x582F4`; optionally the shear 128/top-clip case. The class proof remains even if the exhaustive case is deferred; the phase gate treats 384/385 and both-clip as required.
+- Produces: a 37-row / 8,434-byte deterministic RLE stream and a 128-pset raw sweep that reach all **385 reachable** writer targets (386 distinct: 384 reachable slots + the out-of-table `0x5D110`, one dead); 18 both-edges clipped psets that reach `0x5D580`/`0x582F4`; optionally the shear 128/top-clip case. The class proof remains even if the exhaustive case is deferred; the phase gate treats 385/386 and both-clip as required.
 
-- [ ] **Step 1: Generate the exhaustive RLE stream.** Pack literal runs 0..127 and fill runs 0..63 into 320-wide rows (greedy, transparent padding): 37 rows, 8,434 bytes. Commit the generator (or pin the stream's length and sha256) so the 384/385 claim is reproducible. Place the descriptor/stream at `0x100000`/`0x102000` through resource entry 3 (`0x10A63C`), list nodes/psets at `0x0F0000`/`0x0F1000`, avoiding `0xF0AEC`. Normal pset `0x0210` at `(0,0)`; hflip `0x8210` at `(319,100)`; bank `0xFE`; row table `y*320+0x40` so `@rowtab` remains discriminating.
+- [ ] **Step 1: Generate the exhaustive RLE stream.** Pack literal runs 0..127 and fill runs 0..63 into 320-wide rows (greedy, transparent padding): 37 rows, 8,434 bytes. Commit the generator (or pin the stream's length and sha256) so the 385/386 claim is reproducible. Place the descriptor/stream at `0x100000`/`0x102000` through resource entry 3 (`0x10A63C`), list nodes/psets at `0x0F0000`/`0x0F1000`, avoiding `0xF0AEC`. Normal pset `0x0210` at `(0,0)`; hflip `0x8210` at `(319,100)`; bank `0xFE`; row table `y*320+0x40` so `@rowtab` remains discriminating.
 
 - [ ] **Step 2: Generate the raw sweep.** Descriptor width `-128`/height `-1`, 128 source bytes, 128 psets at `x=-k, y=k`, `k=0..127`, so `vis=128-k` reaches `0x81110[1..128]` including `0x5D110`.
 
 - [ ] **Step 3: Add the both-edges clipped cases.** A width-330, two-row RLE sprite at `x=-a` for `a=1..9` (normal: `clip_l=a`, `clip_r=10-a`; hflip at screen x `329-a`, `xorg=329`, node.x=-a), with leading/trailing 16-pixel runs so visible lengths 15/14 exercise the word tail through the clipped paths. Reaches `0x5D580` (normal both-clip) and `0x582F4` (hflip both-clip).
 
-- [ ] **Step 4: Extend the allow list and coverage test.** Add all 384 reachable targets and the renderer both-clip entries to the allow mode; extend the coverage test to assert 384/385 (the dead `0x57E3C` named) and the two both-clip addresses. If a target is unreachable in the fixture, fix the payload or record a named exclusion; do not add an address that the fixture cannot reach.
+- [ ] **Step 4: Extend the allow list and coverage test.** Add all 385 reachable targets and the renderer both-clip entries to the allow mode; extend the coverage test to assert 385/386 (the dead `0x57E3C` named) and the two both-clip addresses. If a target is unreachable in the fixture, fix the payload or record a named exclusion; do not add an address that the fixture cannot reach.
 
 - [ ] **Step 5: Re-measure and run.** Update `D1_CASES`/mutant pins; run `make diff-verify`; the counter must be unchanged. If a case exposes a real port divergence, stop and write a new task/record section; do not change the payload to hide it.
 
-- [ ] **Step 6: Record and commit.** §P4 records the generator/hash, the psets, the 384/385 reached set, the mutations and the 1 dead writer. Commit (when authorized): `diff: prove every reachable span-writer target and clip path`.
+- [ ] **Step 6: Record and commit.** §P4 records the generator/hash, the psets, the 385/386 reached set, the mutations and the 1 dead writer. Commit (when authorized): `diff: prove every reachable span-writer target and clip path`.
 
 ---
 
@@ -154,7 +154,7 @@ The spec implies these failure modes; each gets a test in the task named.
 
 - [ ] **Step 1: Write the `flow_card_ramp_step` cases.** Cover below the clamp (`+0x2C = 0xFF0`), at `0x1000`, above `0x8010`, and the byte wrap `0xFF10`; mutants `@nocarry`, `@signed`, `@bit`; EAX mask 0. Confirm the row's blocks all execute.
 
-- [ ] **Step 2: Write the `flow_bonus_card_b_step` cases.** State 0 below/at the clamp; state 1 timer > 0 and = 0; state 2 w≠0 and = 0; state `0x80`. Stub `0x2BC30` with EAX/EDX/s0, pop 4, clobbers EDX; stub `0x2B150` with EAX. Mutants for the clamp/timer/state/bit paths. The row should be 8/8 blocks and closed because both callees have VERIFIED rows.
+- [ ] **Step 2: Write the `flow_bonus_card_b_step` cases.** State 0 below/at the clamp; state 1 timer > 0 and = 0; state 2 w≠0 and = 0; state `0x80`. Stub `0x2BC30` with EAX/EDX/s0, pop 4, clobbers EDX; stub `0x2B150` with EAX. Mutants for the clamp/timer/state/bit paths. The row should be 12/12 blocks (not 8/8 — each state's test and return arm is its own scan leader) and closed because both callees have VERIFIED rows.
 
 - [ ] **Step 3: Add the rows and re-measure.** Add the two `Spec`s, the two `diff_runner.c` bindings and their mutant branches, update the exact-name/mask/kind/case pins, and run:
   ```bash

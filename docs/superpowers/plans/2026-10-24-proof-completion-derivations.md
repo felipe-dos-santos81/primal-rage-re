@@ -2373,3 +2373,115 @@ subset is 42 = 5 + 37). ...
 All three are byte-identical to the §P5.4/§P7.5 pins: the docs pass adds no
 `FN_` function, no row and no E2 row.
 
+---
+
+## P13 — The full gate, the pin-failure proofs, and the closure (Task 12)
+
+Task 12 ran the phase's full gate, proved each new pin class fails one step,
+corrected the design/plan/README/AGENTS predictions to the measured line, and
+closed the phase. It adds no capture, no portable game code, no row and no
+pin: the only source edits are three comment rewordings (`tools/diff_verify.py`
+`NonPortable`/`closed_rows`, `tools/tests/test_diff_verify.py`
+`RealFunctionTests`) from "the 8 named gaps" to "the 8 `UNROWED` functions".
+
+### P13.1 The full gate
+
+```
+$ PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify
+gate: captures 34/35 present, 1 missing (strict=1, pins_exact=1)
+gate: declared gap (absent): data/k11-captures/gp-u14-win-live
+...
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37). ...
+entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
+== symbols.h must regenerate byte-identically ==
+all checks passed
+# exit 0
+```
+
+The full log is `/tmp/opencode/task12-full-gate.log` (the `diff-verify` unittest
+ran `234 tests in 611.299s` under `PR_DIFF_FULLSCAN=1`). Every value equals its
+§P12.1 pin: the gate prints 34/35 present plus the declared U14 gap; `diff-verify`
+prints the 1033/1033 line byte-identically; K11 prints both identity lines
+(`poll.log` sha256 + frame count match); all 26 `order: 0 failures` lines (24 gp
++ 2 K11) and every `GP_*_MAX_MISSING` / front-end 30 / attract 74 / attract2 126
+coverage line match; `entry-triage` is byte-identical to a fresh run;
+`symbols.h` regenerates byte-identically; and **no** `improved:` or `re-pin`
+line appears (`grep -c` is 0). No pin drifted, so no re-pin commit was needed.
+
+### P13.2 The pin-failure proofs
+
+Each new pin class was moved one step, the focused check failed, and the
+mutation was restored (nothing mutated was committed):
+
+| pin class | mutation | focused check | failure text (verbatim) |
+|---|---|---|---|
+| `GP_*_MAX_MISSING` (+1) | idle-loss `--max-missing 29 -> 30` | `PR_PINS_EXACT=1 tools/gp_compare.py --scenario gp-idle-loss ... --max-missing 30` against the gate's retained dump | `gp_compare: gp-idle-loss: frames: coverage: FAIL: 29 missing class(es) < pinned 30; re-pin to 29 (PR_PINS_EXACT=1)` (exit 1) |
+| K11 identity (wrong sha) | walk `--capture-sha256 ...391e` (last hex digit flipped) | `tools/k11_compare.py --capture .../walk ...` | `k11_compare: walk: capture: FAIL: poll.log sha256 ...391f (171 frames) != the pinned ...391e (171 frames); re-measure every content pin ...` (exit 1) |
+| K11 identity (wrong count) | walk `--capture-frames 171 -> 170` | the same | `... (171 frames) != the pinned ... (170 frames); re-measure every content pin ...` (exit 1) |
+| order rule (predicate) | `order_splice_exhibited` body -> `return {N, N + 1}` (unfiltered) | `test_order_rejects_a_degenerate_splice_rewind` | `AssertionError: Tuples differ: (0, None) != (1, None) ... 'gp_compare: t: order: 0 failures (3 classified frames)'` — the rewind is laundered |
+| span coverage (drop one target) | `D5B_SPAN_REACHABLE` loses `0x5D110` | `test_the_exhaustive_fixture_reaches_every_live_writer_and_both_clip_path` | `AssertionError: 384 != 385` |
+| differential counter (one digit) | the counter pin `1033/1033 -> 1034/1034` | `test_the_self_check_counts_functions_mutants_gaps_and_closed_rows` | `AssertionError` — the self-check prints `1033/1033`, the mutated pin asserts `1034/1034` |
+| `PR_PINS_EXACT` improvement (pin one above) | idle-loss `--min-reach 6300 -> 6299` | `PR_PINS_EXACT=1 tools/gp_compare.py ... --min-reach 6299` | `gp_compare: gp-idle-loss: frames: FAIL: window reach port 6300 > pinned reach 6299; re-pin to 6300 (PR_PINS_EXACT=1)` (exit 1) |
+
+Every mutation was restored and its focused check re-passed (the order test and
+the span test re-ran OK; the counter string, `D5B_SPAN_REACHABLE` and the two
+compare flags are byte-identical to their committed forms — `grep` for the
+mutation markers returns nothing). None of the six failed to fail, so none was
+removed.
+
+### P13.3 The doc and record corrections
+
+- **Design** (`docs/superpowers/specs/2026-10-24-proof-completion-design.md`):
+  Status -> "Implemented and gated"; §7's `14990 -> 14993`; §6.1/§7's
+  "384 reachable / 384/385" -> "385 reachable of 386 / 385/386"; §1's
+  "31 open rows ... 12 entries whose row is weaker" -> "20 open rows (19
+  distinct addresses) ... 15 `WEAKER`". The "down by two -> one" full-row
+  correction was already applied by Task 11 (§P12.2).
+- **Plan** (`docs/superpowers/plans/2026-10-24-proof-completion.md`): Task 2's
+  "37 new allow targets" / "the existing 13 overlap" -> "37 writer targets, 9
+  overlap, 28 new"; Task 2's "three psets" -> the fourth layer-1 `ret` pset;
+  Task 3's `384 reachable / 384/385` -> `385 reachable / 385/386`; Task 4's
+  "8/8 blocks" -> "12/12 blocks".
+- **README**: "1033/1033 specs over 907 distinct original entries" gained the
+  provenance "905 before Task 4's two card-step rows (§P5)" (907 = 905 + 2,
+  the two card-step rows of Task 4). The 66% Ghidra qualifier and
+  `799 1203 66` / `759 759 100` are unchanged.
+- **AGENTS**: E18 "Task 8 was declined" -> "the endgame-truth plan's Task 8 was
+  declined". The current-state differential numbers (1033/14993/825/845/807/845,
+  20/15/8, 385/386) were already the measured ones (Task 11).
+- **Harness comments**: the three "the 8 named gaps" -> "the 8 `UNROWED`
+  functions" (`tools/diff_verify.py` `NonPortable` and `closed_rows`;
+  `tools/tests/test_diff_verify.py` `RealFunctionTests`); `diff-verify` prints
+  0 named gaps, not 8.
+- **`.gitignore`**: the dead `port/tests/title_screen_ref.ppm` entry (no
+  producer or reader, E6) is removed.
+
+The numbers in this record and in the docs are the measured ones — the
+`make diff-verify` line, the `port_progress.py` output and the `gate`/oracle
+lines of §P13.1 — not the design/plan's predictions.
+
+### P13.4 The regression suite (Step 4)
+
+The full gate already covers the C suite (`PR_ORACLE_REQUIRED=1
+PR_FN_MISS_REQUIRED=1 ... ./build/run_tests` after `--check 820` printed
+`all checks passed`), the diff harness (`Ran 234 tests ... OK`), `make
+entry-triage` (unchanged, §P13.1) and the tool module tests. Re-run explicitly:
+
+```
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+$ make entry-triage
+OK
+entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
+
+$ python3 -m unittest tools.tests.test_gp_compare tools.tests.test_k11_compare \
+    tools.tests.test_title_compare tools.tests.test_gp_keys tools.tests.test_tick_vector
+Ran 155 tests in 3.485s
+OK
+```
+
+`port_progress` and `entry-triage` are unchanged (byte-identical to §P12.3);
+the five new-pin tool modules pass 155 tests.
+

@@ -1,8 +1,10 @@
 # Proof Completion — design
 
-Status: proposed, 2026-10-24. Follows the endgame truth phase; the
+Status: Implemented and gated, 2026-10-24. Follows the endgame truth phase; the
 differential frontier, the span-writer consolidation, the gate's self-report
-and the capture oracles' claim width are its subject.
+and the capture oracles' claim width are its subject. The measured outcome is
+the derivation record `docs/superpowers/plans/2026-10-24-proof-completion-derivations.md`
+§P1–§P13; §7's predicted figures are superseded by those measurements.
 
 ## 1. Intent and why
 
@@ -11,10 +13,11 @@ indexed functions (66%) and 759 of 759 portable ones (100%). What is not
 complete is the proof. The gate is green, but four proof surfaces are narrower
 than a reader would take them to be:
 
-- **The differential frontier.** `make diff-verify` reports 31 open rows, 8
-  portable functions with no row, 12 entries whose row is weaker (a code poke,
-  an unreachable block, or a declared terminal difference), and 0 named gaps.
-  The open rows read as unfinished work even where no row can exist.
+- **The differential frontier.** `make diff-verify` reported 31 open rows, 8
+  portable functions with no row and 12 weaker entries at the phase's start; it
+  now reports 20 open rows (19 distinct addresses), 8 `UNROWED` and 15 `WEAKER`
+  entries — each with a declared reason — and 0 named gaps. The open rows read
+  as unfinished work even where no row can exist.
 - **The span-writer consolidation.** The original reaches 385 unrolled copy
   routines through four tables. The port replaces them with four C loops, but
   the differential row exercises only 11 of 27 code-shape classes; the comment
@@ -157,20 +160,22 @@ the metric inflation the closure rule was written to prevent.
 **Span writers.** The 385 writer targets divide into 27 code-shape classes by
 table index and direction: fill/literal, forward/backward, run length 1..3,
 4 mod 4, 1 mod 4, 2 mod 4, 3 mod 4, the 14/15 word-tail classes, the 128-byte
-chunk, and the bare `ret`. One of the 385 is dead (`0x57E3C`, index 128 of
-`0x80E0C`), so the reachable set is **384 targets**. The class-complete
+chunk, and the bare `ret`. One of the 385 slots is dead (`0x57E3C`, index 128 of
+`0x80E0C`), so the reachable set is **385 targets** — 384 reachable slots plus
+the out-of-table `0x81110[128] = 0x81310[0] = 0x5D110` (a reachable 128-byte
+writer). The class-complete
 fixture is one 56-byte RLE row (literals 0..7, fills 0..7/14/15) drawn three
 ways — normal at `(10,2)`, hflip at `(84,2)`, and a 128-byte raw row — with
 the palette bank byte `0xFE` so the dword carries make the word-tail quirk
 observable. It reaches all 26 live classes. The exhaustive fixture is the
 37-row, 8,434-byte deterministic stream (literal 0..127, fill 0..63) plus 128
-raw psets at `vis = 128..1`, which reaches all 384 reachable writer targets
+raw psets at `vis = 128..1`, which reaches all 385 reachable writer targets
 and names the dead one. The clipped renderers' both-edges paths (`0x5D580`,
 `0x582F4`) need a width-330, two-row sprite at `x = -1..-9`; the shear
 128/top-clip path is optional. A unittest runs `E.run_original` with the
 writers recorded as `real` calls and asserts the arrived target set, so a
 later payload edit cannot silently shrink the claim. The fixture generator is
-committed (or its exact output pinned by length and hash) so 384/385 is
+committed (or its exact output pinned by length and hash) so 385/386 is
 reproducible.
 
 **Rows.** `flow_card_ramp_step` (`0x25FAC`, a leaf) and
@@ -315,7 +320,7 @@ universe.
 ## 7. Acceptance
 
 - **Differential:** `make diff-verify` reads approximately `1033/1033
-  functions VERIFIED; 14990/14990 mutants detected; 0 named gaps; 825/845
+  functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845
   rows with callees closed (188 have none); 807/845 closed on full rows; 8
   ported functions with no row` (the exact line is re-measured and pinned;
   the arithmetic is a check, not a target). The 12 open rows that close are
@@ -324,7 +329,7 @@ universe.
   the thirteenth closed row. The short-write case reopens `config_file_save`
   on the `0x6C4CF` terminal, so the 20 open rows are the declared terminals
   and the weaker entries number 15.
-- **Span:** 26/26 reachable classes reached by the minimal fixture; 384/385
+- **Span:** 26/26 reachable classes reached by the minimal fixture; 385/386
   distinct writers by the exhaustive fixture (the dead `0x57E3C` named);
   both clipped renderer both-edges paths hit; every mutant pin re-measured;
   the coverage unittest fails if a payload edit drops a class.

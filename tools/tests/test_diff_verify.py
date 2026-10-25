@@ -32534,7 +32534,7 @@ class RealFunctionTests(unittest.TestCase):
         # fighter_think_side, fighter_pass_a and fighter_pass_a_al stay open instead of closing on a row
         # that can exist (0x28D68/0x3E4C4 are the same shape; their rows block elsewhere too). The
         # classes come from the repo's tables (V.non_portable()); a recorded stub or real callee outside
-        # the set, and any ported function without a row (the 8 named gaps), still keep the row open.
+        # the set, and any ported function without a row (the 8 `UNROWED` functions), still keep the row open.
         # Closed 716 -> 774 (+58): 49 rows whose only open callees are runtime allow-mode callees, 4
         # E2-field + runtime, 3 host-owned + runtime, 1 E2-field alone and 1 host-owned alone (the
         # pre-port-code-check set of 63 less the five above).

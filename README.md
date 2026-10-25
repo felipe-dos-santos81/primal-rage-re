@@ -43,7 +43,8 @@ character endings, the game-over/high-score flows. Two claims back that:
   bytes in unicorn against the port's C functions from the same image,
   comparing every changed byte, the return register, the ordered calls (with
   the memory changed so far at each) and the block coverage. Its `functions
-  VERIFIED` label counts **1033/1033 specs over 907 distinct original entries**;
+  VERIFIED` label counts **1033/1033 functions** — 1033 specs over 907
+  distinct original entries (905 before Task 4's two card-step rows, §P5);
   **14993/14993 mutants are detected** and there are **0 named gaps**. Of the
   845 rows with callees, **825 are closed** (188 callee-less rows are counted
   apart) and **807 are closed on full rows**. The **20 open rows** are declared

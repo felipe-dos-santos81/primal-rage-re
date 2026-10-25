@@ -18,7 +18,6 @@ data/
 
 # Deliberately untracked copies of the game's own bytes
 port/tests/ghidra_data.bin
-port/tests/title_screen_ref.ppm
 
 # Tooling state
 _tools/ghidra_proj/
