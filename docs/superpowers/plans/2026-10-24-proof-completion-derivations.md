@@ -837,3 +837,156 @@ entry-triage: 579 candidates (575 by U0's rule); ... span-writer=231 ...
 
 The differential counter is byte-identical to §P1.2, the E2 table is unchanged,
 and no portable function or capture/pixel/state pin moved.
+
+---
+
+## P5 — The two ported card steps' rows (Task 4)
+
+`flow_card_ramp_step` (`0x25FAC`) and `flow_bonus_card_b_step` (`0x26194`) are
+update-table entries the port implements, opens with `PR_SEAM0`, and had no row;
+each was a blocker in a comment on `game_frame_head`'s row. Task 4 gives both a
+row and adds no port code (`git diff` touches only the harness and the record).
+
+### P5.1 The raw bytes
+
+Both disassembled from the fixup-applied image (`./build/diffrun --exe
+data/game/C/PRAGE.EXE --image-out`, base `0x10000`); Ghidra has no function for
+either address, so these are the scan's own leaders.
+
+`0x25FAC..0x25FD9` — `push edx; mov eax,[0x104acc]; inc byte [eax+0x2d]; xor
+edx,edx; mov dx,[eax+0x2c]; cmp edx,0x1000; jl 0x25FD8; mov dh,[0x104ae8]; and
+dh,0xbf; mov word [eax+0x2c],0x1000; mov [0x104ae8],dh; pop edx; ret`. Three
+leaders (`0x25FAC`, `0x25FC3`, `0x25FD8`). The increment is a byte at `+0x2D`,
+i.e. `+0x100` added to the word at `+0x2C` with **no carry out of it**
+(`0xFF10 -> 0x0010`); the compare is on the zero-extended word (`mov dx`,
+`cmp edx,0x1000; jl`), so every word `0x1000..0xFFFF` takes the clamp — the
+signed-negative `0x8000..0xFFFF` included, because the 16-bit subtraction
+`edx - 0x1000` is `0x7000..0xEFFF` (SF = 0, OF = 0) and `jl` is not taken. The
+clamp loads the byte, clears bit `0x40` and stores it back (a read-modify-write,
+not a blind `and` of a constant). EDX is pushed/popped and EAX is overwritten.
+
+`0x26194..0x26253` — `push ebx; push ecx; push edx; mov al,[0x104b0f]; cmp
+al,1; jb 0x261AE; jbe 0x261F4; cmp al,2; je 0x26226; ...` Twelve leaders:
+`0x26194`, `0x261A0`, `0x261A2`, `0x261AA`, `0x261AE`, `0x261B6`, `0x261DA`,
+`0x261F4`, `0x26206`, `0x26226`, `0x2623E`, `0x26250`. **Plan conflict: the
+plan says the row "should be 8/8 blocks".** The scan's measured total is 12
+(each state's test, each return-only arm and the shared `pop/pop/pop/ret` tail
+is its own leader); the row is 12/12. The plan's number is recorded here and in
+the task report, and the measured one is pinned. The state word is the byte
+`0x104B0F`: 0 adds `0x80` to the record's word `+0x2C` (`0x261BB..0x261CA`, a
+16-bit store; the `jl` on the zero-extended word as above), at or above
+`0x1000` stores `0x1000`, `0x104B10 = 0x3C` and state 1; 1 decrements the timer
+(`dec dl`, signed `jg 0x26250`) and at or below 0 stores state 2 *then* calls
+`0x2BC30(card, 0xE91D4, 1.0)` (the float is pushed, `ret 4`); 2 subtracts
+`0x200` (`sub edx,0x200`, the word stored, unsigned `ja` on `dx`), at zero
+stores 0, calls `0x2B150(card)` and clears `0x104AEA` bit `0x01`; anything else
+returns at `0x261AA`. Both callees are recorded stubs: `0x2BC30` takes
+EAX/EDX/`[esp+4]` (the frame bits) and pops 4, clobbering EDX; `0x2B150` takes
+EAX and preserves the rest (the `_CALLEE_CLOBBER_FIXES` entry, record §C2b.3).
+
+### P5.2 The cases and the measured coverage
+
+`flow_card_ramp_step` (mask 0: the `0x24CEF` dispatcher reloads EAX):
+
+| case | record word `+0x2C` | after the increment | expected |
+|---|---|---|---|
+| p0 | 0x0EF0 | 0x0FF0 | below the clamp: no write to `+0x2C`, `0x104AE8` unchanged |
+| p1 | 0x0F00 | 0x1000 | at it: word 0x1000, `0x104AE8` 0xFF -> 0xBF |
+| p2 | 0x7F10 | 0x8010 | zero-extended, still clamps: word 0x1000, `0x104AE8` 0x7F -> 0x3F |
+| p3 | 0xFF10 | 0x0010 | `+0x2D` wraps, no carry into `+0x2E`: no clamp |
+
+Every case seeds `+0x2E`/`+0x2F` (`aa bb`) and `0x104AE8`, so a carry out of
+`+0x2D` and a wrong bit are both visible. 3/3 leaders hit.
+
+`flow_bonus_card_b_step` (mask 0, the same dispatcher), 10 cases:
+
+| case | state `0x104B0F` | word | timer | expected |
+|---|---|---|---|---|
+| q0 | 0 | 0x0F00 | 0x55 | 0x0F80 < 0x1000: return, no write |
+| q1 | 0 | 0x0F80 | 0x00 | 0x1000: clamp, word 0x1000, timer 0x3C, state 1 |
+| q2 | 0 | 0xFFF0 | 0x55 | 0x0070: the truncated word, no clamp |
+| q3 | 0 | 0x7F90 | 0x00 | 0x8010: zero-extended, still clamps |
+| q4 | 1 | 0x1234 | 0x02 | timer 1 > 0: return |
+| q5 | 1 | 0x1234 | 0x01 | timer 0: state 2, `0x2BC30(card, 0xE91D4, 1.0)` |
+| q6 | 1 | 0x1234 | 0x00 | timer 0xFF: signed-negative, the same arm |
+| q7 | 2 | 0x0300 | 0x00 | 0x0100 != 0: return, word stored |
+| q8 | 2 | 0x0200 | 0x00 | 0: word 0, `0x2B150(card)`, `0x104AEA` 0xFF -> 0xFE |
+| q9 | 0x80 | 0x0300 | 0x00 | above 2: return, state unchanged |
+
+12/12 leaders hit, nothing named unhit.
+
+### P5.3 The mutants and the measured pins
+
+Ten mutants, each a plausible porting bug; the kind set and the exact cases
+that alone catch it were measured from `verify_all(..., mutants=True)`'s own
+`problems` (not predicted):
+
+| mutant | defect | kinds | cases |
+|---|---|---|---|
+| `flow_card_ramp_step@nocarry` | the word incremented as a dword (the carry reaches `+0x2E`) | byte | p0, p3 |
+| `flow_card_ramp_step@signed` | the clamp test on `(s16)word`, so 0x8010 returns | byte | p2 |
+| `flow_card_ramp_step@bit` | clears bit 0x04 (`and 0xFB`) not 0x40 | byte | p1, p2 |
+| `flow_bonus_card_b_step@carry` | state 0's compare on the untruncated sum | byte | q2 |
+| `flow_bonus_card_b_step@signed` | state 0's compare signed | byte | q3 |
+| `flow_bonus_card_b_step@timer` | the timer test `>= 0` instead of `> 0` | byte, call #0 | q5 |
+| `flow_bonus_card_b_step@utimer` | the timer test unsigned (`t != 0`) | byte, call #0 | q6 |
+| `flow_bonus_card_b_step@state` | `st >= 2` where the raw tests `st == 2` | byte | q9 |
+| `flow_bonus_card_b_step@bit` | clears the arm byte's bit 0x80 instead of 0x01 | byte | q8 |
+| `flow_bonus_card_b_step@dead` | state 2's zero end skips `0x2B150` | call #0 | q8 |
+
+The pin is `PC_MASKS`/`PC_KINDS`/`PC_CASES` in
+`tools/tests/test_diff_verify.py`, asserted by
+`test_each_pc_mutant_is_caught_by_what_it_breaks` (which also pins each row's
+`hit == total` and an empty `unhit`).
+
+RED/GREEN, each measured on the test the pin lives in:
+
+1. **Removing p3** from the ramp spec: the focused test failed
+   `AssertionError: Lists differ: ['p0'] != ['p0', 'p3']` for `@nocarry`, while
+   the row stayed 3/3 — the case pin is load-bearing on its own.
+2. **Removing q9**: the focused test failed on `@state` (`'byte'` lost) — q9 is
+   the only case that reaches the `st > 2` arm; and the coverage assertion
+   fails too: with q9 dropped the row measures `('PARTIAL', 11, 12,
+   ['0x261aa'])`, not `('VERIFIED', 12, 12, [])`.
+3. **A faithful `@dead`** (`D1C_CB_MUT(dead, D1C_CB_NONE)`, rebuilt): the
+   focused `--self-check` printed `flow_bonus_card_b_step@dead: NOT DETECTED
+   (no eax or byte difference, and no call difference on any case)` and the pin
+   failed with `'call #0'` missing. Restored, it is detected on q8 again.
+
+No case exposed a port divergence: every real case compares byte-exactly on the
+first run.
+
+### P5.4 The re-measured counter and the blocker change
+
+`make diff-verify` (exit 0, `Ran 225 tests ... OK`), verbatim:
+
+```
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+814/845 rows with callees closed (188 have none); 807/845 closed on full rows;
+8 ported functions with no row (45 FN_ ported-unrowed: 8 portable
+[5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37).
+```
+
+Against §P1.2: functions 1031 -> 1033, mutants 14983 -> 14993 (+3 + 7), the
+callee-less rows 187 -> 188 (the ramp row is a leaf), rows with callees 844 ->
+845, closed 813 -> 814, full 806 -> 807. **The design's §7 arithmetic predicted
+`14990` mutants and `825/845` closed — both are wrong**; the measured line is
+the pin (the design calls its own figures "approximately ... the arithmetic is a
+check, not a target"). `game_frame_head`'s two e2-field blockers `0x25FAC` and
+`0x26194` now read `stub VERIFIED` in its row's callee column; the row stays
+open on the longjmp stub `0x65431` alone (Task 5's scan-only stop), and its
+`33/161` coverage and every other pin are unchanged.
+
+The focused commands (Task 4 step 3) print:
+
+```
+| flow_card_ramp_step | 0x25FAC | 4 | 3/3 | VERIFIED | - |
+| flow_bonus_card_b_step | 0x26194 | 10 | 12/12 | VERIFIED | 2B150 stub VERIFIED, 2BC30 stub VERIFIED |
+```
+
+(the callee column reads `unverified` under `--function`, which runs no other
+row — record E3 §E3.8).
+
+`python3 tools/port_progress.py` stays `799 1203 66` / `759 759 100` and
+`make entry-triage` stays `579 candidates (575 by U0's rule); ... span-writer=231 ...`:
+the task adds no `FN_` function, no `fn_register` and no capture/pixel pin.

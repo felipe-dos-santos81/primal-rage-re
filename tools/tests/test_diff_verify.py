@@ -30786,6 +30786,38 @@ D1_KINDS.update(G3B_KINDS)
 D1_CASES.extend(G3B_CASES)
 # g3b end
 
+# proof completion task 4 (record 2026-10-24-proof-completion §P5): the two ported card steps.
+# Measured from verify_all(..., mutants=True)'s own problems, not predicted: each mutant's kind
+# set and the exact cases that alone catch it.
+PC_MASKS = {
+    "flow_card_ramp_step": 0,
+    "flow_bonus_card_b_step": 0,
+}   # PC_MASKS end
+PC_KINDS = {
+    "flow_card_ramp_step@nocarry": {'byte'},
+    "flow_card_ramp_step@signed": {'byte'},
+    "flow_card_ramp_step@bit": {'byte'},
+    "flow_bonus_card_b_step@carry": {'byte'},
+    "flow_bonus_card_b_step@signed": {'byte'},
+    "flow_bonus_card_b_step@timer": {'byte', 'call #0'},
+    "flow_bonus_card_b_step@utimer": {'byte', 'call #0'},
+    "flow_bonus_card_b_step@state": {'byte'},
+    "flow_bonus_card_b_step@bit": {'byte'},
+    "flow_bonus_card_b_step@dead": {'call #0'},
+}   # PC_KINDS end
+PC_CASES = [
+    ("flow_card_ramp_step@nocarry", ['p0', 'p3']),      # p0 below the clamp, p3 the byte wrap
+    ("flow_card_ramp_step@signed", ['p2']),             # 0x8010: signed-negative, still clamps
+    ("flow_card_ramp_step@bit", ['p1', 'p2']),          # the two clamp cases
+    ("flow_bonus_card_b_step@carry", ['q2']),           # 0xFFF0: the untruncated sum would clamp
+    ("flow_bonus_card_b_step@signed", ['q3']),          # 0x8010 after the 0x80 add
+    ("flow_bonus_card_b_step@timer", ['q5']),           # timer 1 -> 0
+    ("flow_bonus_card_b_step@utimer", ['q6']),          # timer 0 -> 0xFF (the signed `jg`)
+    ("flow_bonus_card_b_step@state", ['q9']),           # state 0x80 is not state 2
+    ("flow_bonus_card_b_step@bit", ['q8']),             # the arm bit 0x01, not 0x80
+    ("flow_bonus_card_b_step@dead", ['q8']),            # the second card's 0x2B150
+]   # PC_CASES end
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
@@ -30811,7 +30843,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(C3D_MASKS) + list(C3E_MASKS) + list(C3F_MASKS) + list(C3G_MASKS) + list(D1_MASKS) + list(P7_MASKS) + list(P8_MASKS) + list(CLOSEOUT_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(C3D_MASKS) + list(C3E_MASKS) + list(C3F_MASKS) + list(C3G_MASKS) + list(D1_MASKS) + list(P7_MASKS) + list(P8_MASKS) + list(CLOSEOUT_MASKS) + list(PC_MASKS)))
         for name, r in self.real.items():
             self.assertEqual((r.verdict, r.problems, r.unhit), ("VERIFIED", [], []), name)
             self.assertLessEqual(r.hit, r.total, name)
@@ -30825,7 +30857,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(C3C_KINDS) + list(C3D_KINDS) + list(C3E_KINDS) + list(C3F_KINDS) + list(C3G_KINDS) + list(D1_KINDS) + list(P7_KINDS) + list(P8_KINDS) + list(CLOSEOUT_MUTANTS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(C3C_KINDS) + list(C3D_KINDS) + list(C3E_KINDS) + list(C3F_KINDS) + list(C3G_KINDS) + list(D1_KINDS) + list(P7_KINDS) + list(P8_KINDS) + list(CLOSEOUT_MUTANTS) + list(PC_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -30902,7 +30934,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0,
             **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS, **C3C_MASKS, **C3D_MASKS, **C3E_MASKS, **C3F_MASKS, **C3G_MASKS, **D1_MASKS,
-            **P7_MASKS, **P8_MASKS, **CLOSEOUT_MASKS})
+            **P7_MASKS, **P8_MASKS, **CLOSEOUT_MASKS, **PC_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -31840,6 +31872,22 @@ class RealFunctionTests(unittest.TestCase):
         for name, ids in D1_CASES:
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
+    def test_each_pc_mutant_is_caught_by_what_it_breaks(self):
+        # proof completion task 4 (record 2026-10-24-proof-completion §P5): the two card steps, what
+        # alone catches each mutant and the exact case set (measured from the harness's own problems)
+        for name, want in PC_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        for name, ids in PC_CASES:
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+        # both rows are full (3/3 and 12/12 leaders, nothing named unhit); the bonus row is also
+        # closed, its callees 0x2BC30/0x2B150 having their own VERIFIED rows, and the ramp row is a
+        # leaf (the closure rule counts it apart)
+        for name, total in (("flow_card_ramp_step", 3), ("flow_bonus_card_b_step", 12)):
+            r = self.real[name]
+            self.assertEqual((r.verdict, r.hit, r.total, r.unhit), ("VERIFIED", total, total, []), name)
+
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
@@ -32219,8 +32267,15 @@ class RealFunctionTests(unittest.TestCase):
         # header-shape exceptions) plus 37 runtime — with the scan-visible subset 42 = 5 + 37.
         # Task 9 also corrected the spec's 0x3D0BC (alignment padding, not a function, §P9.2) to
         # the real 0x3A6D4 hook, so the stub-clobber pin moves with it.
-        self.assertIn("diff-verify: 1031/1031 functions VERIFIED; 14983/14983 mutants detected; 0 named gaps; "
-                      "813/844 rows with callees closed (187 have none); 806/844 closed on full rows; "
+        # Proof completion task 4 (record 2026-10-24-proof-completion §P5): the two ported card steps
+        # get their rows — flow_card_ramp_step (0x25FAC, a leaf: counted apart) and
+        # flow_bonus_card_b_step (0x26194, whose callees 0x2BC30/0x2B150 are VERIFIED, so the row is
+        # closed). Functions 1031 -> 1033, mutants 14983 -> 14993 (+3 ramp, +7 bonus), the callee-less
+        # rows 187 -> 188, rows with callees 844 -> 845, closed 813 -> 814 and full 806 -> 807.
+        # game_frame_head's two e2-field blockers 0x25FAC/0x26194 are now VERIFIED stubs; it stays
+        # open on the longjmp stub 0x65431 alone (Task 5's scan-only stop).
+        self.assertIn("diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; "
+                      "814/845 rows with callees closed (188 have none); 807/845 closed on full rows; "
                       "8 ported functions with no row (45 FN_ ported-unrowed: 8 portable "
                       "[5 registry-visible + 3 header-shape exceptions] + 37 runtime; "
                       "the scan-visible subset is 42 = 5 + 37). "

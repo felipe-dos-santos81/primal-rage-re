@@ -12251,6 +12251,28 @@ def d1c_pose_case(ad8, aa8, a, b):
             0x0010789E: bytes([b])}
 
 
+# Proof completion task 4 (record 2026-10-24-proof-completion §P5): the two card steps' records in
+# the image's zero BSS.
+D1C_CARD_REC, D1C_CARD_REC2 = 0x10A600, 0x10A700
+# 0x2B150 actor_set_dead (EAX = the record; it preserves everything else, record §C2b.3's fix)
+PC_DEAD = E.Call(0x2B150, ("eax",))
+
+
+def d1c_ramp_case(word, arm=0xFF):
+    """0x25FAC: the record dword 0x104ACC, the record's word +0x2C with the two bytes above it (a
+    carry out of +0x2D would show at +0x2E), and the arm byte 0x104AE8."""
+    return {0x00104ACC: le32(D1C_CARD_REC), D1C_CARD_REC + 0x2C: le16(word),
+            D1C_CARD_REC + 0x2E: b"\xaa\xbb", 0x00104AE8: bytes([arm])}
+
+
+def d1c_bcard_case(state, word=0x0100, timer=0x00, arm=0x00):
+    """0x26194: the state byte 0x104B0F and the timer byte 0x104B10 (adjacent), the arm byte
+    0x104AEA, the record dword 0x104AB0 and its word +0x2C with the two bytes above it."""
+    return {0x00104AB0: le32(D1C_CARD_REC2), 0x00104B0F: bytes([state, timer]),
+            0x00104AEA: bytes([arm]), D1C_CARD_REC2 + 0x2C: le16(word),
+            D1C_CARD_REC2 + 0x2E: b"\xaa\xbb"}
+
+
 def d1c_vol_case(sfx=0x21, mus=0x22, seq=0x0010B000):
     """0x1CAB8/0x1CED4: the SFX and music volumes 0xA2CB4/0xA2CB8 with the bytes around them and
     the sequence handle 0x1028C0."""
@@ -12565,6 +12587,40 @@ D1C_SPECS = [
     ], calls=(SPAWN, P7_41310), eax_mask=0,
        mutants=("@bit", "@desc", "@a2", "@a3", "@a4", "@a5", "@slot", "@clr", "@or", "@side",
                 "@val", "@order")),
+    # 0x25FAC flow_card_ramp_step (record 2026-10-24-proof-completion §P5): no argument, no callee.
+    # `inc byte [eax+0x2d]` adds 0x100 to the card record 0x104ACC's word +0x2C and loses the
+    # carry out of it (0xFF10 -> 0x0010); the compare is on the zero-extended word (`xor edx,edx;
+    # mov dx,[eax+0x2c]`, `cmp edx,0x1000; jl`), so 0x1000 and the signed-negative 0x8000..0xFFFF
+    # all clamp (the 16-bit subtraction stays positive, so `jl` and `jb` agree on every word). The
+    # clamp stores 0x1000 and clears bit 0x40 of 0x104AE8. Mask 0: the dispatcher 0x24CEF reloads
+    # EAX at once.
+    Spec("flow_card_ramp_step", 0x25FAC, [
+        Case("p0", {}, d1c_ramp_case(0x0EF0)),      # 0xFF0 after the increment: below the clamp
+        Case("p1", {}, d1c_ramp_case(0x0F00)),      # 0x1000: at it
+        Case("p2", {}, d1c_ramp_case(0x7F10)),      # 0x8010: zero-extended, still clamps
+        Case("p3", {}, d1c_ramp_case(0xFF10)),      # 0x0010: the byte +0x2D wraps, no carry out
+    ], eax_mask=0, mutants=("@nocarry", "@signed", "@bit")),
+    # 0x26194 flow_bonus_card_b_step (record §P5): no argument, the two callees stubbed. The card
+    # record 0x104AB0's state byte 0x104B0F: 0 gains 0x80 into the word +0x2C (16-bit, the carry
+    # lost) and at or above 0x1000 clamps, sets 0x1000 with the timer 0x104B10 = 0x3C and state 1;
+    # 1 decrements the timer and at or below 0 (signed `jg`) sets state 2 and begins the exit
+    # stream 0xE91D4 at 1.0 (0x2BC30); 2 drops 0x200 from the word and at zero stores 0, marks the
+    # card dead (0x2B150) and clears arm bit 0x104AEA 0x01; above 2 returns. 12 block leaders
+    # (0x26194, 0x261A0, 0x261A2, 0x261AA, 0x261AE, 0x261B6, 0x261DA, 0x261F4, 0x26206, 0x26226,
+    # 0x2623E, 0x26250), all hit. Mask 0: the dispatcher reloads EAX at once.
+    Spec("flow_bonus_card_b_step", 0x26194, [
+        Case("q0", {}, d1c_bcard_case(0, word=0x0F00, timer=0x55)),
+        Case("q1", {}, d1c_bcard_case(0, word=0x0F80)),
+        Case("q2", {}, d1c_bcard_case(0, word=0xFFF0, timer=0x55)),
+        Case("q3", {}, d1c_bcard_case(0, word=0x7F90)),
+        Case("q4", {}, d1c_bcard_case(1, word=0x1234, timer=0x02)),
+        Case("q5", {}, d1c_bcard_case(1, word=0x1234, timer=0x01)),
+        Case("q6", {}, d1c_bcard_case(1, word=0x1234, timer=0x00)),
+        Case("q7", {}, d1c_bcard_case(2, word=0x0300)),
+        Case("q8", {}, d1c_bcard_case(2, word=0x0200, arm=0xFF)),
+        Case("q9", {}, d1c_bcard_case(0x80, word=0x0300)),
+    ], calls=(ANIM_BEGIN, PC_DEAD), eax_mask=0,
+       mutants=("@carry", "@signed", "@timer", "@utimer", "@state", "@bit", "@dead")),
     # 0x28C38 flow_winner_pose_step: no argument. The signed dword 0x104AD8 is incremented and
     # taken modulo 0x104AA8 (`idiv`); on a zero remainder each side whose +0x5A byte is below
     # 0x77 (zero-extended) gets 0x392A0(slot, 1, 0), a stub. A zero divisor and INT_MIN / -1

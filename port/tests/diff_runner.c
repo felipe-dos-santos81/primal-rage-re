@@ -18521,6 +18521,75 @@ D1C_RB_MUT(a3, D1C_RB_A3)     D1C_RB_MUT(a4, D1C_RB_A4)     D1C_RB_MUT(a5, D1C_R
 D1C_RB_MUT(slot, D1C_RB_SLOT) D1C_RB_MUT(clr, D1C_RB_CLR)   D1C_RB_MUT(or, D1C_RB_OR)
 D1C_RB_MUT(side, D1C_RB_SIDE) D1C_RB_MUT(val, D1C_RB_VAL)   D1C_RB_MUT(order, D1C_RB_ORDER)
 
+/* Proof completion task 4 (record 2026-10-24-proof-completion §P5): the two ported card steps.
+ * 0x25FAC flow_card_ramp_step: no argument, a leaf. 0x26194 flow_bonus_card_b_step: no argument,
+ * its two callees are stubs. Their dispatcher (0x24CEF) reloads EAX at once, so both masks are 0. */
+enum { D1C_CR_NONE, D1C_CR_NOCARRY, D1C_CR_SIGNED, D1C_CR_BIT };
+static void d1c_25fac_core(u32 mut)
+{
+    u32 rec = DSD(0x00104ACCu);
+    if (mut == D1C_CR_NOCARRY) {
+        DSD(rec + 0x2Cu) += 0x100u;                     /* the carry out of +0x2D lands in +0x2E */
+        if (DSD(rec + 0x2Cu) < 0x1000u) return;
+    } else {
+        DSB(rec + 0x2Du) = (u8)(DSB(rec + 0x2Du) + 1u);
+        if ((mut == D1C_CR_SIGNED) ? (s16)DSW(rec + 0x2Cu) < 0x1000
+                                   : DSW(rec + 0x2Cu) < 0x1000u) return;
+    }
+    DSW(rec + 0x2Cu) = 0x1000u;
+    DSB(0x00104AE8u) = (u8)(DSB(0x00104AE8u) & ((mut == D1C_CR_BIT) ? 0xFBu : 0xBFu));
+}
+static void b_d1c_25fac(const u32 *r, u32 *eax) { (void)r; flow_card_ramp_step(); *eax = 0u; }
+#define D1C_CR_MUT(name, m) \
+    static void m_d1c_cr_##name(const u32 *r, u32 *eax) { (void)r; d1c_25fac_core(m); *eax = 0u; }
+D1C_CR_MUT(nocarry, D1C_CR_NOCARRY) D1C_CR_MUT(signed, D1C_CR_SIGNED) D1C_CR_MUT(bit, D1C_CR_BIT)
+
+enum { D1C_CB_NONE, D1C_CB_CARRY, D1C_CB_SIGNED, D1C_CB_TIMER, D1C_CB_UTIMER, D1C_CB_STATE,
+       D1C_CB_BIT, D1C_CB_DEAD };
+static void d1c_26194_core(u32 mut)
+{
+    u8 st = DSB(0x00104B0Fu);
+    u32 rec;
+    if (st == 0u) {
+        u16 w;
+        rec = DSD(0x00104AB0u);
+        if (mut == D1C_CB_CARRY) {
+            u32 sum = (u32)DSW(rec + 0x2Cu) + 0x80u;
+            w = (u16)sum;
+            DSW(rec + 0x2Cu) = w;
+            if (sum < 0x1000u) return;                  /* the untruncated sum decides */
+        } else {
+            w = (u16)(DSW(rec + 0x2Cu) + 0x80u);
+            DSW(rec + 0x2Cu) = w;
+            if ((mut == D1C_CB_SIGNED) ? (s16)w < 0x1000 : w < 0x1000u) return;
+        }
+        DSW(rec + 0x2Cu) = 0x1000u;
+        DSB(0x00104B10u) = 0x3Cu;
+        DSB(0x00104B0Fu) = 1u;
+    } else if (st == 1u) {
+        u8 t = (u8)(DSB(0x00104B10u) - 1u);
+        DSB(0x00104B10u) = t;
+        if (mut == D1C_CB_TIMER ? (s8)t >= 0 : (mut == D1C_CB_UTIMER ? t != 0u : (s8)t > 0)) return;
+        DSB(0x00104B0Fu) = 2u;
+        actors_anim_begin(DSD(0x00104AB0u), 0x000E91D4u, 0x3F800000u);
+    } else if ((mut == D1C_CB_STATE) ? st >= 2u : st == 2u) {
+        u16 w;
+        rec = DSD(0x00104AB0u);
+        w = (u16)(DSW(rec + 0x2Cu) - 0x200u);
+        DSW(rec + 0x2Cu) = w;
+        if (w != 0u) return;
+        DSW(rec + 0x2Cu) = 0u;
+        if (mut != D1C_CB_DEAD) actor_set_dead(rec);
+        DSB(0x00104AEAu) = (u8)(DSB(0x00104AEAu) & ((mut == D1C_CB_BIT) ? 0x7Fu : 0xFEu));
+    }
+}
+static void b_d1c_26194(const u32 *r, u32 *eax) { (void)r; flow_bonus_card_b_step(); *eax = 0u; }
+#define D1C_CB_MUT(name, m) \
+    static void m_d1c_cb_##name(const u32 *r, u32 *eax) { (void)r; d1c_26194_core(m); *eax = 0u; }
+D1C_CB_MUT(carry, D1C_CB_CARRY) D1C_CB_MUT(signed, D1C_CB_SIGNED) D1C_CB_MUT(timer, D1C_CB_TIMER)
+D1C_CB_MUT(utimer, D1C_CB_UTIMER) D1C_CB_MUT(state, D1C_CB_STATE) D1C_CB_MUT(bit, D1C_CB_BIT)
+D1C_CB_MUT(dead, D1C_CB_DEAD)
+
 /* 0x28C38: no argument. */
 static void b_d1c_28c38(const u32 *r, u32 *eax) { (void)r; flow_winner_pose_step(); *eax = 0u; }
 enum { D1C_WP_NONE, D1C_WP_INC, D1C_WP_PRE, D1C_WP_UNSIGNED, D1C_WP_LE, D1C_WP_SEXT, D1C_WP_SLOT,
@@ -46982,6 +47051,18 @@ static const binding_t k_bindings[] = {
     { "flow_round_bonus_b@side",            m_d1c_rbb_side, 0x00000000u },
     { "flow_round_bonus_b@val",             m_d1c_rbb_val, 0x00000000u },
     { "flow_round_bonus_b@order",           m_d1c_rbb_order, 0x00000000u },
+    { "flow_card_ramp_step",                b_d1c_25fac, 0x00000000u },
+    { "flow_card_ramp_step@nocarry",        m_d1c_cr_nocarry, 0x00000000u },
+    { "flow_card_ramp_step@signed",         m_d1c_cr_signed, 0x00000000u },
+    { "flow_card_ramp_step@bit",            m_d1c_cr_bit, 0x00000000u },
+    { "flow_bonus_card_b_step",             b_d1c_26194, 0x00000000u },
+    { "flow_bonus_card_b_step@carry",       m_d1c_cb_carry, 0x00000000u },
+    { "flow_bonus_card_b_step@signed",      m_d1c_cb_signed, 0x00000000u },
+    { "flow_bonus_card_b_step@timer",       m_d1c_cb_timer, 0x00000000u },
+    { "flow_bonus_card_b_step@utimer",      m_d1c_cb_utimer, 0x00000000u },
+    { "flow_bonus_card_b_step@state",       m_d1c_cb_state, 0x00000000u },
+    { "flow_bonus_card_b_step@bit",         m_d1c_cb_bit, 0x00000000u },
+    { "flow_bonus_card_b_step@dead",        m_d1c_cb_dead, 0x00000000u },
     { "flow_winner_pose_step",              b_d1c_28c38, 0x00000000u },
     { "flow_winner_pose_step@inc",          m_d1c_wp_inc, 0x00000000u },
     { "flow_winner_pose_step@pre",          m_d1c_wp_pre, 0x00000000u },
