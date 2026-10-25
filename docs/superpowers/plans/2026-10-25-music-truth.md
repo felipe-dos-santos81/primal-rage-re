@@ -10,10 +10,11 @@ traces — tolerance-free, with no new capture and no rendered-audibility claim.
 
 **Architecture:** The game-side song request/resolve is ported from `0x1C930`
 and the music tables; the AIL runtime and mixer stay host-owned. The
-register-stream oracle compares the port’s OPL writes to the 37 gameplay
-`.dro` traces, anchored per song at the first key-on. `audio-render` gains a
-non-silence/determinism pin. The title/attract path is the working reference
-and must not move.
+register-stream oracle compares the port’s OPL writes to the **29 gameplay
+`gp-*`** `.dro` traces (37 `.dro` total under `data/k11-captures`; 39 with the two
+title captures under `data/audio-captures`), anchored per song at the first
+key-on. `audio-render` gains a non-silence/determinism pin. The title/attract
+path is the working reference and must not move.
 
 **Tech Stack:** Python 3 (the `.dro`/OPL trace tools), the C/SDL3 port, GNU
 Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
@@ -24,8 +25,10 @@ Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
 
 - Work from the repo root. `data/game/` is read-only; the `.dro` traces in
   `data/k11-captures/gp-*/` are read-only.
-- **No new capture and no re-capture.** The 37 existing `.dro` traces are the
-  evidence; a song absent from them is a named gap.
+- **No new capture and no re-capture.** The measured evidence is the 37 `.dro`
+  files under `data/k11-captures` (**29** gameplay `gp-*`, **8** other
+  k11-captures) plus the **2** title captures under `data/audio-captures`; a song
+  absent from them is a named gap.
 - The register-stream comparison is **tolerance-free**. The only alignment is
   the first key-on; a whole-tick or mixer-block tolerance must be declared in
   advance, not fitted to make a test pass.
@@ -78,12 +81,14 @@ Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
   `port/tests/test_audio.c`, `tools/opl_trace.py`, `Makefile`
   (`audio-render`), `data/k11-captures/gp-*/*.dro`.
 - Re-derive: the `0x1C930` addresses, the song/bank tables, the title path as
-  the working reference, and the 37 `.dro` inventory.
+  the working reference, and the `.dro` inventory (29 gameplay + 8 other
+  k11-captures + 2 title captures).
 
 **Interfaces:**
 - Produces: §M1 (the measured baseline: the current audio path, the zero
-  return, the title 9866 writes, the 37 `.dro` counts/anchors, the `0x1C930`
-  and `0x1CF40` unrowed reasons, the PCM state). Later tasks cite §M1.
+  return, the title 9866 writes, the `.dro` counts/anchors, the `0x1C930`
+  and `0x1CF40` unrowed reasons, the PCM state, and the code-reachable bank
+  set). Later tasks cite §M1.
 
 - [ ] **Step 1: Record the baseline.** Run and paste:
   ```bash
@@ -94,10 +99,14 @@ Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
   Record the current audio tests’ lines (the 9866-write exact check, the
   report-only capture comparison), the `snd_music_request` return path and
   `DS_001028C0`, and the `title_music_start` bank load.
-- [ ] **Step 2: Inventory the `.dro` traces.** List every gameplay capture’s
-  `.dro`, its write count, its first key-on timestamp and its duration; group
-  them by song where the traces repeat. Record the 37 (or the measured count)
-  and the songs covered.
+- [ ] **Step 2: Inventory the `.dro` traces.** List the **29** gameplay `gp-*`
+  `.dro` files (and name the 8 other `k11-captures` and the 2
+  `audio-captures`), each with its write count, first key-on timestamp and
+  duration; record the measured `(register,value)` common-prefix groups where
+  the traces repeat. Record the **code-reachable** 26-bank set separately from
+  the captured coverage. The per-trace section-to-bank attribution is **Task 4's
+  oracle output**, not Task 1's (controller ruling); do not fit a generic
+  matcher here.
 - [ ] **Step 3: Re-derive `0x1C930` and the tables.** Use Ghidra/capstone and
   the decomp index to record the raw function, the song-id source, the bank
   load/select and the host hand-off. Record the `0x1CF40` init boundary and
@@ -152,7 +161,8 @@ Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
 **Files:**
 - Modify: the game-side music request call sites and the host sequencer
   hand-off; the audio tests.
-- Read: the 37 `.dro` traces; `tools/opl_trace.py`.
+- Read: the 29 gameplay `gp-*` `.dro` traces (and the 8 other `k11-captures` +
+  2 `audio-captures` by name); `tools/opl_trace.py`.
 - Modify: `docs/superpowers/plans/2026-10-25-music-truth-derivations.md` (§M3).
 
 **Interfaces:**
@@ -183,12 +193,16 @@ Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
   comparison mode).
 - Create/modify: `tools/tests/test_audio_compare.py`.
 - Modify: `Makefile` (`audio-oracle`, `verify`), `docs/PROGRESS.md`.
-- Read: the 37 `.dro` traces, the port’s trace driver.
+- Read: the 29 gameplay `gp-*` `.dro` traces (the 8 other `k11-captures` and
+  the 2 `audio-captures` are named, not gameplay), the port’s trace driver.
 
 **Interfaces:**
-- Consumes: the `.dro` format, the port’s trace, the first-key-on anchor.
+- Consumes: the `.dro` format, the port’s trace, the first-key-on anchor,
+  §M1’s inventory and code-reachable bank set.
 - Produces: a tolerance-free comparator, a Makefile target, a mutation test,
-  and a per-song inventory of covered/missing traces.
+  a per-trace inventory of covered/missing traces, and the **per-trace
+  section-to-bank attribution** (Task 1 records the code-reachable set only;
+  this task measures which bank each captured section plays).
 
 - [ ] **Step 1: Write the failing test.** A synthetic `.dro`/port pair with one
   dropped write must fail with the first difference; an identical pair passes;
@@ -196,14 +210,16 @@ Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
 - [ ] **Step 2: Implement the parser/comparator.** Reuse `tools/opl_trace.py`’s
   `.dro` parser; anchor at the first key-on; compare the write stream
   tolerance-free (the per-tick multiset fallback only if §M3 declares the
-  intra-tick order a model difference). Emit the first difference and the
-  covered/missing songs.
+  intra-tick order a model difference). Emit the first difference, the
+  covered/missing traces, and the per-section bank attribution.
 - [ ] **Step 3: Wire the Makefile.** Add `audio-oracle` with the capture
   inventory; skip absent traces; add it to `verify`. Prove it fails on a
   one-write mutation and on an unanchored stream.
-- [ ] **Step 4: Measure the 37.** Run the oracle; record the songs that match,
-  the first differences and the declared model differences. A song that
-  cannot match is a named gap, not a threshold.
+- [ ] **Step 4: Measure the 29 gameplay traces** (and name the 8 other
+  `k11-captures` and the 2 `audio-captures`). Run the oracle; record the traces
+  that match, each first difference with its cause, the per-section bank
+  attribution, and the declared model differences. A trace/song that cannot
+  match is a named gap, not a threshold.
 - [ ] **Step 5: Commit (when authorized).** `audio: compare the captured
   register streams`.
 

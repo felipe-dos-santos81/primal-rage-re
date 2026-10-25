@@ -72,7 +72,8 @@ all checks passed
   S16TITLE bank over the test's 4096-tick cap (`test_audio.c:940-982`; the line is printed
   by `test_audio.c:982`).
 - The **capture comparison is report-only** (`test_audio.c:1037-1199`): it anchors both
-  streams at their first key-on, maps capture ms → port tick at 120 Hz, drops the
+  streams at their first key-on, maps capture ms → port tick with the inverse equation
+  in §M1.6.3 (`test_audio.c:1117`), drops the
   documented-excluded registers (`0xBD`; carrier TL only on the residual MIDI channels 1
   and 4) and write-on-change repeats, then prints the first difference and does not fail.
   The capture is `data/audio-captures/prage_000.dro` (`CAPTURE_DRO`,
@@ -126,10 +127,10 @@ The relevant original state (all in `mem[]`, none shadowed):
 
 | addr | meaning | writers/readers |
 |---|---|---|
-| `DS_001028C0` | MDI **sequence** handle | `0x1CFE8` (allocate), `0x1CA2C`/`0x1CA40`/`0x1CA86`/`0x1CAD2`/`0x1D1E1` (gates), `0x1D0BC` (clears on a failed buffer) |
+| `DS_001028C0` | MDI **sequence** handle | `0x1CFE8` (allocate), `0x1CA2C`/`0x1CA40`/`0x1CA86`/`0x1CAD2`/`0x1D1E1` (gates), cleared on a failed buffer (`0x1D11E`) |
 | `DS_001028C4` | MDI driver handle | `0x1CFD6` (allocate), read `0x1D0CC`, cleared `0x1D113` |
 | `DS_001028C8` | DIG driver handle | `0x1CF8E` (port stores 1), every sample path |
-| `DS_001028CC` | pending song (handle) | `0x1CA35`, cleared `0x1CA08`/`0x1CAA1`/`0x1D0BC`/`0x1D1E7` |
+| `DS_001028CC` | pending song (handle) | queued `0x1CA35`; requeued `0x1D1E7` (unpause, §M1.3); cleared `0x1CA08`/`0x1CAA1`, and `0x1D124` on the allocation failure |
 | `DS_001028D0` | music copy buffer (0x5100 bytes) | allocated `0x1D0E8`, written `0x1C970`/`0x1C977`, read `0x1C97C`/`0x1C9C7` |
 | `DS_001028D4` | current song handle | `0x1CA22`, cleared `0x1CA7A` |
 | `DS_001028D9` | current song byte | `0x1CA14`, cleared `0x1CA80` |
@@ -223,14 +224,61 @@ The two arms:
 
 Both arms clear `DS_001028CC` at `0x1CA08`. `0x1C930` returns nothing (EAX is zeroed).
 
-**The song-id source.** `DS_001028CC` is written by exactly one other instruction:
-`0x1CA35` in `0x1CA14` (the raw addresses are in §M1.2; `snd_music_request`). That
-function's two call sites are both in the dispatcher: `0x2C463` (case 1, with
-`EAX = [0x105D5C]`, the record's `+4` handle) and `0x2C8B6` (case 4's restart,
-`EAX = 0x2803E64`). The handle is a resource handle: `res_resolve` (`0x1B544`,
+**The song-id sources.** `DS_001028CC` has exactly two non-zero writers in the code
+object and three clears. The queue writer is `0x1CA35` in `0x1CA14` (the raw addresses
+are in §M1.2; `snd_music_request`): `EAX` = the request's handle, stored after the pause
+(`DS_001028DA != 1`) and sequence (`DS_001028C0 != 0`) gates. Its two call sites are both
+in the dispatcher: `0x2C463` (case 1, with `EAX = [0x105D5C]`, the record's `+4` handle)
+and `0x2C8B6` (case 4's restart, `EAX = 0x2803E64`).
+
+The second is the **unpause requeue at `0x1D1E7`** in `0x1D1B0`
+(`sound_music_pause_toggle`, `flow.c:6470`). The resume arm (taken when
+`DSB(0x1028DA) == 1`) clears `DA` at `0x1D1C2`, then requires three guards before the
+store: the current song byte `D9 != 0` (`0x1D1C8`), the current song handle
+`D4 != 0` (`0x1D1D1`/`0x1D1D7`), and the sequence `C0 != 0` (`0x1D1DB`/`0x1D1E1`/
+`0x1D1E3`/`0x1D1E5`). When all three hold, `0x1D1E7` stores `D4` (the current song) into
+`CC` and returns; otherwise it returns without a store. The other arm tests `C0`, calls
+`0x1CA40`, and when the sequence plays stops it (`0x1D20B`) and sets `DA = 1`
+(`0x1D213`); it never touches `D4`/`D9`/`DC`. Consequently a normal pause/resume
+requeues the song that is already the last-started `DC`, and `0x1C930` takes its
+**same-song `je` arm** (`0x1C93B`): no resolve, no copy; it re-inits the copied buffer,
+sets the volume and starts. If a song was requested after the last start and before the
+pause (`D4 != DC`), the resume's requeue takes the new-song arm instead (resolve + copy
+of the same handle). The port's `sound_music_pause_toggle` already stores `D4` into
+`CC` under the same guards (`flow.c:6478-6479`), so this path is faithful; the record
+must not treat it as a clear.
+
+The three clears are `0x1CA08` (after either arm of `0x1C930`, EAX zeroed at `0x1CA06`),
+`0x1CAA1` (`snd_music_stop`, EDX zeroed at `0x1CA76`), and `0x1D124` (the
+`sound_buffers_alloc` failure arm, which stores the gate's ECX at `0x1D113`/`0x1D11E`/
+`0x1D124`; the port stores 0 at `flow.c:6426-6428`). A code-object scan for the
+`0x001028CC` immediate lists only these five writers plus two readers (`0x1C936` and
+`0x1CF30`); the scan below is the covering check.
+
+The handle is a resource handle: `res_resolve` (`0x1B544`,
 `res.c:300`) returns `mem + entry[+0x10] + (handle & 0x7FFFFF)`. The resolved pointer's
 first dword is the payload size (the same `[esi-4]` the copy reads). `0x1C930` therefore
 needs: the pending handle, the resource layer, the 0x5100 buffer, and the host sequence.
+
+**Covering check (the writer set).** Scan the fixup-applied image's code object for the
+little-endian `0x001028CC` immediate and disassemble the instruction that covers each
+hit (`python3 - <<'EOF'`, capstone, `code = img[0:0x73B15-0x10000]`,
+`needle = struct.pack('<I', 0x1028CC)`). It prints exactly seven instructions:
+
+```
+01C936 a1cc281000   mov eax, [0x1028CC]   ; read (0x1C930's pending gate)
+01CA08 a3cc281000   mov [0x1028CC], eax   ; clear (0x1C930, eax=0 at 0x1CA06)
+01CA35 a3cc281000   mov [0x1028CC], eax   ; queue (0x1CA14)
+01CAA1 8915cc281000 mov [0x1028CC], edx   ; clear (0x1CA6C, edx=0 at 0x1CA76)
+01CF30 833dcc28100000 cmp dword [0x1028CC], 0 ; read (0x1CF20's pending gate)
+01D124 890dcc281000 mov [0x1028CC], ecx   ; clear (0x1D0BC failure arm)
+01D1E7 890dcc281000 mov [0x1028CC], ecx   ; requeue D4 (0x1D1B0 resume arm)
+```
+
+So `0x1CA35` queues a *request*, `0x1D1E7` requeues the *current* song, and the three
+clears are distinct writes; no other instruction *names* the dword as an immediate
+operand (a computed-register write is not excluded by this scan; the decomp's
+`DAT_001028cc =` assignments agree with the five writers).
 
 **The buffer bound.** `DS_001028D0` is allocated by `0x1D0BC` (`sound_buffers_alloc`,
 `flow.c:6416`) as `res_block_alloc(0x5100)` and zeroed (`0x1D0E8..0x1D107`). All 26
@@ -379,7 +427,8 @@ counter movement, not call the AIL handle verified.
 
 #### §M1.6.1 The measured count and the plan's correction
 
-The plan and spec say "the 37 gameplay `.dro` traces". The measured tree:
+The plan and spec originally said "the 37 gameplay `.dro` traces". The measured tree
+(and the fix commit corrects the plan/spec to these counts):
 
 - `data/k11-captures/**`: **37** `.dro` files. **29** are under `gp-*` capture directories;
   the other **8** are the service-menu/save/diagnostic captures
@@ -391,9 +440,9 @@ The plan and spec say "the 37 gameplay `.dro` traces". The measured tree:
 So "37 gameplay traces" is a miscount: 37 is the `k11-captures` total, of which 29 are
 gameplay. The oracle's inventory is the 29 `gp-*` files; the other 10 (8 + 2) are not
 gameplay music and are named separately so a song absent from the 29 is a named gap, not
-a silent skip. Three of the 29 `gp-*` files (`gp-pads/prage_000`, `gp-pads/prage_001`,
-`gp-u17-device2/prage_000`) hold only the boot fragment (below) and carry no in-match
-music; 26 of the 29 have more than 1,000 writes.
+a silent skip. Three of the 29 `gp-*` files (`gp-pads/prage_000` and
+`gp-u17-device2/prage_000`, which are boot fragments, and `gp-pads/prage_001`, a restart
+fragment) carry no music; 26 of the 29 have more than 1,000 writes.
 
 #### §M1.6.2 Every `.dro`
 
@@ -452,14 +501,19 @@ The 37 rows are measured by `tools/opl_trace.py`'s parser. Notes:
   only that fragment (for `gp-pads` and `walk` the `_001` file holds the rest — DX-CAPTURE
   restarted the OPL recording), and their `.dro` was written at the first FM note-on and
   closed with the trailing delay.
-- **Three more are truncated:** `gp-pads/prage_001` (189 writes), `walk/prage_001`
-  (361 writes) and `save-reload/prage_000` (210 writes, 4.1 s, 6 key-ons). Their first
-  key-on is on `0xB4` (`gp-pads/001`, value `0x2B`), `0xB4` (`walk/001`, `0x2E`) and
-  `0xB0` (`save-reload`, `0x2B`): the capture began after the boot's first write block.
-  `idle/prage_001` (7,007 writes, 26.5 s) *is* a music run, but its first key-on is
-  `0xB4` (the boot init block is absent: the capture began after the init). `gp-pads`'s
-  and `walk`'s first files hold the boot fragment while the `_001` files hold the rest;
-  DX-CAPTURE wrote a second file when the OPL capture restarted.
+- **Two captures are restarted after the boot's first write block**, not boot
+  fragments: `gp-pads/prage_001` (189 writes; its first block begins at `0x121`, where
+  the boot stream has `0x21`) and `walk/prage_001` (361 writes; `0xB4=0x2E` at tick 0).
+  Their first key-on is on `0xB4` and the boot init block is absent. `idle/prage_001`
+  (7,007 writes, 26.5 s) is the third restart fragment and *does* carry music; its first
+  key-on is `0xB8=0x36` (the boot init block is absent: the capture began after the
+  init). `gp-pads`'s and `walk`'s first files hold the boot fragment while the `_001`
+  files hold the rest; DX-CAPTURE wrote a second file when the OPL capture restarted.
+- **`save-reload/prage_000` is truncated after the boot, not restarted.** Its first
+  **147** complete `(tick, reg, val)` events equal `de/prage_000`'s first 147 (a
+  read-only parser comparison): it opens with the boot stream, then stops after 210
+  writes / 4.1 s (6 key-ons). Its `0xB4=0x36` at 1,624 ms is a blip in that short file,
+  not a music section, and its first key-on is the boot stream's `0xB0=0x2B`.
 - **28 of the 37** have more than 1,000 writes and carry music in a captured window;
   **26 of the 29 `gp-*`** do. The nine without music are the six byte-identical
   boot-fragment files plus `gp-pads/prage_001`, `save-reload/prage_000` and
@@ -475,13 +529,24 @@ block at tick 0, then the **S16TITLE bank's first four notes**: key-ons at ticks
 0, 64, 124 and 192 on `0xB0`/`0xB1`/`0xB2`/`0xB3`, with `(block,fnum)`
 `(2,0x3CF)`, `(2,0x334)`, `(2,0x2DB)`, `(1,0x28B)`, keyed off at 64, 124, 192, 248. That
 is the title/attract bank `0x54`/`0x56` (`0x03836102`): `tools/opl_seq.py`'s decoded
-stream has the same four notes at its ticks 60/68/75/83 (the 120 Hz oracle tick =
-capture ms + 500), and the capture's tick-63 block carries the same operator/EG/wave
-values as the oracle's second note (the first note's AM/VIB and TL writes are already
-the driver-init values in the capture's tick-0 block, one of the documented model
-differences). The notes are cut at 248 ms — the capture's first music section is a 4-note
-fragment, not the whole title song. The 9866-write title stream is proved by the unit
-oracle, not by these captures.
+stream has the same four notes at its ticks 60/68/75/83. The existing title-anchor
+pairing maps a port tick to capture ms with
+`ms = (tick - 60) * 1000 // 120` (`tools/opl_seq.py:705`): integer floor division, the
+`60` the bank's first-note tick and the `120` the sequencer ticks per second. It accepts
+a capture key-on within ±3 ms (`abs(capture_ms - ms) <= 3`, `cmd_capture_anchors`), a
+*matching* tolerance that is **not** the phase's new tolerance-free claim. For the first
+four notes the equation gives 0/66/125/191 ms and the capture has 0/64/124/192 (all
+within the ±3 ms). The report-only capture comparison uses the inverse
+`ct = (capture_ms * 120 + 500) / 1000 + 60` (integer division after the +500, i.e.
+round-half-up; `test_audio.c:1117`), which maps 0/64/124/192 back to 60/68/75/83 exactly.
+Neither equation is §M4's alignment: the new register oracle anchors both streams at the
+first key-on and compares the write stream tolerance-free; the ±3 ms above belongs only
+to the existing title-bank anchor check. The capture's tick-63 block carries the same
+operator/EG/wave values as the oracle's second note (the first note's AM/VIB and TL
+writes are already the driver-init values in the capture's tick-0 block, one of the
+documented model differences). The notes are cut at 248 ms — the capture's first music
+section is a 4-note fragment, not the whole title song. The 9866-write title stream is
+proved by the unit oracle, not by these captures.
 
 #### §M1.6.4 The first music after the boot
 
@@ -497,11 +562,15 @@ at 7,156 writes `0x29=0x31, 0x2C=0x72, 0x49=0x5B, 0x4C=0x95, 0x69=0xF4, 0x6C=0x8
 0x89=0x15, 0x8C=0x05, 0xC4=0x30, 0xA4=0x99, 0xB4=0x2B`, and the decoded bank's first note
 is `0x20=0x31, 0x23=0x72, 0x40=0x5B, 0x43=0x98, 0x60=0xF4, 0x63=0x8A, 0x80=0x15, 0x83=0x05,
 0xC0=0x30, 0xA0=0x99, 0xB0=0x2B` (the same note on channel 4: the oracle's channel 0
-shifted +4, its operator registers landing at +9 because channel 4's slots are 9 and 12;
-the one value difference is the carrier TL `0x95` vs `0x98`, the declared sequence-volume
-difference). That 11-value
-first-note match is the identification; the same 11 values start the first music section
-of `gp-u8-right-arcade` (6,700), `gp-idle-loss` (7,256) and `gp-u12-endurance` (10,684),
+shifted +4, its operator registers landing at +9 because channel 4's slots are 9 and 12).
+That is an **11-register correspondence with ten equal values and one disclosed
+difference**: the carrier TL `0x4C=0x95` in the capture against `0x43=0x98` in the
+decoded bank, the MIDI-channel-4 voice. It is exactly the existing ch1/ch4
+carrier-TL/volume residual `port/spec/audio.md` items 1/9 excludes by name (the engine's
+per-channel volume on ch1/ch4 is unpinnable; 2026-09-20-midi-controllers-tl-derivation
+§R3), not an exact-value match and not a fitted value. That ten-value correspondence is
+the identification; the same capture values start the first music section of
+`gp-u8-right-arcade` (6,700), `gp-idle-loss` (7,256) and `gp-u12-endurance` (10,684),
 and `gp-u22-diablo-ending`'s 6,049 group is the same values one channel over
 (`0x22=0x31, 0x25=0x72, 0x42=0x5B, 0x45=0x95, 0x62=0xF4, …`). The oracle's own comparison
 (Task 4) establishes the rest of each section. This is the record's one worked bank
@@ -511,19 +580,23 @@ identification; Task 3/4 repeat it for the other sections.
 
 The last column, `poll E ms − .dro last write`, is **not** a constant: 24.0–26.6 s on the
 normal runs, 39.6–42.6 s on the ending captures, 29.2 s on the U16 finisher, and 32–90 s
-on the truncated files. The
+on the boot-only and short files. The
 DOSBox OPL capture's ms and the harness's poll `ms` share no origin (the capture's clock is
 the accumulated delay between FM writes; the poll's is the host monotonic clock). The
 register-stream oracle must therefore anchor on the **first key-on inside the `.dro`**, as
 the plan says, and never on a poll timestamp. The offsets are recorded so a later task
 does not mistake the apparent 24 s difference for a constant.
 
-#### §M1.6.6 Grouping: the traces repeat by song
+#### §M1.6.6 Grouping: the measured common prefixes
 
 The music register stream is a function of the song and the sequence position, not of the
 gameplay script. Two traces that play the same songs therefore share a long
-`(register,value)` prefix (ticks ignored) until their scripts diverge. Measured pairwise
-common-prefix lengths (capped at 20,000 writes):
+`(register,value)` prefix (ticks ignored) until their scripts diverge. A shared prefix
+proves the two traces emitted the same register writes in the same order; it does **not**
+by itself identify which bank produced them. The lengths below are measured; the
+per-section bank attribution is Task 4's oracle output (the controller's ruling on this
+task's review: no generic matcher here). Measured pairwise common-prefix lengths (capped
+at 20,000 writes):
 
 | common writes | trace A | trace B |
 |---:|---|---|
@@ -537,36 +610,43 @@ common-prefix lengths (capped at 20,000 writes):
 | 3,854 | `gp-u15-join` / `gp-idle-loss` / `gp-u8-attract-start` / `gp-u6-moves` / `gp-keys-fight` | each other |
 | 3,841 | `gp-u8-handicap` | `gp-u8-attract-start` / `gp-u6-moves` |
 
-The 3,841–3,899 groups are the shared boot+title+menu songs; the longer pairs are the
-same match/ending song played for longer. The six byte-identical boot-fragment files are
-the degenerate group. **These are the "songs repeat" groups**: the shared prefix is the
-register-level proof of the repeated song, and it is longer than any coincidence (the
-first 200 writes are the driver init; the rest are music).
+The 3,841–3,899 groups share the boot stream, the title fragment and the start of the
+selmo section (the two worked identifications above); the longer pairs continue matching
+far past it. The six byte-identical boot-fragment files are the degenerate group. These
+are the measured "traces repeat" groups: a shared prefix is register-level evidence that
+the same music was played, not a bank identification.
 
-#### §M1.6.7 The songs covered (code-derived) and the named gap
+#### §M1.6.7 The code-reachable 26-bank set (not captured coverage)
 
-The code's music requests reach these case-1 banks in the captured states:
+The code's music requests *can* reach these case-1 banks in the captured states. The
+table is a **code-reachability** list: it says what the game can ask for, not that each
+bank appears in a captured section. Only the title fragment (`0x54`/`0x56`) and the ~7 s
+section (`0x2E`/`0x30`) have worked identifications (§M1.6.3/§M1.6.4); the per-trace,
+per-section attribution is Task 4's measured oracle output (the controller's ruling: do
+not fit a generic matcher in Task 1). The `basis` column separates the two worked
+identifications from code reachability:
 
-| state | id(s) | bank | proof |
+| state | id(s) | bank | basis |
 |---|---|---|---|
-| title/attract | `0x54`/`0x56` | `s16title.gra` +0x36102 | 9866-write oracle + the boot fragment |
-| character screen / select (mode 0x10) | `0x2E`/`0x30` | `s16selmo.gra` +0x25C | the 7 s section (§M1.6.4) |
-| fight hook `0x430E8` | `0x31` | `s16selmo.gra` +0x08 | code |
-| fight hook `0x4142C` | `0x32` | `s16snd2.gra` +0x21BFA | code |
-| match entry (the round) | stage table 0..7 | `0x20`/`0x21`/`0x1B`/`0x1C`/`0x1E`/`0x1D`/`0x1F`/`0x1F` | `DS_000C9888`, `0x4F714`, caller `0x25C09` |
-| match end | `0xDF` or `0x23` | `s16sound+0x6EC8` / `+0x5B88` | `sound_voice_match_end` |
-| mode 0x13 | `0x2C` | `s16conti.gra` +0x08 | code |
-| hook `0x25AE8` | `0x3D` | `s16sound.gra` +0x39F4 | code |
-| mode 0x1F | `0x3B` | `s16sound.gra` +0x335E | code |
-| name entry/high score | `0xE1`/`0xE3` | `s16hghsc.gra` +0x08 | code |
-| fighter states | `0xEC`/`0xEB`/`0xE4` | `s16sound.gra` +0x72D4/+0x7714, `s16konsd.gra` +0x1CCB0 | code |
+| title/attract | `0x54`/`0x56` | `s16title.gra` +0x36102 | worked: 9866-write oracle + the boot fragment (§M1.6.3) |
+| character screen / select | `0x2E`/`0x30` | `s16selmo.gra` +0x25C | worked: the ~7 s section (§M1.6.4) |
+| fight hook `0x430E8` | `0x31` | `s16selmo.gra` +0x08 | code reachability |
+| fight hook `0x4142C` | `0x32` | `s16snd2.gra` +0x21BFA | code reachability |
+| match entry (the round) | stage table 0..7 | `0x20`/`0x21`/`0x1B`/`0x1C`/`0x1E`/`0x1D`/`0x1F`/`0x1F` | code reachability (`DS_000C9888`, `0x4F714`, caller `0x25C09`) |
+| match end | `0xDF` or `0x23` | `s16sound+0x6EC8` / `+0x5B88` | code reachability (`sound_voice_match_end`) |
+| mode 0x13 | `0x2C` | `s16conti.gra` +0x08 | code reachability |
+| hook `0x25AE8` | `0x3D` | `s16sound.gra` +0x39F4 | code reachability |
+| mode 0x1F | `0x3B` | `s16sound.gra` +0x335E | code reachability |
+| name entry/high score | `0xE1`/`0xE3` | `s16hghsc.gra` +0x08 | code reachability |
+| fighter states | `0xEC`/`0xEB`/`0xE4` | `s16sound.gra` +0x72D4/+0x7714, `s16konsd.gra` +0x1CCB0 | code reachability |
 
 The 29 `gp-*` traces' captured windows are the hooks/modes above (menu, select, fight,
-win/ending); the *per-trace* section-to-bank attribution beyond §M1.6.4 is the Task 3/4
-oracle's output, not this task's claim. **Named gap:** a bank that no captured section
-plays cannot be claimed covered. The 26-bank table is complete, and the oracle's first
-difference / skip-by-name rule will turn an unplayed bank into a named gap rather than a
-false pass.
+win/ending), but **no claim is made here that a specific captured section is the bank on
+its row**. The `0x2E`/`0x30` identification is the one worked case; Task 4's oracle
+supplies the rest by aligning the port's trace to each `.dro` (controller ruling).
+**Named gap:** a bank that no captured section plays cannot be claimed covered; the
+oracle's first difference / skip-by-name rule turns an unplayed bank into a named gap
+rather than a false pass. The 26-bank set is complete; its captured coverage is not.
 
 ### §M1.7 The PCM state
 
@@ -605,33 +685,40 @@ the port's own determinism.
   and (f) not move `title_music_start`. The AIL handle/mixer stay host-owned; no
   differential row is fabricated.
 - **Task 3** consumes §M1.4/§M1.6: the stage table and the 29 banks; the first music
-  section is the selmo bank, and the fight stage song is `DS_000C9888[stage]`.
+  section is the selmo bank, and the fight stage song is `DS_000C9888[stage]` (the code
+  reachability; Task 4's oracle is what checks the captured sections against it).
 - **Task 4** consumes §M1.6: 29 gp `.dro` files (not 37 gameplay), each anchored at its
-  first key-on; the six byte-identical boot-fragment files and the three truncated files
-  are inventoried; a bank absent from the traces is a named gap.
+  first key-on; the six byte-identical boot-fragment files, the boot-truncated
+  `save-reload` and the three restart fragments are inventoried; a bank absent from the
+  traces is a named gap. **Task 4 owns the per-trace/per-section section-to-bank
+  attribution** (the controller's ruling); §M1.6.7's table is code-reachable only.
 - **Task 5** consumes §M1.7: the WAV format/rate and the `0x54`-inherited baseline.
 - **Task 7** consumes §M1.5: the `0x1C930`/`0x1CF40` boundary stays `UNROWED`; the
   counter is `1033/1033 ...` and must not move in Task 1.
 
 ### §M1.9 Named gaps and what §M1 does not claim
 
-1. **Per-section bank attribution** for every trace beyond §M1.6.4: Task 3/4's oracle
-   output. The 26-bank set is complete; the mapping of each captured section to its bank
-   is not claimed here.
+1. **Per-section bank attribution** for every trace beyond §M1.6.4: Task 4's oracle
+   output (the controller's ruling). The 26-bank set is complete and §M1.6.7 is a
+   code-reachability list; the mapping of each captured section to its bank is not
+   claimed here.
 2. **The `.dro`'s ms timeline is the capture's own** (the accumulated delay between FM
    writes, with the trailing silence in the header and no alignment to the poll log); no
    claim is made that a `.dro` tick equals a host or port frame.
 3. **The title music section in the captures is a 4-note fragment**, not the title
-   song's proof; the 9866-write unit oracle is the proof.
+   song's proof; the 9866-write unit oracle is the proof. The title-anchor ±3 ms in
+   §M1.6.3 is the existing matching tolerance, not the new oracle's alignment.
 4. **Rendered audibility** is not claimed by any measurement here.
 5. **A song/bank absent from the 29 gameplay traces** is a named gap, not a new capture
    (the phase's binding constraint).
-6. The six identical boot-fragment files and the three truncated files hold no in-match
-   music; an oracle that skips them must skip them **by name**, not silently.
+6. The six identical boot-fragment files, `gp-pads/prage_001`, `walk/prage_001` and the
+   boot-truncated `save-reload/prage_000` hold no in-match music; `idle/prage_001` is a
+   restart fragment that does. An oracle that skips a no-music trace must skip it **by
+   name**, not silently.
 
 ### §M1.10 Gate for Task 1
 
 Research only: no port code, no test, no Makefile and no pin changed. `make diff-verify`
 exit 0 (the counter above), `make audio-render` exit 0 (the 9866 line and the WAV), and
-`python3 tools/port_progress.py` unchanged. The only written artefact is this record (and
-the spec/plan files the controller stages separately).
+`python3 tools/port_progress.py` unchanged. The Task-1 artefacts are this record and the
+plan/spec corrections.

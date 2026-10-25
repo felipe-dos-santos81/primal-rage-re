@@ -48,10 +48,15 @@ a model claim, explicitly out of scope.
 - `snd_music_request` returns 0 because `DS_001028C0 == 0`
   (`port/src/game/flow.c:6300-6307`); only `title_music_start`
   (`flow.c:6186`) loads `S16TITLE.GRA`. No in-match/menu song is requested.
-- The 37 gameplay `.dro` traces are in the existing `data/k11-captures/gp-*`
-  directories (the capture harness records them; the AVI PCM is discarded,
-  `tools/gp_capture.py:367`/`:575`). They are the original's OPL register
-  streams, with per-song first-key-on anchors.
+- The measured `.dro` inventory is **37** files under `data/k11-captures` (**29**
+  gameplay `gp-*`, **8** other k11-captures: `de`, `diags`, `idle` ×2, `menuesc`,
+  `save-reload`, `walk` ×2) plus **2** title captures under
+  `data/audio-captures`, **39** in all. The `gp-*` files are the capture
+  harness's traces (the AVI PCM is discarded, `tools/gp_capture.py:367`/`:575`);
+  they are the original's OPL register streams, with per-song first-key-on
+  anchors. The per-trace section-to-bank attribution is the oracle's Task 4
+  output; §M1 of the derivation record lists the 26 banks the code *can* request
+  (code reachability, not captured coverage).
 - `make audio-render` renders the title bank to `/tmp/pr_title_fm.wav`; it
   fails only on `fopen` (`port/tests/test_audio.c:1204-1267`). A silent WAV
   passes.
@@ -74,11 +79,13 @@ function's `UNROWED` status with the measured reason. The functional claim:
 a menu/match request selects and starts the original's song.
 
 **G2 — The register-stream oracle.** Add a tolerance-free comparison of the
-port's OPL register writes against the original's `.dro` traces for the 37
-gameplay captures, anchored at each song's first key-on. It claims song
+port's OPL register writes against the original's `.dro` traces for the **29**
+gameplay `gp-*` captures, anchored at each song's first key-on. It claims song
 choice, notes, patches and tempo in the captured windows; it does not claim
 rendered audibility. Add it to `make verify` (skipping without the traces) and
-prove it fails on a one-write mutation.
+prove it fails on a one-write mutation. The oracle also produces the per-trace
+section-to-bank attribution (the 8 other k11-captures and the 2 title captures
+are named, not gameplay).
 
 **G3 — PCM determinism.** Make `make audio-render` fail on a silent render and
 pin the WAV's sha256 plus a non-zero peak, with the game's sequence volume.
@@ -99,7 +106,8 @@ unless a row is added or a function leaves the classification.
 - **Rendered audibility.** A PCM envelope/spectral comparison against a
   DOSBox-X `/A` capture would pin the port's OPL/mixer model, not the game.
   The register stream is the claim; PCM is a determinism check only.
-- New captures. The 37 `.dro` traces are the evidence; a missing song is a
+- New captures. The measured `.dro` files are the evidence (37 under
+  `data/k11-captures`, 2 under `data/audio-captures`); a missing song is a
   named gap, not a new capture.
 - The `0x1CF40` init, the 60 Hz AIL callback and the mixer internals: they
   stay host-owned. The phase ports the game-side song resolve, not the AIL
@@ -132,7 +140,7 @@ bug. B and C follow.
 
 - Work from the repo root. `data/game/` is read-only; the `.dro` traces are
   read-only.
-- No new capture and no re-capture. A song absent from the 37 traces is a
+- No new capture and no re-capture. A song absent from the measured traces is a
   named gap.
 - The register-stream comparison is **tolerance-free**: no fitted timing
   window, no "close enough" note count. Anchoring at the first key-on is the
@@ -176,10 +184,13 @@ resolve, not the AIL runtime.
 ### 7.3 The captured evidence
 
 Each gameplay capture has a `.dro` OPL register trace (up to 38,499 writes /
-176 s). The traces are the original's actual register writes for the match,
+176 s); the measured inventory is 29 `gp-*` files under
+`data/k11-captures`, with 8 other k11-captures and 2 title captures named
+separately. The traces are the original's actual register writes for the match,
 including its song choice, notes, patches and tempo. They are the oracle's
 reference; no new capture is needed. A song absent from the traces stays a
-named gap.
+named gap. The oracle's per-trace section-to-bank attribution is measured from
+the aligned streams, not assumed from the code-reachable table in §M1.
 
 ### 7.4 The PCM state
 
@@ -218,10 +229,12 @@ Add `tools/audio_compare.py` (or extend the existing OPL trace tooling) that
 parses the port's register trace and the capture's `.dro`, anchors each song at
 its first key-on, and compares the writes. The first claim is the song choice
 and the write stream in the captured window; per-tick write multisets are the
-fallback if the intra-tick order is a known model difference. Add the oracle
-to `make verify`, skipping without the traces; prove it fails on a one-write
-mutation. A capture whose song is missing is skipped by name, not silently
-passed.
+fallback if the intra-tick order is a known model difference. The per-trace
+section-to-bank attribution is the oracle's measured output; the code-reachable
+26-bank set in §M1 is its candidate list, not a captured-coverage claim. Add the
+oracle to `make verify`, skipping without the traces; prove it fails on a
+one-write mutation. A capture whose song is missing is skipped by name, not
+silently passed.
 
 ### 8.4 PCM determinism
 
@@ -246,8 +259,8 @@ them.
    declared model differences named), or the first difference is recorded with
    its cause.
 2. The register-stream oracle is in `make verify`; it skips without the traces
-   and fails on a one-write mutation; the 37 traces are inventoried and any
-   missing song is a named gap.
+   and fails on a one-write mutation; the 29 gameplay traces (37 k11 total; 39
+   with the audio-captures) are inventoried and any missing song is a named gap.
 3. `make audio-render` fails on a silent WAV and pins a non-zero peak + sha256;
    the claim is labelled determinism, not audibility.
 4. The title/attract claims (9866 writes, the symmetric oracle, the announcer
@@ -264,7 +277,7 @@ them.
 
 - Rendered audibility vs the original: the OPL core/mixer model; a PCM
   envelope/spectral claim is a model claim.
-- A song/bank absent from the 37 `.dro` traces.
+- A song/bank absent from the measured `.dro` traces.
 - Any in-match/menu song path the raw does not reach through `0x1C930`.
 - The `0x1CF40` init and AIL handle boundary; host-owned.
 - The fought-match U14 R1 and the two-human KO (the next proof phase).
@@ -290,7 +303,7 @@ them.
 
 - **Phase scope:** music truth, not another proof sweep. The in-match/menu
   silence is a functional hole; the fought-match U14 is the next proof phase.
-- **Evidence:** the 37 existing `.dro` traces, no new capture.
+- **Evidence:** the measured `.dro` files, no new capture.
 - **Claim:** register stream/song choice, not rendered audibility; PCM is a
   determinism hash only.
 - **Port boundary:** game-side song resolve in C; AIL runtime host-owned; no
