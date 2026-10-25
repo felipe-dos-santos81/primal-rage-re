@@ -21744,12 +21744,12 @@ D5B_CASES = [
     ("render_list@l1ysext", ['l9']),
     ("render_list@l2xsext", ['l7']),
     ("render_list@l2ysext", ['l6']),
-    ("render_list_blit@bank", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']),
-    ("render_list_blit@rowtab", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']),
+    ("render_list_blit@bank", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'm0', 'm1', 'm2']),
+    ("render_list_blit@rowtab", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'm0', 'm1', 'm2']),
     ("render_list_blit@clipb", ['b3', 'b4']),
     ("render_list_blit@noshear", ['b5', 'b7']),
-    ("render_list_blit@t5", ['b5']),
-    ("render_list_blit@nomirror", ['b0', 'b1', 'b6', 'b9']),
+    ("render_list_blit@t5", ['b5', 'm0']),
+    ("render_list_blit@nomirror", ['b0', 'b1', 'b6', 'b9', 'm1']),
     ("render_list_blit@t0a", ['b0']),
     ("render_list_blit@lr", ['b1', 'b4']),
     ("render_list_blit@notop", ['b2']),
@@ -33227,6 +33227,30 @@ class SpanCensusTests(unittest.TestCase):
         dead = {k for k, v in classes.items() if all(t == SPAN_DEAD for _, _, t in v)}
         self.assertEqual(dead, {("lit_bwd", "chunk128")})
         self.assertEqual(len(classes) - len(dead), 26)          # 26 reachable classes
+
+    @needs_unicorn
+    def test_the_minimal_fixture_reaches_every_live_class(self):
+        """Proof completion §P3: the three class-fixture payloads of render_list_blit (m0 forward,
+        m1 mirrored, m2 raw) arrive at one target of every live writer class. The 26 representatives
+        are the call set, so each arrival is recorded; a run length outside the row's allowed targets
+        stops the run and a changed-but-allowed one is not recorded, so either edit fails here."""
+        spec = [s for s in V.SPECS if s.name == "render_list_blit"][0]
+        self.assertEqual([c.id for c in spec.cases if c.id in ("m0", "m1", "m2")], ["m0", "m1", "m2"])
+        target_class = {t: k for k, hits in self.classes().items() for _, _, t in hits}
+        live = {k for k in SPAN_CLASS_COUNTS if k != ("lit_bwd", "chunk128")}
+        reps = {SPAN_CLASS_REP[k] for k in live}
+        self.assertEqual(len(reps), 26)
+        calls = tuple(E.Call(a, (), mode="real") for a in sorted(reps))
+        arrived = set()
+        for c in [c for c in spec.cases if c.id in ("m0", "m1", "m2")]:
+            o = E.run_original(self.img, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=calls)
+            self.assertEqual(o.outcome, "ok", "%s: %s" % (c.id, o.detail))
+            arrived |= {a for a, _ in o.calls}
+        missing = sorted(reps - arrived)
+        self.assertEqual(missing, [], "missing classes: %s" % ", ".join(
+            "%s/%s (0x%X)" % (target_class[a][0], target_class[a][1], a) for a in missing))
+        self.assertEqual(arrived, reps)                         # one per live class, no dead one
+        self.assertEqual({target_class[a] for a in arrived}, live)
 
     def test_the_e2_triage_split_is_227_and_158(self):
         # The 231 span-writer rows of the committed E2 table are 227 of these writers plus the four

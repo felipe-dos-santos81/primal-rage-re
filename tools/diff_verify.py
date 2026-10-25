@@ -26708,10 +26708,10 @@ D5B_R, D5B_W = 0x0200, 0x0201
 D5B_BL_ROWS = {0: 0x40, 2: 0x80, 198: 0xC0}       # the 0x1088F8 row offsets the cases use (the renderers step 320)
 
 
-def d5b_bl(cid, items, off, bank=6, shear=(0x0100, 0x0120, 0x00E0, 0x0141), **kw):
+def d5b_bl(cid, items, off, bank=6, shear=(0x0100, 0x0120, 0x00E0, 0x0141), sprites=None, more=None, **kw):
     """A d5b_rl list over the two blit sprites, the back buffer pointer, the row offsets, the palette
     entry (bank byte `bank`), the shear table 0x107900, and the buffer seeded under the rows at `off`:
-    x 0..127 and 296..319 of four rows."""
+    x 0..127 and 296..319 of four rows. `sprites` replaces the sprite table, `more` adds pokes."""
     extra = {0xE87A0: le32(0xA0A0A0A0) + le32(D5B_BUF) + le32(0xA8A8A8A8),
              D5B_PAL: le32(0x11111111) + le32(0x22222222) + bytes([bank, 0x33, 0x33, 0x33]) + le32(0x44444444),
              d4b_at(0x800100) - 4: b"\xbf" * 4 + D5B_RLE + b"\xbf" * 16,
@@ -26724,15 +26724,40 @@ def d5b_bl(cid, items, off, bank=6, shear=(0x0100, 0x0120, 0x00E0, 0x0141), **kw
         extra[base] = d5b_bytes(0x900 + r, 64)
         extra[base + 64] = d5b_bytes(0x910 + r, 64)
         extra[base + 296] = d5b_bytes(0x920 + r, 24)
+    extra.update(more or {})
     return d5b_rl(cid, [d5b_rl_item(i[0], i[1], i[2], i[3], D5B_PAL, shifted=len(i) > 4) for i in items],
-                  sprites=D5B_BL_SPRITES, extra=extra, **kw)
+                  sprites=sprites or D5B_BL_SPRITES, extra=extra, **kw)
 
 
-# 0x51E5C, the six renderers of its table 0x80C8C (and the table's `ret` 0x51E58), and the unrolled copy
-# routines those reach by `call [table]` on these cases' run lengths (measured: any other target stops the run)
+# 0x51E5C, the six renderers of its table 0x80C8C (and the table's `ret` 0x51E58), and every unrolled copy
+# routine (writer) the cases reach by `call [table]` on their run lengths: the b* cases' 13 and the class
+# fixture's 37 (m0..m2, record §P3; 9 overlap, so 28 are new; any other target stops the run).
 D5B_BLIT_ALLOW = (0x14268, 0x1B544, 0x51E5C, 0x51E58, 0x5D218, 0x58CBD, 0x5215C, 0x57F80, 0x5D28F, 0x57FFB,
                   0x521F0, 0x5222C, 0x529A0, 0x529C4, 0x52A18, 0x58564, 0x58578, 0x5859C, 0x58D20, 0x58D2C, 0x58D40,
-                  0x58D4C, 0x58D90)
+                  0x58D4C, 0x58D90,
+                  # the class fixture: the backward/forward fill and literal tables' runs 0..7, the fills'
+                  # 14/15 word tails, and the raw 128-byte chunk 0x5D110 (0x81110[128] == 0x81310[0])
+                  0x521DC, 0x521E0, 0x521E8, 0x521FC, 0x52204, 0x52210, 0x5221C, 0x52284, 0x52294,
+                  0x52980, 0x52984, 0x52990, 0x529B4, 0x529DC, 0x529F8,
+                  0x58550, 0x58554, 0x5855C, 0x58570, 0x58580, 0x5858C, 0x585F0, 0x58600,
+                  0x58CBC, 0x58D14, 0x58D60, 0x58D74, 0x5D110)
+
+# ---- the minimal class-complete span fixture (record §P3) ----------------------------------------------
+# One 85-pixel RLE row in 56 bytes: literals 0..7 and fills 0..7, 14 and 15. A fill's control byte is
+# 0x80 + n, so the 14/15 runs select the fill tables' WORD-tail writers and 0..7 reach every other
+# run-length class. Drawn forward (m0), mirrored (m1) and as a 128-byte raw row (m2) it reaches every
+# live writer class; m0 also holds a layer-1 RLE pset (type 5), the renderer table's bare `ret`.
+D5B_M_STREAM = bytes.fromhex(
+    "00" "0113" "021414" "03151515" "0416161616" "051717171717" "06181818181818"
+    "0719191919191919" "8021" "8122" "8223" "8324" "8425" "8526" "8627" "8728" "8E2F" "8F30")
+D5B_M_PIX = bytes(range(0x50, 0xD0))        # 128 raw bytes: 0xFD makes each four-byte group's first add carry
+D5B_M_RLE, D5B_M_RAW = 0x0230, 0x0231       # the fixture's sprite ids: an 85 x 1 RLE row, a 128 x 1 raw row
+D5B_M_HANDLE = 0x01000000                   # entry 2's payload (D4B_RES2) holds the two streams
+D5B_M_SPRITES = {D5B_M_RLE: (D5B_M_HANDLE, (85, 1, 0, 0), D5B_M_HANDLE | 0x10),
+                 D5B_M_RAW: (D5B_M_HANDLE | 0x50, (-128, -1, 0, 0), D5B_M_HANDLE | 0x60)}
+D5B_M_POKES = {}
+d5b_poke(D5B_M_POKES, d4b_at(D5B_M_HANDLE | 0x10), D5B_M_STREAM)
+d5b_poke(D5B_M_POKES, d4b_at(D5B_M_HANDLE | 0x60), D5B_M_PIX)
 
 # ---- 0x51E5C: the span blit's own entry, on the paths that leave the node as it was ----------------------
 D5B_SB_NODE = 0x10A900
@@ -26766,12 +26791,13 @@ D5B_SPECS += [
     # reach (0x14328 rebuilds the node per pset; 0x51E5C restores +0x14 and +0x30, 0x51EC8/0x51ECB). The
     # types 0x14328 can build: 1 (RLE), 2 (raw), 9 (RLE mirrored), 6 (raw, layer 1: the shear renderer
     # 0x5215C over the table 0x107900) and their clipped forms 0x11, 0x12, 0x19, 0x16; 5, 0xA, 0xE, 0x15 and
-    # 0x1A are `ret` entries (b0, b5). b0: unclipped. b1: clipped left and right. b2: top. b3: bottom. b4:
-    # two edges at once. b5: layer 1. b6: bank byte 1 (no offset). b7: a layer above 2 and layer 2 before
-    # and after a layer-1 node. The buffer is seeded under the rows drawn (a transparent run must leave
-    # it). Domain: the bank byte 0 indexes the stale dword 0x81310 (0x0005D110), which the port does not
-    # reproduce (sprite.h): no case. Types 4 and 0x14 need a node 0x14328 does not build: no case. The
-    # copy routines reached depend on the run lengths: other lengths reach others (not allowed here).
+    # 0x1A are `ret` entries (b0, b5, m0's layer-1 pset). b0: unclipped. b1: clipped left and right. b2: top.
+    # b3: bottom. b4: two edges at once. b5: layer 1. b6: bank byte 1 (no offset). b7: a layer above 2 and
+    # layer 2 before and after a layer-1 node. The buffer is seeded under the rows drawn (a transparent run
+    # must leave it). Domain: the bank byte 0 indexes the stale dword 0x81310 (0x0005D110), which the port
+    # does not reproduce (sprite.h): no case. Types 4 and 0x14 need a node 0x14328 does not build: no case.
+    # The copy routines (writers) reached depend on the run lengths: m0..m2 are the class-complete fixture
+    # (every live writer class, record §P3), and the other lengths the b* cases reach are allowed with them.
     Spec("render_list_blit", 0x14328, [
         d5b_bl("b0", [(D5B_R, 10, 2, 0), (D5B_W, 40, 2, 0), (D5B_R | 0x8000, 70, 2, 0), (D5B_W | 0x8000, 100, 2, 0)], 0x80),
         d5b_bl("b1", [(D5B_R, -3, 2, 0), (D5B_W, 316, 2, 0), (D5B_R | 0x8000, -2, 2, 0), (D5B_W, -5, 2, 0),
@@ -26794,6 +26820,20 @@ D5B_SPECS += [
         # anchor at the run's high end and 0x80E0C's literal dword is bswapped (0x529B4/0x52A18), so a
         # byte-wise bank add is low on the rightmost group's bytes. Record §W1.
         d5b_bl("b9", [(D5B_R | 0x8000, 10, 2, 0), (D5B_W, 40, 2, 0)], 0x80, bank=0xFE),
+        # m0..m2: the minimal class-complete fixture (record §P3). The same 85 x 1 RLE row drawn
+        # forward, mirrored and as a 128-byte raw row over bank byte 0xFE (offset 0xFD), so every
+        # dword add carries. The runs reach lit_fwd/lit_bwd 0..7, fill_fwd/fill_bwd 0..7/14/15 and
+        # the raw 128-byte chunk 0x81110[128] = 0x5D110 (m2). m0's second pset is layer 1, so its
+        # type is 5 (RLE | the layer bit), the renderer table's bare `ret` 0x51E58: it draws nothing.
+        # The writer targets these reach are in D5B_BLIT_ALLOW; the coverage test (its span census
+        # class) asserts the arrived class set, so a payload edit cannot shrink the claim silently.
+        d5b_bl("m0", [(D5B_M_RLE, 10, 2, 0), (D5B_M_RLE, 10, 99, 1)], 0x80, bank=0xFE,
+               sprites=D5B_M_SPRITES, more=D5B_M_POKES,
+               g3e=0, g4e=0, aec=d5b_at_px(3, 0xD56) << 6),
+        d5b_bl("m1", [(D5B_M_RLE | 0x8000, 84, 2, 0)], 0x80, bank=0xFE,
+               sprites=D5B_M_SPRITES, more=D5B_M_POKES),
+        d5b_bl("m2", [(D5B_M_RAW, 10, 2, 0)], 0x80, bank=0xFE,
+               sprites=D5B_M_SPRITES, more=D5B_M_POKES),
     ], allow_calls=D5B_BLIT_ALLOW, eax_mask=0xFFFFFFFF,
        mutants=("@bank", "@rowtab", "@clipb", "@noshear", "@t5", "@nomirror", "@t0a", "@lr", "@notop",
                 "@nomirrorclip", "@stride")),
