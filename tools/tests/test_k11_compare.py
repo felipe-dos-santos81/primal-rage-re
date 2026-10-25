@@ -1,5 +1,5 @@
 # tools/tests/test_k11_compare.py
-import os, subprocess, sys, tempfile, unittest
+import contextlib, hashlib, io, os, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOL = os.path.join(ROOT, 'tools', 'k11_compare.py')
@@ -34,13 +34,24 @@ def run(capture, port, *extra, env=None):
 class K11Compare(unittest.TestCase):
     A, B, C, X, Y = frame(1), frame(50), frame(90), frame(200), frame(120)
 
-    def case(self, capture, port, screens, *extra, env=None):
+    def case(self, capture, port, screens, *extra, env=None, identity=True):
         with tempfile.TemporaryDirectory() as d:
             put(os.path.join(d, 'cap'), capture)
             put(os.path.join(d, 'port'), port)
             with open(os.path.join(d, 'port', 'screens.txt'), 'w') as fh:
                 fh.write(screens)
-            return run(os.path.join(d, 'cap'), os.path.join(d, 'port'), *extra, env=env)
+            poll = os.path.join(d, 'cap', 'poll.log')
+            with open(poll, 'wb') as fh:
+                fh.write(b'K11 synthetic poll\n')
+            args = list(extra)
+            if identity and '--report' not in args:
+                with open(poll, 'rb') as fh:
+                    sha = hashlib.sha256(fh.read()).hexdigest()
+                if '--capture-sha256' not in args:
+                    args += ['--capture-sha256', sha]
+                if '--capture-frames' not in args:
+                    args += ['--capture-frames', str(len(capture))]
+            return run(os.path.join(d, 'cap'), os.path.join(d, 'port'), *args, env=env)
 
     def test_all_explained_passes(self):
         r = self.case([self.X, self.A, splice(self.A, self.B, 100), self.B], [self.A, self.B],
@@ -52,6 +63,39 @@ class K11Compare(unittest.TestCase):
         r = self.case([self.X, self.A, self.Y, self.B], [self.A, self.B], 'key 0 settled 0\nend settled 1\n')
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn('FIRST UNEXPLAINED capture 2', r.stdout)
+
+    def test_capture_identity_wrong_sha_count_and_unpinned_fail(self):
+        screens = 'key 0 settled 0\nend settled 1\n'
+        cap, port = [self.X, self.A, self.B], [self.A, self.B]
+        r = self.case(cap, port, screens)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('capture: poll.log sha256', r.stdout)
+        self.assertIn('3 frames: matches the pin', r.stdout)
+        r = self.case(cap, port, screens, '--capture-sha256', '0' * 64)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('capture: FAIL: poll.log sha256', r.stdout)
+        r = self.case(cap, port, screens, '--capture-frames', '4')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('capture: FAIL: poll.log sha256', r.stdout)
+        r = self.case(cap, port, screens, identity=False)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('capture identity is not pinned', r.stdout)
+
+    def test_order_rejects_a_rewind_inside_the_window(self):
+        # Pixel coverage sees A, B and C, but C -> B at capture 2 rewinds the
+        # content sequence. The existential order pass must reject it.
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import k11_compare as kc
+        import title_compare as tc
+        cap = [self.A, self.C, self.B, self.C]
+        port = [self.A, self.B, self.C]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = kc.compare('t', cap, list(range(4)), port,
+                            [tc.row_hashes(p) for p in port], [0], 2, False)
+        self.assertEqual(rc, 1, out.getvalue())
+        self.assertIn('order failure capture 2', out.getvalue())
+        self.assertIn('kind=clean', out.getvalue())
 
     def test_missing_settled_screen_fails(self):
         r = self.case([self.A, self.B], [self.A, self.C, self.B],
@@ -100,16 +144,66 @@ class K11Compare(unittest.TestCase):
         port = [self.A, self.B]
         rows = [tc.row_hashes(p) for p in port]
         cap = [self.X, self.A, self.Y, self.B]
-        import contextlib, io
-        saved = kc.K11_ALLOWED_UNEXPLAINED
+        saved = kc.K11_ALLOWED_UNEXPLAINED, kc.K11_ALLOWED_UNEXPLAINED_SHA256
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 kc.K11_ALLOWED_UNEXPLAINED = {'t': {2: 'test'}}
+                kc.K11_ALLOWED_UNEXPLAINED_SHA256 = {'t': {2: hashlib.sha256(self.Y).hexdigest()}}
                 self.assertEqual(kc.compare('t', cap, list(range(4)), port, rows, [0], 1, False), 0)
                 kc.K11_ALLOWED_UNEXPLAINED = {'t': {3: 'test'}}
+                kc.K11_ALLOWED_UNEXPLAINED_SHA256 = {'t': {3: hashlib.sha256(self.B).hexdigest()}}
                 self.assertEqual(kc.compare('t', cap, list(range(4)), port, rows, [0], 1, False), 1)
         finally:
-            kc.K11_ALLOWED_UNEXPLAINED = saved
+            kc.K11_ALLOWED_UNEXPLAINED, kc.K11_ALLOWED_UNEXPLAINED_SHA256 = saved
+
+    def test_allowed_unexplained_checks_bytes_and_stale_names(self):
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import k11_compare as kc
+        import title_compare as tc
+        port = [self.A, self.B]
+        rows = [tc.row_hashes(p) for p in port]
+        saved = kc.K11_ALLOWED_UNEXPLAINED, kc.K11_ALLOWED_UNEXPLAINED_SHA256
+        out = io.StringIO()
+        try:
+            kc.K11_ALLOWED_UNEXPLAINED = {'t': {2: 'test'}}
+            with contextlib.redirect_stdout(out):
+                kc.K11_ALLOWED_UNEXPLAINED_SHA256 = {'t': {2: '0' * 64}}
+                rc = kc.compare('t', [self.X, self.A, self.Y, self.B], list(range(4)),
+                                port, rows, [0], 1, False)
+            self.assertEqual(rc, 1, out.getvalue())
+            self.assertIn('allowed capture 2', out.getvalue())
+            self.assertIn('sha256', out.getvalue())
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                kc.K11_ALLOWED_UNEXPLAINED_SHA256 = {'t': {2: hashlib.sha256(self.A).hexdigest()}}
+                rc = kc.compare('t', [self.X, self.A, self.A, self.B], list(range(4)),
+                                port, rows, [0], 1, False)
+            self.assertEqual(rc, 1, out.getvalue())
+            self.assertIn('stale', out.getvalue())
+            self.assertIn('retire the name', out.getvalue())
+        finally:
+            kc.K11_ALLOWED_UNEXPLAINED, kc.K11_ALLOWED_UNEXPLAINED_SHA256 = saved
+
+    def test_an_allowed_missing_name_fails_when_it_becomes_exhibited(self):
+        # The production set is empty. Adding a synthetic name must not make the
+        # stale-name check vacuous: port 0 is exhibited, so allowing its absence
+        # is stale and fails.
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import k11_compare as kc
+        import title_compare as tc
+        port = [self.A, self.B]
+        rows = [tc.row_hashes(p) for p in port]
+        saved = kc.K11_ALLOWED_MISSING
+        out = io.StringIO()
+        try:
+            kc.K11_ALLOWED_MISSING = {'t': (0,)}
+            with contextlib.redirect_stdout(out):
+                rc = kc.compare('t', [self.A, self.B], [0, 1], port, rows, [0], 1, False)
+        finally:
+            kc.K11_ALLOWED_MISSING = saved
+        self.assertEqual(rc, 1, out.getvalue())
+        self.assertIn('stale', out.getvalue())
+        self.assertIn('port frame 0', out.getvalue())
 
     def test_capture_past_the_final_screen_fails(self):
         # the port stops at B while the capture goes on (C, B, then A): the
@@ -143,8 +237,8 @@ class K11Compare(unittest.TestCase):
 
     def test_open_end_passes_past_the_final_screen(self):
         # the original runs on past the port's script end: reported, not failed
-        rc, out = self.open_end([self.X, self.A, self.B, self.C, self.B, self.A], [self.A, self.B, self.C],
-                                [0], 1, 4)
+        rc, out = self.open_end([self.X, self.A, self.B, self.C, self.B, self.A],
+                                [self.A, self.B, self.C, self.B], [0], 1, 4)
         self.assertEqual(rc, 0, out)
         self.assertIn("capture continues past the port's final screen at 5", out)
         self.assertIn('END 4 must be >= 4: ok', out)

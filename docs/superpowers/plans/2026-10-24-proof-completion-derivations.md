@@ -1869,3 +1869,214 @@ $ git diff --check
 # no output
 ```
 
+---
+
+## P10 — Coverage pins, K11 identity/order, and allowance honesty (Task 9)
+
+### P10.1 The canonical missing-class rule
+
+The implementation uses the reviewed measurements' exact rule. If `seen` is the
+legacy frame claim's exhibited port-index set and `reach` is its highest index,
+first form the unexhibited, non-black occurrences
+
+```
+M = { m | 0 <= m <= reach, m not in seen, port[m] is not all-black }
+```
+
+and then collapse byte-identical members of `M`. The ratchet is the number of
+distinct byte strings in `M`; the report names the lowest missing occurrence of
+each byte string. An exhibited duplicate does not erase a different missing
+occurrence's class. The order pass has no input to this set.
+
+This distinction is load-bearing. A whole-dump class-difference experiment gave
+24 for gp-idle-loss and 11 for the front-end, whereas canonicalising the legacy
+missing-occurrence set gives the reviewed **29** and **30**. The spec's
+"30, not 11" resolves the ambiguity; the 24/11 experiment was discarded, not
+pinned. The preliminary 0..64 gameplay range is also not a pin: the implemented
+flag measures 72 for U20, and the tool output is authoritative.
+
+`title_compare.canonical_missing` owns the shared calculation. gp supplies its
+row hashes to exclude black frames without another full RGB scan; the title and
+attract callers test the RGB24 bytes. Attract2 unions the ordinary exhibited set
+with `(N, N+1, N+2)` for each validated named splice3 before deriving `reach`, so
+classes beyond reach are excluded and the allowance's middle frame is credited.
+The claim remains **bounded-missing**, not full coverage: a state the capture
+never sampled and a same-count class substitution remain named gaps.
+
+### P10.2 The 24 measured gameplay pins
+
+The measurement used the existing captures and Task 8 dumps only. A temporary
+`--max-missing 999999` run elicited each value (never a pin); the final harness
+then ran the exact value and `value - 1` with every pre-existing frame, trace,
+start, reach, identity and moves pin unchanged. Exact passed all 24; the
+one-fewer bound failed all 24 with the same measured count and `N > pinned
+N-1`; every exact run also printed `order: 0 failures`.
+
+| Makefile id | scenario | `MAX_MISSING` | exact / `pin - 1` |
+|---|---|---:|---|
+| `IDLE_LOSS` | gp-idle-loss | 29 | pass / fail |
+| `CHARSEL` | gp-u5-charsel | 4 | pass / fail |
+| `MOVES` | gp-u6-moves-b | 7 | pass / fail |
+| `KEYS` | gp-keys-fight | 9 | pass / fail |
+| `TWOP` | gp-twop | 5 | pass / fail |
+| `MODES_RA` | gp-u8-right-arcade | 7 | pass / fail |
+| `MODES_LT` | gp-u8-left-training | 8 | pass / fail |
+| `MODES_RT` | gp-u8-right-training | 5 | pass / fail |
+| `MODES_TW` | gp-u8-tug-of-war | 6 | pass / fail |
+| `MODES_HC` | gp-u8-handicap | 6 | pass / fail |
+| `MODES_EN` | gp-u8-endurance | 7 | pass / fail |
+| `MODES_AS` | gp-u8-attract-start | 7 | pass / fail |
+| `U12` | gp-u12-endurance | 6 | pass / fail |
+| `WIN` | gp-u9-win | 12 | pass / fail |
+| `ENDING` | gp-u10-ending | 65 | pass / fail |
+| `U13` | gp-u13-ending2 | 59 | pass / fail |
+| `U15` | gp-u15-join | 5 | pass / fail |
+| `U16` | gp-u16-twop2 | 23 | pass / fail |
+| `U18` | gp-u18-talon-ending | 57 | pass / fail |
+| `U19` | gp-u19-vertigo-ending | 51 | pass / fail |
+| `U20` | gp-u20-chaos-ending | 72 | pass / fail |
+| `U21` | gp-u21-armadon-ending | 55 | pass / fail |
+| `U22` | gp-u22-diablo-ending | 54 | pass / fail |
+| `U23` | gp-u23-u16-finisher | 9 | pass / fail |
+
+The summary was `SCENARIOS 24 EXACT_AND_MUTATION_PASS 24`. Every enforced
+Makefile command passes the new flag, including the dynamic U8 and U9/U10
+commands. There is deliberately no pin for gp-u14 (absent), gp-u17 (no frame
+replay) or gp-pads (smoke). An enforced gp comparison with no `--max-missing`
+fails as unpinned; report mode keeps its no-ratchet contract.
+
+### P10.3 Front-end and attract coverage extension
+
+The shared helper fit, so the optional extension shipped rather than leaving the
+front-end named gap. The front-end coverage flag requires the independently
+pinned window start; no port-derived-start-only coverage claim was added.
+
+| claim | measured pins | exact | one-fewer bound |
+|---|---|---|---|
+| front-end | `FRONTEND_START=560`, `FRONTEND_MAX_MISSING=30` | `30 missing class(es), pin 30`, rc 0 | `30 > pinned 29`, rc 1 |
+| attract prefix | `ATTRACT_MAX_MISSING=74` (both title captures) | both `74 ..., pin 74`, rc 0 | `74 > pinned 73`, rc 1 |
+| attract cycle 2 | `ATTRACT2_MAX_MISSING=126` | `126 ..., pin 126`, rc 0 | `126 > pinned 125`, rc 1 |
+
+The front-end window remained `[560..1884]`; the attract windows and existing
+`--expect-first 215` / `--min-port-exh 173` claims were unchanged. Attract2 still
+has zero unexplained frames and its only splice3 remains capture 3545, cycle-2
+2191/2192/2193 at bytes 120000/172800. Its measured reach includes that splice's
+three frames and excludes later unexhibited classes.
+
+### P10.4 K11 capture identity and order
+
+The identity is `poll.log` sha256 plus the capture frame count, not a hash of
+every pixel. Both values were re-read from the existing captures before pinning:
+
+| scenario | poll.log sha256 | frames | order result |
+|---|---|---:|---|
+| walk | `aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f` | 171 | 0 failures, 51 classified frames |
+| menuesc | `aacd32423ac3879739c2f93bf8d87b44c5fb14803b7c69ad712173f5f70f161e` | 766 | 0 failures, 279 classified frames |
+
+K11 calls the same `gp_compare.order_claim` occurrence search, with the two
+named walk mid-draw frames order-neutral. A synthetic A/C/B/C rewind fails;
+repeated occurrences remain feasible. The existing windows, settled-screen and
+index-coverage claims are unchanged (`walk [90..170]`, `menuesc [106..388]`).
+
+Real-capture mutations fail before pixel comparison: a wrong sha prints
+`capture: FAIL: poll.log sha256`, changing 171 to 170 frames prints the same
+identity mismatch, and omitting either identity option prints `capture identity
+is not pinned`. Unit cases cover the same wrong-sha/count/unpinned branches.
+
+### P10.5 Byte-pinned and stale allowances
+
+The full RGB24 capture-frame hashes measured for the named unexplained frames
+are:
+
+| allowance | frame | sha256 |
+|---|---:|---|
+| front-end | 832 | `4918d7e577ec1cfb64ff8a96981c5a2157b33919cf3e5c3bf4956198aa7959c7` |
+| front-end | 833 | `c9436f54a95cd503ee3efab6983f64a1eb33228c5520beeaeadecb8a7a51eb07` |
+| K11 walk | 138 | `1ec090d071db5fba8e05fcb2ca631d4982a8524306069ffb714eaeac8d3d3e01` |
+| K11 walk | 151 | `e1fc034f3bc3c5b64beee1a2e922a00c9b29ea4223372315b20bdb551e96c67a` |
+
+A name inside its claim window now fails if its bytes differ, if the ordinary
+model explains it, or if it lacks its required hash. Both consumers of the
+front-end names (`--frontend` and `--demo-fight`) use the same audit wrapper;
+the demo-fight stale-name regression failed before that wiring and passes the
+original capture after it. gp's band, scan3 and overlay `retire the name` notes
+are failures too. `K11_ALLOWED_MISSING` fails
+when a named missing port frame becomes exhibited or falls outside the claim.
+The empty K11-missing and attract2-unexplained tables have synthetic tests that
+add a name and watch the stale check fail; the empty sets alone are not evidence.
+
+The real-capture mutation runs used symlinked copies under `/tmp`, never a write
+to `data/`. Flipping one byte failed front-end 832 and walk 138 at their sha
+pins. Replacing those frames with a clean port frame failed them as stale;
+replacing attract2 3545 with cycle-2 frame 2191 failed
+`ATTRACT2_SPLICE3_ALLOWED ... clean now; retire the name`. All three gp
+allowance kinds also have direct stale-name failure tests, and their existing
+byte recipes are unchanged.
+
+### P10.6 Tests and unchanged gates
+
+The RED batches failed first for the intended reasons: gp's canonical/ratchet
+and three stale-name cases, K11 identity/order/byte/stale cases, title allowance
+helpers, the optional flags, and the mixed-occurrence canonicalisation case.
+The final focused run is:
+
+```
+$ python3 -m unittest tools.tests.test_gp_compare tools.tests.test_k11_compare tools.tests.test_title_compare
+Ran 121 tests in 2.707s
+OK
+```
+
+No capture was made or regenerated, no portable source changed, and no existing
+pixel/state pin moved. Independent checks measured:
+
+```
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+
+$ make entry-triage
+Ran 44 tests in 8.015s
+OK
+entry-triage: 579 candidates (575 by U0's rule); ...
+
+$ make diff-verify
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 807/845 closed on full rows;
+8 ported functions with no row (45 FN_ ported-unrowed: 8 portable
+[5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible
+subset is 42 = 5 + 37). ...
+
+$ python3 -m py_compile tools/gp_compare.py tools/k11_compare.py \
+    tools/title_compare.py tools/attract_compare.py
+$ git diff --check
+# no output
+```
+
+### P10.7 Full retained-dump target run
+
+The actual Makefile targets (not only direct comparator calls) then ran with
+`GP_MODES_KEEP=1 GP_WIN_KEEP=1`:
+
+```
+make GP_MODES_KEEP=1 GP_WIN_KEEP=1 \
+  gp-oracle gp-charsel-oracle gp-moves-oracle gp-keys-oracle gp-twop-oracle \
+  gp-modes-oracle gp-u12-oracle gp-win-oracle gp-ending-oracle gp-u13-oracle \
+  gp-u15-oracle gp-u16-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle \
+  gp-u21-oracle gp-u22-oracle gp-u23-oracle \
+  k11-oracle frontend-oracle attract-oracle attract2-oracle
+# exit 0
+```
+
+The complete log is `/tmp/opencode/task9-all-oracles.log`. A read-back asserted
+all 24 scenarios' exact `N missing class(es), pin N` and `order: 0 failures`
+lines, both K11 identity/order lines, front-end 30, attract 74 on both captures,
+and attract2 126; no `improved: lower the pin` line appeared. Dumps were retained.
+The companion suites used by those targets also passed independently:
+
+```
+$ python3 -m unittest tools.tests.test_gp_modes tools.tests.test_gp_twop \
+    tools.tests.test_gp_win tools.tests.test_gp_keys
+Ran 103 tests in 1.701s
+OK
+```
+

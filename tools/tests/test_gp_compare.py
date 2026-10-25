@@ -8,6 +8,7 @@ import gp_session as gs
 import title_compare as tc
 
 DAC = bytes(i for i in range(256) for _ in range(3))   # grey: index i -> (i, i, i)
+NOT_REQUESTED = object()
 
 
 def ipx(k):
@@ -44,14 +45,15 @@ class Dirs(unittest.TestCase):
         self.write_frames([ipx(k) for k in port_ks], cap_frames)
 
     def run_claim(self, n, report=False, max_start=100, max_unexplained=gc.REPORT_MAX,
-                  bands=None, scan3=None, overlay=None):
+                  bands=None, scan3=None, overlay=None, max_missing=NOT_REQUESTED):
         cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
+        kw = {} if max_missing is NOT_REQUESTED else {'max_missing': max_missing}
         rc, first, _, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report,
                                          out.append, max_start, bands, scan3, overlay,
-                                         max_unexplained=max_unexplained)
+                                         max_unexplained=max_unexplained, **kw)
         return rc, first, out
 
 
@@ -193,14 +195,44 @@ class TestFrames(Dirs):
         out2 = self.run_claim(2)[2]
         self.assertFalse(any('exact pin' in l for l in out2), out2)
 
-    def test_coverage_is_reported_for_a_port_frame_the_capture_never_shows(self):
-        # review 1, Important 3: a garbage port frame between two good ones explains nothing,
-        # and the full-dump search never looks at it; it is reported, not ratcheted
-        self.write([1, 99, 2], [rgb(1), rgb(2)])
-        rc, first, out = self.run_claim(2)
+    def test_coverage_is_reported_for_a_port_class_the_capture_never_shows(self):
+        # A garbage port class between two good ones explains nothing. Repeated
+        # byte-identical frames are one class and an all-black frame is excluded.
+        black = bytes(64000) + DAC
+        self.write_frames([ipx(1), ipx(99), ipx(99), black, ipx(2)],
+                          [rgb(1), rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(3)
         self.assertEqual((rc, first), (0, None), out)
-        self.assertTrue(any('1 non-black port frame(s) up to port 2 not exhibited' in l and '[1]' in l
-                            for l in out), out)
+        self.assertTrue(any('1 non-black port content class(es) up to port 4 not exhibited' in l
+                            and '[1]' in l for l in out), out)
+
+    def test_coverage_keeps_a_class_with_an_unexhibited_occurrence(self):
+        # Canonicalise the legacy missing-occurrence set, not the whole dump's
+        # class set: the second rgb(1) is unexhibited even though port 0 is.
+        self.write([1, 1, 2], [rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(2, max_missing=1)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('coverage: 1 missing class(es), pin 1' in l for l in out), out)
+        rc, first, out = self.run_claim(2, max_missing=0)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('FAIL: 1 missing class(es) > pinned 0' in l for l in out), out)
+
+    def test_coverage_pin_boundaries_and_unpinned(self):
+        # The single unseen class is port 1. The exact pin passes, one below
+        # fails, one above reports an improvement, and no pin fails closed.
+        self.write([1, 99, 2], [rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(2, max_missing=1)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('coverage: 1 missing class(es), pin 1' in l for l in out), out)
+        rc, first, out = self.run_claim(2, max_missing=0)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('FAIL: 1 missing class(es) > pinned 0' in l for l in out), out)
+        rc, first, out = self.run_claim(2, max_missing=2)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(any('improved: lower the pin' in l for l in out), out)
+        rc, first, out = self.run_claim(2, max_missing=None)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('coverage pin is not set' in l for l in out), out)
 
     def test_order_rejects_a_rewind_at_capture_2(self):
         self.write([1, 2, 3], [rgb(1), rgb(3), rgb(2), rgb(1)])
@@ -350,6 +382,27 @@ class AttractPortExh(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('FAIL: port attract frames exhibited 1 < pinned 2', r.stdout)
 
+    def test_coverage_excludes_frames_beyond_reach(self):
+        cap, port = self._fixtures()  # port attract 1 is never reached
+        r = self._run(cap, port, '--max-missing', '0')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('coverage: 0 missing class(es), pin 0', r.stdout)
+
+    def test_coverage_collapses_duplicates_and_is_ratchetable(self):
+        cap, port = self._fixtures()
+        self._write(cap, [0x11, 0x33, 0x44])
+        self._write(os.path.join(port, 'attract'), [0x11, 0x22, 0x22, 0x33])
+        self._write(os.path.join(port, 'title'), [0x44])
+        r = self._run(cap, port, '--max-missing', '1')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('coverage: 1 missing class(es), pin 1', r.stdout)
+        r = self._run(cap, port, '--max-missing', '0')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('FAIL: 1 missing class(es) > pinned 0', r.stdout)
+        r = self._run(cap, port, '--max-missing', '2')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('improved: lower the pin', r.stdout)
+
 
 class TestTrace(unittest.TestCase):
     def test_first_difference_skips_unsnapshotted_frames(self):
@@ -493,7 +546,8 @@ class TestCli(Dirs):
         # 1 before the claim; comparing a field the capture lacks must not raise (the
         # report mode goes on with the plain fields, its exit is 0 anyway)
         self.dump()
-        pins = ('--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--min-reach', '1')
+        pins = ('--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--min-reach', '1',
+                '--max-missing', '0')
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                            '--dev-words', *pins)
         self.assertEqual(rc, 0, out)                    # the fields are in SNAP_FIELDS
@@ -524,12 +578,13 @@ class TestCli(Dirs):
         self.assertEqual(out.count('FAIL: the ratchet N is not pinned'), 2, out)
         self.assertIn('FAIL: the window-start pin is not set', out)
         self.assertIn('FAIL: the window-reach pin is not set', out)
+        self.assertIn('FAIL: the coverage pin is not set', out)
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                            '--min-first', '2', '--trace-min-first', '13')
-        self.assertEqual(rc, 1, out)                     # the start and reach pins are still unset
+        self.assertEqual(rc, 1, out)                     # the start, reach and coverage pins are still unset
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                            '--min-first', '2', '--trace-min-first', '13', '--max-start', '0',
-                           '--min-reach', '1')
+                           '--min-reach', '1', '--max-missing', '0')
         self.assertEqual(rc, 0, out)
         self.assertIn('0 differing through 12; ratchet N 13 ok', out)
 
@@ -541,7 +596,8 @@ class TestCli(Dirs):
         with open(os.path.join(self.cap, 'poll.log'), 'rb') as f:
             good = hashlib.sha256(f.read()).hexdigest()
         base = ['--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
-                '--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--min-reach', '1']
+                '--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--min-reach', '1',
+                '--max-missing', '0']
         rc, out = self.cli(*base, '--capture-sha256', good, '--capture-frames', '2')
         self.assertEqual(rc, 0, out)
         self.assertIn('matches the pin', out)
@@ -694,8 +750,8 @@ class BandAllowance(Dirs):
         with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
             f.write(rgb(2))                          # now clean: the name is stale
         rc, first, out = self.run_band()
-        self.assertEqual((rc, first), (0, None), out)
-        self.assertTrue(any('retire the name' in l for l in out), out)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('FAIL:' in l and 'retire the name' in l for l in out), out)
 
     def test_the_table_names_the_measured_gp_keys_fight_frame(self):
         # the pinned recipe of record §G5: capture 835 (raw 3934), rows 0..80 to
@@ -989,8 +1045,8 @@ class Scan3Allowance(Dirs):
         with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
             f.write(rgb(2))                          # now clean: the name is stale
         rc, first, out = self.run_scan3()
-        self.assertEqual((rc, first), (0, None), out)
-        self.assertTrue(any('retire the name' in l for l in out), out)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('FAIL:' in l and 'retire the name' in l for l in out), out)
 
     def test_u13_scan3_recipe_is_pinned_and_mutations_fail(self):
         # Task 2 (record §P2): U13's capture 4248 is its own three-segment
@@ -1275,8 +1331,8 @@ class OverlayAllowance(Dirs):
     def test_a_named_frame_the_model_explains_is_a_stale_name(self):
         self.write_fixture(cap_frame=self.s)          # now clean: the name is stale
         rc, first, out = self.run_overlay()
-        self.assertEqual((rc, first), (0, None), out)
-        self.assertTrue(any('retire the name' in l for l in out), out)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('FAIL:' in l and 'retire the name' in l for l in out), out)
 
     def test_the_table_names_the_measured_overlays(self):
         # the pinned recipes of record §G7: gp-u9-win 2209 (port 1776's glyphs

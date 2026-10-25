@@ -21,12 +21,13 @@ Because the capture is collapsed and the port dumps every presented tick, the
 port run is denser than the capture. The oracle therefore requires every capture
 frame in the attract window to be explained by some port frame (clean, splice or
 transition) and reports the FIRST capture frame it cannot explain; unwitnessed
-port frames are a statistic, not a failure. With `--expect-first N` the oracle
-becomes a gate: the first divergence must be exactly capture frame N (the known
-boundary of the matched prefix), so any regression inside frames 0..N-1 fails.
-With `--min-port-exh N` (sub-project A A1c) it also fails when the number of
-port attract frames the capture exhibits is below N, so a port that renders fewer
-frames — which would otherwise only shrink a statistic — fails.
+port frames are a statistic unless `--max-missing` bounds their canonical
+non-black missing-occurrence classes up to the exhibited reach. With
+`--expect-first N` the oracle becomes a gate: the first divergence must be
+exactly capture frame N (the known boundary of the matched prefix), so any
+regression inside frames 0..N-1 fails. With `--min-port-exh N` (sub-project A
+A1c) it also fails when the number of port attract frames the capture exhibits
+is below N, so a port that renders fewer frames fails.
 The comparison reuses tools/title_compare.py's helpers by import (that file is
 read-only).
 
@@ -71,7 +72,7 @@ def title_window_start(frames, port_title, port_title_rows):
 
 def check_capture(capture, port_attract, port_attract_rows,
                   port_title, port_title_rows, expect_first=None,
-                  min_port_exh=None):
+                  min_port_exh=None, max_missing=None):
     frames = tc.load_frames(capture, os.path.basename(capture))
     if frames is None:
         return 1, None
@@ -108,6 +109,11 @@ def check_capture(capture, port_attract, port_attract_rows,
     print("attract_compare: %s: %d/%d capture frames explained; port attract "
           "frames exhibited %d/%d"
           % (capture, explained, ts, len(port_exh), len(port_attract)))
+    if max_missing is not None:
+        reach = max(port_exh) if port_exh else -1
+        missing = tc.canonical_missing(port_attract, reach, port_exh)
+        if tc.coverage_check(capture, missing, max_missing, tool='attract_compare'):
+            return 1, None
     if min_port_exh is not None and len(port_exh) < min_port_exh:
         print("attract_compare: %s: FAIL: port attract frames exhibited %d < pinned %d "
               "(the port rendered fewer frames)" % (capture, len(port_exh), min_port_exh))
@@ -153,6 +159,9 @@ def main():
                     help='lower bound on the port attract frames the capture '
                          'exhibits; a port that renders fewer frames (a smaller '
                          'count) fails (sub-project A A1c)')
+    ap.add_argument('--max-missing', type=int, default=None,
+                    help='upper bound on canonical non-black missing classes up '
+                         'to the exhibited reach')
     ap.add_argument('--verbose', action='store_true')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
@@ -190,7 +199,7 @@ def main():
             continue
         rc, _ = check_capture(capture, port_attract, port_attract_rows,
                               port_title, port_title_rows, a.expect_first,
-                              a.min_port_exh)
+                              a.min_port_exh, a.max_missing)
         bad += rc
     return 1 if bad else 0
 

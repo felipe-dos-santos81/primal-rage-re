@@ -41,6 +41,7 @@ CHUNK = 8192
 # capture sampling phase, not by the port, so a static floor above 1 would
 # false-negative a legitimate pair. The honest bound is at least one.
 MIN_SHARED_CLEAN = 1
+BLACK_ROW = hashlib.md5(bytes(ROW)).digest()
 
 
 def load(path):
@@ -85,6 +86,59 @@ def raw_map(d):
 def row_hashes(data):
     return [hashlib.md5(data[r * ROW:(r + 1) * ROW]).digest()
             for r in range(FRAME_H)]
+
+
+def canonical_missing(port, reach, seen, rows=None, black_row=None):
+    """Canonical byte classes in the unexhibited occurrences up to ``reach``.
+
+    Start with the legacy missing-index set, then collapse byte-identical
+    missing occurrences. An exhibited duplicate does not erase a different
+    unexhibited occurrence's class (the measured idle/front-end 29/30 rule,
+    not the whole-dump class difference's 24/11). ``rows`` and ``black_row``
+    let the gp lazy sequence reuse its row hashes; other callers test the RGB24
+    bytes directly. Classes beyond ``reach`` are outside this bounded claim.
+    """
+    if black_row is None:
+        black_row = BLACK_ROW
+    representatives = {}
+    for m in range(min(reach + 1, len(port))):
+        if m in seen:
+            continue
+        if rows is None:
+            if not any(port[m]):
+                continue
+        elif all(h == black_row for h in rows[m]):
+            continue
+        representatives.setdefault(hashlib.md5(port[m]).digest(), m)
+    return list(representatives.values())
+
+
+def coverage_check(name, missing, max_missing, out=print, tool='title_compare'):
+    """Ratchet a canonical bounded-missing count in the tested direction."""
+    count = len(missing)
+    if max_missing is None:
+        out('%s: %s: coverage: FAIL: the coverage pin is not set' % (tool, name))
+        return 1
+    if count > max_missing:
+        out('%s: %s: coverage: FAIL: %d missing class(es) > pinned %d'
+            % (tool, name, count, max_missing))
+        return 1
+    if count < max_missing:
+        out('%s: %s: coverage: %d missing class(es) < pinned %d '
+            '(improved: lower the pin)' % (tool, name, count, max_missing))
+    else:
+        out('%s: %s: coverage: %d missing class(es), pin %d'
+            % (tool, name, count, max_missing))
+    return 0
+
+
+def attract2_coverage(port, covered, splice3s):
+    """Canonical cycle-2 missing classes, including each named splice's 3 frames."""
+    seen = set(covered)
+    for N, _b1, _b2 in splice3s:
+        seen.update((N, N + 1, N + 2))
+    reach = max(seen) if seen else -1
+    return canonical_missing(port, reach, seen), reach
 
 
 def first_diff(a, b):
@@ -493,6 +547,10 @@ def load_port(d, n):
 # allowed set stays (832, 833), and the exhibition set is port frames
 # 0..1381, the whole 1382-frame dump (1145 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
+FRONTEND_ALLOWED_UNEXPLAINED_SHA256 = {
+    832: '4918d7e577ec1cfb64ff8a96981c5a2157b33919cf3e5c3bf4956198aa7959c7',
+    833: 'c9436f54a95cd503ee3efab6983f64a1eb33228c5520beeaeadecb8a7a51eb07',
+}
 
 # The attract cycle-2 region's frames allowed by name, each mapped to a capture
 # it must stay byte-identical to. Capture 2384, the `- LOADING -` frame before
@@ -546,6 +604,59 @@ def splice3(c, frames, loaders, next_clean=None):
     return None
 
 
+def unexplained_allowances(name, frames, kinds, window, allowed, shas, out=print):
+    """Return (validated names, failures) for named unexplained frames.
+
+    A name inside the window whose frame is now explained is stale. When
+    ``shas`` is supplied, the complete capture-frame bytes must match its pin;
+    an unnamed hash is a failure, not an implicit allowance. ``frames`` may be
+    None only when ``shas`` is None (the attract2 twin-byte check is separate).
+    """
+    used, bad = [], 0
+    lo, hi = window
+    for j in sorted(allowed):
+        if not lo <= j <= hi:
+            continue
+        kind = kinds[j][0]
+        if kind != 'unexplained':
+            out('title_compare: %s: FAIL: allowed frame %d is stale: %s now; '
+                'retire the name' % (name, j, kind))
+            bad += 1
+            continue
+        if shas is not None:
+            want = shas.get(j)
+            got = hashlib.sha256(frames[j]).hexdigest()
+            if want is None:
+                out('title_compare: %s: FAIL: allowed frame %d has no sha256 pin'
+                    % (name, j))
+                bad += 1
+                continue
+            if got != want:
+                out('title_compare: %s: FAIL: allowed frame %d sha256 %s != '
+                    'pinned %s' % (name, j, got, want))
+                bad += 1
+                continue
+        used.append(j)
+    return used, bad
+
+
+def frontend_allowances(res, out=print):
+    """Audit the two front-end names for both frontend and demo-fight modes."""
+    return unexplained_allowances(
+        'frontend', res['frames'], res['kinds'], res['window'],
+        FRONTEND_ALLOWED_UNEXPLAINED, FRONTEND_ALLOWED_UNEXPLAINED_SHA256, out)
+
+
+def splice3_stale(name, j, kind, lo, hi, out=print):
+    """Fail when a named three-frame splice no longer needs its allowance."""
+    if lo <= j <= hi and kind not in ('unexplained', 'artifact'):
+        out('title_compare: %s: FAIL: frame %d is named in '
+            'ATTRACT2_SPLICE3_ALLOWED but is %s now; retire the name'
+            % (name, j, kind))
+        return 1
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--capture', action='append', required=True)
@@ -554,6 +665,11 @@ def main():
     ap.add_argument('--frontend-end', type=int, default=None,
                     help='the pinned window end of the front-end comparison; a port that '
                          'stops earlier fails (sub-project A A1)')
+    ap.add_argument('--frontend-start', type=int, default=None,
+                    help='the measured front-end window start; required with --max-missing')
+    ap.add_argument('--max-missing', type=int, default=None,
+                    help='the pinned canonical non-black missing-class count for '
+                         '--frontend or --attract2')
     ap.add_argument('--verbose', action='store_true')
     ap.add_argument('--frontend', action='store_true',
                     help='front-end window (states 3/4): content-alignment '
@@ -562,9 +678,9 @@ def main():
                          'any unexplained frame except the two named in '
                          'FRONTEND_ALLOWED_UNEXPLAINED (the enforced front-end '
                          'gate). The window is derived from the port dump and its '
-                         'END is pinned by --frontend-end, so a port that stops '
-                         'early fails; coverage INSIDE the window (port frames no '
-                         'captured frame exhibits) is still not ratcheted')
+                         'START/END are pinned by --frontend-start/--frontend-end; '
+                         '--max-missing bounds the canonical non-black classes in '
+                         'unexhibited occurrences up to the exhibited reach')
     ap.add_argument('--demo', action='store_true',
                     help='demo window (states 9/6/7): the same content-alignment '
                          'classification over the capture region after the '
@@ -599,9 +715,10 @@ def main():
                          'only (<port>/cycle2), enforced as a RATCHET. Claim: '
                          'every content-bearing captured frame in [start .. '
                          'N) is explained and the first unexplained frame is '
-                         '>= N (--attract2-min-first). The window is derived '
-                         'from content alignment against the port\'s own '
-                         'dump, so it cannot detect an under-rendering port. '
+                         '>= N (--attract2-min-first). --max-missing also '
+                         'bounds canonical missing classes up to the exhibited '
+                         'reach, with each named splice3 contributing all three '
+                         'frames; this is bounded-missing, not full coverage. '
                          'Returns 1 on a violation')
     ap.add_argument('--attract2-min-first', type=int, default=None,
                     metavar='N',
@@ -626,22 +743,12 @@ def main():
     # dump return 1 (see the returns below). The result is now a gate: any
     # unexplained frame returns 1.
     #
-    # Known limitation of the gate (narrowed by A1b's end pin): `unexplained` is
-    # evaluated only inside the window the port's own dump exhibits
-    # (`check_capture` derives that window from `idx`, then the branch discards
-    # `rc`). The ignored `rc` counts port frames no capture frame exhibits
-    # (coverage) and `endpoints BAD`. The window END is now pinned by
-    # --frontend-end: a port whose dump stops early shrinks the window end below
-    # the pin and fails. The two shrunken dumps the earlier text recorded as
-    # passing now both return 1 — 300 identical copies of port frame 0 (window
-    # [557..559], 2 clean, 0 unexplained, exhibited 1/300) and only the first 12
-    # real frames (window [557..569], exhibited 9/12) — because 559 and 569 are
-    # below the pin 1884. What the pin does NOT close is coverage INSIDE the
-    # window: a port frame no captured frame exhibits (a mid-window gap) is still
-    # ignored. "The oracle passes" therefore means "no content-bearing capture
-    # frame inside the port-exhibited window is unexplained AND the window reaches
-    # the pinned end", NOT "every dumped port frame was exhibited" and NOT "the
-    # front-end was rendered".
+    # `unexplained` is evaluated only inside the window the port's own dump
+    # exhibits (`check_capture` derives it from `idx`, then this branch discards
+    # `rc`). --frontend-start/--frontend-end pin that window, and --max-missing
+    # bounds the canonical non-black classes in unexhibited occurrences up to
+    # the exhibited reach. This is still bounded-missing, not full coverage:
+    # unsampled states and same-count class substitutions are not claimed.
     if a.frontend:
         capture = a.capture[0]
         if not os.path.isdir(capture):
@@ -675,18 +782,33 @@ def main():
         if b_win > a.frontend_end:
             print("title_compare: frontend: window ends at capture %d > pinned end %d "
                   "(improved: raise the pin)" % (b_win, a.frontend_end))
+        a_win = res['window'][0]
+        if a.frontend_start is not None and a_win != a.frontend_start:
+            print("title_compare: frontend: FAIL: window starts at capture %d != "
+                  "pinned start %d" % (a_win, a.frontend_start))
+            return 1
+        if a.max_missing is not None and a.frontend_start is None:
+            print("title_compare: frontend: FAIL: the window-start pin is not set "
+                  "(--frontend-start is required with --max-missing)")
+            return 1
         black = res['black']
         print("title_compare: frontend: %d all-black capture frame(s) excluded "
               "as artifacts: %s"
               % (len(black), [(j, raws[j]) for j in black]))
         unexpl = res['unexpl']
-        allowed = [j for j in unexpl if j in FRONTEND_ALLOWED_UNEXPLAINED]
-        rest = [j for j in unexpl if j not in FRONTEND_ALLOWED_UNEXPLAINED]
+        allowed, allow_bad = frontend_allowances(res)
+        rest = [j for j in unexpl if j not in allowed]
+        if allow_bad:
+            return 1
         if rest:
             print("title_compare: frontend: %d unexplained captured frame(s) in "
                   "the window; first is %d (raw %s)."
                   % (len(rest), rest[0], raws[rest[0]]))
             return 1
+        if a.max_missing is not None:
+            missing = canonical_missing(port, max(res['covered']), res['covered'])
+            if coverage_check('frontend', missing, a.max_missing):
+                return 1
         if allowed:
             print("title_compare: frontend: %d unexplained captured frame(s) "
                   "allowed by name: %s; no other unexplained frame in the "
@@ -856,8 +978,10 @@ def main():
         lo = fe_b + 1
         end = next((j for j in range(lo, len(frames)) if not any(frames[j])),
                    None)
-        fe_rest = [j for j in fe_res['unexpl']
-                   if j not in FRONTEND_ALLOWED_UNEXPLAINED]
+        fe_allowed, allow_bad = frontend_allowances(fe_res)
+        if allow_bad:
+            return 1
+        fe_rest = [j for j in fe_res['unexpl'] if j not in fe_allowed]
         if end == lo and not fe_rest:
             # The front-end window reaches the frame before the first all-black
             # capture frame: the whole fight is inside it and explained (no
@@ -1006,16 +1130,18 @@ def main():
                   "the ratchet guards no frame" % (ratchet, lo))
             return 1
         unexpl = [j for j in range(lo, hi + 1) if kinds[j][0] == 'unexplained']
-        allowed = []
-        for j, twin in sorted(ATTRACT2_ALLOWED_UNEXPLAINED.items()):
-            if j not in unexpl:
-                continue
+        allowed, allow_bad = unexplained_allowances(
+            'attract2', None, kinds, (lo, hi), ATTRACT2_ALLOWED_UNEXPLAINED,
+            None)
+        if allow_bad:
+            return 1
+        for j in allowed:
+            twin = ATTRACT2_ALLOWED_UNEXPLAINED[j]
             if (load(os.path.join(capture, 'frame_%04d.raw' % j)) !=
                     load(os.path.join(capture, 'frame_%04d.raw' % twin))):
                 print("title_compare: attract2: FAIL: allowed frame %d is no "
                       "longer byte-identical to capture %d" % (j, twin))
                 return 1
-            allowed.append(j)
         if allowed:
             print("title_compare: attract2: %d unexplained captured frame(s) "
                   "allowed by name: %s"
@@ -1026,12 +1152,11 @@ def main():
         if os.path.exists(lpath):
             with open(lpath) as f:
                 loaders = {int(t) for t in f.read().split()}
+        splice3_seen = []
         for j in ATTRACT2_SPLICE3_ALLOWED:
             if j not in unexpl:
-                if lo <= j <= hi and kinds[j][0] != 'artifact':
-                    print("title_compare: attract2: note: frame %d is named in "
-                          "ATTRACT2_SPLICE3_ALLOWED but is %s now; retire the "
-                          "name" % (j, kinds[j][0]))
+                if lo <= j <= hi and splice3_stale('attract2', j, kinds[j][0], lo, hi):
+                    return 1
                 continue
             nxt = kinds[j + 1] if j + 1 <= hi else None
             if nxt is None or nxt[0] != 'clean':
@@ -1049,7 +1174,13 @@ def main():
                   "%d/%d (rows %d/%d)"
                   % (j, raws[j], s3[0], s3[0] + 1, s3[0] + 2, s3[1], s3[2],
                      s3[1] // ROW, s3[2] // ROW))
+            splice3_seen.append(s3)
             unexpl.remove(j)
+        if a.max_missing is not None:
+            covered = res['covered'] if res is not None else set()
+            missing, _coverage_reach = attract2_coverage(c2, covered, splice3_seen)
+            if coverage_check('attract2', missing, a.max_missing):
+                return 1
         first = unexpl[0] if unexpl else None
         if first is None:
             print("title_compare: attract2: 0 unexplained in the region")

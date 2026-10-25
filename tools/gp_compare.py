@@ -30,8 +30,11 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
           port index >= the previous one, choosing the smallest feasible index.
           This is content order, not display order: repeating screens map to the
           earliest feasible occurrence, and band/scan3/overlay mixed allowances
-          are order-neutral. Not claimed: that every port frame appears (a
-          coverage count is reported).
+          are order-neutral. --max-missing bounds the canonical non-black
+          classes in the unexhibited port occurrences up to the window reach;
+          byte-identical missing occurrences collapse and all-black frames are
+          excluded. This bounded-missing claim is not full coverage: unsampled
+          states and same-count class substitutions remain unclaimed.
   trace   the capture's S records (poll.log) against the port's T records
           (trace.txt) by the frame counter f, over gp_session.TRACE_FIELDS;
           the first differing f must be >= --trace-min-first F. tick is
@@ -957,7 +960,8 @@ def all_order_candidates(c, port, rows, occurrences):
 
 
 def order_claim(name, cap, raws, port, rows, start, end, out=print,
-                bands=None, scan3=None, overlay=None):
+                bands=None, scan3=None, overlay=None, neutral=None,
+                tool='gp_compare'):
     """Check existential content order over ``[start, end)``.
 
     Each step takes the smallest candidate whose highest meaningfully exhibited
@@ -970,6 +974,7 @@ def order_claim(name, cap, raws, port, rows, start, end, out=print,
     bands = {} if bands is None else bands
     scan3 = {} if scan3 is None else scan3
     overlay = {} if overlay is None else overlay
+    neutral = set() if neutral is None else set(neutral)
     occurrences, digests = order_occurrences(port)
     last = p = 0
     classified = 0
@@ -992,9 +997,13 @@ def order_claim(name, cap, raws, port, rows, start, end, out=print,
             info, _why = overlay_explain(c, port, overlay[j])
             if info is not None:
                 kind, data = 'overlay', (overlay[j][1], overlay[j][3])
+        if kind == 'unexplained' and j in neutral:
+            classified += 1
+            j += 1
+            continue
         if kind == 'unexplained':
-            out('gp_compare: %s: order: order failure capture %d (raw %d): '
-                'kind=unexplained last=%d candidates=[]' % (name, j, raws[j], last))
+            out('%s: %s: order: order failure capture %d (raw %d): '
+                'kind=unexplained last=%d candidates=[]' % (tool, name, j, raws[j], last))
             return 1
         classified += 1
         if kind in ('band', 'scan3', 'overlay'):
@@ -1010,14 +1019,14 @@ def order_claim(name, cap, raws, port, rows, start, end, out=print,
             feasible = [(high, ex) for high, ex in candidates if high >= last]
         if not feasible:
             highs = sorted({high for high, _ex in candidates})
-            out('gp_compare: %s: order: order failure capture %d (raw %d): '
+            out('%s: %s: order: order failure capture %d (raw %d): '
                 'kind=%s last=%d candidates=%s'
-                % (name, j, raws[j], kind, last, highs))
+                % (tool, name, j, raws[j], kind, last, highs))
             return 1
         last = min(feasible, key=lambda candidate: candidate[0])[0]
         p = max(p, last)
         j += 1
-    out('gp_compare: %s: order: 0 failures (%d classified frames)' % (name, classified))
+    out('%s: %s: order: 0 failures (%d classified frames)' % (tool, name, classified))
     return 0
 
 
@@ -1034,6 +1043,32 @@ def classify(c, port, rows, p):
 
 
 BLACK_ROW = hashlib.md5(bytes(tc.ROW)).digest()
+COVERAGE_NOT_REQUESTED = object()
+
+
+def canonical_missing(port, rows, reach, seen):
+    """The shared canonical missing-occurrence classes, independent of order."""
+    return tc.canonical_missing(port, reach, seen, rows, BLACK_ROW)
+
+
+def coverage_check(name, missing, max_missing, out=print):
+    """Ratchet the bounded-missing claim, failing closed when it is unpinned."""
+    count = len(missing)
+    if max_missing is None:
+        out('gp_compare: %s: frames: coverage: FAIL: the coverage pin is not set '
+            '(GP_*_MAX_MISSING)' % name)
+        return 1
+    if count > max_missing:
+        out('gp_compare: %s: frames: coverage: FAIL: %d missing class(es) > pinned %d'
+            % (name, count, max_missing))
+        return 1
+    if count < max_missing:
+        out('gp_compare: %s: frames: coverage: %d missing class(es) < pinned %d '
+            '(improved: lower the pin)' % (name, count, max_missing))
+    else:
+        out('gp_compare: %s: frames: coverage: %d missing class(es), pin %d'
+            % (name, count, max_missing))
+    return 0
 
 
 def start_check(name, start, raws, max_start, min_first, out=print):
@@ -1081,7 +1116,8 @@ def reach_check(name, reach, min_reach, out=print):
 
 
 def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None,
-                bands=None, scan3=None, overlay=None, max_unexplained=REPORT_MAX):
+                bands=None, scan3=None, overlay=None, max_unexplained=REPORT_MAX,
+                max_missing=COVERAGE_NOT_REQUESTED):
     """Returns (rc, first_unexplained or None, next_after_last_classified, reach). In report
     mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
     "window empty"; main() turns every report-mode rc into 0). `max_unexplained`
@@ -1121,8 +1157,9 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         kind, data = classify(c, port, rows, p)
         if j in bands:
             if kind != 'unexplained':
-                out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
+                out('gp_compare: %s: frames: FAIL: capture %d (raw %d) is named in the '
                     'allowance but %s now; retire the name' % (name, j, raws[j], kind))
+                allow_bad = 1
             else:
                 P, why = band_explain(c, port, bands[j])
                 if P is None:
@@ -1153,8 +1190,9 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                     % (name, j, raws[j], r1 - 1, tops, mid, B + 1, r2))
                 kind, data = 'scan3', ex
         elif j in scan3 and kind != 'unexplained':
-            out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
+            out('gp_compare: %s: frames: FAIL: capture %d (raw %d) is named in the '
                 'scan-out allowance but %s now; retire the name' % (name, j, raws[j], kind))
+            allow_bad = 1
         if kind == 'unexplained' and j in overlay:
             info, why = overlay_explain(c, port, overlay[j])
             if info is None:
@@ -1169,8 +1207,9 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                     % (name, j, raws[j], info, t1_i, s_i, t2_i))
                 kind, data = 'overlay', (t1_i, s_i)
         elif j in overlay and kind != 'unexplained':
-            out('gp_compare: %s: frames: note: capture %d (raw %d) is named in the '
+            out('gp_compare: %s: frames: FAIL: capture %d (raw %d) is named in the '
                 'overlay allowance but %s now; retire the name' % (name, j, raws[j], kind))
+            allow_bad = 1
         counts[kind] += 1
         if kind == 'unexplained':
             unexpl.append(j)
@@ -1197,13 +1236,17 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
     order_end = first if first is not None else len(cap)
     order_rc = order_claim(name, cap, raws, port, rows, start, order_end, out,
                            bands, scan3, overlay)
-    # Coverage, reported and NOT ratcheted (record §I item 9, a named gap): the port's
-    # non-black frames up to the last one the capture exhibits that no classified capture
-    # frame exhibits. The order claim above is independent of this reported count.
-    missing = [m for m in range(min(p + 1, len(rows))) if m not in seen and any(h != BLACK_ROW for h in rows[m])]
-    out('gp_compare: %s: frames: coverage (reported, not ratcheted): %d non-black port frame(s) up to port %d '
+    # Bounded-missing coverage: canonical non-black classes in the unexhibited
+    # occurrences up to the last exhibited port frame. This is independent of
+    # the order pass and is not full coverage: unsampled states and same-count
+    # substitutions remain outside the claim.
+    missing = canonical_missing(port, rows, p, seen)
+    out('gp_compare: %s: frames: coverage: %d non-black port content class(es) up to port %d '
         'not exhibited by any classified capture frame%s'
         % (name, len(missing), p, '' if not missing else ': %s%s' % (missing[:20], ' ...' if len(missing) > 20 else '')))
+    coverage_rc = 0
+    if not report and max_missing is not COVERAGE_NOT_REQUESTED:
+        coverage_rc = coverage_check(name, missing, max_missing, out)
     if report:
         if first is None:
             out('gp_compare: %s: frames: 0 unexplained through %d' % (name, len(cap) - 1))
@@ -1211,7 +1254,8 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
             out('gp_compare: %s: frames: FAIL: an allowance named its frame but not its bytes' % name)
         return 0, first, j, p
     rc = max(ratchet(name, 'frames', first, len(cap), min_first, out),
-             start_check(name, start, raws, max_start, min_first, out), allow_bad, order_rc)
+             start_check(name, start, raws, max_start, min_first, out), allow_bad, order_rc,
+             coverage_rc)
     return rc, first, j, p
 
 
@@ -1400,6 +1444,9 @@ def main():
     ap.add_argument('--min-reach', default=None,
                     help='the pinned highest port frame any classified capture frame exhibits '
                          '(sub-project A §A1): a port that renders fewer screens fails')
+    ap.add_argument('--max-missing', type=int, default=None,
+                    help='the pinned number of unexhibited canonical non-black port content '
+                         'classes up to the window reach; an unpinned enforced scenario fails')
     ap.add_argument('--capture-sha256', default=None,
                     help="the pinned sha256 of the capture's poll.log; with it a different capture fails")
     ap.add_argument('--capture-frames', default=None,
@@ -1446,7 +1493,7 @@ def main():
                                    None if a.report else _int_or_none(a.max_start),
                                    BANDS_ALLOWED.get(name, ()), SCAN3_ALLOWED.get(name, ()),
                                    OVERLAY_ALLOWED.get(name, ()),
-                                   max_unexplained=a.max_unexplained)
+                                   max_unexplained=a.max_unexplained, max_missing=a.max_missing)
     rc4 = 0 if a.report else reach_check(name, reach, _int_or_none(a.min_reach), print)
     with open(os.path.join(a.capture, 'poll.log')) as f:
         cl = f.read().splitlines()

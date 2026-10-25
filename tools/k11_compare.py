@@ -12,7 +12,8 @@ claim is a failure when broken:
   1. the window is not empty;
   2. every capture frame in it is explained, except all-black frames (a
      documented capture artefact, port/spec/game_flow.md) and the frames
-     K11_ALLOWED_UNEXPLAINED names with their record reference;
+     K11_ALLOWED_UNEXPLAINED names with their record reference and full-frame
+     sha256 (a byte change or a newly explained/stale name fails);
   3. every settled screen of screens.txt is exhibited by a capture frame in
      the window, so a port that renders less than the original fails;
   4. no non-black capture frame follows the window's end, so the END is the
@@ -25,18 +26,24 @@ claim is a failure when broken:
      exception), and the distinct exhibited count meets the `--min-exh`
      (K11_<SCENARIO>_MIN_EXH) pin, so a port that renders fewer frames — which
      only shrinks its port-derived window and settled list — fails (A1c).
+  6. content order follows the same existential, occurrence-aware rule as
+     gp_compare; the two named mid-draw walk frames are order-neutral;
+  7. an enforced comparison's capture is pinned by poll.log sha256 and frame
+     count (--capture-sha256/--capture-frames), not by every capture pixel.
 --report prints the same, plus the first unexplained frames' difference boxes,
 and always exits 0 (the evidence scenarios). An absent capture skips (exit 0)
 unless --required is passed. The environment's PR_ORACLE_REQUIRED is ignored:
 the K11 oracle is enforced like the front-end one and skips without its
 capture, so a PR_ORACLE_REQUIRED=1 inherited from the caller must not turn a
-missing git-ignored capture into a failure. Stdlib only; title_compare is
-read-only here."""
+missing git-ignored capture into a failure. Stdlib only; gp_compare and
+title_compare are read-only here."""
 import argparse
+import hashlib
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gp_compare as gc
 import title_compare as tc
 
 # scenario -> {capture index: 'record §A.x: reason'}. Only plan Task 10 adds rows.
@@ -48,6 +55,14 @@ K11_ALLOWED_UNEXPLAINED = {
     'walk': {
         138: 'record §A.5: MODIFY CONTROLS mid-draw, port 47/48 plus 940 black glyph px (rows 91..158)',
         151: 'record §A.5: TEST CONTROLS markers mid-draw, port 58/59 plus 88 black glyph px (rows 120..152)',
+    },
+}
+# The complete RGB24 capture-frame bytes behind each name. A name whose frame
+# becomes explained is stale; a name without this byte pin is not an allowance.
+K11_ALLOWED_UNEXPLAINED_SHA256 = {
+    'walk': {
+        138: '1ec090d071db5fba8e05fcb2ca631d4982a8524306069ffb714eaeac8d3d3e01',
+        151: 'e1fc034f3bc3c5b64beee1a2e922a00c9b29ea4223372315b20bdb551e96c67a',
     },
 }
 # scenario -> (tuple of port frame indices). Port frames a capture legitimately
@@ -155,11 +170,14 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
     allowed = K11_ALLOWED_UNEXPLAINED.get(name, {})
     counts = {'clean': 0, 'splice': 0, 'transition': 0, 'unexplained': 0}
     unexpl, black, exh = [], [], set()
+    kinds = [('excluded', None) for _ in frames]
     for j in range(start, end + 1):
         if not any(frames[j]):
             black.append(j)
+            kinds[j] = ('artifact', None)
             continue
         kind, data = ex(j)
+        kinds[j] = (kind, data)
         counts[kind] += 1
         if kind == 'unexplained':
             unexpl.append(j)
@@ -178,8 +196,39 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
     full_missing = [m for m in cover if canon[m] not in port_exh]
     allowed_missing = K11_ALLOWED_MISSING.get(name, ())
     bad_missing = [m for m in full_missing if m not in allowed_missing]
+    stale_missing = [m for m in allowed_missing if m not in full_missing]
     short_exh = min_exh is not None and len(port_exh) < min_exh
-    bad = [j for j in unexpl if j not in allowed]
+
+    # A named unexplained frame is admitted only at its pinned bytes. If the
+    # ordinary model explains it now, the name is stale and fails instead of
+    # silently disappearing from the report.
+    allowed_shas = K11_ALLOWED_UNEXPLAINED_SHA256.get(name, {})
+    allowed_used, allow_bad = [], 0
+    for j in sorted(allowed):
+        if not start <= j <= end:
+            continue
+        kind = kinds[j][0]
+        if kind != 'unexplained':
+            print('k11_compare: %s: FAIL: allowed capture %d is stale: %s now; '
+                  'retire the name' % (name, j, kind))
+            allow_bad = 1
+            continue
+        want = allowed_shas.get(j)
+        got = hashlib.sha256(frames[j]).hexdigest()
+        if want is None:
+            print('k11_compare: %s: FAIL: allowed capture %d has no sha256 pin'
+                  % (name, j))
+            allow_bad = 1
+        elif got != want:
+            print('k11_compare: %s: FAIL: allowed capture %d sha256 %s != pinned %s'
+                  % (name, j, got, want))
+            allow_bad = 1
+        else:
+            allowed_used.append(j)
+    bad = [j for j in unexpl if j not in allowed_used]
+    order_end = min(bad) if bad else end + 1
+    order_rc = gc.order_claim(name, frames, raws, port, port_rows, start, order_end,
+                              print, neutral=allowed, tool='k11_compare')
     print('k11_compare: %s: window distinct [%d..%d] (raw %d..%d)' % (name, start, end, raws[start], raws[end]))
     print('k11_compare: %s: %d frames in window: %d clean, %d splice, %d transition, %d unexplained, %d all-black'
           % (name, end - start + 1, counts['clean'], counts['splice'], counts['transition'],
@@ -194,8 +243,11 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
     if bad_missing:
         print('k11_compare: %s: FAIL: non-black port frame(s) up to the final '
               'settled screen not exhibited: %s' % (name, bad_missing))
-    if allowed and unexpl:
-        print('k11_compare: %s: allowed by name: %s' % (name, sorted(j for j in unexpl if j in allowed)))
+    for m in stale_missing:
+        print('k11_compare: %s: FAIL: stale allowed-missing port frame %d is '
+              'exhibited or outside the claim; retire the name' % (name, m))
+    if allowed_used:
+        print('k11_compare: %s: allowed by name: %s' % (name, allowed_used))
     short = False
     if name in K11_OPEN_END:
         min_end, why = K11_OPEN_END[name]
@@ -216,8 +268,30 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report, min_
         label = 'FIRST UNEXPLAINED' if k == 0 else 'UNEXPLAINED'
         print('k11_compare: %s: %s capture %d (raw %d): nearest port %d, differs in rows %d..%d, x %d..%d (%d px)'
               % ((name, label, j, raws[j], m) + box))
-    return 0 if not bad and not missing and not bad_missing and not short_exh \
-        and past is None and not short else 1
+    return 0 if not bad and not missing and not bad_missing and not stale_missing \
+        and not short_exh and not allow_bad and not order_rc and past is None and not short else 1
+
+
+def capture_identity(name, cap_dir, n_frames, sha, frames, out=print):
+    """Pin the capture's poll.log and frame count, never its whole pixel set."""
+    if sha in (None, '') or frames is None:
+        out('k11_compare: %s: capture: FAIL: the capture identity is not pinned '
+            '(--capture-sha256 and --capture-frames are required)' % name)
+        return False
+    path = os.path.join(cap_dir, 'poll.log')
+    if not os.path.isfile(path):
+        out('k11_compare: %s: capture: FAIL: %s has no poll.log' % (name, cap_dir))
+        return False
+    with open(path, 'rb') as f:
+        got = hashlib.sha256(f.read()).hexdigest()
+    if got != sha or n_frames != frames:
+        out('k11_compare: %s: capture: FAIL: poll.log sha256 %s (%d frames) != '
+            'the pinned %s (%d frames); re-measure every content pin from the '
+            'new capture before pinning' % (name, got, n_frames, sha, frames))
+        return False
+    out('k11_compare: %s: capture: poll.log sha256 %s..%s, %d frames: matches the pin'
+        % (name, got[:8], got[-6:], n_frames))
+    return True
 
 
 def main():
@@ -230,6 +304,10 @@ def main():
     ap.add_argument('--min-exh', type=int, default=None,
                     help='lower bound on the distinct port frames the capture exhibits; a '
                          'port that renders fewer frames (a smaller count) fails (sub-project A A1c)')
+    ap.add_argument('--capture-sha256', default=None,
+                    help="the pinned sha256 of the capture's poll.log; required for an enforced comparison")
+    ap.add_argument('--capture-frames', type=int, default=None,
+                    help='the pinned number of capture frames; required for an enforced comparison')
     ap.add_argument('--required', action='store_true',
                     help='fail (exit 1) when the capture is absent; PR_ORACLE_REQUIRED is not read')
     a = ap.parse_args()
@@ -248,6 +326,9 @@ def main():
         print('k11_compare: %s: empty or malformed frames (capture %s, port %s)'
               % (name, None if frames is None else len(frames), None if port is None else len(port)))
         return 0 if a.report else 1
+    if not a.report and not capture_identity(name, a.capture, len(frames),
+                                             a.capture_sha256, a.capture_frames):
+        return 1
     raws = tc.raw_map(a.capture) or list(range(len(frames)))
     keys, end_settled = read_screens(screens)
     if end_settled is None or any(m >= len(port) for m in keys + [end_settled]):

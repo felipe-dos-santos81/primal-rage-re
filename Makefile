@@ -191,8 +191,10 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 # on data/title-captures/title and .../title2 prints
 # "port attract frames exhibited 173/690" for each, so the pin is 173. Raise it
 # when the number grows (the tool prints no "improved" line; a measured count
-# below the pin fails).
+# below the pin fails). Both captures also measure 74 canonical non-black
+# missing-occurrence classes up to reach (proof-completion record §P10).
 ATTRACT_MIN_PORT_EXH ?= 173
+ATTRACT_MAX_MISSING = 74
 attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/title-captures)
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@if [ -d $(TITLE_CAPTURES)/title ]; then \
@@ -203,7 +205,8 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 	fi
 	@$(PYTHON) tools/attract_compare.py --capture $(TITLE_CAPTURES)/title \
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
-		--expect-first 215 --min-port-exh $(ATTRACT_MIN_PORT_EXH) --port $(ATTRACT_DUMP)
+		--expect-first 215 --min-port-exh $(ATTRACT_MIN_PORT_EXH) \
+		--max-missing $(ATTRACT_MAX_MISSING) --port $(ATTRACT_DUMP)
 
 # Front-end oracle (the enforced one): the PR_FRONTEND_DUMP driver drives state
 # 2 into states 3/4, one RGB24 frame per presented frame plus a per-frame hash
@@ -227,8 +230,12 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 # data/title-captures/frontend against the PR_FRONTEND_DET dump prints
 # "window distinct [560..1884]" (raw 3108..4791), so the pin is 1884. Raise it
 # when the window grows (the tool warns "improved: raise the pin"); a measured
-# b below it FAILS the gate.
+# b below it FAILS the gate. The retained dump also measures START 560 and 30
+# canonical non-black missing-occurrence classes up to reach; both are pinned.
+# This is bounded-missing, not full coverage (proof-completion record §P10).
 FRONTEND_END ?= 1884
+FRONTEND_START = 560
+FRONTEND_MAX_MISSING = 30
 frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title-captures/frontend)
 	@echo "== front-end oracle (pixel-exact, states 3/4) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -238,6 +245,7 @@ frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title
 		echo "frontend-oracle: no capture at $(TITLE_CAPTURES)/frontend, frames not compared"; \
 	fi
 	@$(PYTHON) tools/title_compare.py --frontend --frontend-end $(FRONTEND_END) \
+		--frontend-start $(FRONTEND_START) --max-missing $(FRONTEND_MAX_MISSING) \
 		--capture $(TITLE_CAPTURES)/frontend \
 		--port $(FRONTEND_DUMP)/run1
 
@@ -374,8 +382,11 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # measured on 5448e09: state 6's 0x34978 reset of the live-fighter count
 # DS_001078FA explained 2386..2460; before that N = 2386, measured on c0edb4c and
 # re-measured unchanged on a7ccc86 and 65f4084; before that N = 2384, measured on
-# fc8e775.)
+# fc8e775.) The retained dump measures 126 canonical missing classes up to
+# reach, with 3545's splice3 frames credited and classes beyond reach excluded
+# (proof-completion record §P10).
 ATTRACT2_MIN_FIRST = 3617
+ATTRACT2_MAX_MISSING = 126
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -390,6 +401,7 @@ attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without 
 # runs it right after demo-fight-oracle, which made that dump).
 attract2-compare:
 	@$(PYTHON) tools/title_compare.py --attract2 --attract2-min-first $(ATTRACT2_MIN_FIRST) \
+		--max-missing $(ATTRACT2_MAX_MISSING) \
 		--capture $(TITLE_CAPTURES)/frontend --port $(FRONTEND_DUMP)/run1
 
 # K11 service-menu capture (named-gaps A): the pinned original under DOSBox-X,
@@ -419,8 +431,14 @@ k11-capture: title-pin ## Capture the pinned original's service menu (scenario=w
 # MEASURED from the captures: `k11_compare.py --min-exh 99999` on the walk dump prints
 # "port frames exhibited 36 < pinned" (so 36) and on the menuesc dump "… exhibited 184"
 # (so 184). Raise a pin when its count grows; a measured count below the pin fails.
+# poll.log sha256 + the frame count pin each capture's identity (not every
+# pixel); the shared existential order check is enforced in k11_compare too.
 K11_WALK_MIN_EXH ?= 36
 K11_MENUESC_MIN_EXH ?= 184
+K11_WALK_CAPTURE_SHA256 = aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f
+K11_WALK_CAPTURE_FRAMES = 171
+K11_MENUESC_CAPTURE_SHA256 = aacd32423ac3879739c2f93bf8d87b44c5fb14803b7c69ad712173f5f70f161e
+K11_MENUESC_CAPTURE_FRAMES = 766
 k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips without its data/k11-captures/<scenario>)
 	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="
 	@if [ -d $(K11_CAPTURES)/walk ]; then \
@@ -431,7 +449,8 @@ k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips w
 		echo "k11-oracle: no capture at $(K11_CAPTURES)/walk, frames not compared"; \
 	fi
 	@$(PYTHON) tools/k11_compare.py --capture $(K11_CAPTURES)/walk --port $(K11_DUMP)/walk \
-		--min-exh $(K11_WALK_MIN_EXH)
+		--min-exh $(K11_WALK_MIN_EXH) \
+		--capture-sha256 $(K11_WALK_CAPTURE_SHA256) --capture-frames $(K11_WALK_CAPTURE_FRAMES)
 	@echo "== K11 soft-restart oracle (pixel-exact, menuesc: the MAIN MENU Esc 0x2520B restart) =="
 	@if [ -d $(K11_CAPTURES)/menuesc ]; then \
 		rm -rf $(K11_DUMP)/menuesc; mkdir -p $(K11_DUMP); \
@@ -441,7 +460,8 @@ k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips w
 		echo "k11-oracle: no capture at $(K11_CAPTURES)/menuesc, frames not compared"; \
 	fi
 	@$(PYTHON) tools/k11_compare.py --scenario menuesc --capture $(K11_CAPTURES)/menuesc --port $(K11_DUMP)/menuesc \
-		--min-exh $(K11_MENUESC_MIN_EXH)
+		--min-exh $(K11_MENUESC_MIN_EXH) \
+		--capture-sha256 $(K11_MENUESC_CAPTURE_SHA256) --capture-frames $(K11_MENUESC_CAPTURE_FRAMES)
 
 # The evidence scenarios (G1/G2/G3): the same driver and comparison, report-only
 # (menuesc is also enforced by k11-oracle).
@@ -509,6 +529,35 @@ save-reload-oracle: build ## Save-reload oracle: boot 1's replay writes the capt
 # snapshot log. Writes only data/k11-captures/gp-<scenario>/ (gp_capture.guard_gp).
 GP_ARGS ?=
 GP_REPORT_MAX ?= 5
+# Canonical non-black missing-occurrence classes up to each replay's exhibited
+# reach, measured by gp_compare --max-missing on the retained Task 8 dumps
+# (proof-completion record §P10). This is a bounded-missing claim, not full
+# coverage: unsampled states and same-count class substitutions stay unclaimed.
+# gp-u14 (absent), gp-u17 (no frame replay) and gp-pads (smoke) have no pin.
+GP_IDLE_LOSS_MAX_MISSING = 29
+GP_CHARSEL_MAX_MISSING = 4
+GP_MOVES_MAX_MISSING = 7
+GP_KEYS_MAX_MISSING = 9
+GP_TWOP_MAX_MISSING = 5
+GP_MODES_RA_MAX_MISSING = 7
+GP_MODES_LT_MAX_MISSING = 8
+GP_MODES_RT_MAX_MISSING = 5
+GP_MODES_TW_MAX_MISSING = 6
+GP_MODES_HC_MAX_MISSING = 6
+GP_MODES_EN_MAX_MISSING = 7
+GP_MODES_AS_MAX_MISSING = 7
+GP_U12_MAX_MISSING = 6
+GP_WIN_MAX_MISSING = 12
+GP_ENDING_MAX_MISSING = 65
+GP_U13_MAX_MISSING = 59
+GP_U15_MAX_MISSING = 5
+GP_U16_MAX_MISSING = 23
+GP_U18_MAX_MISSING = 57
+GP_U19_MAX_MISSING = 51
+GP_U20_MAX_MISSING = 72
+GP_U21_MAX_MISSING = 55
+GP_U22_MAX_MISSING = 54
+GP_U23_MAX_MISSING = 9
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
 
@@ -611,7 +660,7 @@ gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skip
 	@$(PYTHON) tools/gp_compare.py --scenario gp-idle-loss --capture $(K11_CAPTURES)/gp-idle-loss \
 		--port $(GP_DUMP)/gp-idle-loss --min-first "$(GP_IDLE_LOSS_MIN_FIRST)" \
 		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)" --max-start "$(GP_IDLE_LOSS_MAX_START)" \
-		--min-reach "$(GP_IDLE_LOSS_MIN_REACH)" \
+		--min-reach "$(GP_IDLE_LOSS_MIN_REACH)" --max-missing "$(GP_IDLE_LOSS_MAX_MISSING)" \
 		--capture-sha256 "$(GP_IDLE_LOSS_CAPTURE_SHA256)" --capture-frames "$(GP_IDLE_LOSS_CAPTURE_FRAMES)"
 
 # U5 character-select walk (record 2026-10-01-gameplay-u5 §C5.16-§C5.18): the gp-u5-charsel capture
@@ -640,7 +689,7 @@ gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratch
 	@$(PYTHON) tools/gp_compare.py --scenario gp-u5-charsel --capture $(K11_CAPTURES)/gp-u5-charsel \
 		--port $(GP_DUMP)/gp-u5-charsel --min-first "$(GP_CHARSEL_MIN_FIRST)" \
 		--trace-min-first "$(GP_CHARSEL_TRACE_MIN_FIRST)" --max-start "$(GP_CHARSEL_MAX_START)" \
-		--min-reach "$(GP_CHARSEL_MIN_REACH)" \
+		--min-reach "$(GP_CHARSEL_MIN_REACH)" --max-missing "$(GP_CHARSEL_MAX_MISSING)" \
 		--capture-sha256 "$(GP_CHARSEL_CAPTURE_SHA256)" --capture-frames "$(GP_CHARSEL_CAPTURE_FRAMES)"
 
 # Plan gameplay-u6b (record gameplay-u6 §U6.22): the gp-u6-moves-b capture (P1 Sauron's twelve
@@ -694,7 +743,7 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves 
 		--port $(GP_DUMP)/gp-u6-moves-b --min-first "$(GP_MOVES_MIN_FIRST)" \
 		--trace-min-first "$(GP_MOVES_TRACE_MIN_FIRST)" --max-start "$(GP_MOVES_MAX_START)" \
 		--moves-min-first "$(GP_MOVES_MOVES_MIN_FIRST)" \
-		--min-reach "$(GP_MOVES_MIN_REACH)" \
+		--min-reach "$(GP_MOVES_MIN_REACH)" --max-missing "$(GP_MOVES_MAX_MISSING)" \
 		--capture-sha256 "$(GP_MOVES_CAPTURE_SHA256)" --capture-frames "$(GP_MOVES_CAPTURE_FRAMES)"
 
 # U11 in-match keys (plan 2026-10-01-gameplay-u11-in-match-keys.md, record
@@ -756,7 +805,7 @@ gp-keys-oracle: build ## In-match keys: evidence + effects ratchet and the frame
 	@$(PYTHON) tools/gp_compare.py --scenario gp-keys-fight --capture $(K11_CAPTURES)/gp-keys-fight \
 		--port $(GP_DUMP)/gp-keys-fight --min-first "$(GP_KEYS_MIN_FIRST)" \
 		--trace-min-first "$(GP_KEYS_TRACE_MIN_FIRST)" --max-start "$(GP_KEYS_MAX_START)" \
-		--min-reach "$(GP_KEYS_MIN_REACH)" \
+		--min-reach "$(GP_KEYS_MIN_REACH)" --max-missing "$(GP_KEYS_MAX_MISSING)" \
 		--capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)" --capture-frames "$(GP_KEYS_CAPTURE_FRAMES)"
 
 # Gameplay U7 oracle (plan docs/superpowers/plans/2026-10-01-gameplay-u7-two-players.md, record
@@ -811,7 +860,7 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 		--port $(GP_DUMP)/gp-twop --min-first "$(GP_TWOP_MIN_FIRST)" \
 		--trace-min-first "$(GP_TWOP_TRACE_MIN_FIRST)" --max-start "$(GP_TWOP_MAX_START)" \
 		--moves-min-first "$(GP_TWOP_MOVES_MIN_FIRST)" \
-		--min-reach "$(GP_TWOP_MIN_REACH)" \
+		--min-reach "$(GP_TWOP_MIN_REACH)" --max-missing "$(GP_TWOP_MAX_MISSING)" \
 		--capture-sha256 "$(GP_TWOP_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_CAPTURE_FRAMES)"
 
 # Gameplay U8 (plan 2026-10-01-gameplay-u8-other-modes.md, record 2026-10-01-gameplay-u8-
@@ -960,6 +1009,7 @@ gp-modes-one: build
 			--trace-min-first "$(GP_MODES_$(GP_MODES_ID)_TRACE_MIN_FIRST)" \
 			--max-start "$(GP_MODES_$(GP_MODES_ID)_MAX_START)" \
 			--min-reach "$(GP_MODES_$(GP_MODES_ID)_MIN_REACH)" \
+			--max-missing "$(GP_MODES_$(GP_MODES_ID)_MAX_MISSING)" \
 			--capture-sha256 "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_SHA256)" \
 			--capture-frames "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_MODES_KEEP)" ] || rm -rf $(GP_DUMP)/$(scenario); exit $$rc; \
@@ -998,7 +1048,7 @@ gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fi
 		$(PYTHON) tools/gp_compare.py --scenario gp-u12-endurance --capture $(K11_CAPTURES)/gp-u12-endurance \
 		--port $(GP_DUMP)/gp-u12-endurance --min-first "$(GP_U12_MIN_FIRST)" \
 		--trace-min-first "$(GP_U12_TRACE_MIN_FIRST)" --max-start "$(GP_U12_MAX_START)" \
-		--min-reach "$(GP_U12_MIN_REACH)" \
+		--min-reach "$(GP_U12_MIN_REACH)" --max-missing "$(GP_U12_MAX_MISSING)" \
 		--capture-sha256 "$(GP_U12_CAPTURE_SHA256)" --capture-frames "$(GP_U12_CAPTURE_FRAMES)"; \
 	fi
 
@@ -1237,7 +1287,7 @@ gp-win-one: build
 		$(PYTHON) tools/gp_compare.py --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--port $(GP_DUMP)/$(scenario) --min-first "$(GP_$(GP_WIN_ID)_MIN_FIRST)" \
 			--trace-min-first "$(GP_$(GP_WIN_ID)_TRACE_MIN_FIRST)" --max-start "$(GP_$(GP_WIN_ID)_MAX_START)" \
-			--min-reach "$(GP_$(GP_WIN_ID)_MIN_REACH)" \
+			--min-reach "$(GP_$(GP_WIN_ID)_MIN_REACH)" --max-missing "$(GP_$(GP_WIN_ID)_MAX_MISSING)" \
 			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" --capture-frames "$(GP_$(GP_WIN_ID)_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--port $(GP_DUMP)/$(scenario) --min-milestones "$(GP_$(GP_WIN_ID)_MILESTONES)" \
@@ -1293,7 +1343,7 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 		$(PYTHON) tools/gp_compare.py --scenario gp-u13-ending2 --capture $(K11_CAPTURES)/gp-u13-ending2 \
 			--port $(GP_DUMP)/gp-u13-ending2 --min-first "$(GP_U13_MIN_FIRST)" \
 			--trace-min-first "$(GP_U13_TRACE_MIN_FIRST)" --max-start "$(GP_U13_MAX_START)" \
-			--min-reach "$(GP_U13_MIN_REACH)" \
+			--min-reach "$(GP_U13_MIN_REACH)" --max-missing "$(GP_U13_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U13_CAPTURE_SHA256)" --capture-frames "$(GP_U13_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u13-ending2 --capture $(K11_CAPTURES)/gp-u13-ending2 \
 			--port $(GP_DUMP)/gp-u13-ending2 --min-milestones "$(GP_U13_MILESTONES)" \
@@ -1396,7 +1446,7 @@ gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips
 		$(PYTHON) tools/gp_compare.py --scenario gp-u15-join --capture $(K11_CAPTURES)/gp-u15-join \
 			--port $(GP_DUMP)/gp-u15-join --min-first "$(GP_U15_MIN_FIRST)" \
 			--trace-min-first "$(GP_U15_TRACE_MIN_FIRST)" --max-start "$(GP_U15_MAX_START)" \
-			--min-reach "$(GP_U15_MIN_REACH)" \
+			--min-reach "$(GP_U15_MIN_REACH)" --max-missing "$(GP_U15_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U15_CAPTURE_SHA256)" --capture-frames "$(GP_U15_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u15-join; exit $$rc; fi
 
@@ -1444,7 +1494,7 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 			--port $(GP_DUMP)/gp-u16-twop2 --min-first "$(GP_U16_MIN_FIRST)" \
 			--trace-min-first "$(GP_U16_TRACE_MIN_FIRST)" --max-start "$(GP_U16_MAX_START)" \
 			--moves-min-first "$(GP_U16_MOVES_MIN_FIRST)" \
-			--min-reach "$(GP_U16_MIN_REACH)" \
+			--min-reach "$(GP_U16_MIN_REACH)" --max-missing "$(GP_U16_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U16_CAPTURE_SHA256)" --capture-frames "$(GP_U16_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u16-twop2; exit $$rc; fi
 
@@ -1499,7 +1549,7 @@ gp-u23-oracle: build ## Endgame truth U23 oracle: the U16 finisher reaction (lab
 			--port $(GP_DUMP)/gp-u23-u16-finisher --min-first "$(GP_U23_MIN_FIRST)" \
 			--trace-min-first "$(GP_U23_TRACE_MIN_FIRST)" --max-start "$(GP_U23_MAX_START)" \
 			--moves-min-first "$(GP_U23_MOVES_MIN_FIRST)" \
-			--min-reach "$(GP_U23_MIN_REACH)" \
+			--min-reach "$(GP_U23_MIN_REACH)" --max-missing "$(GP_U23_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U23_CAPTURE_SHA256)" --capture-frames "$(GP_U23_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u23-u16-finisher; exit $$rc; fi
 
@@ -1548,7 +1598,7 @@ gp-u18-oracle: build ## Endgame truth U18 oracle: TALON's ending (character 2, c
 		$(PYTHON) tools/gp_compare.py --scenario gp-u18-talon-ending --capture $(K11_CAPTURES)/gp-u18-talon-ending \
 			--port $(GP_DUMP)/gp-u18-talon-ending --min-first "$(GP_U18_MIN_FIRST)" \
 			--trace-min-first "$(GP_U18_TRACE_MIN_FIRST)" --max-start "$(GP_U18_MAX_START)" \
-			--min-reach "$(GP_U18_MIN_REACH)" \
+			--min-reach "$(GP_U18_MIN_REACH)" --max-missing "$(GP_U18_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U18_CAPTURE_SHA256)" --capture-frames "$(GP_U18_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u18-talon-ending --capture $(K11_CAPTURES)/gp-u18-talon-ending \
 			--port $(GP_DUMP)/gp-u18-talon-ending --min-milestones "$(GP_U18_MILESTONES)" \
@@ -1601,7 +1651,7 @@ gp-u19-oracle: build ## Endgame truth U19 oracle: VERTIGO's ending (character 3,
 		$(PYTHON) tools/gp_compare.py --scenario gp-u19-vertigo-ending --capture $(K11_CAPTURES)/gp-u19-vertigo-ending \
 			--port $(GP_DUMP)/gp-u19-vertigo-ending --min-first "$(GP_U19_MIN_FIRST)" \
 			--trace-min-first "$(GP_U19_TRACE_MIN_FIRST)" --max-start "$(GP_U19_MAX_START)" \
-			--min-reach "$(GP_U19_MIN_REACH)" \
+			--min-reach "$(GP_U19_MIN_REACH)" --max-missing "$(GP_U19_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U19_CAPTURE_SHA256)" --capture-frames "$(GP_U19_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u19-vertigo-ending --capture $(K11_CAPTURES)/gp-u19-vertigo-ending \
 			--port $(GP_DUMP)/gp-u19-vertigo-ending --min-milestones "$(GP_U19_MILESTONES)" \
@@ -1655,7 +1705,7 @@ gp-u20-oracle: build ## Endgame truth U20 oracle: CHAOS's ending (character 6, c
 		$(PYTHON) tools/gp_compare.py --scenario gp-u20-chaos-ending --capture $(K11_CAPTURES)/gp-u20-chaos-ending \
 			--port $(GP_DUMP)/gp-u20-chaos-ending --min-first "$(GP_U20_MIN_FIRST)" \
 			--trace-min-first "$(GP_U20_TRACE_MIN_FIRST)" --max-start "$(GP_U20_MAX_START)" \
-			--min-reach "$(GP_U20_MIN_REACH)" \
+			--min-reach "$(GP_U20_MIN_REACH)" --max-missing "$(GP_U20_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U20_CAPTURE_SHA256)" --capture-frames "$(GP_U20_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u20-chaos-ending --capture $(K11_CAPTURES)/gp-u20-chaos-ending \
 			--port $(GP_DUMP)/gp-u20-chaos-ending --min-milestones "$(GP_U20_MILESTONES)" \
@@ -1708,7 +1758,7 @@ gp-u21-oracle: build ## Endgame truth U21 oracle: ARMADON's ending (character 4,
 		$(PYTHON) tools/gp_compare.py --scenario gp-u21-armadon-ending --capture $(K11_CAPTURES)/gp-u21-armadon-ending \
 			--port $(GP_DUMP)/gp-u21-armadon-ending --min-first "$(GP_U21_MIN_FIRST)" \
 			--trace-min-first "$(GP_U21_TRACE_MIN_FIRST)" --max-start "$(GP_U21_MAX_START)" \
-			--min-reach "$(GP_U21_MIN_REACH)" \
+			--min-reach "$(GP_U21_MIN_REACH)" --max-missing "$(GP_U21_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U21_CAPTURE_SHA256)" --capture-frames "$(GP_U21_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u21-armadon-ending --capture $(K11_CAPTURES)/gp-u21-armadon-ending \
 			--port $(GP_DUMP)/gp-u21-armadon-ending --min-milestones "$(GP_U21_MILESTONES)" \
@@ -1761,7 +1811,7 @@ gp-u22-oracle: build ## Endgame truth U22 oracle: DIABLO's ending (character 5, 
 		$(PYTHON) tools/gp_compare.py --scenario gp-u22-diablo-ending --capture $(K11_CAPTURES)/gp-u22-diablo-ending \
 			--port $(GP_DUMP)/gp-u22-diablo-ending --min-first "$(GP_U22_MIN_FIRST)" \
 			--trace-min-first "$(GP_U22_TRACE_MIN_FIRST)" --max-start "$(GP_U22_MAX_START)" \
-			--min-reach "$(GP_U22_MIN_REACH)" \
+			--min-reach "$(GP_U22_MIN_REACH)" --max-missing "$(GP_U22_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U22_CAPTURE_SHA256)" --capture-frames "$(GP_U22_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u22-diablo-ending --capture $(K11_CAPTURES)/gp-u22-diablo-ending \
 			--port $(GP_DUMP)/gp-u22-diablo-ending --min-milestones "$(GP_U22_MILESTONES)" \
