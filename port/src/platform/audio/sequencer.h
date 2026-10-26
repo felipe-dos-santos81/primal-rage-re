@@ -102,6 +102,23 @@ int seq_active_track(void);
  * notes. */
 int seq_playing(void);
 
+/* Test seam: the service-call (tick) counter since seq_start, the driver's
+ * +0x30 (S.svc). 0 for the writes seq_start itself makes; +1 per seq_tick, so
+ * every write carries the tick it was made on. The register-stream dump
+ * (test_game.c, PR_AUDIO_DUMP) labels its writes with it, so a per-tick
+ * ordered or multiset comparison needs no derivation from wall time. Not used
+ * by the game path. */
+u32 seq_tick_count(void);
+
+/* Test seam: the FM driver's install-time voice state (its rotation cursor,
+ * SBPRO2.MDI 0x1408, initialised at 0x306e). The cursor is driver state and
+ * persists across songs: neither AIL_start_sequence (0x6A780) nor the sequence
+ * reset (0x69250) touches it, so seq_start must not reset it either (record
+ * §M3's capture evidence: the selmo bank's first note is OPL channel 4 after
+ * the title's four notes on 0..3). A unit oracle comparing a stream from a
+ * pristine process calls this; the game path never does. */
+void seq_driver_reset(void);
+
 /* PORT: a test seam, not sequencer state (the pattern of flow.c's sound_voice
  * log): the FNV-1a of the last bank a seq_load accepted, i.e. of the bytes the
  * game handed AIL_init_sequence. 0 before any load. The playing status and the

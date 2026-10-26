@@ -1037,3 +1037,211 @@ for U22). `OVERLAY_ALLOWED` is empty and every remaining mention says retired.
 The fix commit's re-run evidence (focused suite, title/attract/front-end/
 demo-fight/attract2, the nine exact-pinned ending oracles, the full
 `make verify`) is in the Task 2 report's fix section.
+
+---
+
+## §M3 The played song and the register comparison (Task 3)
+
+### §M3.1 The driver: `PR_AUDIO_DUMP`
+
+Task 3's observable is the port's own OPL register stream for a replayed
+scenario. It is the gp replay driver (`test_game.c`, `PR_GP_DUMP` +
+`PR_GP_SCRIPT`) plus one new env var:
+
+```
+PR_GP_DUMP=/tmp/pr_gp_dump/gp-u5-charsel \
+PR_GP_SCRIPT=/tmp/pr_gp_dump/gp-u5-charsel.script \
+PR_GAME_DIR=data/game/C PR_AUDIO_DUMP=/tmp/pr_audio_u5.txt ./build/run_tests
+```
+
+The script is `tools/gp_session.py port-script --scenario gp-u5-charsel
+--capture data/k11-captures/gp-u5-charsel --out …`; no new capture. The dump
+is written by an OPL-core write hook (`opl_set_write_hook`, `opl.h/opl.c`), so
+it is not bounded by the `OPL_TRACE_MAX` 16,384-write test window: the longer
+gameplay replays overflow it (the captures alone run to 38,514 writes,
+§M1.6.2), and the same driver serves the long traces Task 4 needs. The
+gp-u5-charsel replay itself emits 3,344 writes. The hook is a test seam: NULL
+on the game path, one branch per write; it records the register, the value and
+the current `opl_set_write_attr` attribution byte. Two new test seams feed it:
+`seq_tick_count()` (the sequencer's per-song service-call counter, `S.svc`, 0
+at `seq_start`) and the existing `AIL_init_sequence_count()` /
+`seq_loaded_bank_hash()`. Format:
+
+```
+W <frame> <tick> <write> <reg> <val> <attr>     one per register write, in order
+S <frame> cc=<pending> dc=<last started> vol=<0x000A2CB8>
+  bank=<seq_loaded_bank_hash> inits=<AIL_init_sequence_count> ticks=<game_audio_ticks>
+```
+
+`frame` is the master-loop frame counter `DS_000EF6DC` of the iteration that
+makes the write (the iteration raising it from f to f+1); `tick` is
+`seq_tick_count()`, i.e. the write's tick within the song the sequencer is
+playing (0 for `seq_start`'s own writes). An `S` line is emitted only when one
+of its fields changes; `cc` is read at the end of the iteration, and
+`game_audio_service` consumes a pending request in the same iteration, so it is
+normally 0. A same-song restart (`0x1C93B`) changes no `S` field and appears
+only in its writes.
+
+Measured on `gp-u5-charsel` (3,344 writes, frames 216..1510 of the replay's 1,513):
+
+| frame | `dc` (last started song) | bank | `inits` |
+|---:|---|---|---:|
+| 216 | `0x03836102` S16TITLE (attract's `0x54`/`0x56`) | `FD94B4E3` | 1 |
+| 634 | `0x0980025C` s16selmo +0x25C (ids `0x2E`/`0x30`, character screen) | `286ED662` | 2 |
+| 1092 | `0x09800008` s16selmo +8 (id `0x31`, fight hook `0x430E8`) | `F1774E70` | 3 |
+| 1370 | `0x0A800008` s16beach +8 (id `0x20`, the match entry `0x4F714`) | `87E7C2DE` | 4 |
+
+`vol` is 0x50 throughout: the port's config-derived music volume
+(`attract_config_volumes`, `0x2C8F0`, from `DS_000A2CB8`). It is the value the
+game path passes to `AIL_set_sequence_volume`, and the captured TL rows match
+under it (§M3.4). The existing title capture's 0x54 (`test_audio.c:1018`) is a
+different session's setting and is unchanged; the title oracle drives the
+sequencer explicitly.
+
+### §M3.2 The anchor
+
+The selmo (character screen) song is the first music section both streams
+contain, and §M1.6.4 already identifies it. Anchored at its **first key-on**:
+
+| | port | capture |
+|---|---|---|
+| position | frame 658, seq tick 50 | 7,156 ms |
+| write | `0xB4 = 0x2B`, attr 4 (MIDI ch4) | `0xB4 = 0x2B` |
+
+The anchor note's captured register set is 11 writes; the port emits the same
+11 values, plus two writes the capture does not record because its driver
+init already left them 0 (the write-on-change artifact):
+
+```
+port   0x29=31 0x2C=72 0x49=5B 0x4C=95 0x69=F4 0x6C=8A 0x89=15 0x8C=05
+       0xE9=00 0xEC=00 0xC4=30 0xA4=99 0xB4=2B
+capture 0x29=31 0x2C=72 0x49=5B 0x4C=95 0x69=F4 0x6C=8A 0x89=15 0x8C=05
+       0xC4=30 0xA4=99 0xB4=2B
+```
+
+### §M3.3 The real bug the anchor found: the driver's voice cursor persisted
+
+Before any value comparison, the anchor itself was wrong: the port keyed the
+selmo bank's first note on OPL channel 0 (`0x20/0x23/0x40/0x43/…`), while the
+capture keys it on **channel 4** (`0x29/0x2C/0x49/0x4C/…`). The port's
+`seq_start` reset `S.next` — the FM driver's voice-rotation cursor (SBPRO2.MDI
+`0x1408` over the slot-owner bytes `0x1a49`) — to its install value on every
+song start.
+
+The raw does not: `0x5DE79` (AIL_start_sequence) is `FUN_0006a780`, which calls
+`FUN_0006a7c0` (release the sequence's notes) and `FUN_00069250`, then sets the
+status to 4 and `+0x14 = +0x10 + 8`; `0x69250` resets the **sequence record**
+(its `+0x90` MIDI-channel map, the CC logs, `+0x30` the service counter, the
+note/log tables) and writes no driver state. The cursor is the driver object's,
+initialised once at driver install (`0x306e` stores 0xffff) and advanced by its
+allocator (`0x3095`-`0x30d8`); a freed voice does not move it back (`0x3162`).
+The capture is the direct evidence: the title bank's four notes took OPL
+channels 0..3, and 7.2 s later the selmo bank's first note is on channel 4 —
+the cursor continued across
+`AIL_stop_sequence`/`AIL_init_sequence`/`AIL_start_sequence`.
+
+Fix: `seq_start` no longer resets `S.next`; the module's static initialiser is
+the driver-install state, and a new test seam `seq_driver_reset()` restores it
+for unit oracles that compare a pristine-process stream. The 9866-write
+C-vs-Python title oracle calls it before its capture (its byte-exact line and
+the capture first difference 430 are unchanged, see §M3.6). The regression is
+`test_audio.c`'s new case 0g: a note on channel 0, stop, start → the next note
+is on channel 1 (the cursor persisted), and after `seq_driver_reset()` it is
+back on channel 0. Mutation proof: restoring
+`S.next = SEQ_OPL_CHANNELS - 1;` in `seq_start` fails exactly that assertion
+(`test_audio.c:903: 0 != 1`), and nothing else.
+
+After the fix the anchor's 11 registers match, and the whole section compares
+(§M3.4).
+
+### §M3.4 The comparison
+
+Both streams are reduced the way the title oracle reduces them (`port/spec/audio.md`
+"Known capture divergences"): anchor at the first key-on; drop a write whose
+value equals the last kept value for that register (write-on-change collapse,
+shadow seeded from the capture's pre-anchor state on both sides); drop `0xBD`
+and the carrier-TL registers `0x43..0x45/0x4B..0x4D/0x53..0x55` on MIDI
+channels 1 and 4 only. The capture records no MIDI channel, so its side's
+attribution is inferred from the port's write at the same mapped tick and
+register (the title oracle's rule). The capture's `ms` maps to a relative tick
+with round-half-up: `((ms - anchor_ms) * 120 + 500) / 1000`.
+
+The comparison is **music-tick-indexed**, not frame-indexed: both streams are
+the same sequence from the same start, and the two clocks do not share a rate
+per game frame. Measured: the port's selmo section spans frames 658..1092 (434
+frames) and 866 seq ticks (50..916); the capture's corresponding window is
+7,156..14,449 ms = 875 ticks. Over the same 434 frames the capture's clock is
+7,293 ms (16.80 ms/frame; the port's replay is 16.67 ms/frame), i.e. 0.8 %
+longer. Whether that is the capture environment's clock or a few frames'
+difference in when the original issues the next request is **not isolated**
+here — the next request is a sound-only fight hook (`0x430E8`, no pinned visual
+change) — so no claim is made about the boundary's exact frame. It is not a
+dropped port tick: every port tick in the window is matched below.
+
+**Result.** The port's selmo section: 2,610 raw writes in `[634, 1092)`, 1,738
+reduced writes (1,794 with the carrier-TL exclusion off; 41 carrier-TL ch1/4
+writes excluded by name), over relative ticks 0..866.
+
+- **Per-tick multiset: equal at every relative tick 0..866** (both with and
+  without the carrier-TL exclusion). Every register write the capture makes in
+  the port's 866-tick window is present with the same value at the same tick
+  index, and nothing extra.
+- **Run-to-run stability (measured, three runs):** the selmo section is
+  identical in all three — 2,610 raw writes, anchor frame 658/tick 50, last
+  tick 916, 866 relative ticks. The replay is wall-paced, so only the later
+  sections vary: the `0x31` section is identical in the three runs (528 writes,
+  last tick 540), while the last (match) section's tail varied by one replay
+  frame and 5 sequencer ticks (tick 283/283/288, 148/150/148 writes) — the
+  music advances with the host tick while the section end is a game frame.
+  Task 4's oracle must therefore pin a minimum compared length (or drive the
+  sequencer deterministically); this window's claim is the per-tick equality
+  over the port's section, not a fixed tick count.
+- **Ordered: the first difference is reduced write 175** (181 without the
+  carrier-TL exclusion), relative tick 74, port frame 695, capture 7,772 ms:
+
+  ```
+  port    0xB2 = 0x0A   then  0xB4 = 0x0B
+  capture 0xB4 = 0x0B   then  0xB2 = 0x0A
+  ```
+
+  Same registers, same values, same tick, reversed order. This is the declared
+  **intra-tick write-order** model difference (spec item 11): the port's
+  `seq_tick` keys off expired voices in ascending OPL-channel order
+  (`for v = 0..17`), while the driver's per-tick voice visit order is not
+  pinned by its bytes. It is named, not fitted, and no tolerance is applied.
+
+The section then continues matching: the capture's own stop burst for the next
+song is at 14,449 ms (`0x1B7=0x07 0x1B8=0x03 0xB0=0x16 0xB1=0x0E 0xB2=0x0A
+0xB3=0x0B 0xB4=0x12 0xB5=0x12 0xB6=0x0B`), the same burst the port emits at
+frame 1092 for the `0x31` request; the port's 866-tick prefix ends 9 ticks
+before it (the clock measurement above).
+
+### §M3.5 The in-match song (identified, window left to Task 4)
+
+At frame 1370 the match entry requests `0x0A800008` (s16beach, stage 0, id
+`0x20`, §M1.4.2) — the game path selects and starts the in-match song. Its
+first note (frame 1396, seq tick 56) keys OPL channel 15 (bank 1) with
+`0x14A=0x0B, 0x1A5=0xB2, 0x1B5=0x2E`. The capture holds those three writes at
+26,402 ms, and `0x1A5=0xB2`/`0x1B5=0x2E` again at 34,478 ms (a repeat of the
+figure; the TL write is suppressed there by the capture's write-on-change),
+so the song is the capture's. The port's replay ends at frame 1512 (the
+script's end; its last write is tick 283), so Task 3 does not claim a wrapped
+window for it; the `0x31` and `0x20` window alignment (and the capture's
+per-section boundary attribution) is Task 4's, as the plan rules.
+
+### §M3.6 Pins and what §M3 does not claim
+
+Measured on the changed tree:
+
+| check | result |
+|---|---|
+| `PR_ORACLE_REQUIRED=1 ./build/run_tests` | `all checks passed`; `oracle C-vs-Python: 9866 writes byte-exact`; `capture oracle first difference at C write 430` (unchanged) |
+| the new regression | case 0g; mutation restores the reset → `test_audio.c:901: 0 != 1` |
+| `PR_AUDIO_DUMP` off | the gp replay driver's frames/trace/log are unchanged (the hook is NULL; §M3.1) |
+
+Not claimed: rendered audibility (§M1.7); the sections after the selmo
+(`0x31`, `0x20`) as wrapped windows (Task 4); the capture's frame↔music clock
+relationship outside the compared window; the driver's intra-tick voice visit
+order (named); and the `seq_start` controller-state reset (`S.program`,
+`S.volume`, …), which this window's evidence neither supports nor opposes —
+Task 4's other songs are where it would show.

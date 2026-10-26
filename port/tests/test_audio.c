@@ -808,8 +808,14 @@ int test_sequencer(void)
             CHECK_EQ_INT(opl_write_count(), start);
             start = opl_write_count();
             seq_tick();                       /* tick 5: volume ch0 re-applies TL */
-            for (i = start; i < opl_write_count(); i++)
-                if ((opl_trace_reg(i) & 0xf0) == 0x40) saw_tl = 1;
+            for (i = start; i < opl_write_count(); i++) {
+                /* The TL family is 0x40..0x55 in either OPL3 register set; the
+                 * voice's OPL channel is not fixed here (the driver's rotation
+                 * cursor persists across songs, record §M3), so test the
+                 * register's low byte rather than one slot's. */
+                u16 r = (u16)(opl_trace_reg(i) & 0xFF);
+                if (r >= 0x40 && r <= 0x55) saw_tl = 1;
+            }
             CHECK(saw_tl, "volume re-applied the TL family");
         }
 
@@ -854,6 +860,60 @@ int test_sequencer(void)
             CHECK(saw_cent && saw_bend && saw_new, "key/bend/key all wrote a frequency low byte");
             CHECK(new_a0 == bend_a0, "a note keyed after the bend uses the live wheel");
             CHECK(new_a0 != cent_a0, "the bent key-on differs from the centred one");
+        }
+
+        /* 0g. The driver's voice-rotation cursor is driver state: it persists
+         *     across stop and start (AIL_start_sequence 0x6A780 and the
+         *     sequence reset 0x69250 never touch SBPRO2.MDI's pool), so a new
+         *     song's first note does not return to channel 0. The capture
+         *     proves it: the selmo bank's first note keys OPL channel 4 after
+         *     the title's four notes on 0..3 (record §M3). seq_driver_reset
+         *     restores the install-time cursor the first song of a process
+         *     starts from. Sentinels: -1, and the second/third slots must be
+         *     the next ones, not a repeat of 0. */
+        {
+            static const u8 a[] = { 0x90, 0x30, 0x40, 0x7f, 0x05 };
+            int first = -1, second = -1, reset = -1;
+
+            seq_driver_reset();
+            opl_reset();
+            len = build_xmi(bank, a, sizeof a);
+            CHECK_EQ_INT(seq_load(bank, len), 1);
+            seq_start();
+            CHECK_EQ_INT((int)seq_tick_count(), 0);    /* seq_start's own writes are tick 0 */
+            seq_tick();
+            CHECK_EQ_INT((int)seq_tick_count(), 1);    /* the dump's tick label */
+            for (u32 i = 0; i < opl_write_count(); i++)
+                if (opl_trace_reg(i) >= 0xB0 && opl_trace_reg(i) <= 0xB8 &&
+                    (opl_trace_val(i) & 0x20)) {
+                    first = (int)opl_trace_reg(i) - 0xB0;
+                    break;
+                }
+            seq_stop();
+            opl_reset();
+            seq_start();
+            seq_tick();
+            for (u32 i = 0; i < opl_write_count(); i++)
+                if (opl_trace_reg(i) >= 0xB0 && opl_trace_reg(i) <= 0xB8 &&
+                    (opl_trace_val(i) & 0x20)) {
+                    second = (int)opl_trace_reg(i) - 0xB0;
+                    break;
+                }
+            CHECK_EQ_INT(first, 0);
+            CHECK_EQ_INT(second, 1);          /* the cursor persisted */
+            /* The install state is a real, restorable state, not merely the
+             * initial value: it keys the next song on channel 0 again. */
+            seq_driver_reset();
+            opl_reset();
+            seq_start();
+            seq_tick();
+            for (u32 i = 0; i < opl_write_count(); i++)
+                if (opl_trace_reg(i) >= 0xB0 && opl_trace_reg(i) <= 0xB8 &&
+                    (opl_trace_val(i) & 0x20)) {
+                    reset = (int)opl_trace_reg(i) - 0xB0;
+                    break;
+                }
+            CHECK_EQ_INT(reset, 0);
         }
     }
 
@@ -947,6 +1007,10 @@ int test_sequencer(void)
 
         CHECK_EQ_INT(patches_load(fat, fat_len), 1);
         CHECK_EQ_INT(seq_load(xmi, xmi_len), 1);
+        /* The driver's voice cursor is driver state (seq_start must not reset
+         * it, record §M3); restore its install state so this stream is the
+         * pristine-process one the Python oracle also produces. */
+        seq_driver_reset();
         /* The capture ran with the engine's AIL sequence volume below the image
          * default; 0x54 is the value the steady-CC7 channels imply. Both the C
          * stream and the Python oracle are driven with the same explicit input

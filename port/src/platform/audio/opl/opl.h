@@ -50,4 +50,13 @@ int opl_trace_overflow(void);
 void opl_set_write_attr(u8 attr);
 u8 opl_trace_attr(u32 i);
 
+/* Test seam: an optional observer called after every write, in order, with the
+ * write's register, value and attribution byte (opl_set_write_attr's, 0xFF
+ * unattributed). The register-stream oracle's driver (test_game.c,
+ * PR_AUDIO_DUMP) streams the game's writes through this instead of the fixed
+ * OPL_TRACE_MAX window above, which a whole-match run overflows. NULL — the
+ * game path — costs one branch per write. Not used by the game. */
+typedef void (*opl_write_hook)(u16 reg, u8 value, u8 attr);
+void opl_set_write_hook(opl_write_hook fn);
+
 #endif /* PR_OPL_H */

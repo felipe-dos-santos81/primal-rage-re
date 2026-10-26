@@ -11,6 +11,8 @@
 #include "opal/opal.h"
 #include "../mixer.h"
 
+#include <stddef.h>
+
 /* PORT: mixer.h mirrors the vendored core's rate so the frame loop never sees
  * opal.h; this is the one place both are visible, so the build fails if the
  * core's rate changes without the mirror (record §12 of
@@ -28,6 +30,7 @@ static u8 g_trace_val[OPL_TRACE_MAX];
 static u8 g_trace_attr[OPL_TRACE_MAX];
 static u8 g_attr = 0xFF;          /* attribution of the next write */
 static int g_trace_overflow;
+static opl_write_hook g_write_hook;   /* test seam (opl.h): register-stream dump */
 
 void opl_reset(void)
 {
@@ -35,6 +38,11 @@ void opl_reset(void)
     g_writes = 0;
     g_attr = 0xFF;
     g_trace_overflow = 0;
+}
+
+void opl_set_write_hook(opl_write_hook fn)
+{
+    g_write_hook = fn;
 }
 
 void opl_set_write_attr(u8 attr)
@@ -53,6 +61,7 @@ void opl_write(u16 reg, u8 value)
         g_trace_overflow = 1;
     }
     g_writes++;
+    if (g_write_hook != NULL) g_write_hook(reg, value, g_attr);
 }
 
 u32 opl_write_count(void)

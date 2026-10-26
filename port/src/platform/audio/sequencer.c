@@ -685,7 +685,15 @@ void seq_start(void)
     S.wait = 0;
     S.playing = 1;
     S.age = 0;
-    S.next = SEQ_OPL_CHANNELS - 1;   /* driver's reset cursor 0xffff */
+    /* PORT: `next` is NOT reset here. It is the FM driver's voice-rotation
+     * cursor (SBPRO2.MDI 0x1408 over the slot-owner bytes 0x1a49), driver
+     * state that outlives every sequence: AIL_start_sequence (0x6A780) and the
+     * sequence reset it calls (0x69250) touch only the sequence record, and
+     * the driver's cursor is initialised once at install (0x306e). The capture
+     * proves the persistence: the selmo bank's first note keys OPL channel 4
+     * after the title bank's four notes took channels 0..3 (record §M3). The
+     * module's static initialiser is that install state; the unit oracles
+     * restore it with seq_driver_reset(). */
     S.svc = 0;                       /* 0x6A79B 0x69250: +0x30, the CC7 log */
     S.cc7_logged = 0;
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
@@ -780,6 +788,22 @@ u8 seq_channel_volume(int ch)
 int seq_playing(void)
 {
     return S.playing;
+}
+
+u32 seq_tick_count(void)
+{
+    return S.svc;
+}
+
+/* Test seam: the FM driver's install-time voice state. `next` is the driver's
+ * rotation cursor (SBPRO2.MDI 0x1408), initialised at install (0x306e) and
+ * never touched by AIL_start_sequence (0x6A780) or the sequence reset
+ * (0x69250), so it persists across songs (record §M3). A pristine game process
+ * starts the first song from this state; a unit oracle that compares a fresh
+ * stream restores it here instead of seq_start doing so. Not used by the game. */
+void seq_driver_reset(void)
+{
+    S.next = SEQ_OPL_CHANNELS - 1;
 }
 
 u32 seq_loaded_bank_hash(void)

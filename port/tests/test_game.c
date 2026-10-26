@@ -14,6 +14,7 @@
 #include "platform/gfx.h"
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
+#include "platform/audio/opl/opl.h"
 #include "platform/audio/patches.h"
 #include "platform/audio/sequencer.h"
 #include "platform/render.h"
@@ -13518,6 +13519,52 @@ static FILE *gp_log, *gp_frames, *gp_trace;
 static jmp_buf gp_end_jb;
 static u32 gp_npokes, gp_pokes_applied;   /* plan U9/U10 (record §W.8): the script's `poke` lines */
 
+/* PR_AUDIO_DUMP=<file> (plan 2026-10-25-music-truth Task 3): the port's OPL
+ * register stream for the replayed scenario, written by the OPL core's write
+ * hook (opl.h) so a whole scenario is not bounded by OPL_TRACE_MAX. Lines:
+ *
+ *   W <frame> <tick> <write> <reg> <val> <attr>
+ *                                   one per register write, in order; `tick`
+ *                                   is the sequencer's per-song tick counter
+ *                                   (seq_tick_count, 0 at the song's start) and
+ *                                   `attr` the write's MIDI-channel
+ *                                   attribution (0xFF = none)
+ *   S <frame> cc=<pending song> dc=<last started song> vol=<0x000A2CB8>
+ *     bank=<seq_loaded_bank_hash> inits=<AIL_init_sequence_count>
+ *     ticks=<game_audio_ticks>       one whenever any of those changes
+ *
+ * `frame` is the master-loop frame counter DS_000EF6DC of the iteration the
+ * write belongs to (the iteration that raises it from f to f+1), so the stream
+ * can be located in the game's own timeline; the `S` lines name the song the
+ * game requested and the bank the sequencer was handed. `cc` is the pending
+ * word at the end of the iteration: game_audio_service consumes a request in
+ * the same iteration, so it is normally 0, and a same-song restart (0x1C93B)
+ * changes no field and appears only as its writes. Read-only observer: no game
+ * state and no existing pin moves. */
+static FILE *gp_audio;
+static u32 gp_audio_writes, gp_audio_frame;
+static u32 gp_audio_cc = 0xFFFFFFFFu, gp_audio_dc = 0xFFFFFFFFu, gp_audio_vol = 0xFFFFFFFFu;
+
+static void gp_audio_hook(u16 reg, u8 val, u8 attr)
+{
+    if (gp_audio == NULL) return;
+    fprintf(gp_audio, "W %u %u %u %04X %02X %02X\n", gp_audio_frame,
+            seq_tick_count(), gp_audio_writes, reg, val, attr);
+    gp_audio_writes++;
+}
+
+/* One S line when the music state changed during iteration `f`. */
+static void gp_audio_state(u32 f)
+{
+    if (gp_audio == NULL) return;
+    const u32 cc = DSD(DS_001028CC), dc = DSD(DS_001028DC), vol = DSD(DS_000A2CB8);
+    if (cc == gp_audio_cc && dc == gp_audio_dc && vol == gp_audio_vol) return;
+    gp_audio_cc = cc; gp_audio_dc = dc; gp_audio_vol = vol;
+    fprintf(gp_audio, "S %u cc=%08X dc=%08X vol=%02X bank=%08X inits=%u ticks=%u\n",
+            f, cc, dc, vol, seq_loaded_bank_hash(), AIL_init_sequence_count(),
+            game_audio_ticks());
+}
+
 /* A `poke` line's hex bytes: an even count of hex digits, 1..16 bytes. */
 static int gp_poke_bytes(const char *hex, u8 *out, unsigned *len)
 {
@@ -13723,6 +13770,21 @@ int test_gp_replay(void)
     const char *dir = getenv("PR_GAME_DIR");
     if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
     game_set_game_dir(dir);
+    /* Task 3's register-stream dump: opened (and the hook installed) before
+     * game_init so the whole run is observed. PR_AUDIO_DUMP unset leaves the
+     * driver byte-for-byte what it was. */
+    {
+        const char *adump = getenv("PR_AUDIO_DUMP");
+        if (adump != NULL && adump[0] != '\0') {
+            gp_audio = fopen(adump, "w");
+            CHECK(gp_audio != NULL, "PR_AUDIO_DUMP opens the register-stream file");
+            if (gp_audio == NULL) return g_failures - before;
+            gp_audio_writes = 0u;
+            gp_audio_frame = 0u;
+            gp_audio_cc = gp_audio_dc = gp_audio_vol = 0xFFFFFFFFu;
+            opl_set_write_hook(gp_audio_hook);
+        }
+    }
     game_init();
     actors_pin_anim_tick_zero(1);
     host_set_pump_hook(gp_hook, NULL);
@@ -13746,7 +13808,9 @@ int test_gp_replay(void)
             landings0 = game_restart_landings();     /* only landings in the armed window excuse a frame */
         }
         gp_idle_pumps = 0u;
+        gp_audio_frame = f;                          /* Task 3: writes carry the iteration's frame */
         game_loop_step();                            /* exactly one game_loop iteration */
+        gp_audio_state(f);                           /* Task 3: the song/volume/bank changes */
         if (gp_armed && input_has_key())
             fprintf(gp_log, "left-queued after f=%u\n", (unsigned)DSW(DS_000EF6DC));
         if (gp_armed) {
@@ -13770,6 +13834,12 @@ int test_gp_replay(void)
     fclose(gp_log);
     fclose(gp_frames);
     fclose(gp_trace);
+    if (gp_audio != NULL) {
+        opl_set_write_hook(NULL);
+        fclose(gp_audio);
+        gp_audio = NULL;
+        printf("audio dump: %u OPL register writes\n", (unsigned)gp_audio_writes);
+    }
     free(gp_step);
 
     CHECK(gp_armed, "the loop reached the script's Enter frame");
