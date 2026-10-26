@@ -93,7 +93,12 @@ gaps remain the U14 fought live win (R1), the U16 live finisher without that
 fallback, the per-hit death streams the clean traces cannot see, the 5120
 band's unisolated cause, rendered-audio audibility (no device-recording
 oracle), and the bounded-missing limits above. U13's post-script tail is
-claimed and the INT 8 tick vector is documented. The detailed,
+claimed and the INT 8 tick vector is documented. The in-match and menu music
+now plays: the game-side song request/resolve is ported (`snd_music_start`,
+`0x1C930`) and the port's OPL register stream is compared tolerance-free
+against the original's captured gameplay traces (29 `.dro` files, 27 replayed;
+the wall-paced device-2 walk skips by name) — the music truth phase; rendered
+audibility stays a named gap. The detailed,
 continuously-updated status is in **[`docs/PROGRESS.md`](docs/PROGRESS.md)**;
 the frame loop and pixel path are in `port/spec/game_flow.md`.
 

@@ -1,6 +1,6 @@
 # Music Truth — derivations
 
-Status: in progress, 2026-10-25. Branch `music-truth`, base `a7876ffc` (`docs: close the
+Status: complete, 2026-10-26. Branch `music-truth`, base `a7876ffc` (`docs: close the
 proof completion phase`). Plan `docs/superpowers/plans/2026-10-25-music-truth.md`; spec
 `docs/superpowers/specs/2026-10-25-music-truth-design.md`.
 
@@ -73,7 +73,7 @@ all checks passed
   by `test_audio.c:982`).
 - The **capture comparison is report-only** (`test_audio.c:1037-1199`): it anchors both
   streams at their first key-on, maps capture ms → port tick with the inverse equation
-  in §M1.6.3 (`test_audio.c:1117`), drops the
+  in §M1.6.3 (`test_audio.c:1274`), drops the
   documented-excluded registers (`0xBD`; carrier TL only on the residual MIDI channels 1
   and 4) and write-on-change repeats, then prints the first difference and does not fail.
   The capture is `data/audio-captures/prage_000.dro` (`CAPTURE_DRO`,
@@ -438,11 +438,13 @@ The plan and spec originally said "the 37 gameplay `.dro` traces". The measured 
 - Total `.dro` under `data/`: **39**.
 
 So "37 gameplay traces" is a miscount: 37 is the `k11-captures` total, of which 29 are
-gameplay. The oracle's inventory is the 29 `gp-*` files; the other 10 (8 + 2) are not
-gameplay music and are named separately so a song absent from the 29 is a named gap, not
-a silent skip. Three of the 29 `gp-*` files (`gp-pads/prage_000` and
-`gp-u17-device2/prage_000`, which are boot fragments, and `gp-pads/prage_001`, a restart
-fragment) carry no music; 26 of the 29 have more than 1,000 writes.
+gameplay. The oracle's inventory is the 29 `gp-*` files; the other 10 (8 + 2) are **named
+apart, not gameplay** — the 2 `audio-captures` are the title captures (music, not a gameplay
+scenario) and the 8 other k11 files are the service-menu/save/diagnostic captures — so a song
+absent from the 29 is a named gap, not a silent skip. Three of the 29 `gp-*` files
+(`gp-pads/prage_000` and `gp-u17-device2/prage_000`, which are boot fragments, and
+`gp-pads/prage_001`, a restart fragment) carry no music; 26 of the 29 have more than 1,000
+writes.
 
 #### §M1.6.2 Every `.dro`
 
@@ -501,11 +503,11 @@ The 37 rows are measured by `tools/opl_trace.py`'s parser. Notes:
   only that fragment (for `gp-pads` and `walk` the `_001` file holds the rest — DX-CAPTURE
   restarted the OPL recording), and their `.dro` was written at the first FM note-on and
   closed with the trailing delay.
-- **Two captures are restarted after the boot's first write block**, not boot
-  fragments: `gp-pads/prage_001` (189 writes; its first block begins at `0x121`, where
+- **Two more restart fragments after the boot's first write block**: `gp-pads/prage_001`
+  (189 writes; its first block begins at `0x121`, where
   the boot stream has `0x21`) and `walk/prage_001` (361 writes; `0xB4=0x2E` at tick 0).
   Their first key-on is on `0xB4` and the boot init block is absent. `idle/prage_001`
-  (7,007 writes, 26.5 s) is the third restart fragment and *does* carry music; its first
+  (7,007 writes, 26.5 s) is the **third** restart fragment and *does* carry music; its first
   key-on is `0xB8=0x36` (the boot init block is absent: the capture began after the
   init). `gp-pads`'s and `walk`'s first files hold the boot fragment while the `_001`
   files hold the rest; DX-CAPTURE wrote a second file when the OPL capture restarted.
@@ -538,7 +540,7 @@ a capture key-on within ±3 ms (`abs(capture_ms - ms) <= 3`, `cmd_capture_anchor
 four notes the equation gives 0/66/125/191 ms and the capture has 0/64/124/192 (all
 within the ±3 ms). The report-only capture comparison uses the inverse
 `ct = (capture_ms * 120 + 500) / 1000 + 60` (integer division after the +500, i.e.
-round-half-up; `test_audio.c:1117`), which maps 0/64/124/192 back to 60/68/75/83 exactly.
+round-half-up; `test_audio.c:1274`), which maps 0/64/124/192 back to 60/68/75/83 exactly.
 Neither equation is §M4's alignment: the new register oracle anchors both streams at the
 first key-on and compares the write stream tolerance-free; the ±3 ms above belongs only
 to the existing title-bank anchor check. The capture's tick-63 block carries the same
@@ -566,7 +568,7 @@ shifted +4, its operator registers landing at +9 because channel 4's slots are 9
 That is an **11-register correspondence with ten equal values and one disclosed
 difference**: the carrier TL `0x4C=0x95` in the capture against `0x43=0x98` in the
 decoded bank, the MIDI-channel-4 voice. It is exactly the existing ch1/ch4
-carrier-TL/volume residual `port/spec/audio.md` items 1/9 excludes by name (the engine's
+carrier-TL/volume residual `port/spec/audio.md` item 1 excludes by name (the engine's
 per-channel volume on ch1/ch4 is unpinnable; 2026-09-20-midi-controllers-tl-derivation
 §R3), not an exact-value match and not a fitted value. That ten-value correspondence is
 the identification; the same capture values start the first music section of
@@ -574,7 +576,7 @@ the identification; the same capture values start the first music section of
 and `gp-u22-diablo-ending`'s 6,049 group is the same values one channel over
 (`0x22=0x31, 0x25=0x72, 0x42=0x5B, 0x45=0x95, 0x62=0xF4, …`). The oracle's own comparison
 (Task 4) establishes the rest of each section. This is the record's one worked bank
-identification; Task 3/4 repeat it for the other sections.
+identification; Task 4 owns the per-section attribution for the other sections.
 
 #### §M1.6.5 The clock offsets (not an alignment)
 
@@ -1236,7 +1238,7 @@ Measured on the changed tree:
 | check | result |
 |---|---|
 | `PR_ORACLE_REQUIRED=1 ./build/run_tests` | `all checks passed`; `oracle C-vs-Python: 9866 writes byte-exact`; `capture oracle first difference at C write 430` (unchanged) |
-| the new regression | case 0g; mutation restores the reset → `test_audio.c:901: 0 != 1` |
+| the new regression | case 0g; mutation restores the reset → `test_audio.c:903: 0 != 1` |
 | `PR_AUDIO_DUMP` off | the gp replay driver's frames/trace/log are unchanged (the hook is NULL; §M3.1) |
 
 Not claimed: rendered audibility (§M1.7); the sections after the selmo
@@ -1577,8 +1579,16 @@ round's REDs were taken against the pre-fix `9511c77e` tool:
     (8 claimed ticks, 7 reduced writes); the fixed tool fails it.
   * The capture-side counterparts are not the reviewer's exact case:
     `test_dropped_write_capture_side_one_tick_later_fails` and
-    `test_dropped_write_capture_side_one_tick_earlier_fails` (the latter
-    exercises branch2's `and not pg` guard).
+    `test_dropped_write_capture_side_one_tick_earlier_fails` both delete the
+    capture's B, so the mutated capture no longer matches the anchor's first
+    four tick groups; both the pre-fix and the fixed tool report the section
+    **unanchored**. They are anchor-prefix cases, not tick-group cases, and they
+    do not isolate branch2's `and not pg` guard (a skipped non-empty port group
+    also fails the `matched == port_writes` accounting, so that guard is
+    redundant; no shipped case isolates it — a test minor, not changed here).
+    `test_dropped_write_capture_groups_one_tick_earlier_fails` is the
+    public-comparator shape the pre-fix tool accepted at its tick groups and the
+    fixed tool refuses.
   * `test_penultimate_tick_difference_fails` — the old tool excused the
     `last_rel-1` difference as `the first group difference is at the request
     boundary tick 6` and returned `ok`; the fixed tool fails it at tick 6.
@@ -1731,7 +1741,6 @@ silence: peak **0**, sha256
 `71193adec3906987ba36200dc465f71b677dd5978dd90136eae3f4a5d1d9f634` (the
 all-zero 12 s body — deterministic, and the first RED's evidence). The
 non-silence check and the pinned peak/hash reject it.
-
 ### §M5.3 RED, GREEN and the mutation proofs
 
 The test block was written before the song selection existed:
@@ -1788,3 +1797,240 @@ mixer are the invented model, §M1.7); the AIL sequence-volume fade (declared
 above); the title render's hash as a Task-5 artifact (recorded, unchanged); and
 any song other than the Task-3 selmo. The claim is one deterministic,
 non-silent render of the measured menu song at the game path's sequence volume.
+
+## §M6 The docs and the full gate (Task 7)
+
+### §M6.1 The claim set the docs carry
+
+The functional claim is that the game's own music requests select and start the
+original's song. `snd_music_request` (`0x1CA14`) now queues one: `game_audio_init`
+stores the non-zero stand-in `1` at `DS_001028C0`/`DS_001028C4` (the
+install-succeeded form the DIG path already used at `0x1028C8`), so its
+`DS_001028C0 != 0` gate (`0x1CA2C`) opens; `game_audio_service` runs the raw's
+pending arm (`0x1CF30`/`0x1CF39`); and `snd_music_start` ports `0x1C930`'s
+new-song arm (resolve `0x1B544`, copy to the raw's `0x5100` buffer at `0x1028D0`,
+`AIL_init_sequence`/`AIL_set_sequence_volume(DS_000A2CB8, 500)`/
+`AIL_start_sequence`) and same-song arm (re-init of the copied buffer). The title
+path starts S16TITLE once (`game_state_title_music_request` suppresses the
+`title_music_start` substitute when the attract's `0x54`/`0x56` request is
+pending or last started; §M2.8). A real sequencer bug is fixed: `seq_start` no
+longer resets the FM driver's voice-rotation cursor (§M3.3). The nine ending
+captures' loader `OVERLAY_ALLOWED` entries retired as clean matches and their
+`MAX_MISSING`/`MIN_REACH` pins were re-measured (§M2.7).
+
+The evidence claim is the register stream: `tools/audio_compare.py` compares the
+port's `PR_AUDIO_DUMP` writes against the 29 gameplay `gp-*` `.dro` traces,
+tolerance-free across ticks (the declared intra-tick order model and the measured
+one-tick capture-label model; a skipped group must be empty and every port write
+matched once), and the selmo section is per-tick exact in 24 of the 26 music
+traces (§M4). The PCM pin is `make audio-render`'s selected selmo (peak 2,790,
+sha256 `530a9430…`; §M5). **No audibility claim is made**, and no PCM comparison
+to the original is claimed.
+
+The docs: `README.md` (the in-match/menu sentence; the title stays 66% and the
+"799 of Ghidra's 1203" / "100% (759 of 759)" lines are the measured
+`port_progress.py` figures), `AGENTS.md` (the phase bullet), `docs/PROGRESS.md`
+(the phase paragraph and the comparator-count correction), `port/spec/audio.md`
+(the status note and the "Music truth" section), the plan (Task 7 and the Global
+Constraints now name both gate commands) and this record (§M6). The spec's status
+is `Implemented and gated, 2026-10-26` and its §2 is labelled the pre-phase
+baseline. `port/RE_GUIDE.md` needed no change (it carries no music claim). The
+Makefile's U9 current-state comment was the one stale sentence: "the port's music
+path is host-owned and never resolves" became "was then host-owned and never
+resolved", followed by the existing §M2.7 retirement note.
+
+### §M6.2 The Task 6 declaration
+
+The plan's Task 6 is optional ("take only if Tasks 1–5 leave budget; otherwise
+declare them"). It is **declared, not taken**:
+
+- **The service-menu language reload (`§K11.3`)** — not implemented. The
+  language field (`0x29` bits 24–26), the `<LANG>.TXT` reseat and the
+  idempotence removal remain a future small gap.
+- **The coin-countdown capture** — deferred to a future phase. It needs a new
+  capture, and the phase's binding no-new-capture constraint forbids one
+  (ledger ruling R1); the coin evidence stays open.
+- **The proof-completion housekeeping** — not taken: the `waitpid` retry/assert,
+  the allowance-before-window-start guard and duplicate-key rejection, `PC_DEAD`,
+  the `closed_rows` assertion, the 32 `ResourceWarning` contexts,
+  `SpanCensusTests`' docstring and the proof-completion design §7 sentence. No
+  pin or assertion meaning changes, and none of these is a Music Truth claim.
+
+### §M6.3 The Task 5 pin restated
+
+`make audio-render` (`AUDIO_SONG_WAV=/tmp/pr_selmo_fm.wav`) renders the selected
+selmo bank (`0x0980025C`, bank hash `0x286ED662`) at the game path's sequence
+volume `0x50`, fails on a silent render, and pins peak **2,790** and whole-file
+sha256 `530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef`.
+The two default runs are byte-identical (R4); `seq_driver_reset()` makes the WAV
+independent of the title render's `AUDIO_SECONDS` (§M5.1). The claim is
+deterministic non-silence, not audibility and not a PCM match to the original
+(§M1.7). The title render is unchanged (`515b7c94…`, peak 4,090). The pin is
+exercised by `make audio-render`, not by `make verify` (the design's G3), so the
+phase's gate runs **both** commands.
+
+### §M6.4 The docs-only corrections from the task reviews
+
+1. `test_audio.c:901` -> `:903` (the §M3.6 mutation location; the Task 3 report
+   and §M3.3 already had `:903`).
+2. The record's two `test_audio.c:1117` prose citations -> `:1274`, the current
+   capture-tick mapping (`u32 ct = (cap_ev[i].tick * 120u + 500u) / 1000u + 60u`).
+   The Task 1 review had already flagged that `:1117` was the wrong line at its
+   revision (`:1114`).
+3. "the other 10 (8 + 2) are not gameplay music" -> "**named apart, not
+   gameplay**": the 2 `audio-captures` are the title captures (music, not a
+   gameplay scenario) and the 8 other k11 files are service-menu/save/diagnostic.
+4. "**Two captures are restarted** after the boot's first write block" -> "Two
+   *more* restart fragments" (the third is `idle/prage_001`, which does carry
+   music).
+5. "`port/spec/audio.md` items 1/9 excludes" -> **item 1** only (item 9 is the
+   `0x122` init-shadow artefact, not the carrier-TL exclusion).
+6. "Task 3/4 repeat it for the other sections" -> **Task 4 owns the per-section
+   attribution** for the other sections.
+7. `title_music_start`'s header comment (comment only; the body is unchanged)
+   now states that `game_state_title_music_request` suppresses the substitute
+   when the raw request is pending or last started, so the attract->title run
+   starts the bank once.
+8. The branch2 attribution: §M4.5 and the test comments now say the two
+   capture-side dropped-write cases fail at the **anchor's four-tick prefix**
+   on both the pre-fix and the fixed tool (they are anchor-prefix counterparts,
+   not tick-group cases); the branch2 `and not pg` guard is redundant with the
+   `matched == port_writes` accounting and no shipped case isolates it (a test
+   minor, not changed).
+9. The test module's docstring: every case uses the CLI except the direct
+   `align_groups` case; the inventory/`summary`/partial-file gating cases and
+   the anchor-prefix failure mode are named.
+10. The stale comparator count: `docs/PROGRESS.md`'s 23 -> **25** cases.
+11. The plan's "the covered songs" -> "the songs whose register streams match in
+    the measured cut windows".
+12. The Makefile U9 comment tense (above).
+13. The spec status -> `Implemented and gated, 2026-10-26`, and §2 labelled the
+    pre-phase baseline; the plan's Task 7 and Global Constraints name both gate
+    commands.
+
+Not changed (deferred code/test minors, as instructed): the silent trace-write
+failures in `test_game.c`'s `PR_AUDIO_DUMP` block, the first-prefix anchor
+candidate (a later candidate is not tried after a prefix match), the missing `S`
+metadata reuse of the previous song's bank, and the one-start regression that
+calls `game_state_title_music_request()` directly instead of through
+`game_state_title` (so a revert of the caller is not unit-pinned). The
+differential harness's `game_audio_service` `unhit_named` reason text also still
+says the port "replaces `0x1C930` by host code (flow.c title_music_start)"; it is
+a harness annotation outside this task's named file set (§M2.4 records the
+measured boundary), not a claim in the phase docs.
+
+### §M6.5 The final gate (measured)
+
+Command 1, `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify`
+(log `/tmp/opencode/task7-verify.log`), **exit 0**, last line
+`VERIFY_EXIT=0`, preceded by:
+
+```
+gate: captures 34/35 present, 1 missing (strict=1, pins_exact=1)
+...
+oracle C-vs-Python: 9866 writes byte-exact
+capture oracle first difference at C write 430: C tick=1010 reg=0xa0 val=0xd3 vs capture tick=1010 reg=0x1a8 val=0x68 (C 9866 writes, capture 6903 normalised)
+...
+== register-stream oracle (the 29 gp-* traces; each skips without its capture) ==
+audio-compare: gameplay inventory: 28 traces, 29/29 .dro files (26 with a music section), 0 directories absent
+  gp-idle-loss             1 file(s): ok 1498 ticks (pinned 1498)
+  gp-idle-loss-run2        1 file(s): ok 1508 ticks (pinned 1508)
+  gp-keys-fight            1 file(s): ok 1508 ticks (pinned 1508)
+  gp-pads                  2 file(s): ok 30 ticks (pinned 30)
+  gp-twop                  1 file(s): ok 956 ticks (pinned 956) named-gap 20DA829D
+  gp-u10-ending            1 file(s): ok 176 ticks (pinned 176) named-gap F1774E70 20DA829D 3BA4C376
+  gp-u12-endurance         1 file(s): ok 1028 ticks (pinned 1028)
+  gp-u13-ending2           1 file(s): ok 356 ticks (pinned 356) named-gap F1774E70 BC44EF50 3BA4C376
+  gp-u15-join              1 file(s): ok 1498 ticks (pinned 1498)
+  gp-u16-twop2             1 file(s): ok 956 ticks (pinned 956) named-gap 20DA829D
+  gp-u17-device2           1 file(s): SKIP (no frame-keyed port script (wall-paced; record §H6.9))
+  gp-u18-talon-ending      1 file(s): ok 966 ticks (pinned 964) named-gap 3BA4C376
+  gp-u19-vertigo-ending    1 file(s): ok 296 ticks (pinned 296) named-gap F1774E70 3D536DDE 3BA4C376
+  gp-u20-chaos-ending      1 file(s): ok 416 ticks (pinned 416) named-gap F1774E70 86946EB7 3BA4C376
+  gp-u21-armadon-ending    1 file(s): ok 1200 ticks (pinned 1200) named-gap 3BA4C376
+  gp-u22-diablo-ending     1 file(s): ok 986 ticks (pinned 986) named-gap FD94B4E3 BF1C78E2 3BA4C376
+  gp-u23-u16-finisher      1 file(s): ok 30 ticks (pinned 30) named-gap 286ED662 F1774E70 20DA829D
+  gp-u5-charsel            1 file(s): ok 896 ticks (pinned 896) named-gap F1774E70 87E7C2DE
+  gp-u6-moves              1 file(s): ok 1508 ticks (pinned 1508)
+  gp-u6-moves-b            1 file(s): ok 1504 ticks (pinned 1504)
+  gp-u8-attract-start      1 file(s): ok 1663 ticks (pinned 1663) named-gap F1774E70
+  gp-u8-endurance          1 file(s): ok 613 ticks (pinned 613)
+  gp-u8-handicap           1 file(s): ok 1611 ticks (pinned 1611)
+  gp-u8-left-training      1 file(s): ok 1463 ticks (pinned 1463)
+  gp-u8-right-arcade       1 file(s): ok 1563 ticks (pinned 1563)
+  gp-u8-right-training     1 file(s): ok 1311 ticks (pinned 1311)
+  gp-u8-tug-of-war         1 file(s): ok 1196 ticks (pinned 1196)
+  gp-u9-win                1 file(s): ok 176 ticks (pinned 176) named-gap F1774E70 20DA829D 3BA4C376
+audio-compare: minimum measured claim: 30 ticks
+audio-compare: not gameplay: 8 k11 .dro file(s) (de/prage_000.dro, diags/prage_000.dro, idle/prage_000.dro, idle/prage_001.dro, menuesc/prage_000.dro, save-reload/prage_000.dro, walk/prage_000.dro, walk/prage_001.dro)
+audio-compare: not gameplay: 2 audio-capture .dro file(s) (prage_000.dro, prage_001.dro)
+audio-compare: summary ok
+...
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37). ...
+...
+== symbols.h must regenerate byte-identically ==
+python3 tools/gen_symbols.py port/decomp port/src/symbols.h
+1304 globals, 1206 functions -> port/src/symbols.h
+  dropped 11 globals, 1 functions outside the LE objects
+all checks passed
+```
+
+- **The audio oracle ran, it did not skip:** 27 replayed traces `ok` (the 26
+  music traces + title-only `gp-pads`), against the 29/29 file inventory, with
+  `gp-u17-device2` the one declared wall-paced skip and `audio-compare: summary
+  ok`; there is no `FAIL` line in the log.
+- **The differential counter is the Task-1 baseline exactly:** `1033/1033
+  functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows
+  with callees closed (188 have none); 807/845 closed on full rows; 8 ported
+  functions with no row`. No row was added and `0x1C930`/`0x1CF40` stay
+  `UNROWED`.
+- **The title/attract claims are unchanged:** the 9866-write byte-exact line and
+  the report-only capture first difference 430 are the same registers/values; the
+  gate's title/attract/front-end/demo-fight/attract2/gp/K11/save-reload numbers
+  are the §M2.5 values.
+- `python3 tools/port_progress.py` (re-run after the gate) prints `799 1203 66` /
+  `759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)`,
+  so the README title stays 66% and its "799 of Ghidra's 1203" / "100% (759 of
+  759)" lines are the measured figures.
+
+Command 2, `make audio-render` (log
+`/tmp/opencode/task7-audio-render-final.log`), **exit 0**:
+
+```
+oracle C-vs-Python: 9866 writes byte-exact
+capture oracle first difference at C write 430: C tick=1010 reg=0xa0 val=0xd3 vs capture tick=1010 reg=0x1a8 val=0x68 (C 9866 writes, capture 6903 normalised)
+PR_AUDIO_WAV: wrote /tmp/pr_title_fm.wav (12 s, 49716 Hz)
+PR_AUDIO_SONG_WAV: wrote /tmp/pr_selmo_fm.wav (12 s, 49716 Hz) peak 2790 sha256 530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef
+all checks passed
+```
+
+The song WAV's whole-file sha256 is
+`530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef` (peak
+2,790); the title WAV is `515b7c94a9d0cfb36afa183f9e6642c04ff8ac0150a1f324182cee6bb8d82f3a`
+(peak 4,090), unchanged. The claim is deterministic non-silence, not audibility.
+`make verify` does not run `audio-render`; the phase's final gate is both
+commands (design G3, Task 5 review).
+
+### §M6.6 The phase's named gaps and what it does not claim
+
+- **Rendered audibility / PCM vs the original** — not claimed; the OPL core and
+  mixer are the port's invented model (§M1.7). The PCM pin is determinism only.
+- **Bank coverage in the measured cut windows** — 16 of the 26 code-reachable
+  banks are not requested or attributed there; 5 more are requested-only named
+  gaps (citys, himal, caves, sound+0x5B88, sound+0x3E64); only title,
+  selmo+0x25C, selmo+0x08, beach+0x08 and jungl+0x08 are capture-matched. The
+  unmatched capture tails were not measured, so full-trace absence is not
+  claimed (§M4.4 item 7).
+- **The later `0x31`/match sections** whose section-boundary voice cursor the
+  capture's tail advanced; the sections that still anchor (446..480 ticks) match
+  (§M4.4 item 1).
+- **The `gp-u23-u16-finisher` capture artifact** (its selmo/`0x31` sections are
+  diff-allowed; the same port stream matches the u16 capture, §M4.4 item 2) and
+  **`gp-u22-diablo-ending`'s title** (label slack plus a stop on the last claimed
+  tick; explicit `allow-diff`, §M4.4 item 5/6).
+- **The differential boundary**: `0x1C930`/`0x1CF40` stay `UNROWED`; a faithful
+  row would fabricate the AIL handle and could not compare the hand-off (§M2.4).
+- **Task 6's three items** (§M6.2), and the deferred code/test minors and harness
+  annotation noted in §M6.4.
+- **A song/bank absent from the 29 gameplay traces** is a named gap, never a new
+  capture (the phase's binding constraint).

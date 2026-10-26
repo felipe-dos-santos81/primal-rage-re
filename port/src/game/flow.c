@@ -6204,11 +6204,13 @@ const u8 *game_music_bank_find(const u8 *base, u32 size)
  * the working reference (record §M1.2, the 9866-write oracle). It stands in
  * for the attract's 0x54/0x56 case-1 request (attract.c 0x111FF), whose raw
  * path 0x1CA14 -> 0x1CF39 -> 0x1C930 now exists (snd_music_request /
- * snd_music_start), so a run that plays the attract's phase 4 starts this same
- * bank first and this call starts it again at the title state. It reads the
- * bank in place rather than through the pending song's copy (0x1028D0), stores
- * no song word, and returns early with no bank or no sequence (both host
- * objects). */
+ * snd_music_start). game_state_title_music_request asks for this substitute
+ * only when the raw path has neither a pending (CC) nor a last-started (DC)
+ * S16TITLE request, so a run that plays the attract's phase 4 starts the bank
+ * once, through snd_music_start; the standalone title path (and the title dump
+ * driver) still reaches this call. It reads the bank in place rather than
+ * through the pending song's copy (0x1028D0), stores no song word, and returns
+ * early with no bank or no sequence (both host objects). */
 static void title_music_start(void)
 {
     const u8 *bank = title_music_bank();

@@ -1228,7 +1228,7 @@ gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fi
 # song handle 0x03021BFA is index 6, and the original's sequencer reads that song through the
 # resource layer in the entry's window (the strip's background is the entry's screen, not the
 # later one; the capture's S records show no stall at f=0xC0E and one extra tick in the entry
-# window), while the port's music path is host-owned and never resolves (platform/audio/ has no
+# window), while the port's music path was then host-owned and never resolved (platform/audio/ has no
 # res_resolve), so the replay's first s16snd2 resolve is the *sample* queue of voice 0x3A at
 # f=0xC0E. The frame of that presentation is thus the host-owned audio model's, not the ported
 # game code's — a model artifact (§G7); the sequencer's exact read frame inside the entry's window

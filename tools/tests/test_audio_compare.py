@@ -2,12 +2,15 @@
 """The register-stream oracle's unit tests (record 2026-10-25-music-truth §M4).
 
 Each case builds a synthetic `.dro` (the DOSBox-X v2 container `opl_trace.py`
-parses) and a synthetic `PR_AUDIO_DUMP` port stream, then runs the tool's CLI.
+parses) and a synthetic `PR_AUDIO_DUMP` port stream, then runs the tool's CLI
+(`test_align_groups_port_side_dropped_write` calls `align_groups` directly).
 The cases are the oracle's contract: an identical pair passes; a dropped, extra
-or wrong write fails at its first tick group; an unanchored stream fails; a
-capture that is absent is skipped by name; the declared intra-tick order model,
-the declared one-tick capture label model and the unclaimed request-boundary
-tick do not fail.
+or wrong write fails (at its first tick group, or at the anchor's four-tick
+prefix when the mutation breaks that prefix); an unanchored stream fails; a
+capture that is absent is skipped by name; a present capture with a missing
+expected file fails; `summary` fails a partial inventory, a `NOT RUN` row and a
+`FAIL` row; the declared intra-tick order model, the declared one-tick capture
+label model and the unclaimed request-boundary tick do not fail.
 """
 import os
 import struct
@@ -274,8 +277,9 @@ class AudioCompareTests(unittest.TestCase):
     def test_dropped_write_capture_side_one_tick_later_fails(self):
         # The capture-side counterpart (not the reviewer's exact case): the
         # capture's B is deleted; the port retains its B and the capture's
-        # empty tick. This fails too, but it exercises the capture accounting,
-        # not branch1's `not cg` guard.
+        # empty tick. The mutated capture fails the anchor's four-tick prefix
+        # check on both the pre-fix and the fixed tool, so this is an
+        # anchor-prefix case, not a tick-group (branch) case.
         port, cap = one_tick_later_pair()
         r = self.case(port, cap)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -287,8 +291,10 @@ class AudioCompareTests(unittest.TestCase):
         self.assertNotIn('synthetic: ok', r.stdout)
 
     def test_dropped_write_capture_side_one_tick_earlier_fails(self):
-        # The capture's B is deleted and C..G are one tick earlier; this is
-        # the capture-side shape the whole-group branch could skip for.
+        # The capture's B is deleted and C..G are one tick earlier. The mutated
+        # capture no longer matches the port's first four tick groups, so both
+        # the pre-fix and the fixed tool report the section unanchored: an
+        # anchor-prefix counterpart, not a whole-group (branch) case.
         port, cap = one_tick_later_pair()
         r = self.case(port, cap)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -299,11 +305,12 @@ class AudioCompareTests(unittest.TestCase):
         self.assertNotIn('synthetic: ok', r.stdout)
 
     def test_dropped_write_capture_groups_one_tick_earlier_fails(self):
-        # The public-comparator form of Critical 1: the capture's C/D sit one
-        # tick earlier than the port's C/D (inside the declared one-tick
-        # model), so the whole-group branch could match the capture's current
-        # group against the port's next group and skip the dropped B. The
-        # baseline with B present passes; deleting B must fail.
+        # The public-comparator form of Critical 1: the capture drops its A and
+        # keeps B/C at rel 1/2, so the whole-group branch could match the
+        # capture's current group against the port's next group and skip the
+        # port's A. The baseline with A present passes; deleting it must fail
+        # (on the fixed tool the anchor's four-tick prefix refuses it, since
+        # the prefix uses the same alignment).
         port = [(1, 0x21, 0x01), (2, 0x22, 0x02), (3, 0x23, 0x03),
                 (4, 0xB1, 0x0B)]
         base = [(1, 0x21, 0x01), (2, 0x22, 0x02), (3, 0x23, 0x03)]

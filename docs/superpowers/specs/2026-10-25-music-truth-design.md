@@ -1,6 +1,6 @@
 # Music Truth — design
 
-Status: Proposed, 2026-10-25. Follows the proof-completion and endgame-truth
+Status: Implemented and gated, 2026-10-26. Follows the proof-completion and endgame-truth
 phases. It closes a functional audio hole the earlier phases left as a product
 chore: the port plays the title/attract music but never plays the in-match or
 menu music. The proof is a tolerance-free comparison against the original's
@@ -38,6 +38,9 @@ streams can prove it without listening to the port.** Rendered audibility stays
 a model claim, explicitly out of scope.
 
 ## 2. Current state (measured 2026-10-25)
+
+The pre-phase baseline; the measured outcome is in the derivation record
+`docs/superpowers/plans/2026-10-25-music-truth-derivations.md` §M2–§M6.
 
 - `python3 tools/port_progress.py` → `799 1203 66` / `759 759 100`.
 - Audio init/sequencer path: `0x1CF40` completes; the title/attract bank

@@ -431,6 +431,43 @@ consolidation gate).
   opens and the 13 deferred movie-audio rows are a zero-payload finding, not an implementation gap;
   `0x10678` is the ms reader (`[0x81E10]*4`, not a buffer size), record §H1. A report-only
   Alt-J/boot probe is optional and is not a `gp-*` fixture (record gameplay-truth-ii §J9).
+- **The music truth phase: the in-match/menu music plays; the register stream is the claim**
+  (plan `docs/superpowers/plans/2026-10-25-music-truth.md`, record
+  `2026-10-25-music-truth-derivations.md` §M1–§M6). `0x1C930` is ported as
+  `snd_music_start` (the pending arm at `0x1CF20`'s `0x1CF39`): `game_audio_init` stores
+  the non-zero stand-in `1` at `DS_001028C0`/`DS_001028C4` (the install-succeeded form the
+  DIG path already used at `0x1028C8`), so `snd_music_request` (`0x1CA14`) queues the
+  game's own stage/menu song and the resolve copies the bank into the raw's `0x5100`
+  buffer and starts it. The title bank starts **once** (`game_state_title_music_request`
+  suppresses `title_music_start` when the attract's `0x54`/`0x56` request is pending or
+  last started; its body is unchanged), and `seq_start` no longer resets the FM driver's
+  voice-rotation cursor — the raw's `AIL_start_sequence` resets the sequence record only,
+  so a second song continues the cursor (the capture's selmo first note is OPL channel 4
+  after the title's 0..3); `seq_driver_reset()` is the test-only pristine seam. The
+  register-stream oracle `tools/audio_compare.py` (`make audio-oracle`, in `make verify`)
+  compares `PR_AUDIO_DUMP` against the 29 gameplay `gp-*` `.dro` traces, anchored at each
+  section's first key-on, tolerance-free across ticks (sorted per-tick multisets for the
+  declared intra-tick order model; the measured one-tick capture-label model; a skipped
+  group must be empty and every port write matched once), skipping absent traces by name;
+  the selmo section is per-tick exact in 24 of the 26 music traces
+  (`gp-u8-attract-start`'s tick-57 jitter and `gp-u23-u16-finisher`'s capture tick split;
+  `gp-u22-diablo-ending`'s title is a separate label-slack/stop named gap). The nine ending
+  captures' loader `OVERLAY_ALLOWED` entries retired as clean matches and their
+  `MAX_MISSING`/`MIN_REACH` pins were re-measured (record §M2.7). **Named gaps:** rendered
+  audibility (the OPL core/mixer is an invented model); 16 of the 26 code-reachable banks
+  are not requested or attributed in the measured cut windows, and 5 more (citys, himal,
+  caves, sound+0x5B88, sound+0x3E64) are requested-only named gaps — only title,
+  selmo+0x25C, selmo+0x08, beach+0x08 and jungl+0x08 are capture-matched; the later
+  `0x31`/match sections the capture's cursor advanced past; and `0x1C930`/`0x1CF40` stay
+  `UNROWED` (a row would fabricate the AIL handle and could not compare the hand-off). The
+  PCM pin is **determinism, not audibility**: `make audio-render` renders the selected
+  selmo (`0x0980025C`, volume `0x50`) at peak **2790**, sha256
+  `530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef` (two byte-identical
+  runs; the title WAV `515b7c94…` is unchanged). The phase's required gate is **both**
+  `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` **and** `make audio-render`.
+  Task 6 is declared, not taken (the optional service-menu language reload, the
+  coin-countdown capture the no-new-capture constraint forbids, and the proof-completion
+  housekeeping). The title/attract 9866-write oracle and every existing pin are unchanged.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`

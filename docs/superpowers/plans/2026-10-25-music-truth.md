@@ -47,8 +47,8 @@ Make, the raw `PRAGE.EXE`, Ghidra/capstone, the existing gameplay captures.
   `port/RE_GUIDE.md`, the Makefile comments, the spec and the derivation
   record. Commit style `<area>: <what>`; stage named files, never `git add -A`;
   commit only when authorized.
-- The final gate is `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make
-  verify`.
+- The final gate is **both** `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1
+  make verify` **and** `make audio-render` (the design's G3); both must exit 0.
 
 ## Review Focus
 
@@ -275,13 +275,15 @@ Take only if Tasks 1–5 leave budget; otherwise declare them.
 - Run: the full gate.
 
 - [ ] **Step 1: Correct the claims.** Title/attract music is proved; in-match/
-  menu music is the new claim (the covered songs); rendered audibility stays a
-  named gap; the `0x1C930` boundary/row is recorded.
+  menu music is the new claim (the songs whose register streams match in the
+  measured cut windows); rendered audibility stays a named gap; the `0x1C930`
+  boundary/row is recorded.
 - [ ] **Step 2: Keep the counters current.** `port_progress.py`, the
   differential counter and the README title percentage are the measured
   values; no prediction.
-- [ ] **Step 3: Full gate.** `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1
-  make verify`; every audio oracle runs; the title/attract pins unchanged.
+- [ ] **Step 3: Full gate.** **Both** `PR_DIFF_FULLSCAN=1 GATE_STRICT=1
+  PR_PINS_EXACT=1 make verify` **and** `make audio-render` must exit 0; every
+  audio oracle runs (not skips); the title/attract pins unchanged.
 - [ ] **Step 4: Record and commit (when authorized).** `docs: close the music
   truth phase`.
 

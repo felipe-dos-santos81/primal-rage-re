@@ -17,6 +17,16 @@ structurally (the driver's reconstruction is unverified), and the port's audio
 was never heard on this host. The full scope, deviations and open risks are in
 `../../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`.
 
+**Music truth (2026-10-25)** supersedes the cycle status above for music
+selection and the register oracle: the game-side song request/resolve is ported
+(`snd_music_request`/`snd_music_start`), the in-match and menu songs play, and
+the port's OPL register stream is compared tolerance-free against the original's
+captured gameplay traces (29 `.dro` files, 27 replayed; the wall-paced device-2
+walk skips by name) — see "Music truth — the in-match/menu music and the
+register oracle" at the end of this file. The 9866-write title oracle and its
+declared divergences are unchanged; the PCM pin is a determinism check, not an
+audibility claim.
+
 Addresses are LE linear code-object addresses (`base 0x10000`), as elsewhere in
 `port/spec`. File offsets are raw offsets into the files under `data/game/C/`,
 `/Volumes/RAGECD` (mounted `RAGECD.ISO`) or `PRAGE.EXE`.
@@ -1287,3 +1297,87 @@ files); the movie video oracles remain the movie-path proof.
 010680 ret`), the 250 Hz callback `0x10604` counting 4 ms ticks — `[0x81E10]*4` ms,
 **not** a stream buffer size (the §50-E triage label corrected, §H1.6; the
 streaming-timeline note above reads it the same way).
+
+## Music truth — the in-match/menu music and the register oracle (2026-10-25)
+
+Plan `../../docs/superpowers/plans/2026-10-25-music-truth.md`, record
+`../../docs/superpowers/plans/2026-10-25-music-truth-derivations.md` §M1–§M5.
+The claim is the **register stream** (song choice, notes, patches, tempo) in the
+captured windows; rendered audibility stays the port's invented OPL/mixer model
+and is not claimed.
+
+**The request/resolve.** `snd_music_request` (`0x1CA14`) was byte-faithful but
+returned 0 because `DS_001028C0` (the sequence handle the raw stores at
+`0x1CFE8`) stayed 0. `game_audio_init` now stores the non-zero stand-in `1` at
+`0x1028C0`/`0x1028C4` — the "install succeeded" form the DIG path already used at
+`0x1028C8`; every reader tests the dwords against zero — and
+`game_audio_service` runs the raw's pending arm (`0x1CF30`/`0x1CF39`).
+`snd_music_start` ports `0x1C930`'s two arms: **new song** stores the pending song
+at `DS_001028DC` (`0x1C943`), resolves the handle with `res_resolve` (`0x1B544`),
+stops the sequence, copies the resolved block's size-prefixed bytes into the raw's
+`0x5100` buffer at `DS_001028D0` (`0x1C961..0x1C977`), then `AIL_init_sequence`
+(`0x5DE48`), `AIL_set_sequence_volume(DS_000A2CB8, 500)` (`0x5DECA`) and
+`AIL_start_sequence` (`0x5DE79`); **same song** (`0x1C93B`) re-inits the copied
+buffer with no resolve or copy. Both arms clear `DS_001028CC` at `0x1CA08`. The
+title path starts S16TITLE **once**: `game_state_title_music_request` asks for the
+`title_music_start` substitute only when the raw path has neither a pending (`CC`)
+nor a last-started (`DC`) `0x03836102` request (the attract's `0x54`/`0x56`
+request), and `title_music_start`'s body is unchanged. A real sequencer bug is
+fixed: `seq_start` reset the FM driver's voice-rotation cursor (SBPRO2.MDI
+`0x1408` over `0x1a49`), so a second song restarted at OPL channel 0; the raw's
+`AIL_start_sequence` (`0x5DE79` → `0x6A780`/`0x69250`) resets the *sequence
+record* only, and the capture proves the cursor persists (the selmo bank's first
+note is OPL channel 4 after the title's four notes on 0..3).
+`seq_driver_reset()` restores the install state for unit oracles only; the game
+path never calls it. The 9866-write C-vs-Python title oracle and its capture first
+difference 430 are unchanged.
+
+**The oracle.** `tools/audio_compare.py` (`make audio-oracle`, in `make verify`)
+compares the port's `PR_AUDIO_DUMP` register stream against the 29 gameplay
+`gp-*` `.dro` traces (28 capture directories; gp-pads holds two). Each song is
+anchored at its **first key-on**; both streams are reduced as the title oracle's
+(write-on-change with the shadow tracking excluded writes too, `0xBD` and the
+carrier-TL registers `0x43..0x45/0x4B..0x4D/0x53..0x55` on MIDI channels 1 and 4
+only), then compared per music tick as a sorted multiset. The sorted group is the
+declared **intra-tick order** model; a group or one write may match one tick
+earlier or later (the measured DRO ms jitter — the same selmo note-off is at
+479/484/484 ms in three captures — the declared **one-tick capture-label**
+model); a skipped group must be empty and every port write must match exactly
+once, so a dropped/extra/wrong write fails. Only a section's final tick `last_rel`
+is the unclaimed request boundary. Absent traces skip by name; the summary gates
+the 29/29 file inventory and every `NOT RUN`/`FAIL`/partial set.
+
+Measured: the selmo section is **per-tick exact in 24 of the 26 music traces**;
+the exceptions are `gp-u8-attract-start` (a tick-57 note-off jitter) and
+`gp-u23-u16-finisher` (its capture splits a note across ticks and records a
+carrier-TL state the port suppresses; its port stream is identical to
+`gp-u16-twop2`'s and matches the u16 capture at both sections).
+`gp-u22-diablo-ending`'s title has a separate label-slack move and its stop lands
+on the last claimed tick, so the title is an explicit `allow-diff` named gap.
+
+**Coverage.** The replayed sections requested 10 distinct banks; only **5 are
+capture-matched** in the measured cut windows (title, selmo+0x25C, selmo+0x08,
+beach+0x08, jungl+0x08). Five more are requested-only named gaps (citys, himal,
+caves, sound+0x5B88, sound+0x3E64), and the other **16 of `0x1C930`'s 26
+code-reachable banks are not requested or attributed in the measured cut
+windows** — the capture tails past the cut were not measured, so this is not a
+claim that the complete traces never play them. A bank not covered there is a
+named gap, never a fitted match. The later `0x31`/match sections of most traces
+are unanchored because a game-frame section boundary lets the capture's tail note
+advance the driver's voice cursor; the sections that still anchor (446..480
+ticks) match. `0x1C930` and `0x1CF40` stay in `UNROWED`: a row would have to
+fabricate the AIL handle `0x1028C0` and could not compare the hand-off.
+
+**The PCM pin.** `make audio-render` renders the selected selmo bank
+(`0x0980025C`, bank hash `0x286ED662`) at the game path's sequence volume `0x50`
+and fails on silence, pinning **peak 2790** and sha256
+`530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef` (two
+byte-identical runs on this host; `seq_driver_reset()` makes the song WAV
+independent of the title render's `AUDIO_SECONDS`). The claim is deterministic
+non-silence, **not** audibility and not a match to the original's PCM; the AIL
+500 ms sequence-volume fade is not modelled (the target volume is applied at
+once). The title WAV is unchanged by the phase (`515b7c94…`, peak 4,090).
+
+**The gate.** Both `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify`
+and `make audio-render` must exit 0; the second is not part of `make verify`
+(the design's G3).
