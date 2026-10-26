@@ -1304,16 +1304,29 @@ boundary can round to the adjacent label. The declared **whole-tick model**:
 a tick group (or one write of it) may match the capture's group one tick
 earlier or later (the tool's group alignment). The write content and order across ticks
 are exact; a dropped, extra or wrong write has no matching group and fails at
-its tick. The stronger per-tick multiset equality is reported as a statistic
-(exact for 25 of the 26 replayed traces' selmo sections; the exception is
-`gp-u8-attract-start`'s tick-57 jitter, §M4.4 item 6).
+its tick. The one-tick slack may not swallow a write: a whole-group shift is
+allowed only when the skipped group is empty, and the alignment ends with
+`matched == port_writes`, so every port write is accounted for exactly once. A
+dropped, extra or wrong write therefore fails even when the capture's groups
+are one tick off.
 
-**Boundary.** Each section's final tick is the request boundary and is not
-claimed: the section end is a game-frame event while the capture's music clock
-is its own, and the capture's stop burst can be a tick later (or earlier).
-The tool claims relative ticks `0..last_rel-1`; a first difference at
-`last_rel-1` is reported as the boundary, not a failure. The capture's writes
-after the claim are its own tail and are not compared.
+The **per-tick statistic** is `per_tick_equal`: the number of leading claimed
+relative ticks whose reduced `(register, value)` multisets are equal (ticks
+`0..per_tick_equal-1`; the tool prints "per-tick multiset equal through tick
+`per_tick_equal-1`"). It is a reported strength, not the pass/fail rule (the
+group alignment is). Scoped exactly: the **selmo section** is per-tick exact
+for all its claimed ticks in **24 of the 26 music traces**; the exceptions are
+`gp-u8-attract-start` (the tick-57 note-off jitter, §M4.4 item 6) and
+`gp-u23-u16-finisher` (the capture's tick split, §M4.4 item 2).
+`gp-u22-diablo-ending`'s **title** has a separate label-slack move; its selmo
+is exact. The count is not a whole-trace exactness figure.
+
+**Boundary.** Only a section's final tick `last_rel` is the request boundary
+and is not claimed (the claims are `0..last_rel-1`; tick `last_rel` is not in
+the compared groups and its equality is reported for information). A
+difference at `last_rel-1`, the last *claimed* tick, is a real first difference:
+it fails unless the section's bank is an explicit `allow-diff` named gap. The
+capture's writes after the claim are its own tail and are not compared.
 
 **Named gaps.** A section that cannot be anchored is a named gap when its bank
 hash is in the measured `TRACE_PINS` `allow-unanchored` list; a section that
@@ -1374,7 +1387,7 @@ section the capture cannot carry, with its bank hash.
 | `gp-u19-vertigo-ending` | prage_000 | title @0: 30; selmo+0x25C @7101: 266 | selmo+0x8 (F1774E70); s16sound+0x3E64 (3D536DDE); s16sound+0x5B88 (3BA4C376) | 296 |
 | `gp-u20-chaos-ending` | prage_000 | title @0: 30; selmo+0x25C @7032: 386 | selmo+0x8 (F1774E70); s16caves+0x8 (86946EB7); s16sound+0x5B88 (3BA4C376) | 416 |
 | `gp-u21-armadon-ending` | prage_000 | title @0: 30; selmo+0x25C @6716: 446; selmo+0x8 @11048: 480; s16jungl+0x8 (BC44EF50) @16425: 246 | s16sound+0x5B88 (3BA4C376) | 1200 |
-| `gp-u22-diablo-ending` | prage_000 | title @0: 5 (the early menu stop, boundary tick 6); selmo+0x25C @6049: 506; selmo+0x8 @10885: 480 | s16himal+0x8 (BF1C78E2); s16sound+0x5B88 (3BA4C376) | 991 |
+| `gp-u22-diablo-ending` | prage_000 | selmo+0x25C @6049: 506; selmo+0x8 @10885: 480 | title (FD94B4E3; the capture stop on the last claimed tick, §M4.4 item 5); s16himal+0x8 (BF1C78E2); s16sound+0x5B88 (3BA4C376) | 986 |
 | `gp-u23-u16-finisher` | prage_000 | title @0: 30 | selmo+0x25C (286ED662, diff); selmo+0x8 (F1774E70, diff); s16citys+0x8 (20DA829D) | 30 |
 | `gp-u5-charsel` | prage_000 | title @0: 30; selmo+0x25C @7156: 866 | selmo+0x8 (F1774E70); s16beach+0x8 (87E7C2DE, one tick at the cut) | 896 |
 | `gp-u6-moves` | prage_000 | title @0: 30; selmo+0x25C @7184: 1478 | — | 1508 |
@@ -1440,55 +1453,159 @@ matches.
    the port's stream has only the title section; both `.dro` files are boot
    fragments/restart fragments with no in-match music. The title's 30 ticks are
    claimed; the capture's missing selmo is not a port silence.
-5. **The section-end tick.** Every section's final tick is not claimed (§M4.1);
-   a first difference there (e.g. `gp-u22-diablo-ending`'s title stop at tick
-   5 vs the port's tick 6) is the request boundary, not a note difference.
+5. **The section-end tick (only `last_rel`).** The claims end at
+   `last_rel-1`; tick `last_rel` alone is unclaimed. `gp-u22-diablo-ending`'s
+   title is the one section whose capture stop burst lands on the last
+   *claimed* tick (capture rel 5, the port's boundary rel 6): that is a
+   one-tick stop difference inside the claimed window, so the title is an
+   explicit `allow-diff` named gap (FD94B4E3), not a partial claim. The earlier
+   behaviour excused `last_rel-1` as a boundary; that was the review's
+   Important-1 defect and is fixed (the penultimate-tick mutation test fails).
 6. **The capture label jitter.** The one-tick model of §M4.1 is a measured,
    not fitted, allowance: `gp-u8-attract-start`'s selmo has 2 label-slack
-   moves (the note-off at 57 vs 58), and `gp-u22-diablo-ending`'s title one.
-   The per-tick statistic reports where the exact per-tick equality stops
-   (tick 56 and tick 4 respectively); the claim continues under the group
-   model.
-7. **The banks absent from the 29 traces.** The claimed sections attribute
-   **10 distinct banks**: `s16title+0x36102` (FD94B4E3, 0x54/0x56),
-   `s16selmo+0x25C` (286ED662, 0x2E/0x30), `s16selmo+0x08` (F1774E70, 0x31),
-   `s16beach+0x08` (87E7C2DE, 0x20), `s16citys+0x08` (20DA829D, 0x1D),
-   `s16himal+0x08` (BF1C78E2, 0x1E), `s16caves+0x08` (86946EB7, 0x1F),
-   `s16jungl+0x08` (BC44EF50, 0x1B), `s16sound+0x5B88` (3BA4C376, 0x23) and
-   `s16sound+0x3E64` (3D536DDE, 0x21). The other **16 distinct banks** of
-   §M1.6.7's 26-bank code-reachable set are absent from the 29 traces:
-   `s16stone+0x08` (0x1C), `s16snd2+0x21BFA` (0x32), `s16sound+0x6EC8`
-   (0xDF), `s16conti+0x08` (0x2C), `s16sound+0x39F4` (0x3D),
-   `s16sound+0x335E` (0x3B), `s16hghsc+0x08` (0xE1/0xE3), `s16grave+0x1A10`
-   (0x25), `s16grave+0x0A8C` (0x26), `s16grave+0x05E4` (0x27),
-   `s16sound+0x08` (0x28), `s16grave+0x08` (0x2A), `s16sound+0x6CA8` (0x24),
-   `s16sound+0x7714` (0xE4), `s16sound+0x72D4` (0xEC) and `s16konsd+0x1CCB0`
-   (0xEB). Those are named gaps (a song/bank absent from the measured traces,
-   not a new capture); no captured window plays them, so the oracle cannot
-   claim them.
+   moves (the note-off at 57 vs 58), and its per-tick equality stops at tick
+   56; the claim continues under the group model (1,633 ticks).
+   `gp-u22-diablo-ending`'s title has one label-slack move (the key-off at rel
+   4 vs 5) and then the explicit stop difference at the last claimed tick
+   (§M4.4 item 5): it is the `allow-diff` named gap, not a continuing claim.
+   `gp-u23-u16-finisher`'s selmo is the separate capture tick split (§M4.4
+   item 2).
+7. **The banks: requested vs capture-matched, and what the cut windows do
+   not cover.** The replayed port sections **requested 10 distinct banks**:
+   `s16title+0x36102` (FD94B4E3, 0x54/0x56), `s16selmo+0x25C` (286ED662,
+   0x2E/0x30), `s16selmo+0x08` (F1774E70, 0x31), `s16beach+0x08`
+   (87E7C2DE, 0x20), `s16citys+0x08` (20DA829D, 0x1D), `s16himal+0x08`
+   (BF1C78E2, 0x1E), `s16caves+0x08` (86946EB7, 0x1F), `s16jungl+0x08`
+   (BC44EF50, 0x1B), `s16sound+0x5B88` (3BA4C376, 0x23) and
+   `s16sound+0x3E64` (3D536DDE, 0x21). Only **5 of the 10 are
+   capture-matched** in the measured cut windows: title, selmo+0x25C,
+   selmo+0x08, beach+0x08 and jungl+0x08. `s16citys+0x08`, `s16himal+0x08`,
+   `s16caves+0x08`, `s16sound+0x5B88` and `s16sound+0x3E64` are requested but
+   appear only as named gaps (unanchored/diff), so they are **not claimed
+   capture sections**. The other **16 distinct banks** of §M1.6.7's 26-bank
+   code-reachable set are **not requested or attributed in the measured cut
+   windows**: `s16stone+0x08` (0x1C), `s16snd2+0x21BFA` (0x32),
+   `s16sound+0x6EC8` (0xDF), `s16conti+0x08` (0x2C), `s16sound+0x39F4`
+   (0x3D), `s16sound+0x335E` (0x3B), `s16hghsc+0x08` (0xE1/0xE3),
+   `s16grave+0x1A10` (0x25), `s16grave+0x0A8C` (0x26),
+   `s16grave+0x05E4` (0x27), `s16sound+0x08` (0x28), `s16grave+0x08` (0x2A),
+   `s16sound+0x6CA8` (0x24), `s16sound+0x7714` (0xE4),
+   `s16sound+0x72D4` (0xEC) and `s16konsd+0x1CCB0` (0xEB). This is **not** a
+   claim that the complete traces never play them: the oracle compares the
+   cut replay windows (AUDIO_END 1400 frames or the capture's X), and the
+   unmatched capture tails were not measured. They are named gaps: a bank not
+   covered/attributed in the measured cut windows is not claimed.
 
 ### §M4.5 Pins, tests and the gate
 
 **The pins.** `tools/audio_compare.py`'s `TRACE_PINS` holds, per trace, the
 minimum total claimed ticks and the two named-gap lists. The minima are the
 total of two full oracle runs on the phase tree; **both runs produced every
-value byte-identically** (the two-run script's output diff is empty). The
-third run (the gate run) was equal or longer (only `gp-u21-armadon-ending`
-moved, 1,200 -> 1,202: its jungle section 244 -> 246), which the pin accepts.
-The per-trace values are in §M4.3's last column.
+value byte-identically**. The review fix round re-measured on its own oracle
+run: every total was equal to its pin, and two were longer (`gp-u18-talon-ending`
+964 -> 966, `gp-u21-armadon-ending` 1200 -> 1202 in the earlier third run and
+1200 in the fix run); a minimum pin accepts a longer claim. `gp-u22-diablo-ending`
+moved 991 -> **986** under Important 1: its title's stop burst is on the last
+*claimed* tick (capture rel 5, port boundary rel 6), so the title is an
+explicit `allow-diff` named gap (FD94B4E3) instead of a 5-tick claim.
 
-**RED/GREEN.** The RED was taken with the tool absent (the task starts with
-no comparator): `python3 -m unittest tools.tests.test_audio_compare` with
-`tools/audio_compare.py` moved aside ran 13 tests and failed all 13 (`can't
-open file .../tools/audio_compare.py`); with the tool restored it ran 13 and
-passed (`Ran 13 tests ... OK`). The cases: an identical synthetic `.dro`/port pair
-passes; a dropped write, an extra write and a wrong value each fail with the
-first difference at the mutated tick; an intra-tick reversal passes (the
-declared order model); a single one-tick capture label shift passes (the
-declared label model, reported as a slack move); the boundary tick is not
-claimed; an unanchored stream fails; an absent `.dro` skips with exit 3; a
-short claim fails `--min-ticks`; `--allow-unanchored` and `--allow-diff` name a
-gap without failing; `capture-end` reads the X record.
+**The +1 failure table.** Each pin is proved one step above against the
+artifact that measured it (`/tmp/pr_audio_dump2/<scenario>.txt`, the second
+run; the `--min-ticks` argument overrides the table's pin for the proof only):
+
+```
+for s in <the 27 pinned traces>; do
+  min=$(python3 -c "... TRACE_PINS[s][0]")
+  python3 tools/audio_compare.py compare --name "$s" --port /tmp/pr_audio_dump2/$s.txt \
+    $(for f in $(python3 tools/audio_compare.py expected-files --scenario $s); do \
+        echo --capture data/k11-captures/$s/$f; done) \
+    --game-dir data/game/C --min-ticks $((min+1))
+done
+```
+
+| scenario | pin | +1 | claimed | rc |
+|---|---:|---:|---:|---:|
+| gp-idle-loss | 1498 | 1499 | 1498 | 1 |
+| gp-idle-loss-run2 | 1508 | 1509 | 1508 | 1 |
+| gp-keys-fight | 1508 | 1509 | 1508 | 1 |
+| gp-pads | 30 | 31 | 30 | 1 |
+| gp-twop | 956 | 957 | 956 | 1 |
+| gp-u10-ending | 176 | 177 | 176 | 1 |
+| gp-u12-endurance | 1028 | 1029 | 1028 | 1 |
+| gp-u13-ending2 | 356 | 357 | 356 | 1 |
+| gp-u15-join | 1498 | 1499 | 1498 | 1 |
+| gp-u16-twop2 | 956 | 957 | 956 | 1 |
+| gp-u18-talon-ending | 964 | 965 | 964 | 1 |
+| gp-u19-vertigo-ending | 296 | 297 | 296 | 1 |
+| gp-u20-chaos-ending | 416 | 417 | 416 | 1 |
+| gp-u21-armadon-ending | 1200 | 1201 | 1200 | 1 |
+| gp-u22-diablo-ending | 986 | 987 | 986 | 1 |
+| gp-u23-u16-finisher | 30 | 31 | 30 | 1 |
+| gp-u5-charsel | 896 | 897 | 896 | 1 |
+| gp-u6-moves | 1508 | 1509 | 1508 | 1 |
+| gp-u6-moves-b | 1504 | 1505 | 1504 | 1 |
+| gp-u8-attract-start | 1663 | 1664 | 1663 | 1 |
+| gp-u8-endurance | 613 | 614 | 613 | 1 |
+| gp-u8-handicap | 1611 | 1612 | 1611 | 1 |
+| gp-u8-left-training | 1463 | 1464 | 1463 | 1 |
+| gp-u8-right-arcade | 1563 | 1564 | 1563 | 1 |
+| gp-u8-right-training | 1311 | 1312 | 1311 | 1 |
+| gp-u8-tug-of-war | 1196 | 1197 | 1196 | 1 |
+| gp-u9-win | 176 | 177 | 176 | 1 |
+
+Each failed line is exactly `claimed <pin> ticks, pinned minimum <pin+1>`; the
+longer gp-u21 run (1,202) and gp-u18 run (966) pass the minimum pins. No pin
+needed lowering: every shipped pin is the measured minimum of the artifact
+used for its +1 proof.
+
+**RED/GREEN.** The first RED was taken with the tool absent (the task starts
+with no comparator): 13 tests, all failed (`can't open file ...`). The fix
+round's REDs were taken against the pre-fix `9511c77e` tool:
+
+  * `test_dropped_write_capture_groups_one_tick_earlier_fails` — the public
+    comparator with the capture's C/D one tick earlier (inside the declared
+    model) and B's only write deleted returned `synthetic: ok` (3 claimed
+    ticks) on the old tool; the fixed tool fails it.
+  * `test_penultimate_tick_difference_fails` — the old tool excused the
+    `last_rel-1` difference as `the first group difference is at the request
+    boundary tick 6` and returned `ok`; the fixed tool fails it at tick 6.
+  * The reviewer's exact one-tick-later baseline with the empty tick, then
+    B's only write deleted, is
+    `test_dropped_write_one_tick_later_with_empty_tick_fails`; it fails on
+    both (the old tool at the anchor prefix, the fixed tool by the alignment).
+  * `test_partial_capture_loss_fails`, the summary inventory/NOT RUN/FAIL
+    cases, and `test_expected_files_inventory` cover Important 3.
+  * `test_dropped_write_one_tick_later_no_empty_tick_fails` covers the
+    emptiness required by Critical 1's second whole-group branch.
+
+The module is now **23 tests**; the fixed tool passes all 23.
+
+**The whole-group fix.** Both branches now require the skipped group to be
+empty (`pg == nxt_c and not cg`; `cg == nxt_p and not pg`), and the alignment
+ends with `matched == port_writes` (the `AlignResult` accounts every matched
+group's size or single moved write), so a dropped/extra write cannot ride the
+one-tick slack. The `first_diff` reports the tick's groups.
+
+**The boundary fix.** Only `last_rel` is unclaimed. The `boundary_note` branch
+that excused `last_rel-1` is removed; a difference there is `diff` or an
+explicit `allow-diff` (`gp-u22-diablo-ending`'s title, FD94B4E3). The summary
+line still reports the boundary tick `last_rel`'s equality for information.
+
+**The inventory/gating fixes.** `audio-one`:
+  * an absent capture directory still writes a `no capture` skip report and
+    exits 0 (the declared skip);
+  * a present directory without an X record fails (`no X record`);
+  * `gp_session.py port-script` failures fail, except `gp-u17-device2` when
+    the error is the specific `wall-paced steps` refusal (§H6.9);
+  * the capture arguments come from `audio_compare.py expected-files`
+    (28 directories, 29 files; gp-pads has two), so a missing file reaches
+    the tool and fails as `MISSING capture file(s)`;
+  * `summary` fails on a present directory whose file set differs from the
+    expected inventory (naming the missing/extra file), a present scenario
+    with no report (`NOT RUN`), a report with `ok:false` (`FAIL`), a
+    malformed `.dro`, and a skip other than gp-u17's wall-paced one; the
+    absent-directory skip is the one non-failing absence. The summary's
+    inventory line prints `29/29` when complete.
 
 **Mutation proof on a real trace.** Dropping one write from the
 `gp-u5-charsel` selmo's claimed window (`audio.txt` write 1200 removed) fails:
@@ -1509,8 +1626,8 @@ capture is the differing side.
 `audio-one`, which cuts each capture's script at `min(AUDIO_END, X)`, runs
 `PR_GP_DUMP`/`PR_AUDIO_DUMP`, and compares; the summary prints the 29-file
 inventory, each trace's total/pin/named gaps, the 8+2 non-gameplay files and
-the minimum measured claim. The 28 parallel cut replays take **2m48s** on the
-phase host. `make verify` runs it after `gp-ending-oracle` and before
+the minimum measured claim. The 28 parallel cut replays take about **3m** on
+the phase host. `make verify` runs it after `gp-ending-oracle` and before
 `diff-verify`, and the unit module is in the verify python list. A cut script
 is a prefix of the full replay, so the driver's `PR_GP_DUMP` fn-miss check
 (`count <= want`, `dropped == 0`) passes; the run's own `(cut at N)` header
@@ -1518,8 +1635,10 @@ selects `cut`.
 
 ### §M4.6 What §M4 does not claim
 
-Rendered audibility (the OPL core/mixer model, §M1.7); a song/bank absent from
-the 29 traces (a named gap, not a new capture); the sections named in §M4.4;
+Rendered audibility (the OPL core/mixer model, §M1.7); a bank not
+covered/attributed in the measured cut windows (a named gap, not a new
+capture); the capture tails the cut does not reach; the sections named in
+§M4.4;
 the capture's ms timeline as a port/frame clock (§M1.6.5); the inside-tick
 write order (declared model); and the exact tick label of a write within the
 declared one-tick capture-label model. The claim is the register content,

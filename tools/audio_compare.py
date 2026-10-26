@@ -85,6 +85,14 @@ GP_TRACES = [
 # directories) and the two title captures the report-only test reads.
 OTHER_K11_TRACES = ['de', 'diags', 'idle', 'menuesc', 'save-reload', 'walk']
 
+# The expected per-directory `.dro` inventory (record §M1.6.2): 28 directories,
+# 29 files; gp-pads is the one directory whose capture restarted and holds two.
+# A present directory whose file set differs is a partial loss and fails the
+# summary; an absent directory is the declared skip.
+EXPECTED_FILES = {name: ('prage_000.dro',) for name in GP_TRACES}
+EXPECTED_FILES['gp-pads'] = ('prage_000.dro', 'prage_001.dro')
+EXPECTED_TOTAL = sum(len(v) for v in EXPECTED_FILES.values())
+
 # The measured per-trace pins (record 2026-10-25-music-truth-derivations §M4.5):
 #   name: (minimum total claimed ticks, allow-unanchored bank hashes,
 #          allow-diff bank hashes)
@@ -111,7 +119,7 @@ TRACE_PINS = {
     'gp-u19-vertigo-ending': (296, (0xF1774E70, 0x3D536DDE, 0x3BA4C376), ()),
     'gp-u20-chaos-ending': (416, (0xF1774E70, 0x86946EB7, 0x3BA4C376), ()),
     'gp-u21-armadon-ending': (1200, (0x3BA4C376,), ()),
-    'gp-u22-diablo-ending': (991, (0xBF1C78E2, 0x3BA4C376), ()),
+    'gp-u22-diablo-ending': (986, (0xBF1C78E2, 0x3BA4C376), (0xFD94B4E3,)),
     'gp-u23-u16-finisher': (30, (0x20DA829D,), (0x286ED662, 0xF1774E70)),
     'gp-u5-charsel': (896, (0xF1774E70,), ()),
     'gp-u6-moves': (1508, (), ()),
@@ -399,6 +407,8 @@ class AlignResult:
         self.ok = True
         self.jittered = 0
         self.claimed = 0
+        self.matched = 0
+        self.port_writes = 0
         self.first_tick = None
         self.first_port = None
         self.first_cap = None
@@ -417,14 +427,20 @@ def align_groups(port_groups, cap_groups):
     write-order model needs no per-write transposition rule. A group may match
     the capture's group at the same tick, at the next tick, or the previous
     one (the declared one-tick capture-label slack); a single write may move
-    between adjacent groups by the same slack. A dropped, extra or wrong
-    write has no matching group and fails at its tick.
+    between adjacent groups by the same slack. Every port write is matched
+    exactly once (`matched == port_writes` at the end, or the alignment fails);
+    a skipped group must be empty, so the slack can never swallow a dropped or
+    extra write. A dropped, extra or wrong write has no matching group and
+    fails at its tick.
 
     `port_groups` are the claimed ticks 0..N-1; `cap_groups` go to N so a
-    claimed write whose capture label is one tick late can still match."""
+    claimed write whose capture label is one tick late can still match. The
+    capture's groups after the last matched port group are its own tail and are
+    not claimed."""
     r = AlignResult()
     P = [sorted(g) for g in port_groups]
     C = [sorted(g) for g in cap_groups]
+    r.port_writes = sum(len(g) for g in P)
     i = j = 0
     n = len(P)
     while i < n:
@@ -434,21 +450,26 @@ def align_groups(port_groups, cap_groups):
             i += 1
             j += 1
             r.claimed += 1
+            r.matched += len(pg)
             continue
         nxt_p = sorted(P[i + 1]) if i + 1 < len(P) else []
         nxt_c = sorted(C[j + 1]) if j + 1 < len(C) else []
-        # A whole group one tick later in the capture.
-        if pg and pg == nxt_c:
+        # A whole group one tick later in the capture. C[j] is skipped, so it
+        # must be empty: the one-tick slack may not swallow a capture write.
+        if pg and pg == nxt_c and not cg:
             i += 1
             j += 2
             r.claimed += 1
+            r.matched += len(pg)
             r.jittered += 1
             continue
-        # A whole later port group against the capture's current group.
-        if cg and cg == nxt_p:
+        # A whole later port group against the capture's current group. P[i] is
+        # skipped, so it must be empty (a dropped port write may not hide here).
+        if cg and cg == nxt_p and not pg:
             i += 2
             j += 1
             r.claimed += 1
+            r.matched += len(cg)
             r.jittered += 1
             continue
         # One write whose capture label is one tick later: move it back.
@@ -478,6 +499,13 @@ def align_groups(port_groups, cap_groups):
         r.first_cap = cg
         r.reason = 'tick groups differ'
         return r
+    if r.matched != r.port_writes:
+        r.ok = False
+        r.first_tick = n - 1 if n else 0
+        r.first_port = []
+        r.first_cap = []
+        r.reason = ('write accounting: %d matched, %d port writes'
+                    % (r.matched, r.port_writes))
     return r
 
 
@@ -492,7 +520,6 @@ class SectionResult:
         self.claimed = 0
         self.boundary_rel = None
         self.boundary_equal = None
-        self.boundary_note = None
         self.first_diff = None
         self.first_diff_kind = None
         self.first_diff_port = None
@@ -554,16 +581,11 @@ def compare_section(section, index, captures, allow_unanchored, allow_diff):
         eq = _tick_diff(pd, cd, 0, last_rel)
         res.per_tick_equal = eq[0] if eq is not None else last_rel
         if not al.ok:
-            # A first difference in the last boundary window is the request
-            # boundary itself (the section ends on a game frame, the capture's
-            # stop burst can be a tick earlier or later): report it, do not
-            # claim that tick. Anything earlier is a real difference.
-            if al.first_tick >= last_rel - 1:
-                res.status = 'anchored'
-                res.boundary_note = ('the first group difference is at the '
-                                     'request boundary tick %d (not claimed)'
-                                     % al.first_tick)
-            elif section.bank in allow_diff:
+            # Only tick `last_rel` is the unclaimed request boundary (it is not
+            # in groups_p). A difference anywhere in the claimed groups, the
+            # penultimate tick included, is a real difference unless the
+            # section's bank is an explicit named `allow-diff` artifact.
+            if section.bank in allow_diff:
                 res.status = 'diff-allowed'
                 res.first_diff_kind = al.reason
                 res.first_diff = al.first_tick
@@ -604,8 +626,6 @@ def summarize_section(res, index_names):
             extra = extra.replace('equal through tick -1', 'not equal at tick 0')
         if res.jittered:
             extra += '; %d declared whole-tick label slack move(s)' % res.jittered
-        if res.boundary_note:
-            extra += '; ' + res.boundary_note
         extra += ('; boundary tick %d %s (not claimed)'
                   % (res.boundary_rel, 'equal' if res.boundary_equal else 'differs'))
         return head + ': ' + extra
@@ -625,20 +645,26 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
                   allow_unanchored=(), allow_diff=(), game_dir=None,
                   verbose=False, json_out=None):
     sections, _s_lines = parse_port(port_path)
+    missing = [p for p in capture_paths if not os.path.exists(p)]
+    if missing:
+        dirs = {os.path.dirname(p) for p in capture_paths}
+        if not any(os.path.isdir(d) for d in dirs):
+            print('audio-compare: SKIP %s: no capture at %s'
+                  % (name, ', '.join(capture_paths)))
+            return 3
+        # A directory that exists but is short a file is a partial loss: name
+        # it and fail. Only the absent-directory case above is the skip.
+        print('audio-compare: %s: MISSING capture file(s): %s'
+              % (name, ', '.join(missing)))
+        return 1
     captures = []
     for path in capture_paths:
-        if not os.path.exists(path):
-            continue
         try:
             header, events = parse_capture(path)
         except (OSError, ValueError) as exc:
             print('audio-compare: %s: cannot decode %s: %s' % (name, path, exc))
             return 2
         captures.append((path, header, events))
-    if not captures:
-        print('audio-compare: SKIP %s: no capture at %s'
-              % (name, ', '.join(capture_paths)))
-        return 3
     index_names = read_index_names(game_dir)
     allow = set(allow_unanchored)
     allow_d = set(allow_diff)
@@ -726,9 +752,25 @@ def cmd_capture_end(a):
     return 0
 
 
+def cmd_expected_files(a):
+    files = EXPECTED_FILES.get(a.scenario)
+    if files is None:
+        print('audio-compare: unknown scenario %s' % a.scenario)
+        return 2
+    for f in files:
+        print(f)
+    return 0
+
+
 def cmd_summary(a):
     """The covered/missing inventory, read from the per-trace reports the
-    oracle writes (`compare --json-out`) and the capture tree."""
+    oracle writes (`compare --json-out`) and the capture tree.
+
+    Fails (exit 1) on a present directory whose file set differs from the
+    expected inventory, a present scenario with no report (`NOT RUN`), a report
+    that says `ok:false` (`FAIL`), a malformed `.dro`, or a skip other than the
+    declared gp-u17 wall-paced refusal. The absent-directory skip is the one
+    non-failing absence."""
     rows = {}
     if a.jsonl and os.path.exists(a.jsonl):
         with open(a.jsonl) as f:
@@ -743,23 +785,35 @@ def cmd_summary(a):
             try:
                 with open(path) as f:
                     rec = json.load(f)
-            except (OSError, ValueError):
-                continue
+            except (OSError, ValueError) as exc:
+                print('audio-compare: cannot read report %s: %s' % (path, exc))
+                return 1
             rows.setdefault(rec.get('name', ''), rec)
+    bad = []
     missing, present = [], []
     total_files = 0
     music_files = 0
     for name in GP_TRACES:
-        files = capture_files(os.path.join(a.captures, name))
-        if not files:
+        d = os.path.join(a.captures, name)
+        expected = EXPECTED_FILES[name]
+        if not os.path.isdir(d):
             missing.append(name)
             continue
-        present.append((name, files))
-        total_files += len(files)
-        for path in files:
+        actual = sorted(os.path.basename(p) for p in capture_files(d))
+        missing_files = [f for f in expected if f not in actual]
+        extra = [f for f in actual if f not in expected]
+        present.append((name, actual, missing_files, extra))
+        total_files += len(actual)
+        for f in missing_files:
+            bad.append('%s: missing %s' % (name, f))
+        for f in extra:
+            bad.append('%s: unexpected %s' % (name, f))
+        for path in capture_files(d):
             try:
                 _h, events = parse_capture(path)
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                bad.append('%s/%s: cannot decode (%s)'
+                           % (name, os.path.basename(path), exc))
                 continue
             if first_music_key_on(events) is not None:
                 music_files += 1
@@ -767,25 +821,42 @@ def cmd_summary(a):
     for name in OTHER_K11_TRACES:
         others += capture_files(os.path.join(a.captures, name))
     audio = capture_files(a.audio_captures) if a.audio_captures else []
-    print('audio-compare: gameplay inventory: %d traces, %d .dro files '
+    print('audio-compare: gameplay inventory: %d traces, %d/%d .dro files '
           '(%d with a music section), %d director%s absent'
-          % (len(GP_TRACES), total_files, music_files, len(missing),
-             'y' if len(missing) == 1 else 'ies'))
-    for name, files in present:
+          % (len(GP_TRACES), total_files, EXPECTED_TOTAL, music_files,
+             len(missing), 'y' if len(missing) == 1 else 'ies'))
+    for name, files, missing_files, extra in present:
+        note = ''
+        if missing_files:
+            note += ' MISSING ' + ' '.join(missing_files)
+        if extra:
+            note += ' EXTRA ' + ' '.join(extra)
         rec = rows.get(name)
         if rec is None:
-            print('  %-24s %d file(s): NOT RUN' % (name, len(files)))
+            print('  %-24s %d file(s): NOT RUN%s' % (name, len(files), note))
+            bad.append('%s: NOT RUN' % name)
             continue
         if rec.get('skipped'):
-            print('  %-24s %d file(s): SKIP (%s)' % (name, len(files), rec['skipped']))
+            allowed = (name == 'gp-u17-device2'
+                       and 'wall-paced' in str(rec.get('skipped', '')))
+            print('  %-24s %d file(s): SKIP (%s)%s'
+                  % (name, len(files), rec['skipped'], note))
+            if not allowed:
+                bad.append('%s: unexpected skip (%s)'
+                           % (name, rec.get('skipped')))
+            continue
+        if not rec.get('ok'):
+            print('  %-24s %d file(s): FAIL %s ticks (pinned %s)%s'
+                  % (name, len(files), rec.get('total_ticks'), rec.get('min_ticks'), note))
+            bad.append('%s: FAIL' % name)
             continue
         gaps = (' named-gap ' + ' '.join(rec['named_gaps'])) if rec['named_gaps'] else ''
-        print('  %-24s %d file(s): %s %d ticks (pinned %d)%s'
-              % (name, len(files), 'ok' if rec['ok'] else 'FAIL',
-                 rec['total_ticks'], rec['min_ticks'], gaps))
+        print('  %-24s %d file(s): ok %d ticks (pinned %d)%s%s'
+              % (name, len(files), rec['total_ticks'], rec['min_ticks'], gaps, note))
     for name in missing:
         print('  %-24s SKIP (no capture directory)' % name)
-    measured = [r['total_ticks'] for r in rows.values() if not r.get('skipped')]
+    measured = [r['total_ticks'] for r in rows.values()
+                if not r.get('skipped') and r.get('ok')]
     if measured:
         print('audio-compare: minimum measured claim: %d ticks' % min(measured))
     print('audio-compare: not gameplay: %d k11 .dro file(s) (%s)'
@@ -793,6 +864,11 @@ def cmd_summary(a):
              ', '.join(os.path.relpath(p, a.captures) for p in others) or 'none'))
     print('audio-compare: not gameplay: %d audio-capture .dro file(s) (%s)'
           % (len(audio), ', '.join(os.path.basename(p) for p in audio) or 'none'))
+    if bad:
+        for b in bad:
+            print('audio-compare: summary FAIL: %s' % b)
+        return 1
+    print('audio-compare: summary ok')
     return 0
 
 
@@ -816,6 +892,11 @@ def main(argv):
     e.add_argument('--capture', required=True)
     e.add_argument('--max', type=int)
     e.set_defaults(func=cmd_capture_end)
+
+    x = sub.add_parser('expected-files',
+                       help='the expected .dro basenames of one scenario')
+    x.add_argument('--scenario', required=True)
+    x.set_defaults(func=cmd_expected_files)
 
     s = sub.add_parser('summary', help='the covered/missing trace inventory')
     s.add_argument('--captures', required=True)

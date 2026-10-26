@@ -128,6 +128,25 @@ def base_case():
     return port, list(port)
 
 
+def one_tick_later_pair(drop_b=False, keep_empty=True):
+    """The reviewer's one-tick-later baseline: A at rel 1, an empty tick 2,
+    B..G at rel 3..8; a boundary H at rel 8 in the port only. The mutant
+    deletes B's only capture write (and optionally the empty tick)."""
+    port = [(1, 0x21, 0x01), (2, 0x22, 0x02), (3, 0x23, 0x03),
+            (4, 0x24, 0x04), (5, 0x25, 0x05), (6, 0x26, 0x06),
+            (7, 0x27, 0x07), (8, 0xB1, 0x0B)]
+    cap = [(1, 0x21, 0x01), (3, 0x22, 0x02), (4, 0x23, 0x03),
+           (5, 0x24, 0x04), (6, 0x25, 0x05), (7, 0x26, 0x06),
+           (8, 0x27, 0x07)]
+    if drop_b:
+        cap = [w for w in cap if w[1] != 0x22]
+    if not keep_empty:
+        # remove the empty tick's label by moving C..G one tick earlier: the
+        # shape the pre-fix whole-group branch could skip B for.
+        cap = [(rel - 1 if rel >= 3 else rel, reg, val) for rel, reg, val in cap]
+    return port, cap
+
+
 class AudioCompareTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -214,9 +233,145 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('unanchored', r.stdout)
 
+    def test_dropped_write_one_tick_later_with_empty_tick_fails(self):
+        # The reviewer's exact regression: the baseline is valid with B..G one
+        # tick later and an empty tick; deleting B's only capture write must
+        # fail (the empty tick cannot be used to skip the port's B).
+        port, cap = one_tick_later_pair()
+        r = self.case(port, cap)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('synthetic: ok', r.stdout)
+        port, cap = one_tick_later_pair(drop_b=True)
+        r = self.case(port, cap)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+        self.assertNotIn('synthetic: ok', r.stdout)
+
+    def test_dropped_write_one_tick_later_no_empty_tick_fails(self):
+        # The pre-fix whole-group branch could consume a non-empty port group
+        # when the capture's group equaled the port's next group. The same
+        # deletion with C..G one tick earlier must still fail.
+        port, cap = one_tick_later_pair()
+        r = self.case(port, cap)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        port, cap = one_tick_later_pair(drop_b=True, keep_empty=False)
+        r = self.case(port, cap)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+        self.assertNotIn('synthetic: ok', r.stdout)
+
+    def test_dropped_write_capture_groups_one_tick_earlier_fails(self):
+        # The public-comparator form of Critical 1: the capture's C/D sit one
+        # tick earlier than the port's C/D (inside the declared one-tick
+        # model), so the whole-group branch could match the capture's current
+        # group against the port's next group and skip the dropped B. The
+        # baseline with B present passes; deleting B must fail.
+        port = [(1, 0x21, 0x01), (2, 0x22, 0x02), (3, 0x23, 0x03),
+                (4, 0xB1, 0x0B)]
+        base = [(1, 0x21, 0x01), (2, 0x22, 0x02), (3, 0x23, 0x03)]
+        r = self.case(port, base)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        mutant = [(1, 0x22, 0x02), (2, 0x23, 0x03)]
+        r = self.case(port, mutant)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+        self.assertNotIn('synthetic: ok', r.stdout)
+
+    def test_penultimate_tick_difference_fails(self):
+        # The last claimed tick (last_rel - 1) is not the unclaimed request
+        # boundary; a difference there must fail. A low --min-ticks isolates
+        # the first-difference behavior from the short-claim check.
+        port, cap = base_case()
+        cap = [w for w in cap if w[0] != 6]
+        r = self.case(port, cap)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('FIRST DIFFERENCE', r.stdout)
+        self.assertIn('port relative tick 6', r.stdout)
+        self.assertNotIn('pinned minimum', r.stdout)
+
+    def test_boundary_tick_difference_is_not_claimed(self):
+        # Only tick last_rel is the unclaimed boundary: a difference there does
+        # not fail, and the claim is the ticks before it.
+        port, cap = base_case()
+        cap = [w for w in cap if w[0] != 7]
+        r = self.case(port, cap, '--min-ticks', '1')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('boundary tick 7', r.stdout)
+        self.assertIn('claimed ticks 0..6', r.stdout)
+
+    def test_partial_capture_loss_fails(self):
+        p = write_port(self.d, synthetic_pair([], [])[0])
+        c1 = write_capture(self.d, [(ms_for(0), 0xB0, 0x2B)])
+        missing = os.path.join(self.d, 'prage_001.dro')
+        r = compare(self.d, p, c1, '--capture', missing)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('MISSING capture file', r.stdout)
+        self.assertIn('prage_001.dro', r.stdout)
+
+    def test_expected_files_inventory(self):
+        r = run_tool(['expected-files', '--scenario', 'gp-pads'])
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.split(), ['prage_000.dro', 'prage_001.dro'])
+        r = run_tool(['expected-files', '--scenario', 'gp-u5-charsel'])
+        self.assertEqual(r.stdout.split(), ['prage_000.dro'])
+
+    def test_summary_partial_inventory_fails(self):
+        cap = os.path.join(self.d, 'captures')
+        os.makedirs(os.path.join(cap, 'gp-pads'))
+        with open(os.path.join(cap, 'gp-pads', 'prage_000.dro'), 'wb') as f:
+            f.write(make_dro([(0, 0xB0, 0x2B)]))
+        rep = os.path.join(self.d, 'reports', 'gp-pads')
+        os.makedirs(rep)
+        with open(os.path.join(rep, 'report.json'), 'w') as f:
+            f.write('{"name":"gp-pads","ok":true,"total_ticks":30,"min_ticks":30,'
+                    '"named_gaps":[],"skipped":null}\n')
+        r = run_tool(['summary', '--captures', cap, '--reports',
+                      os.path.join(self.d, 'reports')])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('summary FAIL: gp-pads: missing prage_001.dro', r.stdout)
+
+    def test_summary_not_run_and_fail_rows_fail(self):
+        cap = os.path.join(self.d, 'captures')
+        os.makedirs(os.path.join(cap, 'gp-pads'))
+        for name in ('prage_000.dro', 'prage_001.dro'):
+            with open(os.path.join(cap, 'gp-pads', name), 'wb') as f:
+                f.write(make_dro([(0, 0xB0, 0x2B)]))
+        rep = os.path.join(self.d, 'reports')
+        r = run_tool(['summary', '--captures', cap, '--reports', rep])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('summary FAIL: gp-pads: NOT RUN', r.stdout)
+        os.makedirs(os.path.join(rep, 'gp-pads'))
+        with open(os.path.join(rep, 'gp-pads', 'report.json'), 'w') as f:
+            f.write('{"name":"gp-pads","ok":false,"total_ticks":0,"min_ticks":30,'
+                    '"named_gaps":[],"skipped":null}\n')
+        r = run_tool(['summary', '--captures', cap, '--reports', rep])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('summary FAIL: gp-pads: FAIL', r.stdout)
+
+    def test_summary_allows_the_declared_u17_skip_only(self):
+        cap = os.path.join(self.d, 'captures')
+        os.makedirs(os.path.join(cap, 'gp-u17-device2'))
+        with open(os.path.join(cap, 'gp-u17-device2', 'prage_000.dro'), 'wb') as f:
+            f.write(make_dro([(0, 0xB0, 0x2B)]))
+        rep = os.path.join(self.d, 'reports')
+        os.makedirs(os.path.join(rep, 'gp-u17-device2'))
+        with open(os.path.join(rep, 'gp-u17-device2', 'report.json'), 'w') as f:
+            f.write('{"name":"gp-u17-device2","ok":true,"total_ticks":0,'
+                    '"min_ticks":0,"named_gaps":[],"skipped":'
+                    '"no frame-keyed port script (wall-paced; record \u00a7H6.9)"}\n')
+        r = run_tool(['summary', '--captures', cap, '--reports', rep])
+        self.assertNotIn('gp-u17-device2: unexpected skip', r.stdout)
+        with open(os.path.join(rep, 'gp-u17-device2', 'report.json'), 'w') as f:
+            f.write('{"name":"gp-u17-device2","ok":true,"total_ticks":0,'
+                    '"min_ticks":0,"named_gaps":[],"skipped":"something else"}\n')
+        r = run_tool(['summary', '--captures', cap, '--reports', rep])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('unexpected skip', r.stdout)
+
     def test_absent_capture_skips_by_name(self):
         p = write_port(self.d, synthetic_pair([], [])[0])
-        r = compare(self.d, p, os.path.join(self.d, 'absent.dro'))
+        absent = os.path.join(self.d, 'no-such-dir', 'absent.dro')
+        r = compare(self.d, p, absent)
         self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
         self.assertIn('SKIP synthetic: no capture', r.stdout)
 

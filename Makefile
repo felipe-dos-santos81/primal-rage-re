@@ -2117,15 +2117,19 @@ audio-one: ## Replay and compare one gameplay trace (scenario=gp-…; used by au
 	rm -rf $$dir; mkdir -p $$dir/gp; \
 	end=$$($(PYTHON) tools/audio_compare.py capture-end --capture $$cap --max $(AUDIO_END)); \
 	if [ "$$end" = "0" ]; then \
-		printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no X record"}\n' $(scenario) > $$dir/report.json; \
-		echo "audio-oracle: SKIP $(scenario) (no X record in poll.log)"; exit 0; fi; \
+		echo "audio-oracle: $(scenario) FAIL: no X record in $$cap/poll.log"; exit 1; fi; \
 	if ! $(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $$cap --out $$dir/script --end $$end > $$dir/script.log 2>&1; then \
-		printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no frame-keyed port script (wall-paced)"}\n' $(scenario) > $$dir/report.json; \
-		echo "audio-oracle: SKIP $(scenario) (no frame-keyed port script: $$(tail -1 $$dir/script.log))"; exit 0; fi; \
+		if [ "$(scenario)" = "gp-u17-device2" ] && grep -q "wall-paced steps" $$dir/script.log; then \
+			printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no frame-keyed port script (wall-paced; record §H6.9)"}\n' $(scenario) > $$dir/report.json; \
+			echo "audio-oracle: SKIP $(scenario) (the declared wall-paced scenario; record §H6.9)"; exit 0; \
+		fi; \
+		echo "audio-oracle: $(scenario) FAIL: port script generation failed:"; cat $$dir/script.log; exit 1; fi; \
 	PR_GP_DUMP=$$dir/gp PR_GP_SCRIPT=$$dir/script PR_GAME_DIR=$(GAME_DIR) \
 		PR_AUDIO_DUMP=$$dir/audio.txt ./$(BUILD_DIR)/run_tests > $$dir/replay.log 2>&1 || { \
 		echo "audio-oracle: $(scenario) replay FAILED ($$dir/replay.log)"; exit 1; }; \
-	caps=""; for f in $$cap/*.dro; do caps="$$caps --capture $$f"; done; \
+	files=$$($(PYTHON) tools/audio_compare.py expected-files --scenario $(scenario)) || { \
+		echo "audio-oracle: $(scenario) has no expected-file inventory"; exit 1; }; \
+	caps=""; for f in $$files; do caps="$$caps --capture $$cap/$$f"; done; \
 	$(PYTHON) tools/audio_compare.py compare --name $(scenario) --port $$dir/audio.txt $$caps \
 		--game-dir $(GAME_DIR) --json-out $$dir/report.json
 
