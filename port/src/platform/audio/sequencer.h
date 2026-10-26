@@ -102,4 +102,10 @@ int seq_active_track(void);
  * notes. */
 int seq_playing(void);
 
+/* PORT: a test seam, not sequencer state (the pattern of flow.c's sound_voice
+ * log): the FNV-1a of the last bank a seq_load accepted, i.e. of the bytes the
+ * game handed AIL_init_sequence. 0 before any load. The playing status and the
+ * copied bytes cannot tell which bank was handed off; this does. */
+u32 seq_loaded_bank_hash(void);
+
 #endif /* PR_SEQUENCER_H */

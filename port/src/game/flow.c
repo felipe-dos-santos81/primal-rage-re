@@ -49,6 +49,9 @@
 
 /* s16title.gra is resource index 7 in the shipped INDEX. */
 #define TITLE_RES 7u
+/* The title/attract music record (ids 0x54/0x56 in DS_000BBDC8): resource 7 at
+ * offset 0x36102, the size-prefixed XMIDI bank (record §M1.4.1). */
+#define TITLE_SONG 0x03836102u
 
 /* PORT: scratch for the localisation table (0x47370's 0x1C308 block). It must
  * sit above the resource heap AND game_state_init's later movie loads (TWI5.SMK
@@ -4524,13 +4527,13 @@ void game_state_title(void)
     if (DSB(DS_000F0A6F) == 0) {
         (void)sound_voice(0x41u);               /* 0x121C9/0x121CE 0x2C3FC: stop 0x40's loop */
         (void)sound_voice(0x43u);               /* 0x121D3/0x121D8 0x2C3FC: stop 0x42's loop */
-        /* PORT: the S16TITLE bank is requested here (s_music_request), the
-         * title state's own start of the attract's 0x54/0x56 request (the
-         * attract's 0x111FF now also reaches the raw game path 0x1CA14 ->
-         * 0x1CF39 -> 0x1C930); title_music_start is the working reference
-         * (record §M1.2). The raw's title plays no sample (record k7-k12
-         * §0.7.5). */
-        s_music_request = 1;
+        /* PORT: the S16TITLE bank is requested here through
+         * game_state_title_music_request(), only when the attract's 0x54/0x56
+         * request did not already reach the raw path 0x1CA14 -> 0x1CF39 ->
+         * 0x1C930 (title_music_start is the standalone path's working
+         * reference, record §M1.2). The raw's title plays no sample (record
+         * k7-k12 §0.7.5). */
+        game_state_title_music_request();
         frontend_input_reset();                 /* 0x121D9 (0x4F1E4) */
         actors_reset();                         /* 0x121E4 (0x2BAF4, eax = 1) */
         DSW(DS_00107A48) = 0;                   /* 0x121F2 */
@@ -6129,6 +6132,22 @@ void game_audio_init(void)
     AIL_start_timer(timer);
     s_last_host_tick = host_tick_count();
     s_last_isr_tick = DSD(DS_00101500);
+}
+
+/* PORT: the title state's music request, the substitute for the attract's
+ * 0x54/0x56 request (attract.c 0x111FF, song TITLE_SONG). The raw title state
+ * (0x121A0) makes no request of its own. When the attract's request is already
+ * pending (DS_001028CC) or was the last song started (DS_001028DC), the raw path
+ * 0x1CA14 -> 0x1CF39 -> 0x1C930 starts (or is about to start) the title bank,
+ * and this substitute must not restart it through title_music_start. It is made
+ * only for a title entry the attract did not precede: the standalone title
+ * path, the title dump driver and the unit fixture. Exposed for the
+ * single-start regression (record §M2.8). */
+void game_state_title_music_request(void)
+{
+    if (DSD(DS_001028CC) == TITLE_SONG) return;   /* the raw request is pending */
+    if (DSD(DS_001028DC) == TITLE_SONG) return;   /* the raw request already started it */
+    s_music_request = 1;
 }
 
 /* Locates the title music bank in S16TITLE.GRA through the resource layer: the

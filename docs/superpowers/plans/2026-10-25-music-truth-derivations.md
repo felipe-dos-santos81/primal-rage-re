@@ -904,20 +904,15 @@ presentation appears there; the ending captures' mode-0x12 entry did gain one
 
 ### §M2.6 Named differences and what §M2 does not claim
 
-1. **The title bank starts twice in a port run** (measured). The attract's
-   `0x54`/`0x56` request (`0x111FF`, phase 4) now reaches the raw path; in a
-   gdb run of the `PR_ATTRACT_DUMP` driver the first `snd_music_start` hit has
-   `DS_001028CC = 0x03836102` and `DS_001028DC = 0`, and `title_music_start` is
-   hit once afterwards. So the attract starts S16TITLE at the original's moment
-   and `game_state_title`'s `s_music_request` substitute starts it again at the
-   title state (kept unchanged per the plan and §M1.2); the original starts the
-   bank once. The title/attract/front-end oracles above do not move (the ending
-   captures' loader allowances are §M2.7's separate, measured consequence), but
-   Task 4's register-stream oracle must treat the extra start as a declared
-   difference: the title fragment in the `.dro` files is the boot/attract
-   reference (§M1.6.3), and the restart is where the port's stream departs if
-   the first note has played. Retiring the substitute is a title-path change
-   this task is bound not to make; the controller's Task 7 may decide it.
+1. **The title bank starts twice in a port run — FIXED by §M2.8.** Before the
+   review fix, the attract's `0x54`/`0x56` request reached the raw path and
+   `game_state_title`'s `s_music_request` substitute restarted S16TITLE at the
+   title state (measured: one `snd_music_start` hit with `DS_001028CC =
+   0x03836102`, then one `title_music_start` hit). The substitute now asks only
+   when the raw request is neither pending nor the last started song
+   (`game_state_title_music_request`, §M2.8), so the attract→title run starts the
+   bank once (measured: 1 `snd_music_start`, 0 `title_music_start`), while the
+   standalone title path still starts it. No named difference remains here.
 2. **The hand-off is host-side.** The OPL register stream is the claim (§M1.6);
    rendered audibility stays the model claim (§M1.7). The unit test checks the
    sequencer's playing state and the copied bytes, not a rendered sample.
@@ -976,3 +971,69 @@ the capture holds is now the replay's own.
 
 The nine affected targets were re-run with `PR_PINS_EXACT=1` after the re-pin and
 pass; the full gate result is in the Task 2 report.
+
+### §M2.8 The review fixes (Task 2 fix round)
+
+The Task 2 review found one Critical, one Important and one Minor issue. All
+three are fixed on `efd34a94`'s tree in a follow-up commit.
+
+**Critical — the second title start is gone.** `game_state_title` no longer
+sets the substitute flag unconditionally. Its music request is now
+`game_state_title_music_request()` (`flow.c`, exported in `flow.h`):
+
+```
+if (DSD(DS_001028CC) == TITLE_SONG) return;   /* the raw request is pending */
+if (DSD(DS_001028DC) == TITLE_SONG) return;   /* the raw request already started it */
+s_music_request = 1;
+```
+
+`TITLE_SONG` is `0x03836102` (resource 7 + `0x36102`, ids `0x54`/`0x56`);
+`title_music_start`'s body is unchanged. The attract request's `snd_music_start`
+stores `DS_001028DC = 0x03836102` before it resolves (and leaves `CC` pending
+until `0x1CA08`), so either state suppresses the substitute; a title entry the
+attract did not precede (the standalone title path, the title dump driver, the
+unit fixture) still requests it. Measured under gdb on `PR_ATTRACT_DUMP`:
+before the fix 1 `snd_music_start` + 1 `title_music_start`; after the fix 1
+`snd_music_start` + 0 `title_music_start`, and the driver passes.
+
+The regression is in `check_music_request` (`test_game.c`): the match start is
+the first counted init, the attract's title request takes the count to 2, the
+title entry's `game_state_title_music_request()` + service leaves it at 2 (one
+start across the attract request + title entry); then `CC = DC = 0` and a
+second title entry raises it to 3 (the standalone path). A mutation that
+removes the two guards makes the check fail `3 != 2` (the extra title-state
+start) and `4 != 3` (its carry-on), so the regression is not vacuous.
+
+**Important — the exact hand-off is observed.** Two `PORT:` seams are added:
+
+- `seq_loaded_bank_hash()` (`sequencer.c/h`): the FNV-1a of the bytes the last
+  successful `seq_load` accepted, i.e. the bank handed to `AIL_init_sequence`.
+  `AIL_init_sequence` itself is unchanged except for the counter below.
+- `AIL_init_sequence_count_reset()` / `AIL_init_sequence_count()` (`ail.c/h`):
+  the successful `AIL_init_sequence` calls since the reset (a failed init is not
+  a start).
+
+The test hashes the copied payload's inner FORM/XMID (`payload + 0x22`, the
+length `size - 0x22`, the same range `AIL_init_sequence` is handed) and asserts
+the sequencer's hash equals it after the match start and after the title start,
+with the two banks' hashes different. `snd_music_playing()`/`seq_playing()` and
+the copied bytes cannot distinguish the hand-off; this does. The proof: mutate
+the new-song arm's `AIL_init_sequence` argument to `title_music_bank()` and the
+suite fails its one new assertion (`seq_loaded_bank_hash() == match_hash`,
+measurement `-40586013 != -2014854434`); the playing/copy assertions still pass,
+which is exactly the review's scenario.
+
+**Minor — the Makefile's current-state comments.** The five U18–U22 reach
+comments now distinguish the highest *exhibited* port frame (the pin: 4863,
+4988, 4889, 4972, 4928) from the dump's last frame (4864, 4989, 4890, 4973,
+4929, unchanged and not exhibited), instead of calling the new reach "the
+dump's last frame"; a higher measured reach is an improvement to re-pin. The
+U9/U10/U13/U16/U18–U22 blocks' overlay prose is past tense with the §M2.7
+retirement named, and their clean/allowance counts are the re-measured ones
+(3,682/1,935/9 + two allowances for U18; 3,385 + three for U19; 3,400 + three
+for U20; 3,599 + fifteen bands for U21; 3,562 + eight bands and six scan-outs
+for U22). `OVERLAY_ALLOWED` is empty and every remaining mention says retired.
+
+The fix commit's re-run evidence (focused suite, title/attract/front-end/
+demo-fight/attract2, the nine exact-pinned ending oracles, the full
+`make verify`) is in the Task 2 report's fix section.

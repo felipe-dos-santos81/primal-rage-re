@@ -440,6 +440,13 @@ HSEQUENCE AIL_allocate_sequence_handle(HMDIDRIVER driver)
     return NULL;    /* "Out of sequence handles" */
 }
 
+/* PORT: a test seam, not AIL state (the pattern of flow.c's sound_voice log):
+ * the AIL_init_sequence calls that loaded a bank since the reset. The title
+ * single-start regression counts its starts with it. */
+static u32 s_init_n;
+void AIL_init_sequence_count_reset(void) { s_init_n = 0; }
+u32 AIL_init_sequence_count(void) { return s_init_n; }
+
 /* 0x5de48 — spec audio.md "AIL surface" (row 27).
  * PORT: the third argument keeps the original's meaning (the sequence number,
  * which the game passes as 0); the bank length seq_load needs is derived from
@@ -464,6 +471,7 @@ s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num)
     }
     sequence->loaded = 1;
     sequence->state = 2;
+    s_init_n++;                                     /* PORT: the test seam above */
     /* 0x6A5B7..0x6A5C5: the volume and its target from preference 12,
      * [0x108D94] = 0x7F (AIL_startup 0x660E7; the game never sets it);
      * 0x6A57D/0x6A584 clear the step and the accumulator. */

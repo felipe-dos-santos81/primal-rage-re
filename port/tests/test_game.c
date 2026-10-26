@@ -1593,17 +1593,29 @@ static void check_idle_timeout_clock(void)
     DSB(DS_00107414) = s_14;
 }
 
+/* FNV-1a over n bytes: the same hash seq_load records for the bank it accepted
+ * (sequencer.c), so the test can name the exact bank AIL was handed. */
+static u32 mr_bank_hash(const u8 *p, u32 n)
+{
+    u32 h = 2166136261u;
+    for (u32 i = 0; i < n; i++) { h ^= p[i]; h *= 16777619u; }
+    return h;
+}
+
 /* Task 2 (record §M2): the game-side song request 0x1CA14 and its resolve
  * 0x1C930, on the live sequence game_audio_init allocated. A match request
  * (the stage table's 0x4F714, stage 0's id 0x20) becomes the pending song with
  * the shipped handle; the master loop's 0x1CF39 arm resolves it, copies the
  * size-prefixed bank into the 0x1028D0 buffer and starts it on the host
- * sequencer. Every seed differs from the asserted post-value. */
+ * sequencer. The loaded bank's identity is asserted through the sequencer's
+ * hash seam, and the attract request -> title entry sequence is checked to
+ * start the title bank once (record §M2.8). Every seed differs from the
+ * asserted post-value. */
 static void check_music_request(void)
 {
     const u32 song = 0x0A800008u;   /* id 0x20: s16beach.gra + 8 (§M1.4.1) */
     const u8 *pay;
-    u32 d0 = 0u, size = 0u;
+    u32 d0 = 0u, size = 0u, match_hash = 0u, title_hash = 0u;
 
     CHECK_EQ_INT((int)DSB(DS_000BBDC8 + 0x20u * 12u), 1);       /* the record's case */
     CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0x20u * 12u + 4u), (int)song);
@@ -1611,6 +1623,7 @@ static void check_music_request(void)
     DSD(DS_001028CC) = 0u;
     DSD(DS_001028DC) = 0xDEADC0DEu;    /* no song started: the new-song arm stores */
     DSB(DS_001028DA) = 0u;             /* not paused */
+    AIL_init_sequence_count_reset();   /* count the starts this check makes */
 
     /* 0x1CA14: accepted (AL = 1; without a sequence handle it returned 0) and
      * queued as the pending song with the record's exact handle. */
@@ -1633,11 +1646,18 @@ static void check_music_request(void)
     CHECK_EQ_INT((int)size, 20400);                             /* §M1.4.1's s16beach payload */
     CHECK(memcmp(mem + d0, "FORM", 4) == 0, "the copied bank starts with its payload's FORM");
     CHECK(memcmp(mem + d0, pay + 4, size) == 0, "the copied bank is the resource payload");
+    /* The exact bank handed to AIL_init_sequence, not merely a playing sequence:
+     * the copied payload's inner FORM/XMID (payload+0x22), the bank the title
+     * bank would not hash to. */
+    match_hash = mr_bank_hash(mem + d0 + 0x22u, size - 0x22u);
+    CHECK_EQ_INT((int)AIL_init_sequence_count(), 1);            /* one start */
+    CHECK_EQ_INT((int)seq_loaded_bank_hash(), (int)match_hash);
 
     /* The match entry's own call (0x25C09 -> 0x4F714 -> 0x2C3FC case 1) queues
      * the same song; the same-song arm (0x1C93B) neither resolves nor copies:
      * it re-inits the already copied buffer. Zeroed, a re-copy would load and
-     * play again, a re-init of these bytes cannot. */
+     * play again, a re-init of these bytes cannot (and a failed init is not a
+     * counted start). */
     memset(mem + d0, 0, size);
     CHECK_EQ_INT((int)sound_voice_stage(0u), 1);
     CHECK_EQ_INT((int)DSD(DS_001028CC), (int)song);
@@ -1646,6 +1666,7 @@ static void check_music_request(void)
     CHECK_EQ_INT((int)DSD(DS_001028DC), (int)song);             /* unchanged: no store */
     CHECK_EQ_INT((int)snd_music_playing(), 0);                  /* the zeroed buffer, not a re-read */
     CHECK_EQ_INT(seq_playing(), 0);
+    CHECK_EQ_INT((int)AIL_init_sequence_count(), 1);            /* no successful init */
 
     /* The attract's title request 0x54 (0x111FF) is a new song: resolve, copy
      * its 4,920-byte bank and start it. This leaves the title music playing
@@ -1661,6 +1682,29 @@ static void check_music_request(void)
     CHECK_EQ_INT((int)size, 4920);                              /* §M1.4.1 */
     CHECK(memcmp(mem + d0, "FORM", 4) == 0, "the copied title bank starts with its payload's FORM");
     CHECK(memcmp(mem + d0, pay + 4, size) == 0, "the title bank is the copied payload");
+    title_hash = mr_bank_hash(mem + d0 + 0x22u, size - 0x22u);
+    CHECK_EQ_INT((int)AIL_init_sequence_count(), 2);            /* one start for the title too */
+    CHECK_EQ_INT((int)seq_loaded_bank_hash(), (int)title_hash);
+    CHECK(match_hash != title_hash, "the two banks' identities differ");
+
+    /* The title entry (0x121A0) makes no request of its own in the raw; the
+     * port's substitute must not start the bank the attract request above
+     * already started. One start across the attract request + title entry. */
+    game_state_title_music_request();
+    game_audio_service();
+    CHECK_EQ_INT((int)AIL_init_sequence_count(), 2);            /* NOT a second start */
+    CHECK_EQ_INT((int)DSD(DS_001028DC), 0x03836102);
+    CHECK_EQ_INT((int)snd_music_playing(), 1);
+    CHECK_EQ_INT((int)seq_loaded_bank_hash(), (int)title_hash);
+
+    /* A title entry the attract did not precede (the standalone title path)
+     * still requests the bank through title_music_start. */
+    DSD(DS_001028CC) = 0u;
+    DSD(DS_001028DC) = 0u;
+    game_state_title_music_request();
+    game_audio_service();
+    CHECK_EQ_INT((int)AIL_init_sequence_count(), 3);            /* the substitute's start */
+    CHECK_EQ_INT((int)snd_music_playing(), 1);
 }
 
 int test_flow(void)

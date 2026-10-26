@@ -83,6 +83,10 @@ static struct {
     int playing;
     u32 age;
     u32 next;          /* rotation cursor: the last slot tried (driver 0xffff) */
+    /* PORT: a test seam, not sequencer state: the FNV-1a of the last bank a
+     * seq_load accepted (the bytes handed to AIL_init_sequence). A wrong-bank
+     * hand-off changes it while the playing status alone does not. */
+    u32 bank_hash;
     /* PORT: the AIL sequence record's volume fields (record named-gaps-f
      * §F.3): +0x34 the volume now, +0x38 the target, +0x3C the us accumulated
      * toward the next step, +0x40 the us per one-unit step; +0x30 the service
@@ -624,6 +628,12 @@ int seq_load(const u8 *data, u32 len)
     S.loaded = 1;
     S.svc = 0;                          /* 0x6A578 0x69250: +0x30, the CC7 log */
     S.cc7_logged = 0;
+    /* PORT: the loaded-bank seam above (FNV-1a of the bytes this load accepted). */
+    S.bank_hash = 2166136261u;
+    for (u32 k = 0; k < len; k++) {
+        S.bank_hash ^= data[k];
+        S.bank_hash *= 16777619u;
+    }
     return 1;
 }
 
@@ -770,4 +780,9 @@ u8 seq_channel_volume(int ch)
 int seq_playing(void)
 {
     return S.playing;
+}
+
+u32 seq_loaded_bank_hash(void)
+{
+    return S.bank_hash;
 }

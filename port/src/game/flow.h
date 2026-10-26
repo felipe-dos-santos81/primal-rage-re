@@ -389,6 +389,9 @@ void frontend_scoreboard_build(void);
  * 0x11578, 0x11A8C), exposed for the differential rows (record
  * 2026-10-12-reverse-d5a). */
 void game_state_title(void);
+/* PORT: the title state's music request (the substitute for the attract's
+ * 0x54/0x56 request), exposed for the single-start regression. */
+void game_state_title_music_request(void);
 void game_state_select(void);
 void game_state_3(void);
 void game_state_4(void);

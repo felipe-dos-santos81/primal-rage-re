@@ -188,6 +188,13 @@ HSEQUENCE AIL_allocate_sequence_handle(HMDIDRIVER driver);
  * (seq_bank_size). No length argument is added. */
 s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num);
 
+/* PORT: test seams, not AIL state (the pattern of flow.c's sound_voice log):
+ * AIL_init_sequence_count_reset() zeroes the number of AIL_init_sequence calls
+ * that loaded a bank, and AIL_init_sequence_count() reads it. The title
+ * single-start regression counts its starts with them. */
+void AIL_init_sequence_count_reset(void);
+u32 AIL_init_sequence_count(void);
+
 /* 0x5de79 — spec audio.md "AIL surface" (row 28). Silences and restarts the
  * sequence, marking it playing (state 4). */
 void AIL_start_sequence(HSEQUENCE sequence);
