@@ -1071,11 +1071,11 @@ class TestU24U16State(unittest.TestCase):
 
     def test_the_u16_state_capture_clones_u23_and_stops_on_the_lands(self):
         scn = gs.SCENARIOS['gp-u24-u16-state']
+        self.assertIsNot(scn, gs.SCENARIOS['gp-u23-u16-finisher'])   # a copy, not an alias
         self.assertEqual(scn['steps'], gs.SCENARIOS['gp-u23-u16-finisher']['steps'])
         self.assertEqual((scn['stop_mode'], scn['stop_delay']), (0x12, 0))
         self.assertIn('gp-u24-u16-state', gs.STOP_AT_END)
         self.assertEqual(scn['time_limit'], gs.SCENARIOS['gp-u23-u16-finisher']['time_limit'])
-        self.assertIsNot(scn, gs.SCENARIOS['gp-u23-u16-finisher'])   # a copy, not an alias
 
 
 class TestPokeScript(unittest.TestCase):
