@@ -8,13 +8,21 @@ import gp_session as gs
 import gp_twop as gt
 
 
-def _s(f, mode=6, b1f=3, cred=4, new=0, held=0, e0=None, e2=None, r0=0, r1=0):
-    vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+# The S fields a KO needs in addition to SNAP_FIELDS (gs.WIN_EXTRA): the damage
+# bytes' KO value 0x78, the round wins and the match result are WIN fields, so a
+# KO log carries them all (test_gp_win.py's line shape).
+FIELDS = gs.SNAP_FIELDS + gs.WIN_EXTRA
+
+
+def _s(f, mode=6, b1f=3, cred=4, new=0, held=0, e0=None, e2=None, r0=0, r1=0,
+       s0_5a=0, s1_5a=0, w2=0, w3=0, ad4=0, b0c=0):
+    vals = {n: 0 for n, _, _ in FIELDS}
     vals.update(f=f, mode=mode, b1f=b1f, cred=cred, new=new, held=held, t508=1, t50c=2,
                 e0=gt.pad_word(new, held, 0) if e0 is None else e0,
                 r0=r0, r1=r1,
-                e2=gt.pad_word(new, held, 1) if e2 is None else e2)
-    return gs.format_s(0, vals, 0, 0x1E, 0x1E)
+                e2=gt.pad_word(new, held, 1) if e2 is None else e2,
+                s0_5a=s0_5a, s1_5a=s1_5a, w2=w2, w3=w3, ad4=ad4, b0c=b0c)
+    return gs.format_s(0, vals, 0, 0x1E, 0x1E, FIELDS)
 
 
 def _match():
@@ -294,6 +302,138 @@ class TestFinisher(unittest.TestCase):
                     gt.main()
         self.assertEqual(cm.exception.code, 2)
         self.assertIn('not allowed with argument', stderr.getvalue())
+
+
+def _ko_log(mode=0x08, ad4=0xFFFFFFFF, b0c=1, poke=None, jump=False, winner_ko=False):
+    """A two-human log with a hand-dealt KO of side 1, built on _s()."""
+    L = [_s(f, mode=0x10, b1f=1) for f in range(0x2F0, 0x300)]
+    L += [_s(f, mode=0x10) for f in range(0x300, 0x310)]
+    L += [_s(0x400, mode=0x06, b1f=3, new=0x01000100,
+             s1_5a=0x00 if jump else 0x10)]
+    if poke is not None:
+        L.append('W ms=0 f=0408 step=1 addr=%08X len=1 was=10 now=78 late=0 race=0' % poke)
+    if jump:
+        L.append(_s(0x410, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x78, w2=1))
+    else:
+        L.append(_s(0x410, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x78, w2=1,
+                    s0_5a=0x78 if winner_ko else 0))
+    L += [_s(0x420, mode=mode, b1f=3, w2=1, ad4=ad4, b0c=b0c)]
+    L += ['X ms=0 f=0430 step=1 end']
+    return L
+
+
+class TestKO(unittest.TestCase):
+    """The hand-dealt KO evidence (plan 2026-10-26-fought-match-truth §F3): a
+    fought KO is the loser's +0x5A reaching 0x78 from a live value in a mode-6
+    entry that no poke wrote and that did not time out, and the result naming
+    the winner."""
+
+    def test_a_hand_dealt_ko_passes_and_reports_death_done(self):
+        r = gt.ko(_ko_log(), winner=0)
+        self.assertEqual(r['fail'], [])
+        self.assertEqual(r['ko'], 0x410)
+        self.assertEqual(r['death'], 0x420)
+
+    def test_a_time_out_fails(self):
+        lines = [_s(0x400, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x10),
+                 _s(0x410, mode=0x07, b1f=3, s1_5a=0x10)]
+        self.assertIn('time-out', ' '.join(gt.ko(lines)['fail']))
+
+    def test_a_poked_ko_fails(self):
+        self.assertIn('poke', ' '.join(gt.ko(_ko_log(poke=0x10789E))['fail']))
+
+    def test_a_jump_from_zero_to_ko_fails(self):
+        self.assertTrue(gt.ko(_ko_log(jump=True))['fail'])
+
+    def test_the_winner_must_not_be_ko_d(self):
+        self.assertTrue(gt.ko(_ko_log(winner_ko=True), winner=0)['fail'])
+
+    def test_a_draw_or_wrong_side_result_fails(self):
+        self.assertTrue(gt.ko(_ko_log(mode=0x09, ad4=2, b0c=0))['fail'])
+
+    def _raw_shape(self, before, last):
+        """The measured shape (record §F3.2): the KO and the mode change share the
+        iteration that deals it, so the last mode-6 records still read a live
+        value and the first 0x78 is the mode-8 result record's."""
+        return ([_s(f, mode=0x10, b1f=1) for f in range(0x2F0, 0x300)] +
+                [_s(f, mode=0x10) for f in range(0x300, 0x310)] +
+                [_s(0x400, mode=0x06, new=0x01000100, s1_5a=before),
+                 _s(0x410, mode=0x06, new=0x01000100, s1_5a=last),
+                 _s(0x420, mode=0x08, w2=1, s1_5a=0x78, ad4=0xFFFFFFFF),
+                 'X ms=0 f=0430 step=1 end'])
+
+    def test_a_ko_seen_on_the_round_result_passes(self):
+        # gp-u14-win-live's fought KO: mode 6 f=894 s0_5a=71, mode 8 f=898 s0_5a=78
+        r = gt.ko(self._raw_shape(0x10, 0x71))
+        self.assertEqual((r['fail'], r['ko'], r['round'], r['result'], r['death']),
+                         ([], 0x420, 0x420, None, None))
+
+    def test_a_zero_to_ko_jump_on_the_result_record_fails(self):
+        # gp-u9-win's poke-shaped jump (mode 6 f=489 at 0, mode 8 f=48D at 78) with
+        # no W record at all: the live-value rule alone rejects it
+        self.assertIn('jumps to 78', ' '.join(gt.ko(self._raw_shape(0, 0))['fail']))
+
+    def test_a_capture_without_the_win_fields_fails(self):
+        # gp-twop/gp-u16-twop2/gp-u23's shape: the damage bytes (SNAP_FIELDS) exist
+        # but ad4/w2/w3/b0c (WIN_EXTRA) do not, so no KO and no result can be shown
+        def strip(line):
+            return (gs.format_s(0, gs.parse(line), 0, 0x1E, 0x1E, gs.SNAP_FIELDS)
+                    if line.startswith('S ') else line)
+        self.assertIn('no WIN fields', ' '.join(gt.ko([strip(l) for l in _ko_log()])['fail']))
+
+    def test_a_one_human_log_fails_on_the_two_human_claim(self):
+        lines = [l.replace('b1f=03', 'b1f=01') for l in _ko_log()]
+        self.assertIn('b1f never reaches 3', ' '.join(gt.ko(lines)['fail']))
+
+    def test_the_round_result_must_name_the_winner(self):
+        # ad4 stays NO_RESULT (the match is still open) but w3 = 1: the round went
+        # to side 1, so side 0 is not the winner (0x27C48's counter)
+        lines = _ko_log()
+        lines[-2] = _s(0x420, mode=0x08, b1f=3, w3=1, ad4=0xFFFFFFFF, b0c=1)
+        self.assertIn('names side w3', ' '.join(gt.ko(lines)['fail']))
+
+    def test_the_match_result_must_name_the_winner(self):
+        # the round result names side 0, but the match result's counter is side 1's
+        lines = _ko_log()
+        lines.insert(-1, _s(0x425, mode=0x09, b1f=3, w3=1, ad4=0, b0c=1))
+        self.assertIn('match result at f=425 names side w3', ' '.join(gt.ko(lines)['fail']))
+
+    def test_a_ko_with_no_result_after_it_fails(self):
+        # a capture that stops at the KO: the damage byte alone is not the round's
+        # result, which is what names the winner
+        lines = _ko_log()[:-2] + ['X ms=0 f=0430 step=1 end']
+        self.assertIn('no result after the KO', ' '.join(gt.ko(lines)['fail']))
+
+    def _run(self, lines, args):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+            stdout = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', d] + args):
+                with contextlib.redirect_stdout(stdout):
+                    rc = gt.main()
+        return rc, stdout.getvalue()
+
+    def test_cli_ko_passes_a_hand_dealt_ko(self):
+        rc, out = self._run(_ko_log(), ['--ko'])
+        self.assertEqual(rc, 0)
+        self.assertIn('hand-dealt KO: ok', out)
+
+    def test_cli_ko_passes_the_winner_side(self):
+        rc, out = self._run(_ko_log(), ['--ko', '--winner', '1'])
+        self.assertEqual(rc, 1)
+        self.assertIn('side 0', out)
+
+    def test_cli_ko_is_mutually_exclusive_with_join_and_finisher(self):
+        for other in ('--join', '--finisher'):
+            stderr = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', 'capture',
+                                                 '--ko', other]):
+                with contextlib.redirect_stderr(stderr):
+                    with self.assertRaises(SystemExit) as cm:
+                        gt.main()
+            self.assertEqual(cm.exception.code, 2)
+            self.assertIn('not allowed with argument', stderr.getvalue())
 
 
 if __name__ == '__main__':

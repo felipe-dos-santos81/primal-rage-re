@@ -412,3 +412,181 @@ the Makefile provenance comment plus the `--max-missing` coverage pin, and this 
 `GP_U14_*` definitions stay empty. `tools/gp_session.py`'s U14 comment now records the measured
 attempt-88 KO from §E2 and the skip's reason; the Makefile comment records this failure.
 
+## §F3 The hand-dealt KO predicate (Task 3)
+
+`tools/gp_twop.py` gains `ko(lines, winner=0)` and `check --ko [--winner N]`, a sibling of
+`gp_win.live_death` for the fought win (plan 2026-10-26-fought-match-truth Task 3; Task 4's
+two-human capture is what it will judge). It returns `dict(ko=, round=, result=, death=,
+fail=[])`: the frames of the KO, the round result and the match result, the first death-done
+record, and every reason the log is not a hand-dealt KO of side `winner`.
+
+### §F3.1 What the predicate requires
+
+Every condition is required, each with its own `fail` entry:
+
+1. **The WIN fields.** Every S record carries all 13 `gp_session.WIN_EXTRA` names, else
+   `no WIN fields: ...`: without `ad4`/`w2`/`w3`/`b0c` and the `+0x5A` damage bytes no KO
+   and no result can be shown.
+2. **No poke wrote the KO path.** No W record's bytes (`[addr, addr + len)`) cover a
+   `KO_POKES` address: `0x10780A`/`0x10789E` (`s0_5a`/`s1_5a`), `0x104AF2`/`0x104AF3`
+   (`w2`/`w3`), `0x104AD4` (`ad4`), `0x104B0C` (`b0c`), and `0x108106`/`0x10810A`/`0x10810C`
+   (`m106`/`m10a`; `gp_session.lands_marked` writes seven bytes at `0x108106`).
+3. **A two-human match.** `two_human(lines)`'s `fail` is empty.
+4. **The KO value.** The first S record whose *loser* `+0x5A` reads `0x78` (`0x27FA8`'s
+   `cmp 0x78`, `gp_session.KO_P2`'s comment; record 2026-10-02-gameplay-u9-u10 §W.3) is the
+   KO. It must be in the fight (mode 6) or in a result mode (7/8/9) that follows a mode-6
+   entry (§F3.2).
+5. **A live value before it.** The mode-6 entry the KO ends has a strictly earlier record with
+   `0 < s*_5a < 0x78`: the damage path adds to a live value, so a `0 → 0x78` jump fails even
+   without a W record.
+6. **The winner was not the KO'd side.** The winner's `s*_5a < 0x78` at the KO record.
+7. **No time-out.** The round's result is not mode 7: the *time-up* result names no KO
+   (§W.3: "round 2 timeout → mode 7 → 9"; record 2026-09-30-gameplay-ground-truth §G.23 lists
+   mode 7 on U4's round path).
+8. **The result names the winner.** The first result record after the KO is the round result
+   (mode 8) with `ad4 = NO_RESULT = 0xFFFFFFFF` and `w[winner] >= 1, w[loser] = 0`, or the
+   match result (mode 9) with `ad4 = winner` and the same `w` (`0x27C48`'s counters
+   `DS_00104AF2`/`AF3` and `0x27BA4`'s `DS_00104AD4`; §W.3). The draw `ad4 = 2` fails.
+9. **The match result, when reached.** A mode-9 entry at or after the KO has `ad4 = winner`
+   and `w[winner] >= 1, w[loser] = 0` (scoped at/after the KO: an earlier match's result is
+   not this match's).
+10. **Reported, not required.** `death` = the first S at/after the KO with `b0c = 1`
+    (`0x37EA0` → `0x37FF6`, record §W.5): a hand-dealt KO leaves the death animation to run,
+    so an early capture legitimately has it still 0.
+
+`no result after the KO` and `the record after the KO ... is mode X` are the remaining
+rejections: the damage byte alone is not the round's result, and only modes 8/9 name a winner.
+
+### §F3.2 Plan-vs-raw correction: where the KO value is observed
+
+The brief says "find the first mode-6 entry whose S records include the loser's
+`s*_5a == 0x78`". **The raw contradicts that**: no mode-6 S record in any of the three
+captures that carry a KO reads `0x78`. Measured:
+
+| capture | last sampled mode-6 record | first record with the value at `0x78` |
+|---|---|---|
+| `gp-u14-win-live.failed` (fought, side 0 KO'd) | `f=0x894` `s0_5a=0x71` | `f=0x898`, **mode 8**, `0x78` (`w3=1`: side 1's round) |
+| `gp-u9-win` (poked KO of side 1) | `f=0x489` `s1_5a=0` | `f=0x48D`, **mode 8**, `0x78` (`w2=1`) |
+| `gp-u23-u16-finisher` (labelled `0x77` poke + one real hit) | `f=0x1482` `s1_5a=0x77` | `f=0x1486`, **mode 9**, `0x78` |
+
+The cause is the raw's own granularity, stated in §W.3's KO-poke note: "`DS_0010789E = 0x78`
+written in the spin before an iteration of mode 6 makes that iteration's `0x27FA8` end the
+round". The KO and the mode change share the iteration, and an S record is the
+end-of-iteration snapshot (`gp_session`'s poll.log v2 header), so a hand-dealt KO's `0x78`
+*is* the mode-8/9 record. A predicate that required a mode-6 record would reject every
+hand-dealt KO measured here, the fought one included — and Task 4's capture is the same class
+— so the **raw wins**: the predicate searches every record for the first `0x78`, and takes the
+round's mode-6 entry as the run containing that record when it is mode 6 or the run
+immediately before it when it is a result record. Conditions 5-10 are unchanged.
+
+This is not a weakening. The live-value rule still rejects a poke-shaped jump on its own
+(`test_a_zero_to_ko_jump_on_the_result_record_fails`, the `gp-u9-win` shape with its W record
+removed), and `KO_POKES` catches the shape the live-value rule cannot: `gp-u23`'s `0x77 → 0x78`
+reads as a live value, and only its W record at `f=0x13B8` (`0x10789E`) marks it poked.
+
+Real-capture acceptance: `gp-u14-win-live.failed` under `--winner 1` reports
+`ko f=898; round result f=898; match result f=F9F` — §F2.6's measured rows — and fails only
+the two-human claim (`b1f` stays 1: P1 against the CPU). The KO arm reads a fought KO; the
+capture is not a two-human match, which is why it is not a pass.
+
+### §F3.3 RED then GREEN
+
+RED, before `ko` existed (`python3 -m unittest tools.tests.test_gp_twop -k ko -v`):
+7 tests, `FAILED (failures=1, errors=6)` — `AttributeError: module 'gp_twop' has no attribute
+'ko'` on the four predicate cases `-k ko` matched, and `SystemExit` from `unrecognized
+arguments: --ko` on two of its three CLI cases; the third (the exclusive group) fails with
+`'not allowed with argument' not found` instead. The whole class (`TestKO`, 9 tests at that
+point) ran `FAILED (failures=1, errors=8)`.
+
+GREEN (`python3 -m unittest tools.tests.test_gp_twop -v`): `Ran 46 tests ... OK` — the module's
+30 before the task plus `TestKO`'s 16 (the brief's 6 cases; the raw result-record shape; the
+poke-shaped jump with no W record; the WIN-fields gate; the two-human wiring; the round-result
+and match-result `w` rules; the no-result branch; and the three CLI cases: a pass, the winner
+side reaching the predicate, and the exclusive group).
+
+The wider tool set (Task 2's nine suites: `test_gp_session test_gp_capture test_gp_compare
+test_gp_moves test_gp_keys test_gp_u17 test_gp_twop test_gp_modes test_gp_win`) ran **366**
+tests, `OK` (350 at Task 2's close; +16, all in `test_gp_twop`).
+
+### §F3.4 The four existing captures
+
+Each exits 1. The first failure line is the brief's expected reason; the three two-human-family
+captures' scenarios pass no `extra=` (so they log `SNAP_FIELDS` but not `WIN_EXTRA`), and
+`gp-u9-win` has the fields and is poked:
+
+```text
+$ python3 tools/gp_twop.py check --ko --capture data/k11-captures/gp-u16-twop2
+gp_twop: gp-u16-twop2: hand-dealt KO of side 0: ko f=-; round result f=-; match result f=-; death-done f=-
+gp_twop: gp-u16-twop2: FAIL: no WIN fields: afc, ad4, w2, w3, b1e, b21, b14, b0c, t104, m106, m10a, sc0, c82 absent from some S records (the capture must log gp_session.WIN_EXTRA; without the damage/result bytes a KO cannot be shown)
+gp_twop: gp-u16-twop2: hand-dealt KO: FAIL
+exit=1
+
+$ python3 tools/gp_twop.py check --ko --capture data/k11-captures/gp-twop
+gp_twop: gp-twop: FAIL: no WIN fields: afc, ad4, w2, w3, b1e, b21, b14, b0c, t104, m106, m10a, sc0, c82 absent from some S records (the capture must log gp_session.WIN_EXTRA; without the damage/result bytes a KO cannot be shown)
+exit=1
+
+$ python3 tools/gp_twop.py check --ko --capture data/k11-captures/gp-u23-u16-finisher
+gp_twop: gp-u23-u16-finisher: FAIL: no WIN fields: afc, ad4, w2, w3, b1e, b21, b14, b0c, t104, m106, m10a, sc0, c82 absent from some S records (the capture must log gp_session.WIN_EXTRA; without the damage/result bytes a KO cannot be shown)
+exit=1
+
+$ python3 tools/gp_twop.py check --ko --capture data/k11-captures/gp-u9-win
+gp_twop: gp-u9-win: hand-dealt KO of side 0: ko f=48D; round result f=48D; match result f=85A; death-done f=-
+gp_twop: gp-u9-win: FAIL: poke: the W record at f=489 wrote 0010789E, a KO/death field: the round must be the game's own write, not a poked one
+gp_twop: gp-u9-win: FAIL: b1f never reaches 3 (no S record has both sides human)
+gp_twop: gp-u9-win: FAIL: side 1 s1_5a jumps to 78 at f=48D with no earlier 0 < value < 78 in the mode-6 entry the KO ends: the damage path adds to a live value
+gp_twop: gp-u9-win: hand-dealt KO: FAIL
+exit=1
+```
+
+(`gp-u9-win`'s record shows the anchors found *and* three independent rejections: the poke, the
+one-human log (it is LEFT PLAYER ARCADE against the CPU) and the poke-shaped `0 → 0x78` jump.
+`gp-twop`'s other lines are omitted here for length; they are the same as `gp-u16-twop2`'s.)
+
+The existing checks are unchanged: `check --capture gp-twop`, `check --join --capture
+gp-u15-join`, `check --finisher --allow-missing-reaction --capture gp-u16-twop2` and `check
+--finisher --capture gp-u23-u16-finisher` all still exit 0, and `--winner` without `--ko` is an
+argparse error (exit 2), as is `--winner 2`.
+
+### §F3.5 Mutation proofs
+
+Each mutation was applied to `tools/gp_twop.py`, `TestKO` run, and the file restored
+(`cmp` clean). Every one fails at least one assertion:
+
+| mutation | caught by |
+|---|---|
+| `KO_POKES = ()` | `test_a_poked_ko_fails` |
+| the live-value rule (`0 < v < 0x78`) disabled | `test_a_jump_from_zero_to_ko_fails`, `test_a_zero_to_ko_jump_on_the_result_record_fails` |
+| the no-KO time-out arm disabled | `test_a_time_out_fails` |
+| the winner-not-KO'd rule disabled | `test_the_winner_must_not_be_ko_d` |
+| the result `ad4` rule disabled | `test_a_draw_or_wrong_side_result_fails` |
+| the result-record KO (mode 8/9) rejected (the brief's literal rule) | `test_a_ko_seen_on_the_round_result_passes`, `test_a_zero_to_ko_jump_on_the_result_record_fails` |
+| `death`'s `b0c == 1` → `== 2` | `test_a_hand_dealt_ko_passes_and_reports_death_done` |
+| the WIN-fields gate disabled | `test_a_capture_without_the_win_fields_fails` |
+| the `two_human` failures dropped | `test_a_one_human_log_fails_on_the_two_human_claim` |
+| `--winner` ignored (`w = 0`) | `test_cli_ko_passes_the_winner_side` |
+| the round result's `w` rule disabled | `test_the_round_result_must_name_the_winner` |
+| the match result's `w` rule disabled | `test_the_match_result_must_name_the_winner` |
+| the no-result arm disabled | `test_a_ko_with_no_result_after_it_fails` |
+
+The exclusive-group test also failed before the flag existed (`--ko` was an unrecognized
+argument), and the `--ko --join`/`--ko --finisher` pairs exit 2.
+
+### §F3.6 Named gaps
+
+1. **The predicate does not claim which hits landed.** It proves the loser's `+0x5A` reached
+   `0x78` from a live value in a round with no poke and no time-out, and that the result names
+   the side; the number and identity of the hits are not in the WIN fields.
+2. **`KO_POKES` is nine field addresses, matched by byte-range overlap.** A one-byte poke at an
+   unlisted interior land-mark byte (`0x108107..0x10810B`) is not caught. Every poked win in the
+   tree writes `0x10789E` (len 1), `0x104B0C` (len 1) or `0x108106` (len 7, `lands_marked`), all
+   caught; no measured poke writes the interior bytes alone.
+3. **The `w`/`ad4` claim is judged on the result record, not the KO's mode-6 record.** The round
+   counters are written by the iteration that deals the KO, and `ad4` is only decided at the
+   result, so the result record is where the raw states the claim.
+4. **Two rejection branches are hand-exercised, not unit-pinned:** a first `0x78` read in a
+   non-fight, non-result mode, and a result record with no mode-6 run before it. They exist for
+   capture shapes the tree has not measured (a poller gap that skips a result window); no
+   capture in `data/` produces them, and Task 4's script runs to mode 0x12 through both results.
+
+
+
