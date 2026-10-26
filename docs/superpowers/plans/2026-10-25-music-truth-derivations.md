@@ -1502,9 +1502,10 @@ matches.
 minimum total claimed ticks and the two named-gap lists. The minima are the
 total of two full oracle runs on the phase tree; **both runs produced every
 value byte-identically**. The review fix round re-measured on its own oracle
-run: every total was equal to its pin, and two were longer (`gp-u18-talon-ending`
-964 -> 966, `gp-u21-armadon-ending` 1200 -> 1202 in the earlier third run and
-1200 in the fix run); a minimum pin accepts a longer claim. `gp-u22-diablo-ending`
+run: every total equaled its pin except `gp-u18-talon-ending`, which was
+longer (964 pin -> 966); `gp-u21-armadon-ending` measured 1,200 in the fix
+run (as at the pin) and 1,202 in the earlier third run. A minimum pin accepts
+a longer claim. `gp-u22-diablo-ending`
 moved 991 -> **986** under Important 1: its title's stop burst is on the last
 *claimed* tick (capture rel 5, port boundary rel 6), so the title is an
 explicit `allow-diff` named gap (FD94B4E3) instead of a 5-tick claim.
@@ -1562,29 +1563,37 @@ used for its +1 proof.
 with no comparator): 13 tests, all failed (`can't open file ...`). The fix
 round's REDs were taken against the pre-fix `9511c77e` tool:
 
-  * `test_dropped_write_capture_groups_one_tick_earlier_fails` — the public
-    comparator with the capture's C/D one tick earlier (inside the declared
-    model) and B's only write deleted returned `synthetic: ok` (3 claimed
-    ticks) on the old tool; the fixed tool fails it.
+  * **The reviewer's exact case is port-side.**
+    `test_align_groups_port_side_dropped_write` is the group-level case:
+    port `[A, B, C, D, E, F, G]`, capture `[A, ∅, B, C, D, E, F, G]` gives
+    `ok=True, claimed=7`; deleting the **port's** B and retaining its empty
+    tick gave `ok=True, claimed=7` on the pre-fix `9511c77e` tool
+    (`.../old_audio_compare.py` import, output captured in the fix report)
+    because branch1 (`pg == nxt_c`) skipped the capture's non-empty B; the
+    fixed tool returns `ok=False, claimed=2, first_tick=2`. This is the
+    branch1 `and not cg` guard's regression.
+  * `test_dropped_write_port_side_one_tick_later_fails` is the same mutation
+    through the public comparator: the old tool returned `synthetic: ok`
+    (8 claimed ticks, 7 reduced writes); the fixed tool fails it.
+  * The capture-side counterparts are not the reviewer's exact case:
+    `test_dropped_write_capture_side_one_tick_later_fails` and
+    `test_dropped_write_capture_side_one_tick_earlier_fails` (the latter
+    exercises branch2's `and not pg` guard).
   * `test_penultimate_tick_difference_fails` — the old tool excused the
     `last_rel-1` difference as `the first group difference is at the request
     boundary tick 6` and returned `ok`; the fixed tool fails it at tick 6.
-  * The reviewer's exact one-tick-later baseline with the empty tick, then
-    B's only write deleted, is
-    `test_dropped_write_one_tick_later_with_empty_tick_fails`; it fails on
-    both (the old tool at the anchor prefix, the fixed tool by the alignment).
   * `test_partial_capture_loss_fails`, the summary inventory/NOT RUN/FAIL
     cases, and `test_expected_files_inventory` cover Important 3.
-  * `test_dropped_write_one_tick_later_no_empty_tick_fails` covers the
-    emptiness required by Critical 1's second whole-group branch.
 
-The module is now **23 tests**; the fixed tool passes all 23.
+The module is now **25 tests**; the fixed tool passes all 25.
 
 **The whole-group fix.** Both branches now require the skipped group to be
-empty (`pg == nxt_c and not cg`; `cg == nxt_p and not pg`), and the alignment
-ends with `matched == port_writes` (the `AlignResult` accounts every matched
-group's size or single moved write), so a dropped/extra write cannot ride the
-one-tick slack. The `first_diff` reports the tick's groups.
+empty (`pg == nxt_c and not cg`; `cg == nxt_p and not pg`). The loop branches
+are what enforce the write accounting: a matched group adds its size, a single
+moved write adds one, and a skipped group must be empty (it adds nothing), so
+a dropped/extra write cannot ride the one-tick slack. The final
+`matched == port_writes` check is an **assertion/safety net**, not the
+enforcement. The `first_diff` reports the tick's groups.
 
 **The boundary fix.** Only `last_rel` is unclaimed. The `boundary_note` branch
 that excused `last_rel-1` is removed; a difference there is `diff` or an

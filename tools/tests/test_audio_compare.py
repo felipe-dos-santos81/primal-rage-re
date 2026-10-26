@@ -19,6 +19,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOL = os.path.join(ROOT, "tools", "audio_compare.py")
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import audio_compare  # noqa: E402
 import opl_trace  # noqa: E402
 
 # The synthetic port section's song handle and bank (not a shipped bank).
@@ -128,17 +129,22 @@ def base_case():
     return port, list(port)
 
 
-def one_tick_later_pair(drop_b=False, keep_empty=True):
-    """The reviewer's one-tick-later baseline: A at rel 1, an empty tick 2,
-    B..G at rel 3..8; a boundary H at rel 8 in the port only. The mutant
-    deletes B's only capture write (and optionally the empty tick)."""
+def one_tick_later_pair(drop='none', keep_empty=True):
+    """The replayable one-tick-later shapes: the port's A..G at rel 1..7 (with
+    a boundary write at rel 8) and the capture's A at rel 1, an empty rel 2,
+    then B..G at rel 3..8. `drop='port-b'` is the reviewer's exact case: the
+    port's B is deleted and its empty tick retained; `drop='capture-b'` deletes
+    the capture's B instead. `keep_empty=False` removes the empty tick from the
+    capture by moving C..G one tick earlier."""
     port = [(1, 0x21, 0x01), (2, 0x22, 0x02), (3, 0x23, 0x03),
             (4, 0x24, 0x04), (5, 0x25, 0x05), (6, 0x26, 0x06),
             (7, 0x27, 0x07), (8, 0xB1, 0x0B)]
     cap = [(1, 0x21, 0x01), (3, 0x22, 0x02), (4, 0x23, 0x03),
            (5, 0x24, 0x04), (6, 0x25, 0x05), (7, 0x26, 0x06),
            (8, 0x27, 0x07)]
-    if drop_b:
+    if drop == 'port-b':
+        port = [w for w in port if w != (2, 0x22, 0x02)]
+    elif drop == 'capture-b':
         cap = [w for w in cap if w[1] != 0x22]
     if not keep_empty:
         # remove the empty tick's label by moving C..G one tick earlier: the
@@ -233,28 +239,60 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('unanchored', r.stdout)
 
-    def test_dropped_write_one_tick_later_with_empty_tick_fails(self):
-        # The reviewer's exact regression: the baseline is valid with B..G one
-        # tick later and an empty tick; deleting B's only capture write must
-        # fail (the empty tick cannot be used to skip the port's B).
+    def test_align_groups_port_side_dropped_write(self):
+        # The reviewer's exact group-level case: the baseline is A..G against
+        # A, empty, B..G (ok, claimed 7); the mutant deletes the PORT's B and
+        # retains its empty tick. The pre-fix branch1 (`pg == nxt_c` without
+        # `not cg`) skipped the capture's non-empty B and returned ok/7; the
+        # fixed branch1 requires the skipped group empty and fails.
+        A, B, C, D, E, F, G = (('A',), ('B',), ('C',), ('D',), ('E',),
+                               ('F',), ('G',))
+        port = [[A], [B], [C], [D], [E], [F], [G]]
+        cap = [[A], [], [B], [C], [D], [E], [F], [G]]
+        r = audio_compare.align_groups(port, cap)
+        self.assertTrue(r.ok, r.reason)
+        self.assertEqual(r.claimed, 7)
+        mutant_port = [[A], [], [C], [D], [E], [F], [G]]
+        r = audio_compare.align_groups(mutant_port, cap)
+        self.assertFalse(r.ok, 'the port-side dropped B was accepted')
+        self.assertNotEqual(r.claimed, 7)
+
+    def test_dropped_write_port_side_one_tick_later_fails(self):
+        # The reviewer's exact case through the public comparator: the baseline
+        # passes, then the PORT's B is deleted and its empty tick retained.
+        # (The pre-fix alignment accepted it; the fixed one fails.)
         port, cap = one_tick_later_pair()
         r = self.case(port, cap)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('synthetic: ok', r.stdout)
-        port, cap = one_tick_later_pair(drop_b=True)
+        port, cap = one_tick_later_pair(drop='port-b')
         r = self.case(port, cap)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('synthetic: FAIL', r.stdout)
         self.assertNotIn('synthetic: ok', r.stdout)
 
-    def test_dropped_write_one_tick_later_no_empty_tick_fails(self):
-        # The pre-fix whole-group branch could consume a non-empty port group
-        # when the capture's group equaled the port's next group. The same
-        # deletion with C..G one tick earlier must still fail.
+    def test_dropped_write_capture_side_one_tick_later_fails(self):
+        # The capture-side counterpart (not the reviewer's exact case): the
+        # capture's B is deleted; the port retains its B and the capture's
+        # empty tick. This fails too, but it exercises the capture accounting,
+        # not branch1's `not cg` guard.
         port, cap = one_tick_later_pair()
         r = self.case(port, cap)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        port, cap = one_tick_later_pair(drop_b=True, keep_empty=False)
+        self.assertIn('synthetic: ok', r.stdout)
+        port, cap = one_tick_later_pair(drop='capture-b')
+        r = self.case(port, cap)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+        self.assertNotIn('synthetic: ok', r.stdout)
+
+    def test_dropped_write_capture_side_one_tick_earlier_fails(self):
+        # The capture's B is deleted and C..G are one tick earlier; this is
+        # the capture-side shape the whole-group branch could skip for.
+        port, cap = one_tick_later_pair()
+        r = self.case(port, cap)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        port, cap = one_tick_later_pair(drop='capture-b', keep_empty=False)
         r = self.case(port, cap)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('synthetic: FAIL', r.stdout)
