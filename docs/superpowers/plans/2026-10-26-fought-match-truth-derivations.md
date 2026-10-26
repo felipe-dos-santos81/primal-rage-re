@@ -600,7 +600,9 @@ and without a script there is no replay, dump, compare, pins or oracle. The capt
 as `data/k11-captures/gp-twop-ko.failed`; `data/k11-captures/gp-twop-ko` does not exist, the
 target is not in `CAPTURE_DIRS`, all eight `GP_TWOP_KO_*` pins stay unwritten, no miss set and no
 `gp-twop-ko-oracle` exist, and `make gate-check` still reads `34/35 present, 1 missing` with
-`gp-u14-win-live` the declared gap. No second run was made (the task's one attempt).
+`gp-u14-win-live` the declared gap. No second run was made under the task's single-use rule; the
+controller then authorized one recovery run on a CPU-confined scope, and it failed the same harness
+check on a different frame (§F4.7). No third run was made.
 
 The cause is host starvation of the poller, not the game and not the scenario: 127 S frames were
 missed over the run, the largest gap `f=0x7C4 → f=0x804` (S `ms=55605 → ms=56670`, 1.07 s) under a
@@ -827,6 +829,114 @@ gp-keys-fight 9, gp-u23-u16-finisher 17; this run's 127 with a 64-frame gap is t
 scenario, and a second authorized attempt; the measured values here are the expectations for it.
 Until then the phase's two-human KO claim is a measured capture-side result, not an oracle.
 
+**The second authorization was spent on 2026-10-26 and failed the same harness check (§F4.7), so
+this section is now closed: no third run is authorized.**
 
 
 
+
+
+### §F4.7 The recovery capture (2026-10-26, CPU-confined)
+
+The controller authorized one recovery run after §F4.5's poller starvation. It ran in a systemd user
+scope pinned to CPU 19 (host load 28.45 on 20 cores at the start):
+
+```text
+$ systemd-run --user --scope -p AllowedCPUs=19 --quiet bash -lc 'cd <worktree> && DISPLAY=:1 \
+    timeout 600 make gp-capture scenario=gp-twop-ko'
+gp_capture: snapshots 3087, f 5..CB9, 166 frames missed (spec §3.7)
+gp_capture: CHECK base: ok
+gp_capture: CHECK steps fired 107/166 (0 skipped): ok
+gp_capture: CHECK end frame reached: ok
+gp_capture: CHECK mode 0x27 after the Enter: ok
+gp_capture: CHECK snapshots kb == raw (0 differ): ok
+gp_capture: CHECK frames written 2565/2565: ok
+gp_capture: CHECK port script v2 (key 16 (p1.b2) consumption at f=596 unpinned): FAIL
+gp_capture: CHECK no unscripted input: ok
+gp_capture: CHECK pokes written 0/0, 0 raced: ok
+gp_capture: CHECK stopped at the end (SIGTERM at f=0CB9, rc=0): ok
+gp_capture: wrote 2565 frames to .../data/k11-captures/gp-twop-ko.failed (raw 1373..5251),
+  wall 77.0s; a CHECK failed, .../data/k11-captures/gp-twop-ko left as it was
+make: *** [Makefile:650: gp-capture] Error 1
+```
+
+The game's verdict was again the KO — a complete two-human hand-dealt KO — and again the publication
+was refused by the script pin:
+
+```text
+$ python3 tools/gp_twop.py check --ko --capture data/k11-captures/gp-twop-ko.failed
+gp_twop: gp-twop-ko.failed: hand-dealt KO of side 0: ko f=B91; round result f=B91; match result f=-; death-done f=-
+gp_twop: gp-twop-ko.failed: hand-dealt KO: ok
+exit=0
+
+$ python3 tools/gp_twop.py check --capture data/k11-captures/gp-twop-ko.failed
+gp_twop: gp-twop-ko.failed: join f=2AB (cred 4 -> 4); 2378 S records from the join to X f=C7D;
+  side 0 [('pad', 2378)], side 1 [('pad', 2378)]; fight presses 467/30
+gp_twop: gp-twop-ko.failed: two-human match: ok
+exit=0
+```
+
+| row | frame | `s0_5a` | `s1_5a` | `w2` | `w3` | `ad4` | `b0c` |
+|---|---|---|---|---|---|---|---|
+| round result (mode 8) | `0xB91` | 0 | `0x78` | 1 | 0 | `0xFFFFFFFF` | 0 |
+
+`s1_5a`'s live path in the last mode-6 entry (`f=0x4F7`): `0x12` (`0x561`), `0x22` (`0x5D0`),
+`0x29` (`0x6A7`), `0x30` (`0x6ED`), `0x37` (`0x7CD`), `0x40` (`0x801`), `0x47` (`0x8F7`), `0x57`
+(`0x925`), `0x5E` (`0xA1F`), `0x6E` (`0xA4F`), `0x75` (`0xAF9`), then `0x78` on the mode-8 record;
+`s0_5a = 0` and `b0c = 0` in every S record. The stop: mode-8 P record `f=0xB8D`, X `f=0xC7D`
+(exactly +240), mode 0x16 P record `f=0xC6A`. The KO came on the round's **88th attempt**
+(`k = 87`, X step 107) — the measured attempt-88 shape again, from a different RNG draw.
+
+The pin's rows:
+
+```text
+S ms=45498 f=0593 ... head=001E tail=001E
+I ms=45498 f=0593 step=12 press=p1.b2 ... bios=316E ring=1 late=1
+I ms=45498 f=0593 step=12 press=p1.b3 ... bios=326D ring=1 late=1
+I ms=45498 f=0593 step=13 press=p1.b0 ... bios=1675 ring=1 late=1
+I ms=45498 f=0593 step=13 press=p1.b1 ... bios=1769 ring=1 late=1
+H ms=45536 f=0596 head=0020
+H ms=45536 f=0596 head=0022
+H ms=45536 f=0596 head=0024
+H ms=45536 f=0596 head=0026
+S ms=45551 f=0596 ... head=0026 tail=0026
+```
+
+```text
+$ python3 tools/gp_session.py port-script --scenario gp-twop-ko \
+    --capture data/k11-captures/gp-twop-ko.failed --out /tmp/gp-twop-ko-recovery.script
+gp_session: port-script: gp-twop-ko: key 16 (p1.b2) consumption at f=596 unpinned
+exit=1
+```
+
+`S(0x595)` does not exist: the S records jump `0x593 → 0x596` (frames `0x594` and `0x595` missing),
+so `prev = snap.get(c - 1)` is `None`. Two attempts (steps 12 and 13) had burst-fired together at
+`f=0x593` after a 23-frame poller gap (`0x57B → 0x593`), queuing four BIOS words in one pass; the
+game consumed all four at `f=0x596`. This is the same mechanism as §F4.5 one step earlier in the
+log, and it shows the pin rule needs exactly one thing the starved poller cannot guarantee: an S
+record at `c - 1`.
+
+The CPU pinning made the poller worse, not better: the missed-frame count rose 127 → 166 (two
+23-frame gaps instead of one 64-frame gap), because the scope put DOSBox-X and the poller thread on
+the same core while the host's other ~20 CPU-bound processes stayed unconstrained across all 20
+cores. Every other check passed again (stop path, end frame, kb/raw, frames written, no unscripted
+input, no pokes).
+
+The recovery's artifact, now at `data/k11-captures/gp-twop-ko.failed`: 2565 frames, 128 MB,
+`poll.log` 3695 lines / 3087 S records,
+sha256 `1513b481a0d877d26ad3aa1d9070696a94f4812c7d81f49a87ed461f8f8b8ae1`; `session.txt` reads
+`wall_s=77.0`, `fps=70.0866`, `cmos=zero pad_bios=1`, `stop_at_end=1 tail=60 signal_f=0CB9`.
+
+**The first capture's artifact did not survive the recovery.** `gp_capture.publish` renames an
+existing `<out>.failed` to `<out>.failed.old` and deletes it after moving the new failed run in, so
+the run §F4.5 measured (sha256 `67aa1c403abdb1f45a33ef4864d0a4e79e1aa6c54ea210bd5429902945e9f6a9`)
+was replaced; its `poll.log` and frames are gone. Its measured rows, check lines and sha256 remain in
+§F4.3-§F4.5, and nothing consumed the artifact (it was in no gate, oracle, miss set or audio trace),
+so no claim depended on it. A future recovery must copy a failed artifact out first: the tool has no
+separate failed-name option.
+
+Consequences, unchanged and final: `data/k11-captures/gp-twop-ko` does not exist; `gp-twop-ko` is not
+in `CAPTURE_DIRS`; all eight `GP_TWOP_KO_*` pins stay unwritten; there is no `gp-twop-ko-oracle`, no
+`k_miss_gp_twop_ko` and no `verify` line; `make gate-check` still reads `34/35 present, 1 missing`
+with `gp-u14-win-live` the declared gap. The two-human KO remains a **game-evidence-only named
+gap** (measured on two captures, neither replayable), and no third run was made.
