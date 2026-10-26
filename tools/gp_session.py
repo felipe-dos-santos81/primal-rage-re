@@ -784,6 +784,21 @@ SCENARIOS['gp-u23-u16-finisher'] = dict(time_limit=300, steps=(
     (('until_mode', 0x12, 0),)                     # the conquered-lands screen
 ))
 
+# Fought-match truth Task 5 (plan 2026-10-26-fought-match-truth.md; record §F5):
+# the U23 scenario re-run as a diagnostic, stopped with no delay on the
+# conquered-lands screen (mode 0x12) instead of an `until_mode` step. The script
+# is U23's through the finisher (the same steps tuple, the same labelled poke), so
+# a capture of it holds the original's fighter slots at the finisher's deciding
+# `s0_54` 2 -> 0 transition: the reaction's case 3 in 0x4844C ends when
+# 0xBD884[own char] 0x1400 > slot+0x30 (0x48599 cmp edx,[eax+0x30]; 0x4859C jle),
+# and the port's 0x202E there leaves the reaction at r0=0x27 where the original
+# reaches 0x33 (record 2026-10-23-endgame-truth §E2, design §7.3).
+# stop_delay=0 is the harness value: the marker frame itself is kept, the mode-0x12
+# tail is not. Not in CAPTURE_DIRS and not in the audio traces: the capture is
+# diagnostic and nothing ratchets on it (like gp-idle-loss-run2).
+SCENARIOS['gp-u24-u16-state'] = dict(
+    SCENARIOS['gp-u23-u16-finisher'], stop_mode=0x12, stop_delay=0)
+
 
 # Fought-match truth Task 4 (plan 2026-10-26-fought-match-truth.md; record §F4):
 # the controllable arm after U14's fought win lost (R1): a real two-human match
@@ -1091,6 +1106,9 @@ class Schedule:
 # gp-twop-ko (fought-match truth Task 4) stops too: its end is 240 frames into the
 # first result mode (0x08/0x09, stop_mode/stop_delay), the KO's result window, and
 # nothing past it is compared.
+# gp-u24-u16-state (fought-match truth Task 5) stops too: its end is the
+# conquered-lands screen (mode 0x12, stop_mode, stop_delay 0), the marker the state
+# comparison anchors on; it is a diagnostic, not a gate-inventoried capture.
 # gp-u18-talon-ending (endgame truth Task 3) stops too: its end is mode 3 after the
 # high-score entry (u10's until_mode), and nothing past it is compared.
 # gp-u19-vertigo-ending (endgame truth Task 4) stops the same way: its end is mode 3
@@ -1110,7 +1128,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
-                         'gp-twop-ko', 'gp-harness-smoke'})
+                         'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state'})
 
 
 class ScriptError(Exception):

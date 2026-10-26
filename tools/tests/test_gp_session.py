@@ -1061,6 +1061,23 @@ class TestU23Finisher(unittest.TestCase):
                          [16, 16, 16])
 
 
+class TestU24U16State(unittest.TestCase):
+    """gp-u24-u16-state (plan 2026-10-26-fought-match-truth Task 5; record §F5): the
+    U23 scenario run again, stopped on the conquered-lands screen (mode 0x12) with no
+    delay, so a capture of it holds the original's fighter-slot +0x30/+0x42 at the
+    finisher's deciding `s0_54` 2 -> 0 transition (0x4844C case 3). It is a
+    diagnostic, not a gate-inventoried capture: the same run, the same labelled poke,
+    only the stop and the mode 0x12 tail's absence differ."""
+
+    def test_the_u16_state_capture_clones_u23_and_stops_on_the_lands(self):
+        scn = gs.SCENARIOS['gp-u24-u16-state']
+        self.assertEqual(scn['steps'], gs.SCENARIOS['gp-u23-u16-finisher']['steps'])
+        self.assertEqual((scn['stop_mode'], scn['stop_delay']), (0x12, 0))
+        self.assertIn('gp-u24-u16-state', gs.STOP_AT_END)
+        self.assertEqual(scn['time_limit'], gs.SCENARIOS['gp-u23-u16-finisher']['time_limit'])
+        self.assertIsNot(scn, gs.SCENARIOS['gp-u23-u16-finisher'])   # a copy, not an alias
+
+
 class TestPokeScript(unittest.TestCase):
     def setUp(self):
         gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())

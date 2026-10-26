@@ -940,3 +940,221 @@ in `CAPTURE_DIRS`; all eight `GP_TWOP_KO_*` pins stay unwritten; there is no `gp
 `k_miss_gp_twop_ko` and no `verify` line; `make gate-check` still reads `34/35 present, 1 missing`
 with `gp-u14-win-live` the declared gap. The two-human KO remains a **game-evidence-only named
 gap** (measured on two captures, neither replayable), and no third run was made.
+
+## §F5 The U16 deciding state (Task 5)
+
+Outcome: the diagnostic scenario and its test are committed; the phase's **one** authorized
+diagnostic capture ran on 2026-10-26 and **did not reach the finisher state**, so the original's
+`slot+0x30`/`slot+0x42` at the `0x4844C` case-3 exit is **not measured**. The capture also failed
+one harness check (`port script v2`, a pad change at `f=0x57B` unpinned), so it was not published:
+it stays at `data/k11-captures/gp-u24-u16-state.failed`, is not in `CAPTURE_DIRS`, and nothing
+ratchets on it. Under the controller's ruling (one diagnostic capture, the S records are the
+original's state) the poll log was still read and the marker comparison run on the capture side:
+the marker is **absent** — the run's round 2 never KO'd P2, so mode 9 received no `s0_54 = 2`
+store and the case-3 exit never occurred. The y/anchor hypothesis is therefore **neither confirmed
+nor refuted numerically**; R2 stays a named gap, no port fix is taken, and no
+`k_miss_gp_u24_u16_state` pin is written (without a port script there is no replay, and the U23
+pair would be an unmeasured copy — §F4.5's dead-weight rule).
+
+### §F5.1 The scenario change
+
+```python
+SCENARIOS['gp-u24-u16-state'] = dict(
+    SCENARIOS['gp-u23-u16-finisher'], stop_mode=0x12, stop_delay=0)
+```
+
+The clone keeps U23's steps tuple object (the same 76 steps, the same labelled
+`U23_POKED_DAMAGE` poke at the second mode-6 entry) and the same `time_limit` 300, and adds the
+stop-on-mode the phase's Task 1 built: the conquered-lands screen (mode 0x12) is the stop — the `X`
+record is written at its first frame and the capture's 60-frame stop tail follows (§F5.3's
+`f=0x215D..0x2199`). `'gp-u24-u16-state'` joins `STOP_AT_END`; it is **not** in `CAPTURE_DIRS` (a
+diagnostic, like `gp-idle-loss-run2`), not in the audio traces, and the gate count stays 35.
+
+`TestU24U16State` (one test) pins the clone, the stop pair, the `STOP_AT_END` membership and that
+the clone is a copy and not an alias:
+
+```python
+def test_the_u16_state_capture_clones_u23_and_stops_on_the_lands(self):
+    scn = gs.SCENARIOS['gp-u24-u16-state']
+    self.assertEqual(scn['steps'], gs.SCENARIOS['gp-u23-u16-finisher']['steps'])
+    self.assertEqual((scn['stop_mode'], scn['stop_delay']), (0x12, 0))
+    self.assertIn('gp-u24-u16-state', gs.STOP_AT_END)
+    self.assertEqual(scn['time_limit'], gs.SCENARIOS['gp-u23-u16-finisher']['time_limit'])
+    self.assertIsNot(scn, gs.SCENARIOS['gp-u23-u16-finisher'])   # a copy, not an alias
+```
+
+### §F5.2 RED then GREEN
+
+Before the scenario existed:
+
+```text
+$ python3 -m unittest tools.tests.test_gp_session -k u16_state -v
+ERROR: test_the_u16_state_capture_clones_u23_and_stops_on_the_lands
+  KeyError: 'gp-u24-u16-state'
+Ran 1 test in 0.004s
+FAILED (errors=1)
+```
+
+After it (and after `gp-u24-u16-state` joined `STOP_AT_END`): `Ran 1 test ... OK`;
+`python3 -m unittest tools.tests.test_gp_session` is `Ran 74 tests ... OK` (73 before, +1) and the
+pair with `test_gp_capture` is `Ran 116 tests ... OK`.
+
+Mutation proofs (each applied to `tools/gp_session.py`, run, restored; the `__pycache__` was
+removed between runs because a same-size, same-second rewrite can reuse stale bytecode, §F4.2):
+
+| mutation | caught by |
+|---|---|
+| `stop_delay=0` → `1` | `AssertionError: Tuples differ: (18, 1) != (18, 0)` |
+| `stop_mode=0x12` → `0x09` | the stop pair assertion |
+| `'gp-u24-u16-state'` removed from `STOP_AT_END` | the membership assertion |
+| the clone's steps truncated (`[:-1]`) | the steps equality |
+| the clone aliases U23 (`SCENARIOS['gp-u24-u16-state'] = SCENARIOS['gp-u23-u16-finisher']`) | `AssertionError: unexpectedly identical` (the `assertIsNot`) |
+
+`git diff` was clean after the restore (`cmp` against the saved copy: identical).
+
+### §F5.3 The diagnostic capture's harness checks (the `.failed` state)
+
+```text
+$ DISPLAY=:1 timeout 600 make gp-capture scenario=gp-u24-u16-state
+gp_capture: snapshots 8243, f 5..2199, 354 frames missed (spec §3.7)
+gp_capture: CHECK base: ok
+gp_capture: CHECK steps fired 65/75 (0 skipped): ok
+gp_capture: CHECK end frame reached: ok
+gp_capture: CHECK mode 0x27 after the Enter: ok
+gp_capture: CHECK snapshots kb == raw (0 differ): ok
+gp_capture: CHECK frames written 8133/8133: ok
+gp_capture: CHECK port script v2 (pad change at f=57B unpinned (no S record at f=57A)): FAIL
+gp_capture: CHECK no unscripted input: ok
+gp_capture: CHECK pokes written 1/1, 0 raced: ok
+gp_capture: CHECK stopped at the end (SIGTERM at f=2199, rc=0): ok
+gp_capture: wrote 8133 frames to .../data/k11-captures/gp-u24-u16-state.failed
+  (raw 1410..11510), wall 167.6s; a CHECK failed, .../gp-u24-u16-state left as it was
+make: *** [Makefile:650: gp-capture] Error 1
+```
+
+Nine of ten checks pass: the stop-on-mode path fires (the X record at `f=0x215D`, `stop_mode`
+0x12, no delay), the poke is written once with no race, no input is unscripted and the run ends by
+SIGTERM at `f=0x2199` (`reason=end rc=0`). The one failure is the port-script key pin — the same
+starvation class as §F4.5/§F4.7, not a game fact: the host ran at load ~27-29 on 20 cores (another
+session's 20 CPU-bound `difftest` processes), the poller missed 354 frames against the four
+published captures' 8-17 (U23: 17), and no `S` record exists at `f=0x57A` for the pad change the
+script must anchor. `make gp-replay scenario=gp-u24-u16-state` is therefore not runnable: there is
+no script, no dump and no trace for this scenario.
+
+The artifact: `data/k11-captures/gp-u24-u16-state.failed` — 8133 frames, `poll.log` 8607 lines /
+8243 `S` records, sha256
+`58dd6991f66d487a49dfd1b8b402d01ef6dcf6b49d00a7f5339e7b4e914e0045`; `session.txt` reads
+`time_limit=300 wall_s=167.6 rc=0`, `stop_at_end=1 tail=60 signal_f=2199`, `fps=70.0866
+frames=8133 raw_window=1410..11510`, `check=FAIL port script v2 (...)` and nine `check=ok` lines;
+`python3 tools/gp_capture.py check-input <dir>` exits 0 (no unscripted input; the stray-press
+caveats of AGENTS.md still apply).
+
+**The game's run did not reproduce U23's path.** Round 1: mode 6 `f=0x04DE..0x119F`, then the
+time-out result (mode 7 at `f=0x11A3`, `s1_5a = 0x2A`, P1 `0`), mode 8 for one S (`f=0x120B`), the
+0x16 result hold to `f=0x12FC`. Round 2: mode 6 `f=0x1378..0x203B`; the labelled poke writes P2's
+`0x10789E = 0x77` at `f=0x1382` (the `s1_5a` S field shows `0x77` from that frame on), the 12
+real 1A/1B attempts fire at `f=0x1389..0x144D` (the builder's 16-frame spacing, steps 47..59 with
+the walk at 55) and **all whiff**: `s1_5a` never leaves `0x77`, no `0x78`, no `0x48374`. The round
+timer runs out at `f=0x203F` (mode 7), and the already-decided match goes mode 9 at `f=0x20A7` (one
+S record), mode 0x17 at `f=0x20AB`, mode 0x12 at `f=0x215D` (the stop). The five finisher steps
+that still fired (60..64 at `f=0x210A..0x2116`, the anchor on its due frame `0x20A7 + 99`) landed on
+the victory screens; the other ten never came due. P2 won both rounds on health, so there was no
+defeated-side match result, no finisher entry and no reaction — the run is RNG/position-dependent
+differently from U23, not a harness write (the poke and every press are logged at their frames,
+`check=pokes written 1/1` and `check=no unscripted input`).
+
+### §F5.4 The marker comparison
+
+The brief's Step 6 one-off, run against `.failed` (the only capture) and the **existing U23
+replay** as the controller allows (its capture is present and its port script is valid):
+
+```text
+$ make gp-replay scenario=gp-u23-u16-finisher
+gp_session: port-script: gp-u23-u16-finisher: wrote .../gp-u23-u16-finisher.script (257 lines)
+test_gp_replay: 0 restart(s) landed
+fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=3793
+fn-miss PR_GP_DUMP 0x5D812 set_dead hits=3427
+fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP 0x5D812 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+all checks passed
+
+capture mode9/set/clear absent (first mode-9 entry 20A7, no later s0_54==2)
+port    mode9/set/clear 1483 1532 155C
+port at +0: s0_30=00001180 s0_42=8000 s1_30=00000800 s1_42=8030
+port at the set: s0_30=0000202E s0_42=8000 s0_54=2 r0=27
+port r0 at clear: 27 (capture mode-9 r0 max 33)
+```
+
+The capture-side marker is **absent**: the first mode-9 entry is `f=0x20A7` and no `S` record
+after it has `s0_54 = 2` (the only `+0x54 = 2` runs are the two time-out result screens,
+`f=0x11A3..0x11D8` and `f=0x203F..0x2070`, and they end before mode 9). The brief's script raises
+`StopIteration` in the set lookup (its second `next`); the one-off reports it as above. The old
+U23 capture's own marker is unchanged (`0x1486/0x1532/0x1533`; its `poll.log` predates the fields,
+so it has no `s0_30` key at any frame — the reason the diagnostic was needed).
+
+The measured state on each side (S = the capture's poll log; T/S = the port's U23 trace; the
+capture's columns are the original's, the port's its own replay):
+
+| row | frame | `s0_30` | `s0_42` | `s1_30` | `s1_42` | `s0_54` | `r0` |
+|---|---|---|---|---|---|---|---|
+| capture round-2 mode-6 entry | `0x1378` | `0x0B40` | `0x8000` | `0x0D80` | `0x8000` | 0 | `FF` |
+| capture round-2 mode-6 | `0x1378..0x203B` | min `0x0A80`, max `0x1200` | `0x8000`/`0x8200` | `0x0D80` | `0x8000` | 0 | `FF`→`02` |
+| capture mode-9 entry (only S) | `0x20A7` | `0x0B40` | `0x8080` | `0x0600` | `0x8000` | 0 | `02` |
+| capture mode 0x12 (stop) | `0x215D` | `0x0B40` | `0x8080` | `0x0600` | `0x8000` | 0 | `02` |
+| port mode-9 entry (first T) | `0x1483` | `0x0BC0` | `0x8000` | `0x0D80` | `0x8010` | 0 | `00` |
+| **port reaction set** | **`0x1532`** | **`0x202E`** | `0x8000` | `0x1000` | `0x8030` | **2** | `27` |
+| **port case-3 exit (clear)** | **`0x155C`** | `0x1180` | `0x8000` | `0x0800` | `0x8030` | **0** | `27` |
+| port round-2 mode-6 (`0x13AF..0x1482`) | — | min `0x0A80`, max `0x1200` | `0x8000` | — | — | 0 | — |
+
+The two time-out `+0x54 = 2` transitions in the capture, which the brief's marker excludes by
+construction (the set must follow the first mode-9 entry; these precede it):
+
+| transition | frame | `s0_30` | `s0_42` | `s0_54` |
+|---|---|---|---|---|
+| round 1 set | `0x11A3` | `0x1A58` | `0x8080` | 2 |
+| round 1 clear | `0x11D9` | `0x0170` | `0x8080` | 0 |
+| round 2 set | `0x203F` | `0x1A58` | `0x8080` | 2 |
+| round 2 clear | `0x2071` | `0x00B0` | `0x8080` | 0 |
+
+Port-side context (measured, not the deciding state): at `0x48374`'s set (`f=0x1532`) the port's
+latched y is `0x202E` — design §7.3's `ab4 0x1D40` plus the record's `+0x1C 0x2EE` (the same
+frame holds the target's `+0x36 = 0x2EE` and `+0x44 = 0x28` stores); the y then rises to `0x3BB2`
+(`f=0x1544`) and decays; the `0x4844C` case-3 gate (`0x1400 > slot+0x30`) first opens at
+`f=0x155B` (`y = 0x1104`, the previous frame `0x147E` is still above), so the port's `+0x54`
+clears at `f=0x155C` — the port's exit is the gate's own timing, 0x29 frames after the capture's
+`f=0x1533`. The port's `r0` reaches `0x27` at `f=0x14F7` and never advances past it; the old
+capture's reaches `0x33` at `f=0x155B`.
+The port's mode-6 y range in round 2 (`0x0A80..0x1200`) is the capture's exactly, and the
+mode-9 entry values are `0x0BC0` against the capture's `0x0B40` (0x80 apart, a different run's
+positions): the y model agrees in the fight and diverges only at the reaction's stream.
+
+### §F5.5 The decision
+
+The deciding value — the original's `slot+0x30` at the `0x4844C` case-3 exit — is **not measured**.
+The marker is absent because the run never entered the finisher path, and no other capture carries
+the fields (the old U23 `poll.log` has no `s0_30`). So:
+
+- The y/anchor hypothesis is **neither confirmed nor refuted** by a value. The progress is the
+  narrowing: the fight's y range matches on both sides and the mode-9 entry y differs by 0x80 (a
+  different run's positions), so a divergence is confined to the reaction's own stream/anchor state
+  — the same four candidates design §7.3 named (the `0xED8FE` stream, the `0xCFC32` anchor table,
+  the `0x186D0` latch arm, or a `+0x42` bit-3 state).
+- **No port fix is taken** (nothing is raw-proved; the brief forbids adjusting the gate or the y to
+  make the reaction appear), so there is no boundary test in `port/tests/test_fight.c`, no change
+  to `port/src/game/fighter.c`, `port/tests/diff_runner.c` or `port/tests/test_platform.c`, and no
+  `make gp-u23-oracle` pin move. The Makefile's U23 comment/pins are unchanged.
+- **R2 stays a named gap**, now with its measurement attempt recorded: the U16 finisher reaction's
+  deciding state is unmeasured on the original; the port's `r0` stays `0x27` where the U23 capture
+  advances to `0x33`.
+- **No `k_miss_gp_u24_u16_state` entry.** The scenario cannot be replayed (the port script needs an
+  `S` record at `c-1` for every consumed BIOS word, and the capture has none at `f=0x57A`), so a
+  miss set would be unmeasured; copying U23's pair would pin a driver run that cannot happen. The
+  `PR_GP_DUMP` driver's scenario lookup (`fnm_gp_set`) keeps its NULL fallback, exactly as §F4.5
+  left `gp-twop-ko`.
+- The scenario and `TestU24U16State` stay (they are the harness for the next authorized run). What
+  a valid run needs: a host where the poller is not starved *and* the U23 outcome reproduces — the
+  same labelled poke plus 12 real hits, one KO of P2, the mode-9 reaction. The measured attempt
+  count for that is U23's (its first hit at `f=0x5A4`); this run's 12 attempts all whiffed at
+  `f=0x1389..0x144D`, which is the game's RNG/position outcome, not a script defect. No second
+  diagnostic capture was made under the task's single-run rule.
