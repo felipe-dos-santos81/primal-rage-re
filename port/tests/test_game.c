@@ -13692,6 +13692,7 @@ static void gp_trace_line(void)
             "s0_52=%02X s0_54=%02X s0_5a=%02X s1_52=%02X s1_54=%02X s1_5a=%02X ent=%08X "
             "r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X "
             "dev1=%04X dev2=%04X "
+            "s0_30=%08X s0_42=%04X s1_30=%08X s1_42=%04X "
             "lat=%08X spz=%02X mpz=%02X "
             "afc=%04X ad4=%08X w2=%02X w3=%02X b1e=%02X b21=%02X b14=%02X b0c=%02X t104=%04X "
             "m106=%08X m10a=%08X sc0=%08X c82=%02X\n",
@@ -13713,6 +13714,13 @@ static void gp_trace_line(void)
              * gp_session's POINTER_FIELDS. */
             (unsigned)DSW(DSD(DS_00101514) + 0x2D4u),
             (unsigned)DSW(DSD(DS_00101514) + 0x2D6u),
+            /* Plan 2026-10-26-fought-match-truth Task 1 (§F1): the fighter slots'
+             * latched y (+0x30, a dword) and the +0x42 word the 0x36F10 gate
+             * sets 0x820 in (DSD for +0x30, the word [slot+0x42]). */
+            (unsigned)DSD(DS_001077B0 + 0x30u),
+            (unsigned)DSW(DS_001077B0 + 0x42u),
+            (unsigned)DSD(DS_001077B0 + 0x94u + 0x30u),
+            (unsigned)DSW(DS_001077B0 + 0x94u + 0x42u),
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */

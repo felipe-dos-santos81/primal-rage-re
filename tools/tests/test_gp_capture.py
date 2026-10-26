@@ -460,7 +460,19 @@ class TestStopAtEnd(unittest.TestCase):
             self.assertNotIn(name, gs.STOP_AT_END)
         for name in gs.STOP_AT_END & set(gs.SCENARIOS):    # a stop needs an end frame
             last = gs.SCENARIOS[name]['steps'][-1]
-            self.assertTrue(last[-1] == ('end',) or last[0] == 'until_mode', name)
+            self.assertTrue(last[-1] == ('end',) or last[0] == 'until_mode'
+                            or gs.SCENARIOS[name].get('stop_mode') is not None, name)
+
+    def test_the_poller_passes_the_stop_modes_to_the_schedule(self):
+        p = gc.Poller('/tmp/mem', '/tmp/log', (), None,
+                      stop_mode=(0x08, 0x09), stop_delay=240, skip_on_mode=(0x08, 0x09))
+        self.assertEqual((p.sched.stop_modes, p.sched.stop_delay, p.sched.skip_modes),
+                         ((0x08, 0x09), 240, (0x08, 0x09)))
+
+    def test_steps_ok_accepts_a_skipped_round(self):
+        s = gs.Schedule((('after', 1, ('pad', ('p1.b0',), 4)),), skip_on_mode=0x08)
+        s.on_mode(10, 0x08)
+        self.assertTrue(s.steps_ok)                 # the one step is deliberately skipped
 
 
 class TestMemsize(unittest.TestCase):

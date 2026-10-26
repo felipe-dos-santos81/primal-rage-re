@@ -54,6 +54,11 @@ SNAP_FIELDS = (
     # Appended like the u6 fields, so every older poll.log's S lines lack them;
     # only gp-u17-device2 asserts them (gp_compare --dev-words).
     ('dev1', KB_DEV1, 2), ('dev2', KB_DEV2, 2),
+    # Plan 2026-10-26-fought-match-truth Task 1 (§F1): the fighter slots' latched
+    # y (+0x30, a dword), and the +0x42 word the 0x36F10 gate sets 0x820 in.
+    # Appended, so every older poll.log's S lines lack them.
+    ('s0_30', 0x1077E0, 4), ('s0_42', 0x1077F2, 2),
+    ('s1_30', 0x107874, 4), ('s1_42', 0x107886, 2),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -858,7 +863,7 @@ class Schedule:
     wall time reaches those screens (the K11 harness's AUTOTYPE is wall-paced for
     the same reason). The poller calls due_wall() every pass (record §H6.9)."""
 
-    def __init__(self, steps):
+    def __init__(self, steps, stop_mode=None, stop_delay=0, skip_on_mode=None):
         self.steps = list(steps)
         self.i = 0
         self.prev_frame = None
@@ -873,6 +878,21 @@ class Schedule:
         self.now = 0.0              # the poller's latest wall time
         self.fired = 0
         self.total = sum(1 for st in self.steps if st[0] != 'until_mode' and st[-1] != ('end',))
+        self.stop_modes = () if stop_mode is None else (
+            tuple(stop_mode) if isinstance(stop_mode, (tuple, list)) else (stop_mode,))
+        self.skip_modes = () if skip_on_mode is None else (
+            tuple(skip_on_mode) if isinstance(skip_on_mode, (tuple, list)) else (skip_on_mode,))
+        self.stop_delay = stop_delay
+        self.skipped = 0
+        self.stopped_on_mode = False
+
+    @property
+    def steps_ok(self):
+        """All scripted steps either fired or were deliberately skipped, or a
+        stop_on_mode ended the capture. A skip_on_mode drops one round's queued
+        steps and resumes at the next after_entry; a stop_on_mode ends the whole
+        capture."""
+        return self.fired + self.skipped == self.total or self.stopped_on_mode
 
     def _target(self, st):
         if st[0] == 'after_mode':
@@ -886,6 +906,17 @@ class Schedule:
         return None
 
     def on_mode(self, f, mode):
+        if mode in self.skip_modes:
+            j = next((k for k in range(self.i, len(self.steps))
+                      if self.steps[k][0] == 'after_entry'), None)
+            end = len(self.steps) if j is None else j
+            for k in range(self.i, end):
+                if self.steps[k][0] != 'until_mode' and self.steps[k][-1] != ('end',):
+                    self.skipped += 1
+            self.i = end
+        if mode in self.stop_modes and self.end_frame is None:
+            self.stopped_on_mode = True
+            self.end_frame = f + self.stop_delay
         if self.i < len(self.steps):
             st = self.steps[self.i]
             if st[0] == 'until_mode' and mode == st[1] and self.end_frame is None:

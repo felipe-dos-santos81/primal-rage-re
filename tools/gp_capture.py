@@ -231,7 +231,7 @@ def run_checks(name, lines, sched, n_frames, n_want):
     snap = gs.snapshots(lines)
     kbraw = sum(1 for v in snap.values() if v['kb'] != gs.raw_to_kb(v['raw']))
     return [('base', any(x['kind'] == 'B' for x in recs)),
-            ('steps fired %d/%d' % (sched.fired, sched.total), sched.fired == sched.total),
+            ('steps fired %d/%d (%d skipped)' % (sched.fired, sched.total, sched.skipped), sched.steps_ok),
             ('end frame reached', any(x['kind'] == 'X' for x in recs)),
             (arm_label, ordered),
             ('snapshots kb == raw (%d differ)' % kbraw, kbraw == 0),
@@ -369,12 +369,12 @@ def dosbox_cmd(root, game, iso, time_limit, stop_at_end=False, memsize=None):
 
 class Poller(threading.Thread):
     def __init__(self, mem_path, log_path, steps, stop, pad_bios=True, fields=gs.SNAP_FIELDS,
-                 wall=False):
+                 wall=False, stop_mode=None, stop_delay=0, skip_on_mode=None):
         super().__init__(daemon=True)
         self.fields = fields          # SNAP_FIELDS plus a scenario's `extra` (U11 record §K.3)
         self.wall = wall              # a wall-paced scenario (record §H6.9)
         self.mem_path, self.log_path, self.stop, self.pad_bios = mem_path, log_path, stop, pad_bios
-        self.sched = gs.Schedule(steps)
+        self.sched = gs.Schedule(steps, stop_mode, stop_delay, skip_on_mode)
         self.end_seen = False
 
     stop_tail = None        # frames after the end frame to SIGTERM `proc` (None: run to the time limit)
@@ -459,12 +459,13 @@ class Poller(threading.Thread):
                         self.sched.on_mode(f, v2['mode'])
                         self.sched.on_snap(f, v2['mode'])
                         inj.release_due(f, ms)
-                        for step, act, late in fire(self.sched, f):
-                            if act[0] == 'poke':
-                                apply_poke(mm, base, log, step, f, act[1], late, ms, v2,
-                                           lambda: read_snap(mm, base))
-                            for name, scan, word, hold in gs.expand(act):
-                                inj.press(step, f, name, scan, word, hold, late, ms)
+                        if self.sched.end_frame is None:
+                            for step, act, late in fire(self.sched, f):
+                                if act[0] == 'poke':
+                                    apply_poke(mm, base, log, step, f, act[1], late, ms, v2,
+                                               lambda: read_snap(mm, base))
+                                for name, scan, word, hold in gs.expand(act):
+                                    inj.press(step, f, name, scan, word, hold, late, ms)
                         if not self.end_seen and self.sched.ended(f):
                             log.write('X ms=%d f=%04X step=%d end\n' % (ms, f, self.sched.i))
                             self.end_seen = True
@@ -544,7 +545,9 @@ def main():
         poll = Poller(os.path.join(root, 'guest.mem'), os.path.join(root, 'poll.log'),
                       scn['steps'], stop, pad_bios=not a.no_pad_bios,
                       fields=gs.SNAP_FIELDS + scn.get('extra', ()),
-                      wall=scn.get('wall', False))
+                      wall=scn.get('wall', False),
+                      stop_mode=scn.get('stop_mode'), stop_delay=scn.get('stop_delay', 0),
+                      skip_on_mode=scn.get('skip_on_mode'))
         poll.start()
         t = time.monotonic()
         proc = subprocess.Popen(cmd)

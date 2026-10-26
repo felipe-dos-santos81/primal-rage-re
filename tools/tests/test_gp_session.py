@@ -37,18 +37,19 @@ class TestTables(unittest.TestCase):
 
     def test_the_u6_fields_are_appended(self):
         # plan gameplay-u6b, record gameplay-u6 §U6.11: after every U1 field, so older
-        # poll.log lines are a prefix of the new format (U17's device words follow them)
-        self.assertEqual(gs.SNAP_FIELDS[-7:-2], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
-                                                 ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
-                                                 ('s0_43', 0x1077F3, 1)))
+        # poll.log lines are a prefix of the new format (U17's device words and the
+        # fought-match phase's slot fields follow them)
+        self.assertEqual(gs.SNAP_FIELDS[-11:-6], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
+                                                  ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
+                                                  ('s0_43', 0x1077F3, 1)))
         self.assertEqual(gs.MOVE_FIELDS, ('c0', 'c1', 'r0', 'r1', 's0_43'))
         self.assertFalse(set(gs.MOVE_FIELDS) & set(gs.TRACE_FIELDS))
 
     def test_the_device_fields_are_appended_and_pointer_relative(self):
-        # host input truth U17, record §H6: dev1/dev2 close SNAP_FIELDS (older S lines
-        # lack them) and live behind the key-config pointer DS_00101514, not at a
+        # host input truth U17, record §H6: dev1/dev2 follow the U1/U6 fields (older S
+        # lines lack them) and live behind the key-config pointer DS_00101514, not at a
         # fixed DS address (their offsets are below DATA_BASE_VA)
-        self.assertEqual(gs.SNAP_FIELDS[-2:], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
+        self.assertEqual(gs.SNAP_FIELDS[-6:-4], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
         self.assertEqual((gs.KB_DEV1, gs.KB_DEV2), (0x2D4, 0x2D6))
         self.assertEqual(gs.DEV_FIELDS, ('dev1', 'dev2'))
         self.assertEqual(set(gs.DEV_FIELDS), set(gs.POINTER_FIELDS))
@@ -61,6 +62,30 @@ class TestTables(unittest.TestCase):
         snaps = gs.snapshots(['S ms=1 %s kb=0000 head=001E tail=001E' % body])
         self.assertNotIn('dev1', snaps[3])                  # absent, not zero
         self.assertEqual(snaps[3]['rng'], 3)
+
+    def test_the_state_fields_are_appended_with_their_addresses_and_widths(self):
+        self.assertEqual(gs.SNAP_FIELDS[-4:],
+                         (('s0_30', 0x1077E0, 4), ('s0_42', 0x1077F2, 2),
+                          ('s1_30', 0x107874, 4), ('s1_42', 0x107886, 2)))
+        vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+        vals.update({'f': 0x1234, 's0_30': 0x202E, 's0_42': 0x0820,
+                     's1_30': 0x13FF, 's1_42': 0x0008})
+        line = gs.format_s(1, vals, 0, 0, 0)
+        self.assertIn('s0_30=0000202E', line)
+        self.assertIn('s0_42=0820', line)
+        self.assertIn('s1_30=000013FF', line)
+        self.assertIn('s1_42=0008', line)
+
+    def test_an_old_s_line_without_the_state_fields_still_parses(self):
+        old = ('S ms=1 f=1234 mode=0006 st=0000 tick=00000000 t508=00000000 '
+               't50c=00000000 raw=00000000 pad=00000000 new=00000000 held=00000000 '
+               'e0=0000 e2=0000 rng=00000000 cred=00000000 fp=00 b1d=00 b1f=03 b25=00 '
+               'w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=00 s1_54=00 s1_5a=00 '
+               'ent=00000000 r0=00 r1=00 c0=00 c1=00 s0_43=00 dev1=0000 dev2=0000 '
+               'kb=0000 head=001E tail=003E')
+        r = gs.parse(old)
+        self.assertEqual(r['kind'], 'S')
+        self.assertNotIn('s0_30', r)
 
     def test_the_u17_scenario_walks_to_modify_controls(self):
         # record §H6.6/§H6.9: the K11 walk's own keys (k11_session.WALK[2:24] after
@@ -236,6 +261,30 @@ class TestSchedule(unittest.TestCase):
         self.assertFalse(s.ended(0x2001))
         self.assertTrue(s.ended(0x2002))
         self.assertEqual((s.fired, s.total), (3, 3))
+
+    def test_stop_on_mode_arms_the_end_frame_and_counts_as_done(self):
+        steps = (('after', 10, ('pad', ('p1.b0',), 4)),
+                 ('after', 10, ('pad', ('p1.b1',), 4)))
+        s = gs.Schedule(steps, stop_mode=0x08, stop_delay=30)
+        s.on_mode(100, 0x06)
+        s.on_mode(200, 0x08)
+        self.assertEqual(s.end_frame, 230)
+        self.assertFalse(s.ended(229))
+        self.assertTrue(s.ended(230))
+        self.assertTrue(s.stopped_on_mode)
+        self.assertTrue(s.steps_ok)                 # the unfinished steps are intentional
+
+    def test_skip_on_mode_drops_the_round_and_resumes_at_the_next_anchor(self):
+        steps = (('after', 10, ('pad', ('p1.b0',), 4)),
+                 ('after', 10, ('pad', ('p1.b1',), 4)),
+                 ('after_entry', 0x06, 2, 10, ('pad', ('p1.b0',), 4)),
+                 ('after', 10, ('pad', ('p1.b1',), 4)))
+        s = gs.Schedule(steps, skip_on_mode=0x08)
+        s.on_mode(100, 0x06)
+        s.on_mode(200, 0x08)
+        self.assertEqual(s.i, 2)                    # the next after_entry stays armed
+        self.assertEqual(s.skipped, 2)              # both remaining round steps dropped
+        self.assertFalse(s.steps_ok)                # the anchor and its tail still to fire
 
     def test_expand(self):
         self.assertEqual(gs.expand(('key', 'enter')), [('enter', 0x1C, 0x1C0D, gs.HOLD_FRAMES)])
