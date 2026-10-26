@@ -460,6 +460,34 @@ static u32 build_xmi(u8 *buf, const u8 *ev, u32 n)
 #define TITLE_XMI_OFF 221446u
 #define FAT_OPL "data/game/C/FAT.OPL"
 
+/* The Task-5 selected song: the character-select/menu bank the game requests as
+ * handle 0x0980025C (INDEX 19 = s16selmo.gra, offset 0x25C; record §M3.1 and
+ * §M1.6.4). The handle offset names a size dword; 0x1C930 copies `size` bytes
+ * from the dword's end into its 0x5100 song buffer (0x1C961..0x1C977), and
+ * snd_music_bank's FORM/XMID scan is what the sequencer loads. The shipped file
+ * holds that same block: size dword 0x780 @0x25C, FORM XMID @0x282
+ * (fsz 0x756, seq_bank_size 0x75E). */
+#define SELMO_GRA "data/game/C/S16SELMO.GRA"
+#define SELMO_SONG_OFF 0x25Cu
+/* The render length is fixed (not AUDIO_SECONDS, which is the title's
+ * listen-length knob) so the pinned peak/hash always describe this file. */
+#define SELMO_WAV_SECONDS 12u
+/* The selected-song render's measured peak and whole-file sha256 (record §M5).
+ * Two runs on the phase host were byte-identical (the R4 determinism ruling),
+ * so the hash is pinned; the claim is the port's own deterministic non-silence,
+ * not audibility or a match to the original's PCM. The render starts from the
+ * driver-install voice cursor (seq_driver_reset), so the artifact does not
+ * depend on the title render's AUDIO_SECONDS. */
+#define SELMO_WAV_PEAK 2790
+#define SELMO_WAV_SHA256 \
+    "530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef"
+/* The game path's sequence volume: 0x1C930 passes DS_000A2CB8 to
+ * AIL_set_sequence_volume (0x1C9A5/0x1C9F0) and the replayed captures hold
+ * `vol=0x50` (record §M3.1). 0x2C8F0's unscaled arm derives it from config
+ * field 0x35's default 0xA0 as 0xA0 >> 1 = 0x50; the scaled arm gives the same
+ * value at the default scale 3 ((0xA0 * 3) / 3 >> 1). */
+#define GAME_SEQUENCE_VOLUME 0x50u
+
 static u8 *read_file(const char *path, u32 *len)
 {
     FILE *f = fopen(path, "rb");
@@ -487,6 +515,74 @@ static int any_nonzero(const s16 *b, int n)
         if (b[i] != 0)
             return 1;
     return 0;
+}
+
+/* The peak absolute sample of a 16-bit PCM WAV written by the render blocks
+ * below (44-byte header, then interleaved stereo s16). Returns -1 when the file
+ * cannot be read; 0 is a readable but silent body, which the determinism check
+ * treats as a failure. */
+static int wav_peak(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    s16 buf[1024];
+    size_t got;
+    int peak = 0;
+
+    if (f == NULL)
+        return -1;
+    if (fseek(f, 44, SEEK_SET) != 0) { fclose(f); return -1; }
+    while ((got = fread(buf, sizeof buf[0], 1024, f)) > 0) {
+        for (size_t i = 0; i < got; i++) {
+            int v = buf[i];
+            int a = v < 0 ? -v : v;
+            if (a > peak)
+                peak = a;
+        }
+    }
+    fclose(f);
+    return peak;
+}
+
+/* The selected song's bank: the size dword at SELMO_SONG_OFF followed by the
+ * FORM XMID the game copies into its 0x5100 song buffer (0x1C96A..0x1C977),
+ * located with the same game_music_bank_find scan snd_music_bank uses on the
+ * copy. Returns NULL when the file or the bank is absent or the declared size
+ * runs past the file (a corrupt asset fails the check, never over-reads). */
+static const u8 *selmo_song_bank(const u8 *file, u32 len)
+{
+    const u8 *p;
+    u32 size;
+
+    if (file == NULL || len <= SELMO_SONG_OFF + 4u)
+        return NULL;
+    p = file + SELMO_SONG_OFF;
+    size = (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
+    if (size < 4u || size > len - (SELMO_SONG_OFF + 4u))
+        return NULL;
+    return game_music_bank_find(p + 4u, size);
+}
+
+/* The whole-file SHA-256 of a written WAV, via python3's hashlib (the same
+ * interpreter the title oracle runs). Returns 1 and the 64 lowercase hex
+ * characters on success, 0 when the digest could not be computed. */
+static int file_sha256(const char *path, char out[65])
+{
+    char cmd[512];
+    FILE *p;
+    size_t n = 0;
+    int c;
+
+    out[0] = '\0';
+    snprintf(cmd, sizeof cmd,
+             "python3 -c \"import hashlib,sys;print(hashlib.sha256("
+             "open(sys.argv[1],'rb').read()).hexdigest())\" '%s'", path);
+    p = popen(cmd, "r");
+    if (p == NULL)
+        return 0;
+    while (n < 64u && (c = fgetc(p)) != EOF && c != '\n')
+        out[n++] = (char)c;
+    out[n] = '\0';
+    return pclose(p) == 0 && n == 64u;
 }
 
 /* --- Task 9 oracle comparison ------------------------------------------- */
@@ -1325,6 +1421,109 @@ int test_sequencer(void)
                 printf("PR_AUDIO_WAV: wrote %s (%u s, %u Hz)\n", wav,
                        (unsigned)seconds, (unsigned)rate);
             }
+        }
+    }
+
+    /* 10. Optional selected-song render (PR_AUDIO_SONG_WAV=<path>): the
+     *     character-select/menu song the game requests (s16selmo at handle
+     *     0x0980025C, record §M3.1), through the same sequencer + OPL core +
+     *     mixer as the title render above, at the game path's sequence volume
+     *     DS_000A2CB8 = 0x50. The claim is deterministic non-silence, not
+     *     audibility (§M1.7): a song that renders silence fails the peak check,
+     *     and the pinned peak + sha256 are this host's measurements from two
+     *     byte-identical renders (record §M5). The sequence is paced by the
+     *     rendered audio exactly as the title render is (120 sequencer ticks
+     *     per second; MIXER_OPL_RATE/120 frames per tick). */
+    {
+        const char *wav = getenv("PR_AUDIO_SONG_WAV");
+        if (wav != NULL) {
+            const u32 seconds = SELMO_WAV_SECONDS;
+            const u32 rate = MIXER_OPL_RATE;
+            const u32 total = seconds * rate;
+            s16 chunk[2 * 1024];
+            u8 *song;
+            u32 song_len = 0, done = 0, acc = 0;
+            FILE *f;
+
+            song = read_file(SELMO_GRA, &song_len);
+            f = fopen(wav, "wb");
+            if (f == NULL) {
+                CHECK(0, "PR_AUDIO_SONG_WAV: cannot open output file");
+            } else {
+                u8 hdr[44];
+                u32 data_bytes = total * 4u;   /* stereo, 16-bit */
+                u32 riff = 36u + data_bytes;
+                u32 brate = rate * 4u;
+                u32 i;
+                const u8 *bank = selmo_song_bank(song, song_len);
+                char sha[65];
+                int peak;
+
+                for (i = 0; i < 4; i++) hdr[i] = "RIFF"[i];
+                hdr[4] = (u8)riff; hdr[5] = (u8)(riff >> 8);
+                hdr[6] = (u8)(riff >> 16); hdr[7] = (u8)(riff >> 24);
+                for (i = 0; i < 4; i++) hdr[8 + i] = "WAVE"[i];
+                for (i = 0; i < 4; i++) hdr[12 + i] = "fmt "[i];
+                hdr[16] = 16; hdr[17] = 0; hdr[18] = 0; hdr[19] = 0;
+                hdr[20] = 1; hdr[21] = 0;      /* PCM */
+                hdr[22] = 2; hdr[23] = 0;      /* 2 channels */
+                hdr[24] = (u8)rate; hdr[25] = (u8)(rate >> 8);
+                hdr[26] = (u8)(rate >> 16); hdr[27] = (u8)(rate >> 24);
+                hdr[28] = (u8)brate; hdr[29] = (u8)(brate >> 8);
+                hdr[30] = (u8)(brate >> 16); hdr[31] = (u8)(brate >> 24);
+                hdr[32] = 4; hdr[33] = 0;      /* block align */
+                hdr[34] = 16; hdr[35] = 0;     /* bits per sample */
+                for (i = 0; i < 4; i++) hdr[36 + i] = "data"[i];
+                hdr[40] = (u8)data_bytes; hdr[41] = (u8)(data_bytes >> 8);
+                hdr[42] = (u8)(data_bytes >> 16); hdr[43] = (u8)(data_bytes >> 24);
+                fwrite(hdr, 1, sizeof hdr, f);
+
+                seq_stop();                    /* silence the title render's tail first */
+                opl_reset();                   /* ...then clear the chip, so the
+                                                * empty-song case is exact silence */
+                mixer_reset();
+                seq_set_sequence_volume(GAME_SEQUENCE_VOLUME);
+                /* A pristine driver, as in a fresh game process: the voice
+                 * rotation cursor is driver state (record §M3.3), so without
+                 * this the WAV would depend on how long the title render
+                 * before it ran (AUDIO_SECONDS). The pinned artifact is the
+                 * driver-install stream. */
+                seq_driver_reset();
+                CHECK(bank != NULL, "the s16selmo song bank resolves");
+                if (bank != NULL) {
+                    CHECK_EQ_INT(seq_load(bank, seq_bank_size(bank)), 1);
+                    /* The FNV-1a of the accepted bytes is the Task-3 bank hash
+                     * (record §M3.1: s16selmo +0x25C, dc 0x0980025C). */
+                    CHECK_EQ_INT((int)seq_loaded_bank_hash(), (int)0x286ED662u);
+                    seq_start();
+                }
+                while (done < total) {
+                    u32 n = total - done;
+                    if (n > 1024u) n = 1024u;
+                    mixer_render(chunk, n, rate);
+                    fwrite(chunk, 2, (size_t)n * 2u, f);
+                    done += n;
+                    acc += n * 120u;            /* sequencer ticks per second */
+                    while (acc >= rate) {
+                        acc -= rate;
+                        seq_tick();
+                    }
+                }
+                fclose(f);
+
+                peak = wav_peak(wav);
+                CHECK(peak > 0, "the selected song's render is not silent");
+                CHECK_EQ_INT(peak, SELMO_WAV_PEAK);
+                if (file_sha256(wav, sha)) {
+                    CHECK(strcmp(sha, SELMO_WAV_SHA256) == 0,
+                          "the selected song's render sha256 matches the pinned determinism hash");
+                    printf("PR_AUDIO_SONG_WAV: wrote %s (%u s, %u Hz) peak %d sha256 %s\n",
+                           wav, (unsigned)seconds, (unsigned)rate, peak, sha);
+                } else {
+                    CHECK(0, "the selected song's render sha256 was computed");
+                }
+            }
+            free(song);
         }
     }
 

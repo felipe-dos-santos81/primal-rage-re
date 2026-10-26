@@ -2065,10 +2065,15 @@ entry-triage: build ## E2 triage of the non-Ghidra entry candidates: unit tests 
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
+# The selected-song render (s16selmo, the character-select/menu song) is the
+# Task-5 determinism check: it plays at the game path's sequence volume
+# (DS_000A2CB8 = 0x50) and the test fails on a silent render and pins the WAV's
+# peak and sha256 (record §M5). That is a determinism claim, not audibility.
 AUDIO_WAV ?= /tmp/pr_title_fm.wav
+AUDIO_SONG_WAV ?= /tmp/pr_selmo_fm.wav
 AUDIO_SECONDS ?= 12
-audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV, AUDIO_SECONDS)
-	PR_AUDIO_WAV=$(AUDIO_WAV) PR_AUDIO_WAV_SECONDS=$(AUDIO_SECONDS) ./$(BUILD_DIR)/run_tests
+audio-render: build ## Render the title FM music and the selected menu song headlessly to WAVs (AUDIO_WAV, AUDIO_SONG_WAV, AUDIO_SECONDS)
+	PR_AUDIO_WAV=$(AUDIO_WAV) PR_AUDIO_SONG_WAV=$(AUDIO_SONG_WAV) PR_AUDIO_WAV_SECONDS=$(AUDIO_SECONDS) ./$(BUILD_DIR)/run_tests
 
 # ── audio · the register-stream oracle ───────────────────────────────────────
 # The 28 gameplay capture directories hold the 29 `gp-*` `.dro` traces of the

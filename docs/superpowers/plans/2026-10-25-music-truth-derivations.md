@@ -1653,3 +1653,138 @@ write order (declared model); and the exact tick label of a write within the
 declared one-tick capture-label model. The claim is the register content,
 order across ticks, song choice and the per-section bank attribution in the
 captured windows.
+
+## §M5 PCM determinism (Task 5)
+
+### §M5.1 The selected song, the volume and the render path
+
+The measured song is the Task-3 selmo: the bank the character screen requests
+as handle `0x0980025C` (INDEX 19 = `s16selmo.gra`, offset `0x25C`; §M3.1 and
+§M1.6.4). The handle offset names the block's size dword, `0x780` at file
+offset `0x25C`; the game copies those 1,920 bytes from the dword's end into its
+`0x5100` song buffer (`0x1C961..0x1C977`), and the `game_music_bank_find` scan
+`snd_music_bank` runs finds the block's `FORM XMID` at file offset `0x282`
+(fsz `0x756`, so `seq_bank_size` = `0x75E` = 1,886 bytes). The test reads the
+same block from the shipped file (`selmo_song_bank`, `test_audio.c`), and
+`seq_loaded_bank_hash()` is asserted to be **`0x286ED662`** — §M3.1's measured
+bank hash for `dc=0x0980025C` — so the render is pinned to the Task-3 song, not
+to any bank the file happens to contain first.
+
+**The volume.** The game path's sequence volume is `DS_000A2CB8`, passed to
+`AIL_set_sequence_volume` at `0x1C9A5`/`0x1C9F0`; the replayed captures hold
+`vol=0x50` throughout (§M3.1). `0x2C8F0`'s unscaled arm derives it from config
+field `0x35`'s default `0xA0` as `0xA0 >> 1 = 0x50`, and the scaled arm gives
+the same `0x50` at the default scale 3 (`(0xA0 * 3) / 3 >> 1`). The render sets
+**`0x50`** explicitly (`GAME_SEQUENCE_VOLUME`, `test_audio.c`) instead of
+inheriting the title oracle's `0x54` test setting (§M1.7's omission).
+**Declared difference:** the game's `AIL_set_sequence_volume(..., 500)` fades
+from `AIL_init_sequence`'s `0x7F` seed over 500 ms; the render applies the
+target `0x50` at once. The pinned artifact is the port's own deterministic
+render, not the AIL fade model.
+
+**The render.** `PR_AUDIO_SONG_WAV=<path>` renders 12 s (fixed;
+`SELMO_WAV_SECONDS`, independent of the title's `AUDIO_SECONDS` knob) through
+the same sequencer + OPL core + mixer path as the title render, paced by the
+rendered audio at 120 sequencer ticks/s. Format is the title's: PCM 16-bit
+stereo, 49,716 Hz, 596,592 frames, 2,386,368 data bytes, 2,386,412 file bytes.
+`make audio-render` sets both `PR_AUDIO_WAV` and `PR_AUDIO_SONG_WAV`; the title
+render block is unchanged.
+
+**The pristine driver.** The render calls `seq_driver_reset()` before
+`seq_start`, restoring the FM driver's install-time voice cursor. The cursor is
+driver state that persists across songs (§M3.3), so without the reset the song
+WAV depends on how long the title render before it ran: with `AUDIO_SECONDS=12`
+the song sha was `784fb66f…`, with `AUDIO_SECONDS=2` it was `a4cf3512…` (same
+12 s song, different channel assignment). With the reset the song WAV is the
+same for `AUDIO_SECONDS=12` and `2` (`530a9430…`), so the pin is independent of
+the title's listen-length knob. The pinned artifact is this pristine-driver
+stream; the game path itself does not call the seam.
+
+### §M5.2 The measured WAV and the R4 decision
+
+| check | measured |
+|---|---|
+| peak absolute sample | **2,790** |
+| non-zero samples | 1,149,339 of 1,193,184 |
+| sha256 (run 1, `AUDIO_SECONDS=12`) | `530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef` |
+| sha256 (run 2, `AUDIO_SECONDS=12`) | `530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef` |
+| sha256 (run 3, `AUDIO_SECONDS=2`) | `530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef` |
+| `cmp` run 1 vs run 2 | byte-identical |
+
+**R4:** the two default runs on this host are byte-identical (the third run
+varies `AUDIO_SECONDS`, which exercises the pristine-driver reset above), so
+the sha256 is pinned (`SELMO_WAV_SHA256`) together with the peak
+(`SELMO_WAV_PEAK`). The claim is the port's own deterministic non-silence, not
+audibility and not a match to the original's PCM (§M1.7).
+
+**The title render is unchanged by Task 5.** The pre-Task-5 tree and the
+Task-5 tree both write `515b7c94a9d0cfb36afa183f9e6642c04ff8ac0150a1f324182cee6bb8d82f3a`
+(peak 4,090, 1,122,775 non-zero of 1,193,184; `cmp` identical). §M1.7's
+`df74acfb…`/3,402 is the Task-1 baseline and is not the current branch's value;
+the difference predates Task 5 and is consistent with §M3.3's voice-cursor
+persistence fix (`seq_start` no longer resets `S.next`; the render follows the
+oracle's 4,096-tick replay). It is recorded here, not claimed by Task 5.
+
+**The empty song.** The same block with no song bank (the state before the
+selection was implemented, and the mutation re-run below) renders exact
+silence: peak **0**, sha256
+`71193adec3906987ba36200dc465f71b677dd5978dd90136eae3f4a5d1d9f634` (the
+all-zero 12 s body — deterministic, and the first RED's evidence). The
+non-silence check and the pinned peak/hash reject it.
+
+### §M5.3 RED, GREEN and the mutation proofs
+
+The test block was written before the song selection existed:
+
+```
+$ make audio-render AUDIO_WAV=/tmp/pr_title_red.wav AUDIO_SONG_WAV=/tmp/pr_selmo_red.wav
+PR_AUDIO_WAV: wrote /tmp/pr_title_red.wav (12 s, 49716 Hz)
+FAIL .../port/tests/test_audio.c:1476: the selected song's render is not silent
+PR_AUDIO_SONG_WAV: wrote /tmp/pr_selmo_red.wav (12 s, 49716 Hz) peak 0 sha256 71193adec3906987ba36200dc465f71b677dd5978dd90136eae3f4a5d1d9f634
+FAILURES: 1
+```
+
+The failure is the expected one: the empty (not yet selected) song renders
+exact silence, which the old check (only `fopen`) cannot see. The first GREEN
+with the selmo bank selected (before the driver reset below) was peak 2,702,
+sha `784fb66f…`; then the `AUDIO_SECONDS` experiment showed the artifact
+depended on the preceding title render's length (12 s title: `784fb66f…`; 2 s
+title: `a4cf3512…`), which is why the render now calls `seq_driver_reset`
+(§M5.1). The final artifact:
+
+```
+$ make audio-render AUDIO_WAV=/tmp/pr_title_g1.wav AUDIO_SONG_WAV=/tmp/pr_selmo_g1.wav
+PR_AUDIO_WAV: wrote /tmp/pr_title_g1.wav (12 s, 49716 Hz)
+PR_AUDIO_SONG_WAV: wrote /tmp/pr_selmo_g1.wav (12 s, 49716 Hz) peak 2790 sha256 530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef
+all checks passed
+```
+
+The pin is not vacuous:
+
+- **Silent-song mutation** (the bank lookup forced to NULL with the pins in
+  place): four failures — `the s16selmo song bank resolves`,
+  `the selected song's render is not silent`, `0 != 2790`, and the sha
+  mismatch — at `test_audio.c:1492/1515/1516/1518`; peak 0, sha
+  `71193ade…`.
+- **Volume mutation** (`GAME_SEQUENCE_VOLUME` `0x50` -> `0x4F`): the peak
+  stays 2,790 but the sha becomes
+  `44222b27278fa5e992b0e54a087d28f95033494d83fbaded6a70436df6fb2266` and the
+  sha check fails (`FAILURES: 1`). The provenance assertion
+  (`seq_loaded_bank_hash == 0x286ED662`) is the guard against rendering a
+  different bank.
+
+The initial RED's line number is as captured; the final checks are at
+`1492/1515/1516/1518` after the song-selection and driver-reset code was
+added.
+
+`make verify` does not run `audio-render` (the design's G3 gate is the
+`make audio-render` target); the unit suite without `PR_AUDIO_SONG_WAV` is
+unchanged.
+
+### §M5.4 What §M5 does not claim
+
+Rendered audibility or any PCM comparison to the original (the OPL core and
+mixer are the invented model, §M1.7); the AIL sequence-volume fade (declared
+above); the title render's hash as a Task-5 artifact (recorded, unchanged); and
+any song other than the Task-3 selmo. The claim is one deterministic,
+non-silent render of the measured menu song at the game path's sequence volume.
