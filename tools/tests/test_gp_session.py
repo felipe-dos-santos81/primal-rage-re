@@ -870,6 +870,52 @@ class TestLiveWin(unittest.TestCase):
         self.assertIn('gp-u14-win-live', gs.STOP_AT_END)
 
 
+class TestTwopKo(unittest.TestCase):
+    """gp-twop-ko (plan 2026-10-26-fought-match-truth Task 4; record §F4): a real
+    two-human match (gp-twop's start, whose kept walk-in step carries P2's own
+    fight press) with one hand-dealt KO of P2, and the result window after it. No
+    pokes: gp_twop.ko is the judge, and a time-out is a failed task."""
+
+    def test_the_two_human_ko_scenario_is_one_round_with_the_walk_in_press(self):
+        scn = gs.SCENARIOS['gp-twop-ko']
+        self.assertIn('gp-twop-ko', gs.STOP_AT_END)
+        self.assertEqual((scn['time_limit'], scn['extra'], scn['stop_mode'], scn['stop_delay']),
+                         (240, gs.WIN_EXTRA, (0x08, 0x09), 240))
+        self.assertFalse(any(s[-1][0] == 'poke' for s in scn['steps'] if isinstance(s[-1], tuple)))
+        steps = scn['steps']
+        self.assertEqual(steps[:9], gs.steps_before_end(gs.SCENARIOS['gp-twop']['steps'])[:9])
+        self.assertEqual(steps[8][-1], ('pad', ('p1.right', 'p2.left'), 30))   # the walk-in press
+        block = steps[9:]
+        attempts = [st for st in block if st[-1][1] in (gs.U14_PUNCH, gs.U14_KICK)]
+        walks = [st for st in block if st[-1][1] == ('p1.right',)]
+        self.assertEqual(len(attempts), 140)
+        self.assertEqual(len(walks), 17)                 # at k = 8, 16, ..., 136
+        self.assertEqual(block[0], ('after', 30, ('pad', gs.U14_PUNCH, 4)))
+        self.assertTrue(all(st[0] == 'after' and st[-1][2] == 4 for st in attempts))
+        # The spacing, not only the count (Task 2's review): the builder's 1A/1B
+        # alternation, 16 frames between attempts (U16_GAP), a 12-frame hold on each
+        # walk (U16_WALK) after every eighth attempt (U16_GROUP) and only there, with
+        # the attempt after a walk 20 frames on (the walk's 12 + 8). The literals are
+        # the builder's own values; the constant assertion keeps the two in step.
+        self.assertEqual((gs.U16_GAP, gs.U16_WALK, gs.U16_GROUP), (16, 12, 8))
+        self.assertEqual([st[-1][1] for st in attempts[:17]],
+                         [gs.U14_PUNCH, gs.U14_KICK] * 8 + [gs.U14_PUNCH])
+        seen = 0
+        for i, st in enumerate(block):
+            name = st[-1][1]
+            if name in (gs.U14_PUNCH, gs.U14_KICK):
+                seen += 1
+                want = 30 if i == 0 else (20 if block[i - 1][-1][1] == ('p1.right',) else 16)
+                self.assertEqual(st[1], want, 'attempt %d' % seen)
+            else:
+                self.assertEqual(name, ('p1.right',))
+                self.assertEqual(st[1], 16)
+                self.assertEqual(st[-1][2], 12)
+                self.assertEqual(seen % 8, 0)                # after every eight attempts
+                self.assertTrue(0 < seen < 140)              # never before the first or after the last
+        self.assertEqual(seen, 140)
+
+
 class TestHarnessSmoke(unittest.TestCase):
     """gp-harness-smoke (plan 2026-10-26-fought-match-truth Task 2): the disposable
     stop-on-mode preflight, not a measurement and not a gate-inventoried capture."""

@@ -785,6 +785,33 @@ SCENARIOS['gp-u23-u16-finisher'] = dict(time_limit=300, steps=(
 ))
 
 
+# Fought-match truth Task 4 (plan 2026-10-26-fought-match-truth.md; record §F4):
+# the controllable arm after U14's fought win lost (R1): a real two-human match
+# with one hand-dealt KO, no pokes. gp-twop's own steps through the walk-in are
+# kept (`[:9]`: the boot, both menus, P2's join in the character select, both
+# cursors and confirms, and the walk-in), because the walk-in step's `p2.left` is
+# the second-side fight press gp_twop.two_human's fight-press rule needs -- P1's
+# attempts alone would be a one-human fight. Then one round of the U16 builder's
+# 1A/1B attempts on the idle P2: 140 attempts (17 p1.right walks of U16_WALK = 12
+# frames every U16_GROUP = 8 attempts) is ~2,600 nominal frames, 1.6x the
+# measured ~88-attempt KO (record 2026-10-23-endgame-truth §E2; the rate is
+# RNG-dependent, 85-88), and the round timer (~3,280 frames) is the backstop.
+# stop_mode=(0x08, 0x09) stops at the KO's result (the round result 0x27FA8
+# enters mode 8; 0x28024..0x2803B's mode 9 when the KO decides the match) and
+# stop_delay=240 records the result window's first 240 frames: the window is
+# sized from U10's observed death stream (record 2026-10-02-gameplay-u9-u10 §W.5),
+# NOT a two-human measurement. b0c is reported if the capture shows it (a
+# hand-dealt KO leaves the death animation to run; gp_twop.ko reports, never
+# requires, it). No pokes: gp_twop.py check --ko judges the game's own write.
+# Harness values, not game values: the 30-frame first gap (gp-twop's), the
+# round timer as the backstop, the 240 s limit and the 240-frame result window.
+SCENARIOS['gp-twop-ko'] = dict(
+    time_limit=240, extra=WIN_EXTRA, stop_mode=(0x08, 0x09), stop_delay=240,
+    steps=steps_before_end(SCENARIOS['gp-twop']['steps'])[:9]
+    + _u16_round(140, 30),
+)
+
+
 # Host input truth U17 (plan 2026-10-21-host-input-truth Task 6; record §H6.6,
 # §H6.9): the K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first
 # 24 keys -- the mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the
@@ -1061,6 +1088,9 @@ class Schedule:
 # gp-harness-smoke (plan 2026-10-26-fought-match-truth Task 2) stops too: its end is
 # 10 frames into mode 0x27 (stop_mode/stop_delay), and it is a disposable preflight,
 # not a gate-inventoried capture.
+# gp-twop-ko (fought-match truth Task 4) stops too: its end is 240 frames into the
+# first result mode (0x08/0x09, stop_mode/stop_delay), the KO's result window, and
+# nothing past it is compared.
 # gp-u18-talon-ending (endgame truth Task 3) stops too: its end is mode 3 after the
 # high-score entry (u10's until_mode), and nothing past it is compared.
 # gp-u19-vertigo-ending (endgame truth Task 4) stops the same way: its end is mode 3
@@ -1080,7 +1110,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
-                         'gp-harness-smoke'})
+                         'gp-twop-ko', 'gp-harness-smoke'})
 
 
 class ScriptError(Exception):

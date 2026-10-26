@@ -588,5 +588,245 @@ argument), and the `--ko --join`/`--ko --finisher` pairs exit 2.
    capture shapes the tree has not measured (a poller gap that skips a result window); no
    capture in `data/` produces them, and Task 4's script runs to mode 0x12 through both results.
 
+## §F4 The two-human KO capture and oracle (Task 4)
+
+Outcome: the scenario and its test are committed; the phase's one authorized capture ran on
+2026-10-26 and **the game's verdict was the hand-dealt two-human KO** — `gp_twop.py check --ko`
+passed on it (`ko f=B9A`, `round result f=B9A`, no match result inside the 240-frame window,
+`death-done f=-`: `b0c` stayed 0, reported not required) — **but the capture failed one harness
+check and was not published.** The poller's `port script v2` check could not pin the consumption
+frame of two BIOS words (key 86, `p1.b0`, `f=7C7`), so the poll log cannot produce a port script,
+and without a script there is no replay, dump, compare, pins or oracle. The capture is preserved
+as `data/k11-captures/gp-twop-ko.failed`; `data/k11-captures/gp-twop-ko` does not exist, the
+target is not in `CAPTURE_DIRS`, all eight `GP_TWOP_KO_*` pins stay unwritten, no miss set and no
+`gp-twop-ko-oracle` exist, and `make gate-check` still reads `34/35 present, 1 missing` with
+`gp-u14-win-live` the declared gap. No second run was made (the task's one attempt).
+
+The cause is host starvation of the poller, not the game and not the scenario: 127 S frames were
+missed over the run, the largest gap `f=0x7C4 → f=0x804` (S `ms=55605 → ms=56670`, 1.07 s) under a
+host load average of 26 on 20 cores (twenty CPU-bound processes from another workload). The two
+words step 49 queued at `f=0x7C4` were consumed inside that gap; the H records name `f=0x7C7`,
+which is the poller's detection frame, so the true consumption frame is bounded only to
+`0x7C5..0x7C7` and the harness refuses to guess. §F4.5 has the rows and why relaxing the pin was
+rejected.
+
+### §F4.1 The scenario change
+
+```python
+SCENARIOS['gp-twop-ko'] = dict(
+    time_limit=240, extra=WIN_EXTRA, stop_mode=(0x08, 0x09), stop_delay=240,
+    steps=steps_before_end(SCENARIOS['gp-twop']['steps'])[:9]
+    + _u16_round(140, 30),
+)
+```
+
+`gp-twop-ko` joins `STOP_AT_END`. The kept prefix is gp-twop's own steps through the walk-in (the
+boot, the two menu Enters, P2's join in the character select, both cursors, both confirms and the
+mode-6 walk-in); `[:9]` is computed from `steps_before_end(SCENARIOS['gp-twop']['steps'])` so a
+future change to gp-twop before its end shows up as a test failure, not a silent divergence. The
+walk-in step (`('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 30))`) is load-bearing:
+its `p2.left` is the second side's mode-6 pad press, which `gp_twop.two_human`'s fight-press rule
+needs (P1's 140 attempts alone would be a one-human fight). The round is one `_u16_round(140, 30)`
+(140 1A/1B attempts, a 12-frame `p1.right` walk every 8 attempts, 17 walks, the builder's 16-frame
+attempt gap), about 2,600 nominal frames against the measured ~88-attempt KO (record
+2026-10-23-endgame-truth §E2), so the round timer (~3,280 frames) is only the backstop.
+`stop_mode=(0x08, 0x09)` with `stop_delay=240` records the KO's result window: the round result
+(0x27FA8 → mode 8) or the match result (mode 9), then 240 frames. That window value is sized from
+U10's observed death stream (record 2026-10-02-gameplay-u9-u10 §W.5), **not** a two-human
+measurement. No pokes: `WIN_EXTRA` is logged so `gp_twop.ko` can read the damage bytes, `ad4`,
+the round counters and `b0c`; the round's own writes are the claim.
+
+### §F4.2 RED then GREEN
+
+Before the scenario existed:
+
+```text
+$ python3 -m unittest tools.tests.test_gp_session -k two_human_ko -v
+ERROR: test_the_two_human_ko_scenario_is_one_round_with_the_walk_in_press
+  KeyError: 'gp-twop-ko'
+Ran 1 test ... FAILED (errors=1)
+```
+
+After it (and after `gp-twop-ko` joined `STOP_AT_END`):
+
+```text
+$ python3 -m unittest tools.tests.test_gp_session -k two_human_ko -v
+Ran 1 test ... OK
+$ python3 -m unittest tools.tests.test_gp_session
+Ran 73 tests ... OK                    (72 before; +1)
+$ python3 -m unittest tools.tests.test_gp_session tools.tests.test_gp_capture \
+    tools.tests.test_gp_compare tools.tests.test_gp_twop
+Ran 244 tests ... OK
+```
+
+The class is `TestTwopKo`. The brief's test is the minimum; the spacing is asserted as well (Task
+2's review Minor): every attempt is 16 frames after the previous step (30 for the first), every
+`p1.right` walk is 16 frames on, holds 12 and sits after exactly attempt 8, 16, ..., 136 (never
+before the first or after the last), and the attempt after a walk is 20 frames on. The literals
+are the builder's own values and one assertion pins `(U16_GAP, U16_WALK, U16_GROUP) == (16, 12,
+8)`, so a constant mutation fails the shape test rather than travelling with it. Each mutation was
+applied to `tools/gp_session.py`, the test run, and the file restored (`git diff` clean; the
+`__pycache__` removed between runs — the first attempt at this proof silently reused a stale
+bytecode file because the mutations and the restore kept the same size and mtime second):
+
+| mutation | caught by |
+|---|---|
+| `stop_delay=240` → `241` | the scenario tuple assertion |
+| `U16_GAP` 16 → 15 | the constant assertion |
+| `U16_WALK` 12 → 11 | the constant assertion |
+| `U16_GROUP` 8 → 7 | the walk count (19 != 17) and the constant assertion |
+| `_u16_round(140, 30)` → `(140, 29)` | `block[0]` (the first gap) |
+| `_u16_round(140, 30)` → `(139, 30)` | the attempt count (139 != 140) |
+| the prefix `[:9]` → `[:8]` | the prefix equality and the first-block step |
+| an extra non-attempt step appended | the walk/attempt partition |
+
+### §F4.3 The authorized capture's harness checks
+
+```text
+$ DISPLAY=:1 timeout 600 make gp-capture scenario=gp-twop-ko
+gp_capture: snapshots 3135, f 5..CC2, 127 frames missed (spec §3.7)
+gp_capture: CHECK base: ok
+gp_capture: CHECK steps fired 110/166 (0 skipped): ok
+gp_capture: CHECK end frame reached: ok
+gp_capture: CHECK mode 0x27 after the Enter: ok
+gp_capture: CHECK snapshots kb == raw (0 differ): ok
+gp_capture: CHECK frames written 2608/2608: ok
+gp_capture: CHECK port script v2 (key 86 (p1.b0) consumption at f=7C7 unpinned): FAIL
+gp_capture: CHECK no unscripted input: ok
+gp_capture: CHECK pokes written 0/0, 0 raced: ok
+gp_capture: CHECK stopped at the end (SIGTERM at f=0CC3, rc=0): ok
+gp_capture: wrote 2608 frames to .../data/k11-captures/gp-twop-ko.failed (raw 1424..5316),
+  wall 77.9s; a CHECK failed, .../data/k11-captures/gp-twop-ko left as it was
+```
+
+Nine of ten checks pass: the stop-on-mode path fires (the X record at `f=0x0C87`, step 110, 240
+frames after the round result's mode-8 P record at `f=0xB97`), the run ends by SIGTERM at
+`f=0x0CC3` (`reason=end rc=0`), no input was unscripted and no poke was written. The one failure
+is the script pin; §F4.5 measures it.
+
+### §F4.4 The game's verdict: a hand-dealt two-human KO
+
+```text
+$ python3 tools/gp_twop.py check --ko --capture data/k11-captures/gp-twop-ko.failed
+gp_twop: gp-twop-ko.failed: hand-dealt KO of side 0: ko f=B9A; round result f=B9A; match result f=-; death-done f=-
+gp_twop: gp-twop-ko.failed: hand-dealt KO: ok
+exit=0
+
+$ python3 tools/gp_twop.py check --capture data/k11-captures/gp-twop-ko.failed
+gp_twop: gp-twop-ko.failed: join f=285 (cred 4 -> 4); 2448 S records from the join to X f=C87;
+  side 0 [('pad', 2448)], side 1 [('pad', 2448)]; fight presses 489/30
+gp_twop: gp-twop-ko.failed: two-human match: ok
+exit=0
+```
+
+Both sides are human from the character select's join at `f=0x285` (`b1f` 1 → 3, no credit
+debit), every S record's command word for both sides is a pad word, and both sides pressed in
+mode 6 (P1's scripted attempts; P2's 30-frame walk-in `left`). P1 is TALON (`c0 = 2`, cursor 0
+confirmed) and P2 is CHAOS (`c1 = 6`, `afc = 4`; the P2 cursor's `left` 5 → 4). The damage
+progression in the last mode-6 entry (`f=0x4D1`, the first fight frame) is a live path:
+
+| row | frame | `s0_5a` | `s1_5a` | `r0`/`r1` |
+|---|---|---|---|---|
+| round entry | `0x4D1` | 0 | 0 | `FF`/`FF` |
+| | `0x53B` | 0 | `0x12` | `12`/`FF` |
+| | `0x587` | 0 | `0x22` | `11`/`FF` |
+| | `0x681` | 0 | `0x29` | `00`/`FF` |
+| | `0x6C7` | 0 | `0x30` | `00`/`FF` |
+| | `0x7A7` | 0 | `0x37` | `00`/`FF` |
+| | `0x7C4` | 0 | `0x40` | `11`/`FF` |
+| | `0x8CF` | 0 | `0x47` | `00`/`FF` |
+| | `0x8FF` | 0 | `0x57` | `11`/`FF` |
+| | `0x9F9` | 0 | `0x5E` | `00`/`FF` |
+| | `0xA8B` | 0 | `0x65` | `00`/`FF` |
+| | `0xABB` | 0 | `0x75` | `11`/`FF` |
+| | `0xB96` | 0 | `0x75` | `10`/`FF` |
+| **round result (mode 8)** | **`0xB9A`** | 0 | **`0x78`** | `10`/`FF` |
+
+The result rows:
+
+| row | frame | `s0_5a` | `s1_5a` | `w2` | `w3` | `ad4` | `b0c` |
+|---|---|---|---|---|---|---|---|
+| round result (mode 8) | `0xB9A` | 0 | `0x78` | 1 | 0 | `0xFFFFFFFF` | 0 |
+| result window's last S (mode 0x16) | `0xCC2` | 0 | `0x78` | 1 | 0 | `0xFFFFFFFF` | 0 |
+
+`w2 = 1, w3 = 0` is 0x27C48's round counter naming P1, and `ad4 = 0xFFFFFFFF` is 0x27BA4's
+undecided match (the round result, not the match result: the KO ended round 1). The mode path:
+`0x224` mode 0x1A (`b1f = 1`) → `0x248` mode 0x10 (the character select) → `0x285` join (`b1f =
+3`, `e2` first shows P2's start mask) → `0x31C`/`0x330`/`0x341` → `0x432`/`0x444` → `0x456` mode 5
+(the entrances) → **`0x4D1` mode 6** (the fight) → **`0xB9A` mode 8** (the round result) → `0xC7C`
+mode 0x16. `b0c` is 0 in all 3135 S records: the 240-frame window ends before the death animation
+does, which the predicate reports and does not require (§F3.1 item 10).
+
+The KO landed on the round's **90th attempt** (`k = 89`, step index 109; the press fired at
+`f=0xB96`) and the round result appeared four frames later, close to the measured attempt-88 KO.
+90 attempts of the scripted 140 fired before the stop, so the attempt count has ~1.5× headroom
+for the RNG's 85-88 range.
+
+### §F4.5 The failure branch: no port script, no publication
+
+The poll log cannot produce the port script:
+
+```text
+$ python3 tools/gp_session.py port-script --scenario gp-twop-ko \
+    --capture data/k11-captures/gp-twop-ko.failed --out /tmp/gp-twop-ko.script
+gp_session: port-script: gp-twop-ko: key 86 (p1.b0) consumption at f=7C7 unpinned
+exit=1
+```
+
+The pin the script needs is `S(f-1)` for every consumed BIOS word (spec §4.1's "keys at their
+consumption frame"), and the poller was starved across that frame. The rows:
+
+```text
+S ms=55605 f=07C4 ... head=002A tail=002A
+I ms=55605 f=07C4 step=49 press=p1.b0 ... bios=1675 ring=1 late=1
+I ms=55605 f=07C4 step=49 press=p1.b1 ... bios=1769 ring=1 late=1
+H ms=55650 f=07C7 head=002C
+H ms=55650 f=07C7 head=002E
+I ms=55671 f=07C8 step=49 release=p1.b0 ...
+S ms=56670 f=0804 ... head=002E tail=002E
+```
+
+`S(0x7C6)` does not exist: the poller's S records jump `0x7C4 → 0x804`, 64 frames and 1.07 s of
+wall time, and the H records' `f` is the frame the poller *detected* the head change (45 ms after
+the press), not a logged iteration. The two words were queued after `S(0x7C4)` and consumed before
+`S(0x804)`, so the consumption frame is bounded only to `0x7C5..0x7C7`; the replay would inject
+at `0x7C7` and could be up to two frames late. The rule refuses that, and relaxing it for this
+capture would be fitting the model: the harness's input truth is exactly that a consumed word's
+frame is pinned by a neighbouring snapshot. The run's other gaps (26 gaps, 127 missed frames)
+matter less because a missing capture frame is simply not compared (`gp_compare`'s missing-frame
+rule); only the key pin is load-bearing.
+
+The host was heavily loaded throughout (load average 26.39 on 20 cores; twenty CPU-bound
+`difftest.py` processes from another project at ~97 % each), and the poller is a Python thread
+racing a 60 Hz guest: the starvation is an OS/host condition, not a game fact. It arrived *after*
+the game started, so it is the task's one attempt, not a preflight failure: no second run was
+made, per the brief.
+
+Consequences, all deliberate:
+
+- `data/k11-captures/gp-twop-ko` does not exist; the 2608-frame, 131 MB capture stays at
+  `data/k11-captures/gp-twop-ko.failed` (`poll.log` lines 3758, S records 3135,
+  sha256 `67aa1c403abdb1f45a33ef4864d0a4e79e1aa6c54ea210bd5429902945e9f6a9`).
+- `gp-twop-ko` is not in `CAPTURE_DIRS`; the gate count stays 35 and `make gate-check` reads
+  `captures 34/35 present, 1 missing`, the declared `gp-u14-win-live` gap.
+- No `GP_TWOP_KO_*` block, no `gp-twop-ko-oracle`, no `verify` line, and no `k_miss_gp_twop_ko`
+  entry: a miss set without a replay would pin nothing, and a row in `k_gp_sets` for a scenario
+  no driver can run is dead weight.
+- The scenario and `TestTwopKo` stay (the brief: the scenario and predicate code stay; the claim
+  is not made). The claim that is *not* made is the ratcheted oracle; the game's KO itself is
+  measured above, on a capture that cannot be replayed.
+
+### §F4.6 What a second authorization would need
+
+Nothing in the scenario's numbers is implicated: the KO came on attempt 90 of 140, the result
+window held mode 8 from `f=0xB97` to `f=0xC79` (227 of its 240 frames; mode 0x16 entered at
+`f=0xC7A`, the X at `f=0xC87`), and the stop, skip-free step count, unscripted-input and poke
+checks all passed. A re-run would need a host with the poller uncontended (the missed-frame
+count of the four published captures measured here is 8-17: gp-twop 8, gp-u16-twop2 15,
+gp-keys-fight 9, gp-u23-u16-finisher 17; this run's 127 with a 64-frame gap is the outlier), the same
+scenario, and a second authorized attempt; the measured values here are the expectations for it.
+Until then the phase's two-human KO claim is a measured capture-side result, not an oracle.
+
+
 
 
