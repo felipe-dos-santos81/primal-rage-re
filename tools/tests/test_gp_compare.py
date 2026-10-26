@@ -1318,13 +1318,7 @@ class OverlayAllowance(Dirs):
                             '(the mask from port 2, the named glyph bytes)' in l for l in out), out)
         self.assertTrue(any('1 overlay-allowed' in l for l in out), out)
 
-    def test_u13_overlay_recipe_is_pinned_and_mutations_fail(self):
-        # Task 7 (record gameplay-truth-ii §J5): U13's capture 2188 is its own
-        # loader strip recipe, not U10's frame or port pair.
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u13-ending2'],
-                         ((2188, 1799, 1798, 1800,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-
+    def test_overlay_recipe_mutations_fail(self):
         # The fixture's captured overlay is byte-pinned by its SHA and off-mask
         # screen source. Changing either value in the named recipe un-explains it.
         wrong_sha = (1, 1, 2, 3, '0' * 64)
@@ -1416,69 +1410,17 @@ class OverlayAllowance(Dirs):
                             for l in out), out)
         self.assertFalse(any('FIRST UNEXPLAINED capture 1' in l for l in out), out)
 
-    def test_the_table_names_the_measured_overlays(self):
-        # the pinned recipes of record §G7: gp-u9-win 2209 (port 1776's glyphs
-        # over port 1777, the mask from port 1775) and gp-u10-ending 2062 (port
-        # 1685 over 1686, mask from 1684) — both the same glyph fingerprint
-        # (de1c1bb2..). A changed name is a changed claim: it must move with a
-        # re-measurement in the record, never silently.
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u9-win'],
-                         ((2209, 1776, 1775, 1777,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u10-ending'],
-                         ((2062, 1685, 1684, 1686,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u16-twop2'],
-                         ((8066, 6815, 6814, 6816,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-        # endgame truth Task 3 (record §E3): TALON's ending's own loader presentation
-        # at capture 2227 (raw 4988), port 1810's 166 glyph pixels over port 1811's
-        # mode-0x12 screen, the mask from port 1809. PIN only: the recipe's mutations
-        # are proved on the fixture by this class's sub-tests and on the real dump by
-        # the manual run record §E3 reports; the dump is not retained, so this case
-        # does not run a dump test.
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u18-talon-ending'],
-                         ((2227, 1810, 1809, 1811,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-        # endgame truth Task 4 (record §E4): VERTIGO's ending's own loader presentation
-        # at capture 2312 (raw 5021), port 1872's 166 glyph pixels over port 1873's
-        # mode-0x12 screen, the mask from port 1871 (both mode 0x17 at tick 00000C2B).
-        # PIN only, as the U18 entry: the recipe's mutations are proved on the fixture by
-        # this class's sub-tests and on the real dump by the manual run record §E4
-        # reports; the dump is not retained, so this case does not run a dump test.
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u19-vertigo-ending'],
-                         ((2312, 1872, 1871, 1873,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-        # endgame truth Task 5 (record §E5): CHAOS's ending's own loader presentation at
-        # capture 2180 (raw 5094), port 1781's 166 glyph pixels over port 1782's mode-0x12
-        # screen, the mask from port 1780 (both mode 0x17 at tick 00000C65). PIN only, as
-        # the U18/U19 entries: the recipe's mutations are proved on the fixture by this
-        # class's sub-tests and on the real dump by the manual run record §E5 reports; the
-        # dump is not retained, so this case does not run a dump test.
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u20-chaos-ending'],
-                         ((2180, 1781, 1780, 1782,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-        # endgame truth Task 6 (record §E6): ARMADON's ending's own loader presentation at
-        # capture 2217 (raw 5125), port 1799's 166 glyph pixels over port 1800's mode-0x12
-        # screen, the mask from port 1798 (both mode 0x17 at tick 00000C6D). PIN only, as
-        # the U18/U19/U20 entries: the recipe's mutations are proved on the fixture by this
-        # class's sub-tests and on the real dump by the manual run record §E6 reports; the
-        # dump is not retained, so this case does not run a dump test. Named limit: the
-        # later mode-0x12 pair (1802, 1801) has the same glyph bytes at the same indices.
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u21-armadon-ending'],
-                         ((2217, 1799, 1798, 1800,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
-        # endgame truth Task 7 (record §E7): DIABLO's ending's own loader presentation at
-        # capture 2191 (raw 5152), port 1822's 166 glyph pixels over port 1823's mode-0x12
-        # screen, the mask from port 1821 (1821/1822 both mode 0x17 at tick 00000C66).
-        # PIN only, as the U18/U19/U20/U21 entries: the recipe's mutations are proved on
-        # the fixture by this class's sub-tests and on the real dump by the manual run
-        # record §E7 reports; the dump is not retained, so this case does not run a dump
-        # test. Named limit: the later mode-0x12 pair (1825, 1824) has the same glyph bytes
-        # at the same indices.
-        self.assertEqual(gc.OVERLAY_ALLOWED['gp-u22-diablo-ending'],
-                         ((2191, 1822, 1821, 1823,
-                           'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),))
+    def test_the_overlay_table_is_retired_by_the_music_path(self):
+        # Music Truth Task 2 (record §M2.7): 0x1C930's game-side resolve now
+        # reads the mode-0x12 entry's song through the resource layer at the
+        # entry, so the loader lands on the entry screen in the replay's own
+        # frame and every capture frame this table used to name is a clean
+        # match. The nine retired names (capture frame): gp-u9-win 2209,
+        # gp-u10-ending 2062, gp-u13-ending2 2188, gp-u16-twop2 8066,
+        # gp-u18-talon-ending 2227, gp-u19-vertigo-ending 2312,
+        # gp-u20-chaos-ending 2180, gp-u21-armadon-ending 2217,
+        # gp-u22-diablo-ending 2191. A new name needs a fresh measured recipe.
+        self.assertEqual(gc.OVERLAY_ALLOWED, {})
 
 
 if __name__ == '__main__':

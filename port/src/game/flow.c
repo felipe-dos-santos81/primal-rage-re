@@ -4524,11 +4524,12 @@ void game_state_title(void)
     if (DSB(DS_000F0A6F) == 0) {
         (void)sound_voice(0x41u);               /* 0x121C9/0x121CE 0x2C3FC: stop 0x40's loop */
         (void)sound_voice(0x43u);               /* 0x121D3/0x121D8 0x2C3FC: stop 0x42's loop */
-        /* PORT: the S16TITLE bank is requested here (s_music_request), for
-         * the raw's music request 0x54/0x56 at the attract's 0x111FF, whose
-         * 0x1CA14 arm needs the sequence handle DS_001028C0 the port keeps 0
-         * (todo-verify record §22). The raw's title plays no sample (record
-         * k7-k12 §0.7.5). */
+        /* PORT: the S16TITLE bank is requested here (s_music_request), the
+         * title state's own start of the attract's 0x54/0x56 request (the
+         * attract's 0x111FF now also reaches the raw game path 0x1CA14 ->
+         * 0x1CF39 -> 0x1C930); title_music_start is the working reference
+         * (record §M1.2). The raw's title plays no sample (record k7-k12
+         * §0.7.5). */
         s_music_request = 1;
         frontend_input_reset();                 /* 0x121D9 (0x4F1E4) */
         actors_reset();                         /* 0x121E4 (0x2BAF4, eax = 1) */
@@ -6057,11 +6058,13 @@ void game_state_init(void)
  * and started as in the original, but its callback is never fired: the port has
  * no PIT/ISR and the frame loop owns pacing (see game_audio_service).
  * PORT: the raw stores its handles in mem[] (record 2026-10-14-reverse-n §N.2): the DIG driver at
- * 0x1028C8 (0x1CF8E; the port stores 1, below), each slot's sample handle at 0x102860 + 0x18 * i
- * (0x1CFAC), the MDI driver at 0x1028C4 (0x1CFD6) and the sequence at 0x1028C0 (0x1CFE8); the port
- * stores none of the last three (the sound-module comment below). It also calls 0x5DC0F on every
- * slot (0x1CFB2, the port only on a non-NULL handle), registers the ISR 0x1BDF4 (0x1CFED, the port
- * none), and adds mixer_reset, the 0xA2CB4 store and the FAT.OPL load, which the raw has not. */
+ * 0x1028C8 (0x1CF8E), each slot's sample handle at 0x102860 + 0x18 * i (0x1CFAC), the MDI driver
+ * at 0x1028C4 (0x1CFD6) and the sequence at 0x1028C0 (0x1CFE8). The port's handles are host
+ * objects, so it stores 1 at the DIG driver (below), the MDI driver and the sequence dwords; the
+ * four sample dwords stay 0 (slot i's handle is s_samples[i], the sound-module comment below). It
+ * also calls 0x5DC0F on every slot (0x1CFB2, the port only on a non-NULL handle), registers the
+ * ISR 0x1BDF4 (0x1CFED, the port none), and adds mixer_reset, the 0xA2CB4 store and the FAT.OPL
+ * load, which the raw has not. */
 void game_audio_init(void)
 {
     /* PORT: FUN_0001cf40 gates the DIG install and its preferences behind
@@ -6101,6 +6104,15 @@ void game_audio_init(void)
     AIL_set_preference(0xb, 1);
     HMDIDRIVER mdi = AIL_install_MDI_INI();
     if (mdi != NULL) s_sequence = AIL_allocate_sequence_handle(mdi);
+    /* 0x1CFD6/0x1CFE8: the MDI driver handle and the sequence handle, in that
+     * order in the raw. PORT: both are host objects here (the `mdi` pointer and
+     * s_sequence), so the port stores the non-zero stand-in 1 for each, as it
+     * does for the DIG driver at 0x1028C8. Every reader tests them against zero
+     * — the request's queue gate 0x1CA2C, the music playing/stop/volume/pause
+     * arms of 0x1CA40..0x1D213, and 0x1D0BC's MIDI-buffer gate 0x1D0CC, which
+     * this makes allocate the raw's 0x5100 song buffer at 0x1028D0. */
+    DSD(DS_001028C4) = (mdi != NULL) ? 1u : 0u;
+    DSD(DS_001028C0) = (s_sequence != NULL) ? 1u : 0u;
     /* The original's MDI install loads the driver's FM patch bank (FAT.OPL).
      * Without it every key-on carries no operator setup — the sequencer maps
      * each program change through this bank (sequencer.c) — so the OPL core
@@ -6132,8 +6144,8 @@ void game_audio_init(void)
  * 0x36106, whose CAT holds the FORM XMID at 0x36128), the bytes 0x1C930 copies
  * past the size dword. This scan finds that same FORM XMID, so the bank is the
  * table's. The request that names id 0x54/0x56 is wired (attract.c,
- * 0x111FF), but its 0x1CA14 arm needs the sequence handle DS_001028C0, which
- * the port keeps 0 (record §22), so this binding still stands in for it.
+ * 0x111FF) and now reaches the game path (snd_music_start); this binding stays
+ * the title state's own start, the working reference (record §M1.2).
  * Returns NULL on a bank whose declared FORM size runs past the loaded
  * resource. */
 static const u8 *title_music_bank(void)
@@ -6169,15 +6181,15 @@ const u8 *game_music_bank_find(const u8 *base, u32 size)
     return NULL;
 }
 
-/* 0x1C930 (reached from 0x1CF20): loads and starts the pending song.
- * PORT: a host replacement (record 2026-10-14-reverse-n §N.2): the raw runs when the pending song
- * dword 0x1028CC is non-zero (0x1CF30, the call at 0x1CF39) and compares it with the last one
- * 0x1028DC (0x1C93B); a new song is stored there (0x1C943), resolved by 0x1B544 (0x1C948) and its
- * size-prefixed bytes copied to the buffer [0x1028D0] (0x1C961..0x1C977); either arm stops the
- * sequence [0x1028C0] (0x5DEAF, 0x1C956/0x1C9BD), then 0x5DE48 init, 0x5DECA volume [0xA2CB8]
- * over 500 ms, 0x5DE79 start, and 0x1028CC = 0 (0x1CA08). The port's request is s_music_request
- * and its bank is S16TITLE's, read in place; it reads and writes none of those dwords, makes no
- * stop and no copy, and returns early with no bank or no sequence (both host objects). */
+/* PORT: the title state's own start of the S16TITLE bank, kept unchanged as
+ * the working reference (record §M1.2, the 9866-write oracle). It stands in
+ * for the attract's 0x54/0x56 case-1 request (attract.c 0x111FF), whose raw
+ * path 0x1CA14 -> 0x1CF39 -> 0x1C930 now exists (snd_music_request /
+ * snd_music_start), so a run that plays the attract's phase 4 starts this same
+ * bank first and this call starts it again at the title state. It reads the
+ * bank in place rather than through the pending song's copy (0x1028D0), stores
+ * no song word, and returns early with no bank or no sequence (both host
+ * objects). */
 static void title_music_start(void)
 {
     const u8 *bank = title_music_bank();
@@ -6185,6 +6197,67 @@ static void title_music_start(void)
     if (!AIL_init_sequence(s_sequence, bank, 0)) return;
     AIL_set_sequence_volume(s_sequence, (s32)DSD(DS_000A2CB8), 500);
     AIL_start_sequence(s_sequence);
+}
+
+/* PORT: the XMIDI container inside the copied song bank at DS_001028D0. The
+ * raw hands AIL the buffer base, whose FORM XDIR heads a chunk list (the CAT
+ * and its FORM XMID follow it); the port's sequencer parses a FORM/CAT
+ * container and is handed the XMID inside, the same container
+ * title_music_start's scan finds (record §M1.4.1). The 0x5100 bound is the
+ * buffer's own size and the copy never runs past it. Returns NULL when no
+ * FORM/XMID is in the buffer. */
+static const u8 *snd_music_bank(u32 buf)
+{
+    if (buf == 0u) return NULL;
+    return game_music_bank_find(mem + buf, 0x5100u);
+}
+
+/* 0x1C930 — record §M2, reached from 0x1CF20 when the pending song
+ * DS_001028CC is non-zero (0x1CF30, the call at 0x1CF39). It compares the
+ * pending song with the last started one DS_001028DC (0x1C93B). A new song is
+ * stored there (0x1C943), resolved by 0x1B544 (0x1C948) and its size-prefixed
+ * bytes copied from the resolved payload (+4) to the 0x5100 buffer
+ * DS_001028D0 (0x1C961..0x1C977; the length is the resolved block's first
+ * dword, [esi-4]). The same-song arm (0x1C93B) skips the store, the resolve
+ * and the copy. Either arm stops the sequence (0x5DEAF, 0x1C956/0x1C9BD),
+ * then AIL_init_sequence (0x5DE48), the music volume DS_000A2CB8 over 500 ms
+ * (0x5DECA) and the start (0x5DE79); 0x1028CC = 0 at 0x1CA08 consumes the
+ * request.
+ * PORT: the sequence is the host object s_sequence (DS_001028C0 holds the
+ * non-zero stand-in game_audio_init stores) and the init/volume/start calls
+ * are the host hand-off to the port's sequencer; the copy target is the raw's
+ * own 0x1D0BC block. A handle that does not resolve (a unit fixture, not a
+ * shipped song) drops the request with the pending word cleared instead of
+ * dereferencing NULL, and a size past the 0x5100 buffer is refused the same
+ * way: the raw has neither guard, but all 26 shipped banks are smaller (max
+ * 20,400, record §M1.4.1). */
+static void snd_music_start(void)
+{
+    u32 song = DSD(DS_001028CC);                           /* 0x1C936 */
+    u32 buf = DSD(DS_001028D0);                            /* 0x1C961 */
+    if (song == DSD(DS_001028DC)) {                        /* 0x1C93B */
+        AIL_stop_sequence(s_sequence);                     /* 0x1C9BD 0x5DEAF */
+        /* PORT: the raw pushes [0x1028D0] to AIL; a zero buffer is no bank. */
+        (void)AIL_init_sequence(s_sequence, snd_music_bank(buf), 0);       /* 0x1C9D5 0x5DE48 */
+        AIL_set_sequence_volume(s_sequence, (s32)DSD(DS_000A2CB8), 500);   /* 0x1C9F0 0x5DECA */
+        AIL_start_sequence(s_sequence);                    /* 0x1C9FE 0x5DE79 */
+        DSD(DS_001028CC) = 0;                              /* 0x1CA08 */
+        return;
+    }
+    DSD(DS_001028DC) = song;                               /* 0x1C943 */
+    const u8 *p = (const u8 *)res_resolve(song);           /* 0x1C948 0x1B544 */
+    if (p == NULL) { DSD(DS_001028CC) = 0; return; }       /* PORT */
+    AIL_stop_sequence(s_sequence);                         /* 0x1C956 0x5DEAF */
+    u32 size = DSD((u32)(p - mem));                        /* 0x1C967 */
+    if (buf == 0u || size > 0x5100u) {                     /* PORT */
+        DSD(DS_001028CC) = 0;
+        return;
+    }
+    memcpy(mem + buf, p + 4, size);                        /* 0x1C96A..0x1C977 */
+    (void)AIL_init_sequence(s_sequence, snd_music_bank(buf), 0);           /* 0x1C98A 0x5DE48 */
+    AIL_set_sequence_volume(s_sequence, (s32)DSD(DS_000A2CB8), 500);   /* 0x1C9A5 0x5DECA */
+    AIL_start_sequence(s_sequence);                        /* 0x1C9B4/0x1C9FE 0x5DE79 */
+    DSD(DS_001028CC) = 0;                                  /* 0x1CA08 */
 }
 
 /* 0x1CF20: the master loop's per-frame audio service (0x255CC). Starts each
@@ -6202,7 +6275,9 @@ void game_audio_service(void)
 {
     PR_SEAM0(0x1CF20u);
     for (u32 i = 0; i < 4u; i++) sound_sample_start(i);    /* 0x1CF21..0x1CF2E 0x1CB18 */
-    if (s_music_request) {
+    /* 0x1CF30/0x1CF37: cmp dword [0x1028CC],0 / je; 0x1CF39: 0x1C930. */
+    if (DSD(DS_001028CC) != 0u) snd_music_start();
+    if (s_music_request) {                                 /* PORT: the title substitute above */
         s_music_request = 0;
         title_music_start();
     }
@@ -6266,10 +6341,11 @@ int game_music_notes_seen(void) { return s_music_notes; }
  * pause byte (0x1D220), DS_001028DA the music one.
  * PORT: the AIL handles are the port's host objects (flow.c's s_samples and
  * s_sequence, in 0x1CF40's allocation order), so a slot's +0x00 is not in
- * mem[]: slot i's handle is s_samples[i]. The port stores 1 for DS_001028C8
- * (game_audio_init) and leaves DS_001028C0/C4 at 0: its music is started by
- * s_music_request, not through DS_001028CC, so the dispatcher's music arms
- * (0x1CA14's store, 0x1CA40's status) stay inert, as without an MDI driver.
+ * mem[]: slot i's handle is s_samples[i]. The port stores 1 for
+ * DS_001028C8/C4/C0 (game_audio_init): the DIG driver, the MDI driver and the
+ * sequence, so the dispatcher's music arms (0x1CA14's store, 0x1CA40's
+ * status, 0x1C930's resolve/start through snd_music_start) run as they do on
+ * the shipped MDI install.
  * 0x1CC28 (snd_sample_queue), 0x1CB18 (sound_sample_start, called for each
  * slot by 0x1CF20) and 0x1D0BC (sound_buffers_alloc) are ported (record
  * k7-k12 §0.7); the time is DS_00101500 (0x500BB), advanced by
@@ -6295,8 +6371,9 @@ void snd_sample_unpause(void)
 
 /* 0x1CA14. EAX = the song handle, DL = its byte. Stores both as the current
  * song (DS_001028D4/DS_001028D9); unless the music is paused (DS_001028DA ==
- * 1) or there is no sequence handle (DS_001028C0), it becomes the pending
- * song DS_001028CC and AL = 1. */
+ * 1) or there is no sequence handle (DS_001028C0, 1 in the port while
+ * s_sequence lives), it becomes the pending song DS_001028CC, which 0x1CF20's
+ * service starts (0x1C930), and AL = 1. */
 u32 snd_music_request(u32 song, u32 b)
 {
     PR_SEAM_RET(0x1CA14u, song, b);
@@ -6309,8 +6386,8 @@ u32 snd_music_request(u32 song, u32 b)
 }
 
 /* 0x1CA40. AL = 1 when the sequence DS_001028C0 plays (0x5DEED status 4).
- * PORT: the sequence handle is s_sequence; DS_001028C0 is 0 in the port, so
- * the status arm runs only when a caller has stored one. */
+ * PORT: the sequence handle is s_sequence; DS_001028C0 is the non-zero
+ * stand-in game_audio_init stores. */
 u32 snd_music_playing(void)
 {
     PR_SEAM_RET0(0x1CA40u);
@@ -7038,9 +7115,9 @@ void game_boot_ports(void)
  * PORT: the four handle arguments are the port's host objects, not the
  * dwords the raw pushes: s_sequence for [0x1028C0] (0x1D03A, 0x1D04E) and
  * s_samples[i] for [esi+0x102860] (0x1D076, 0x1D08A); see the sound-module
- * comment above. game_audio_init leaves DS_001028C4 at 0, so in a run of the
- * port the sequence arm is not taken and the sequence is stopped by
- * AIL_shutdown's own seq_stop. */
+ * comment above. game_audio_init stores the MDI-driver stand-in at
+ * DS_001028C4, so the sequence arm runs and stops the playing sequence before
+ * the dwords are cleared, as in the raw. */
 void sound_shutdown(void)
 {
     PR_SEAM0(0x1D018u);

@@ -635,15 +635,15 @@ GP_MODES_EN_MAX_MISSING = 7
 GP_MODES_AS_MAX_MISSING = 7
 GP_U12_MAX_MISSING = 6
 GP_WIN_MAX_MISSING = 12
-GP_ENDING_MAX_MISSING = 65
-GP_U13_MAX_MISSING = 59
+GP_ENDING_MAX_MISSING = 63
+GP_U13_MAX_MISSING = 57
 GP_U15_MAX_MISSING = 5
 GP_U16_MAX_MISSING = 23
-GP_U18_MAX_MISSING = 57
-GP_U19_MAX_MISSING = 51
-GP_U20_MAX_MISSING = 72
-GP_U21_MAX_MISSING = 55
-GP_U22_MAX_MISSING = 54
+GP_U18_MAX_MISSING = 55
+GP_U19_MAX_MISSING = 49
+GP_U20_MAX_MISSING = 70
+GP_U21_MAX_MISSING = 53
+GP_U22_MAX_MISSING = 52
 GP_U23_MAX_MISSING = 9
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
@@ -1236,6 +1236,11 @@ gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fi
 # fails (the exact pin). MAX_START 100 unchanged and exact (99 fails), TRACE/WIN/MILESTONES
 # unchanged (3503/3503/8). The pixel claim now reaches the replay's end (f=0xDAE) instead of
 # stopping at the strip.
+# MUSIC TRUTH §M2.7 (2026-10-25): 0x1C930's game-side resolve is ported, so the mode-0x12
+# entry's own music request (voice 0x32, song 0x03021BFA, s16snd2) reads the bank through the
+# resource layer in the entry's window. The loader text now lands in the replay's own frame and
+# capture 2209 is a CLEAN match, so the OVERLAY_ALLOWED name is retired (the table is empty).
+# MIN_FIRST/START/TRACE/WIN/MILESTONES and the reach (1976) are unchanged.
 GP_WIN_MIN_FIRST = 2452
 GP_WIN_TRACE_MIN_FIRST = 3503
 GP_WIN_MAX_START = 100
@@ -1338,10 +1343,15 @@ GP_WIN_MIN_REACH = 1976
 # With the fix the two dead fighters' flash-palette frames (port 3444..3463) match and
 # every capture frame 83..5436 is explained; the first unexplained is 5437 (raw 13279) — the
 # capture's post-script tail (§W1 run 2, the port's replay ends at f=0x26E1), NOT allowed:
-# MIN_FIRST 4113 -> 5437 and 5438 fails (the exact pin). The window REACH rises 3444 -> 4662
+# MIN_FIRST 4113 -> 5437 and 5438 fails (the exact pin). The window REACH rises 3444 -> 4661
 # (the highest port frame the capture exhibits; the dump's last frame index is 4663, f=0x26E1,
-# and is not exhibited) because the enforced run no longer stops at 4113; 4663 fails.
+# and is not exhibited) because the enforced run no longer stops at 4113; 4662 fails. Music
+# truth §M2.7 re-measured 4662 -> 4661 after the entry loader became a clean match.
 # MAX_START 83 unchanged and exact (82 prints the improved line), TRACE/WIN/MILESTONES unchanged.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 2062 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MAX_MISSING 65 -> 63 and MIN_REACH 4662 -> 4661; MIN_FIRST/START/TRACE/WIN are
+# exact and unchanged.
 GP_ENDING_MIN_FIRST = 5437
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83
@@ -1351,11 +1361,11 @@ GP_ENDING_CAPTURE_SHA256 = a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8d
 GP_ENDING_CAPTURE_FRAMES = 5704
 # MIN_REACH (sub-project A §A1): the highest port frame any classified capture frame
 # exhibits. Measured 2026-10-21 by gameplay truth II Task 3 after the §W1 span-writer fix:
-# 4662 = the highest port frame the capture exhibits (the dump's last frame is index 4663,
+# 4661 = the highest port frame the capture exhibits (the dump's last frame is index 4663,
 # f=0x26E1, and is not exhibited) — the enforced run no longer stops at capture 4113.
 # Before it: 3444 (4113's nearest port, the first unexplained).
 # Raise it when gp_compare prints "improved: raise the pin".
-GP_ENDING_MIN_REACH = 4662
+GP_ENDING_MIN_REACH = 4661
 # The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's
 # GP_MODES_KEEP; record §W.10: 129 MB and 302 MB of /tmp).
 GP_WIN_KEEP ?=
@@ -1401,8 +1411,9 @@ gp-win-one: build
 # The replay now dumps 4954 frames (0..4953) and its trace/win comparisons run through
 # f=10068, so capture 5891..5903 are each byte-identical to port frames 4940..4952,
 # consecutively: MIN_FIRST = 5904 (N = 5904 is
-# the exact pin) and 5905 fails. The window reach is port 4952 (port 4953 is exhibited by
-# no content-bearing capture frame), so MIN_REACH = 4952 and 4953 fails. Trace and win
+# the exact pin) and 5905 fails. The window reach is port 4951 (port 4952 is exhibited by
+# no content-bearing capture frame; music truth §M2.7 re-measured it 4952 -> 4951 after the
+# entry loader became a clean match), so MIN_REACH = 4951 and 4952 fails. Trace and win
 # fields agree through f=10068, so their end pins are 10069 and 10070 fails. The window's
 # claim is the same narrow one: no content-bearing capture frame is unexplained (each is a
 # clean, splice or named-allowance match against the replay's own states), not that the
@@ -1412,10 +1423,14 @@ gp-win-one: build
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 2188 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MAX_MISSING 59 -> 57 and MIN_REACH 4952 -> 4951; MIN_FIRST/START/TRACE/WIN are
+# exact and unchanged.
 GP_U13_MIN_FIRST = 5904
 GP_U13_TRACE_MIN_FIRST = 10069
 GP_U13_MAX_START = 96
-GP_U13_MIN_REACH = 4952
+GP_U13_MIN_REACH = 4951
 GP_U13_CAPTURE_SHA256 = e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6
 GP_U13_CAPTURE_FRAMES = 5904
 GP_U13_MILESTONES = 30
@@ -1560,15 +1575,21 @@ gp-u15-oracle: build ## Gameplay U15 oracle: gp-u15-join's mid-round join (skips
 #   TRACE_MIN_FIRST / MOVES_MIN_FIRST 8637: 0 differences through f=8636; 8637 is the
 #     compared end + 1 and an exact reach pin.
 #   MAX_START 100: the report's window starts at capture 100 (raw 1743).
-#   MIN_REACH 6817: highest port frame exhibited before the first unexplained capture frame.
+#   MIN_REACH 6818 (music truth §M2.7: 6817 -> 6818): highest port frame exhibited before the
+#   first unexplained capture frame.
 #   CAPTURE_SHA256 / CAPTURE_FRAMES: this capture's poll.log and 8091 raw.gz frame files.
 # Raising either N pin, the reach or frame count by one, lowering MAX_START by one, or
 # changing the sha must fail; remeasure all values for a replacement capture.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 8066 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MIN_REACH 6817 -> 6818 (the comparison's alignment moved one port frame; the
+# content claim improved); MAX_MISSING 23 and every N/START/TRACE/MOVES pin are exact and
+# unchanged.
 GP_U16_MIN_FIRST = 8069
 GP_U16_TRACE_MIN_FIRST = 8637
 GP_U16_MOVES_MIN_FIRST = 8637
 GP_U16_MAX_START = 100
-GP_U16_MIN_REACH = 6817
+GP_U16_MIN_REACH = 6818
 GP_U16_CAPTURE_SHA256 = 5d38ca1fc3a52bcd02d91df3d7f0ae94a0275f9531f8bd81ffacee5343d31513
 GP_U16_CAPTURE_FRAMES = 8091
 gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human match and frame evidence (finisher reaction gap; skips without data/k11-captures/gp-u16-twop2)
@@ -1659,18 +1680,23 @@ gp-u23-oracle: build ## Endgame truth U23 oracle: the U16 finisher reaction (lab
 # unexplained is 5735 (raw 14294): 5735..5748 are the post-script tail (the replay's dump ends
 # at f=0x26E4, its trace and the capture's X at f=0x26E6) and are NOT claimed; MIN_FIRST = 5735,
 # and 5736 fails (the ratchet fails only when the first unexplained precedes N). The
-# comparison's window reach is port 4864 (the dump's last frame), so
-# MIN_REACH = 4864 and 4865 fails as unreachable beyond the dump. Trace and WIN fields
+# comparison's window reach is port 4863 (the dump's last frame; music truth §M2.7 re-measured
+# it 4864 -> 4863 after the entry loader became a clean match), so MIN_REACH = 4863 and 4864
+# fails as unreachable beyond the dump. Trace and WIN fields
 # agree through f=0x26E6 (9958), so their end pins are 9959; the moves comparison is
 # reported by gp_compare (0 differing through 9958) and is not pinned. The capture has
 # 5,749 frames with this poll.log sha256 (b3279414..d2fcf1).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 2227 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MAX_MISSING 57 -> 55 and MIN_REACH 4864 -> 4863; MIN_FIRST/START/TRACE/WIN are
+# exact and unchanged.
 GP_U18_MIN_FIRST = 5735
 GP_U18_TRACE_MIN_FIRST = 9959
 GP_U18_MAX_START = 85
-GP_U18_MIN_REACH = 4864
+GP_U18_MIN_REACH = 4863
 GP_U18_CAPTURE_SHA256 = b3279414514aee07d2d4cddada0b63c7ec90f68d905f6509deb3e5c955d2fcf1
 GP_U18_CAPTURE_FRAMES = 5749
 GP_U18_MILESTONES = 30
@@ -1712,18 +1738,23 @@ gp-u18-oracle: build ## Endgame truth U18 oracle: TALON's ending (character 2, c
 # 5991 (raw 14362): 5991..6003 are the post-script tail (the replay's dump ends at port frame 4989,
 # f=0x271A, and its trace at f=0x271B, where the capture's X record sits) and are NOT claimed;
 # MIN_FIRST = 5991, and 5992 fails (the ratchet fails only when the first unexplained precedes N).
-# The comparison's window reach is port 4989 (the dump's last frame), so MIN_REACH = 4989 and 4990
-# fails as unreachable beyond the dump. Trace and WIN fields agree through f=0x271B (10011), so
+# The comparison's window reach is port 4988 (the dump's last frame; music truth §M2.7 re-measured
+# it 4989 -> 4988 after the entry loader became a clean match), so MIN_REACH = 4988 and 4989 fails
+# as unreachable beyond the dump. Trace and WIN fields agree through f=0x271B (10011), so
 # their end pins are 10012; the moves comparison is reported by gp_compare (0 differing through
 # 10011) and is not pinned. The capture has 6,004 frames with this poll.log sha256
 # (31da347f..c730fd69).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 2312 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MAX_MISSING 51 -> 49 and MIN_REACH 4989 -> 4988; MIN_FIRST/START/TRACE/WIN are
+# exact and unchanged.
 GP_U19_MIN_FIRST = 5991
 GP_U19_TRACE_MIN_FIRST = 10012
 GP_U19_MAX_START = 85
-GP_U19_MIN_REACH = 4989
+GP_U19_MIN_REACH = 4988
 GP_U19_CAPTURE_SHA256 = 31da347f1e637e3d384936e7b9473cfba7734f8a4216af00236e74d0c730fd69
 GP_U19_CAPTURE_FRAMES = 6004
 GP_U19_MILESTONES = 30
@@ -1766,18 +1797,23 @@ gp-u19-oracle: build ## Endgame truth U19 oracle: VERTIGO's ending (character 3,
 # 14433): 5776..5789 are the post-script tail (the replay's dump ends at port frame 4890, f=0x2753,
 # and its trace at f=0x2755, where the capture's X record sits) and are NOT claimed; MIN_FIRST =
 # 5776, and 5777 fails (the ratchet fails only when the first unexplained precedes N). The
-# comparison's window reach is port 4890 (the dump's last frame), so MIN_REACH = 4890 and 4891
-# fails as unreachable beyond the dump. Trace and WIN fields agree through f=0x2755 (10069), so
+# comparison's window reach is port 4889 (the dump's last frame; music truth §M2.7 re-measured it
+# 4890 -> 4889 after the entry loader became a clean match), so MIN_REACH = 4889 and 4890 fails as
+# unreachable beyond the dump. Trace and WIN fields agree through f=0x2755 (10069), so
 # their end pins are 10070; the moves comparison is reported by gp_compare (0 differing through
 # 10069) and is not pinned. The capture has 5,790 frames with this poll.log sha256
 # (73b5bb80..ca7cb).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 2180 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MAX_MISSING 72 -> 70 and MIN_REACH 4890 -> 4889; MIN_FIRST/START/TRACE/WIN are
+# exact and unchanged.
 GP_U20_MIN_FIRST = 5776
 GP_U20_TRACE_MIN_FIRST = 10070
 GP_U20_MAX_START = 83
-GP_U20_MIN_REACH = 4890
+GP_U20_MIN_REACH = 4889
 GP_U20_CAPTURE_SHA256 = 73b5bb808dee603c1e5a359e2716c9654db945737a799cee30c00762699ca7cb
 GP_U20_CAPTURE_FRAMES = 5790
 GP_U20_MILESTONES = 30
@@ -1819,18 +1855,23 @@ gp-u20-oracle: build ## Endgame truth U20 oracle: CHAOS's ending (character 6, c
 # 1798). The first unexplained is 5932 (raw 14456): 5932..5945 are the post-script tail (the
 # replay's dump ends at port frame 4973, f=0x2753, and its trace at f=0x2755, where the capture's
 # X record sits) and are NOT claimed; MIN_FIRST = 5932, and 5933 fails (the ratchet fails only when
-# the first unexplained precedes N). The comparison's window reach is port 4973 (the dump's last
-# frame), so MIN_REACH = 4973 and 4974 fails as unreachable beyond the dump. Trace and WIN fields
+# the first unexplained precedes N). The comparison's window reach is port 4972 (the dump's last
+# frame; music truth §M2.7 re-measured it 4973 -> 4972 after the entry loader became a clean
+# match), so MIN_REACH = 4972 and 4973 fails as unreachable beyond the dump. Trace and WIN fields
 # agree through f=0x2755 (10069), so their end pins are 10070; the moves comparison is reported by
 # gp_compare (0 differing through 10069) and is not pinned. The capture has 5,946 frames with this
 # poll.log sha256 (41e384a9..b1b42f).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 2217 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MAX_MISSING 55 -> 53 and MIN_REACH 4973 -> 4972; MIN_FIRST/START/TRACE/WIN are
+# exact and unchanged.
 GP_U21_MIN_FIRST = 5932
 GP_U21_TRACE_MIN_FIRST = 10070
 GP_U21_MAX_START = 90
-GP_U21_MIN_REACH = 4973
+GP_U21_MIN_REACH = 4972
 GP_U21_CAPTURE_SHA256 = 41e384a94049fc5c1c74934c802153dcdee230631d44522ef03f27935db1b42f
 GP_U21_CAPTURE_FRAMES = 5946
 GP_U21_MILESTONES = 30
@@ -1872,18 +1913,23 @@ gp-u21-oracle: build ## Endgame truth U21 oracle: ARMADON's ending (character 4,
 # 1822 over 1823, mask from 1821). The first unexplained is 5798 (raw 14536): 5798..5810 are the
 # post-script tail (the replay's dump ends at port frame 4929 and its trace at f=0x2769, where the
 # capture's X record sits) and are NOT claimed; MIN_FIRST = 5798, and 5799 fails (the ratchet
-# fails only when the first unexplained precedes N). The comparison's window reach is port 4929
-# (the dump's last frame), so MIN_REACH = 4929 and 4930 fails as unreachable beyond the dump.
+# fails only when the first unexplained precedes N). The comparison's window reach is port 4928
+# (the dump's last frame; music truth §M2.7 re-measured it 4929 -> 4928 after the entry loader
+# became a clean match), so MIN_REACH = 4928 and 4929 fails as unreachable beyond the dump.
 # Trace and WIN fields agree through f=0x2769 (10089), so their end pins are 10090; the moves
 # comparison is reported by gp_compare (0 differing through 10089) and is not pinned. The
 # capture has 5,811 frames with this poll.log sha256 (e53bef4f..be0355).
 # An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
 # capture with empty/changed pins fails. Raise MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/
 # WIN_MIN_FIRST when they improve.
+# MUSIC TRUTH §M2.7 (2026-10-25): as gp-u9-win, capture 2191 is a CLEAN match now (the entry's
+# music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
+# Re-measured: MAX_MISSING 54 -> 52 and MIN_REACH 4929 -> 4928; MIN_FIRST/START/TRACE/WIN are
+# exact and unchanged.
 GP_U22_MIN_FIRST = 5798
 GP_U22_TRACE_MIN_FIRST = 10090
 GP_U22_MAX_START = 74
-GP_U22_MIN_REACH = 4929
+GP_U22_MIN_REACH = 4928
 GP_U22_CAPTURE_SHA256 = e53bef4f6f4ef23e1c6046c453236d51b54575916cebd71259a3b9b8dbbe0355
 GP_U22_CAPTURE_FRAMES = 5811
 GP_U22_MILESTONES = 30

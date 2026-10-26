@@ -496,20 +496,29 @@ SCAN3_ALLOWED = {
 }
 
 
-# Per-scenario named per-frame glyph-overlay allowances (record §G7): the one
+# Per-scenario named per-frame glyph-overlay allowances (record §G7): one
 # capture frame whose loader presentation landed on a screen the replay only
 # presents later. The loader blits its `- LOADING -` text (string 489,
 # 0x1B3EA/0x1B3EF) straight into the aperture, over whatever the screen holds,
-# and the read that follows stalls the loop. At the mode-0x12 entry the first
-# read of s16snd2 (index 6) is a *music* request (voice 0x32 case 1, song handle
-# 0x03021BFA): the original's sequencer reads the song through the resource
-# layer (0x1B544, draw arm) in the entry's window, so the text lands over the
-# entry's screen; the port's music path is host-owned (platform/audio/ never
-# resolves), so the replay's first s16snd2 resolve is the *sample* queue of
-# voice 0x3A (0x03022554, also index 6) at f=0xC0E and the same text lands one
-# screen later. The capture frame is therefore `- LOADING -` over the
-# mode-0x12 screen — a composition of two frames the port itself dumped (the
-# presentation frame and the screen), which the two-frame model cannot express.
+# and the read that follows stalls the loop.
+#
+# RETIRED by the Music Truth phase (record 2026-10-25-music-truth-derivations.md
+# §M2.7). Every entry this table held was the same event: at the mode-0x12 entry
+# the first read of s16snd2 (index 6) is a *music* request (voice 0x32 case 1,
+# song handle 0x03021BFA). The original's sequencer reads the song through the
+# resource layer (0x1B544, draw arm) in the entry's window, so the text lands
+# over the entry's screen. The port's music path was host-owned until 0x1C930
+# was ported (flow.c snd_music_start), so the replay's first s16snd2 resolve was
+# the later *sample* queue of voice 0x3A (0x03022554, also index 6) at f=0xC0E
+# and the same text landed one screen later - the composition the nine names
+# described. With the resolve ported the replay reads the bank at the entry and
+# every named capture frame is a clean match. The retired names (measured on
+# the changed tree): gp-u9-win 2209, gp-u10-ending 2062, gp-u13-ending2 2188,
+# gp-u16-twop2 8066, gp-u18-talon-ending 2227, gp-u19-vertigo-ending 2312,
+# gp-u20-chaos-ending 2180, gp-u21-armadon-ending 2217, gp-u22-diablo-ending
+# 2191. Their per-scenario MAX_MISSING/MIN_REACH pins were re-measured in the
+# same task.
+#
 # Like BANDS_ALLOWED/SCAN3_ALLOWED this is never a class and never an extension
 # of the two-frame model: only the named capture frames, each only with its own
 # byte recipe. An entry is (capture j, T1, T2, S, glyph_sha): the frame is
@@ -519,134 +528,18 @@ SCAN3_ALLOWED = {
 #      indices under the stale black palette, so the mask is exactly the
 #      glyphs' pixels and the mask's shape is part of the fingerprint), and
 #   2. every pixel of the capture equals T1's on the mask and S's (the screen
-#      frame) off it — the whole frame, not a box.
+#      frame) off it - the whole frame, not a box.
 # So a mutation of T1's overlay bytes, of the mask's shape (via T2) or of any
 # S pixel un-explains the capture frame (OverlayAllowanceTests). Named limits
-# (as SCAN3_ALLOWED's top segment): T2 is only the mask's indicator — its bytes
+# (as SCAN3_ALLOWED's top segment): T2 is only the mask's indicator - its bytes
 # inside the mask bind nothing beyond the `!=` relation, and T1's bytes off the
 # mask are not claimed; the glyph sha binds T1's byte sequence at the sorted
 # mask indices, not the index set itself, so two different index sets carrying
 # identical T1 bytes could coincide. A named frame the two-frame model explains
 # now is reported as a stale name; a named frame that is not its named bytes
-# FAILS.
-OVERLAY_ALLOWED = {
-    'gp-u9-win': (
-        # Capture 2209 (raw 4953) at the mode-0x17->0x12 entry: the loader's
-        # text (port 1776's 166 glyph px, rows 192..197 x 0..85) over the
-        # mode-0x12 screen (port 1777, the frame at f=0xBA1 = the entry).
-        # Port 1775 is the same index image under the stale black palette (the
-        # mask's source). The capture shows the presentation one screen later
-        # than the replay's own (the replay's is over the black screen,
-        # capture 2208 = port 1776); the port's own later presentation of the
-        # same text is dump frame 1805 (f=0xC0E). §G6's "held by no frame"
-        # stands for the whole strip; this names the composition.
-        (2209, 1776, 1775, 1777,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u10-ending': (
-        # Capture 2062 (raw 4954): the same presentation at U10's entry
-        # (port 1685 over 1686, mask source 1684 — the palette pair is swapped
-        # against U9's). The glyph fingerprint is the same bytes (the same
-        # string at the same place).
-        (2062, 1685, 1684, 1686,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u13-ending2': (
-        # Capture 2188 (raw 5047): U13's own mode-0x17 -> 0x12 loader
-        # presentation, with the 166 glyph pixels at rows 192..197, x 0..85
-        # from port 1799 over port 1800's mode-0x12 screen; port 1798 supplies
-        # the same indices under the stale black palette. The glyph bytes match
-        # the same loader string, but the capture and all three port frames are
-        # independently measured for U13.
-        (2188, 1799, 1798, 1800,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u16-twop2': (
-        # Capture 8066 (raw 11502): port 6815's 166 loader glyph pixels over
-        # port 6816's screen; port 6814 is the mask source. Independently
-        # measured for U16, with the same glyph-byte fingerprint (§J8).
-        (8066, 6815, 6814, 6816,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u18-talon-ending': (
-        # Capture 2227 (raw 4988): U18's own loader presentation at the
-        # mode-0x17 -> 0x12 entry, the same §G7 composition as U9/U10/U13: port
-        # 1810's (f=0BBC tick=00000C12 mode=0017) 166 glyph pixels at rows
-        # 192..197, x 0..85 over port 1811's (f=0BBC tick=00000C18 mode=0012)
-        # screen; port 1809 (f=0BBC tick=00000C12 mode=0017) is the same indices
-        # under the stale black palette (the mask's source). The capture shows
-        # the composition over the new screen, where the replay's own
-        # presentation 1810 is over the stale one: no clean match or two-frame
-        # splice expresses it (2228 is clean at port 1811). The glyph
-        # fingerprint is the loader string's (de1c1bb2..), measured on this dump.
-        (2227, 1810, 1809, 1811,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u19-vertigo-ending': (
-        # Capture 2312 (raw 5021): VERTIGO's own loader presentation at the
-        # mode-0x17 -> 0x12 entry, the same §G7 composition as U9/U10/U13/U18: port
-        # 1872's (f=0BDA tick=00000C2B mode=0017) 166 glyph pixels at rows 192..197,
-        # x 0..85 over port 1873's (f=0BDA tick=00000C31 mode=0012) screen; port 1871
-        # (f=0BDA tick=00000C2B mode=0017) is the same indices under the stale black
-        # palette (the mask's source). The capture shows the composition over the new
-        # screen, where the replay's own presentation 1872 is over the stale one: no
-        # clean match or two-frame splice expresses it (2311 is clean at 1872, 2313
-        # clean at 1873). The glyph fingerprint is the loader string's (de1c1bb2..),
-        # measured on this dump; T1 1872/T2 1871 are the only pair at mask 166 that
-        # reproduces the frame's pixels.
-        (2312, 1872, 1871, 1873,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u20-chaos-ending': (
-        # Capture 2180 (raw 5094): CHAOS's own loader presentation at the mode-0x17 ->
-        # 0x12 entry, the same §G7 composition as U9/U10/U13/U18/U19: port 1781's
-        # (f=0C12 tick=00000C65 mode=0017) 166 glyph pixels at rows 192..197, x 0..85
-        # over port 1782's (f=0C12 tick=00000C6B mode=0012) screen; port 1780 (f=0C12
-        # tick=00000C65 mode=0017, the same tick's second present) is the same indices
-        # under the stale black palette (the mask's source). The capture shows the
-        # composition over the new screen, where the replay's own presentation 1781 is
-        # over the stale one: no clean match or two-frame splice expresses it (2179 is
-        # clean at 1781 and 2181 clean at 1782). The glyph fingerprint is the loader
-        # string's (de1c1bb2..), measured on this dump; T1 1781/T2 1780 are the only
-        # pair at mask 166 that reproduces the frame's pixels.
-        (2180, 1781, 1780, 1782,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u21-armadon-ending': (
-        # Capture 2217 (raw 5125): ARMADON's own loader presentation at the mode-0x17 ->
-        # 0x12 entry, the same §G7 composition as U9/U10/U13/U18/U19/U20: port 1799's
-        # (f=0C1C tick=00000C6D mode=0017) 166 glyph pixels at rows 192..197, x 0..85
-        # over port 1800's (f=0C1C tick=00000C73 mode=0012) screen; port 1798 (f=0C1C
-        # tick=00000C6D mode=0017) is the same indices under the stale black palette
-        # (the mask's source). The capture shows the composition over the new screen,
-        # where the replay's own presentation 1799 is over the stale one: no clean
-        # match or two-frame splice expresses it (2216 is clean at port 29, the
-        # still-black early screen, and 2218 clean at 1800). The glyph fingerprint is
-        # the loader string's (de1c1bb2..), measured on this dump. Named limit: the
-        # later mode-0x12 pair (1802, 1801) carries the same glyph bytes at the same
-        # 166 indices, so T1's identity is not unique (T2 is only the mask's
-        # indicator); the capture's pixels are the same under either.
-        (2217, 1799, 1798, 1800,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-    'gp-u22-diablo-ending': (
-        # Capture 2191 (raw 5152): DIABLO's own loader presentation at the mode-0x17 ->
-        # 0x12 entry, the same §G7 composition as U9/U10/U13/U18/U19/U20/U21: port
-        # 1822's (f=0C12 tick=00000C66 mode=0017) 166 glyph pixels at rows 192..197,
-        # x 0..85 over port 1823's (f=0C12 tick=00000C6C mode=0012) screen; port 1821
-        # (f=0C12 tick=00000C66 mode=0017) is the same indices under the stale black
-        # palette (the mask's source). The capture shows the composition over the new
-        # screen, where the replay's own presentation 1822 is over the stale one: no
-        # clean match or two-frame splice expresses it (2190 is clean at port 29, the
-        # still-black early screen, and 2192 clean at 1823). The glyph fingerprint is
-        # the loader string's (de1c1bb2..), measured on this dump. Named limit: the
-        # later mode-0x12 pair (1825, 1824) carries the same glyph bytes at the same
-        # 166 indices, so T1's identity is not unique (T2 is only the mask's
-        # indicator); the capture's pixels are the same under either.
-        (2191, 1822, 1821, 1823,
-         'de1c1bb2b51d72c402f12b25450fdcdbc64d90ff7f22f0f506e335a994b31ced'),
-    ),
-}
+# FAILS. A new scenario that needs a name adds it here with its own measured
+# recipe.
+OVERLAY_ALLOWED = {}
 
 
 def band_pair(c, port, top_row, band_hi):

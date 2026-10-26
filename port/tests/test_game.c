@@ -1593,6 +1593,76 @@ static void check_idle_timeout_clock(void)
     DSB(DS_00107414) = s_14;
 }
 
+/* Task 2 (record §M2): the game-side song request 0x1CA14 and its resolve
+ * 0x1C930, on the live sequence game_audio_init allocated. A match request
+ * (the stage table's 0x4F714, stage 0's id 0x20) becomes the pending song with
+ * the shipped handle; the master loop's 0x1CF39 arm resolves it, copies the
+ * size-prefixed bank into the 0x1028D0 buffer and starts it on the host
+ * sequencer. Every seed differs from the asserted post-value. */
+static void check_music_request(void)
+{
+    const u32 song = 0x0A800008u;   /* id 0x20: s16beach.gra + 8 (§M1.4.1) */
+    const u8 *pay;
+    u32 d0 = 0u, size = 0u;
+
+    CHECK_EQ_INT((int)DSB(DS_000BBDC8 + 0x20u * 12u), 1);       /* the record's case */
+    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0x20u * 12u + 4u), (int)song);
+
+    DSD(DS_001028CC) = 0u;
+    DSD(DS_001028DC) = 0xDEADC0DEu;    /* no song started: the new-song arm stores */
+    DSB(DS_001028DA) = 0u;             /* not paused */
+
+    /* 0x1CA14: accepted (AL = 1; without a sequence handle it returned 0) and
+     * queued as the pending song with the record's exact handle. */
+    CHECK_EQ_INT((int)snd_music_request(song, 0u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), (int)song);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), (int)song);             /* 0x1CA22 */
+
+    /* 0x1CF20's 0x1CF39 arm (0x1C930, new song): 0x1B544 resolve, 0x5DEAF stop,
+     * the size-prefixed copy into 0x1028D0, init/volume/start, pending cleared. */
+    game_audio_service();
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0);                     /* 0x1CA08 */
+    CHECK_EQ_INT((int)DSD(DS_001028DC), (int)song);             /* 0x1C943 */
+    CHECK_EQ_INT((int)snd_music_playing(), 1);                  /* 0x1CA40 0x5DEED status 4 */
+    CHECK_EQ_INT(seq_playing(), 1);                             /* the host sequencer's state */
+    d0 = DSD(DS_001028D0);
+    pay = (const u8 *)res_resolve(song);                        /* resident now */
+    CHECK(d0 != 0u && pay != NULL, "the resolve copied into the 0x5100 buffer");
+    if (d0 == 0u || pay == NULL) return;
+    size = DSD((u32)(pay - mem));                               /* the resolved size dword */
+    CHECK_EQ_INT((int)size, 20400);                             /* §M1.4.1's s16beach payload */
+    CHECK(memcmp(mem + d0, "FORM", 4) == 0, "the copied bank starts with its payload's FORM");
+    CHECK(memcmp(mem + d0, pay + 4, size) == 0, "the copied bank is the resource payload");
+
+    /* The match entry's own call (0x25C09 -> 0x4F714 -> 0x2C3FC case 1) queues
+     * the same song; the same-song arm (0x1C93B) neither resolves nor copies:
+     * it re-inits the already copied buffer. Zeroed, a re-copy would load and
+     * play again, a re-init of these bytes cannot. */
+    memset(mem + d0, 0, size);
+    CHECK_EQ_INT((int)sound_voice_stage(0u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), (int)song);
+    game_audio_service();
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0);
+    CHECK_EQ_INT((int)DSD(DS_001028DC), (int)song);             /* unchanged: no store */
+    CHECK_EQ_INT((int)snd_music_playing(), 0);                  /* the zeroed buffer, not a re-read */
+    CHECK_EQ_INT(seq_playing(), 0);
+
+    /* The attract's title request 0x54 (0x111FF) is a new song: resolve, copy
+     * its 4,920-byte bank and start it. This leaves the title music playing
+     * for the later 0x1CA6C case in check_sound_voice. */
+    CHECK_EQ_INT((int)snd_music_request(0x03836102u, 0x54u), 1);
+    game_audio_service();
+    CHECK_EQ_INT((int)DSD(DS_001028DC), 0x03836102);
+    CHECK_EQ_INT((int)snd_music_playing(), 1);
+    pay = (const u8 *)res_resolve(0x03836102u);
+    CHECK(pay != NULL, "the title bank resolves");
+    if (pay == NULL) return;
+    size = DSD((u32)(pay - mem));
+    CHECK_EQ_INT((int)size, 4920);                              /* §M1.4.1 */
+    CHECK(memcmp(mem + d0, "FORM", 4) == 0, "the copied title bank starts with its payload's FORM");
+    CHECK(memcmp(mem + d0, pay + 4, size) == 0, "the title bank is the copied payload");
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -1716,6 +1786,12 @@ int test_flow(void)
     DSD(DS_001028C8) = 0;
     game_audio_init();
     CHECK_EQ_INT((int)DSD(DS_001028C8), 1);
+    /* Task 2: the port's host MDI driver and sequence objects get the non-zero
+     * stand-ins at their raw dwords (0x1CFD6/0x1CFE8), as the DIG handle does
+     * (0x1CF8E). The request's queue gate (0x1CA2C) and 0x1D0BC's MIDI-buffer
+     * gate (0x1D0CC) test them against zero. */
+    CHECK_EQ_INT((int)DSD(DS_001028C4), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028C0), 1);
     check_sound_buffers();
     check_idle_timeout_clock();
     /* The init chain must load the FM patch bank (FAT.OPL): the sequencer maps
@@ -1754,6 +1830,7 @@ int test_flow(void)
     }
     CHECK(game_audio_ticks() > 0, "audio service advances the sequencer");
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
+    check_music_request();
     /* 0x40's record: case 2, handle 0x0383B6F4, loop byte 1, so 0x1CB18 sets
      * loop count 0 (0x1CBE1). Its 0x5FAE frames at 0x2B11 Hz last about
      * 110,450 output frames at 49716 Hz: as a one-shot it ends within 26 of

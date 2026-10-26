@@ -722,3 +722,257 @@ Research only: no port code, no test, no Makefile and no pin changed. `make diff
 exit 0 (the counter above), `make audio-render` exit 0 (the 9866 line and the WAV), and
 `python3 tools/port_progress.py` unchanged. The Task-1 artefacts are this record and the
 plan/spec corrections.
+
+## §M2 The game-side song request/resolve (Task 2)
+
+### §M2.1 The hole and the fix, measured
+
+§M1.2 measured the hole: `snd_music_request` (`0x1CA14`) is byte-faithful but its
+queue gate `DS_001028C0 != 0` (`0x1CA2C`) never passed, because `game_audio_init`
+(`0x1CF40`) stored no handle at `0x1028C0` (the sequence, `0x1CFE8`) or
+`0x1028C4` (the MDI driver, `0x1CFD6`). The attract's `0x54`/`0x56` request
+(`attract.c:295`, `0x111FF`) and the match entry's stage voice (`0x4F714`,
+caller `0x25C09`, `flow.c:1404`) reached it and their pending store was dropped.
+
+The fix is the two registrations plus the game-side resolve:
+
+- `game_audio_init` now stores the non-zero **stand-in 1** at `0x1028C4` when
+  the MDI driver installed and at `0x1028C0` when the sequence allocated, the
+  same form as the DIG driver's stand-in at `0x1028C8` (`0x1CF8E`). Every reader
+  of those dwords tests them against zero, so the stand-in is the port's
+  expression of "the install succeeded" and is not an AIL handle. The readers
+  are `0x1CA2C` (the request's queue gate), `0x1CA40`/`0x1CA86`/`0x1CAD2`/
+  `0x1D1E1`/`0x1D1F2` (playing, stop, volume, pause) and `0x1D0CC` (the
+  MIDI-buffer gate). The last one matters: with `0x1028C4` and `0x1028C0` now
+  set, `game_init`'s `0x1C0B1 -> 0x1D0BC` allocates the raw's `0x5100` song
+  buffer at `0x1028D0` (`0x1D0E8..0x1D107`), which is the copy target below.
+- `game_audio_service` (`0x1CF20`) now runs the raw's pending arm in the raw's
+  place: after the four `0x1CB18` slot starts, `if (DSD(0x1028CC) != 0)
+  snd_music_start()` (`0x1CF30/0x1CF37` compare, `0x1CF39` call). The title
+  substitute's `s_music_request` block stays after it (see §M2.6).
+
+Measured on the changed tree: a stage-0 match request (`sound_voice_stage(0)`,
+id `0x20`, record handle `0x0A800008`) returns to `0x1CA14` with AL = 1 and
+`DS_001028CC = 0x0A800008`.
+
+### §M2.2 The port of `0x1C930` (`snd_music_start`, `flow.c`)
+
+The raw body and its addresses are §M1.3's disassembly. The port keeps its two
+arms and every raw store, in the raw's order:
+
+| raw | port | notes |
+|---|---|---|
+| `0x1C936` read `0x1028CC` | `song = DSD(DS_001028CC)` | the pending song |
+| `0x1C93B` compare `0x1028DC` | `song == DSD(DS_001028DC)` | same-song arm |
+| `0x1C943` store `0x1028DC` | `DSD(DS_001028DC) = song` | new-song arm only |
+| `0x1C948` `0x1B544` | `res_resolve(song)` | the resource layer |
+| `0x1C956`/`0x1C9BD` `0x5DEAF` | `AIL_stop_sequence(s_sequence)` | |
+| `0x1C961..0x1C977` copy | `memcpy(mem + DSD(0x1028D0), p + 4, [p])` | size = the resolved block's first dword; payload from +4 |
+| `0x1C98A`/`0x1C9D5` `0x5DE48` | `AIL_init_sequence(s_sequence, bank, 0)` | `bank` is the copied buffer's FORM XMID (§M2.2.1) |
+| `0x1C9A5`/`0x1C9F0` `0x5DECA` | `AIL_set_sequence_volume(s_sequence, DSD(0x0A2CB8), 500)` | the music volume, 500 ms |
+| `0x1C9B4`/`0x1C9FE` `0x5DE79` | `AIL_start_sequence(s_sequence)` | |
+| `0x1CA08` clear `0x1028CC` | `DSD(DS_001028CC) = 0` | both arms |
+
+`PORT:` note in the function: the sequence is the host object `s_sequence`, the
+three AIL calls are the host hand-off to `port/src/platform/audio/`, and the
+copy target is the raw's own `0x5100` block. Two guards are declared deviations
+the raw does not have: a handle that does not resolve (a unit fixture, not a
+shipped song) and a size above `0x5100` drop the request with the pending word
+cleared instead of dereferencing NULL or overflowing the block. Neither can fire
+on the shipped data: all 26 distinct banks are 540..20,400 bytes (§M1.4.1), and
+every handle in `DS_000BBDC8` resolves.
+
+#### §M2.2.1 The AIL hand-off container (measured)
+
+The copied bytes are the resolved block's payload after its size dword:
+`FORM <0x0E> XDIR` (22 bytes), then `CAT <size> XMID`, then the `FORM XMID`
+container (measured for both banks the unit test uses):
+
+```
+S16BEACH.GRA +8:  size 20400, payload "FORM", first FORM/XMID at payload+0x22 (FORM size 20358)
+S16TITLE.GRA +0x36102: size 4920, payload "FORM", first FORM/XMID at payload+0x22 (FORM size 4878)
+```
+
+The raw hands AIL the buffer **base** (the XDIR head); the shipped AIL parses
+the chunk list. The port's `AIL_init_sequence` derives its length from the
+first FORM's own size (`seq_bank_size` = 8 + 14 = 22 bytes here) and cannot
+reach the XMID inside the following CAT, so `snd_music_start` hands it the
+copied buffer's first FORM/XMID (`game_music_bank_find(mem + 0x1028D0,
+0x5100)`), the same mapping `title_music_start` stands on and the 9866-write
+oracle proves. **The copied bytes are the raw's copy; only the pointer handed
+to the port's AIL differs**, and the buffer's FORM/XMID is the only one in it.
+The scan bound is the buffer's own `0x5100`, so it cannot read past the block.
+
+### §M2.3 The unit test and its RED/GREEN
+
+`port/tests/test_game.c`, `check_music_request()` (called from `test_flow` after
+the title-music assertions, on the live sequence `game_audio_init` allocated).
+It asserts: the shipped record is case 1 with handle `0x0A800008`; the request
+returns 1 and stores exactly that pending handle and current song; the service
+resolves, copies the 20,400-byte payload (byte-identical to
+`res_resolve(0x0A800008) + 4`), stores `0x1028DC`, clears `0x1028CC` and the
+sequencer plays; a second request through `sound_voice_stage(0)` takes the
+same-song arm (a zeroed buffer stays zeroed, proving no re-resolve/copy); and a
+title request (`0x03836102`, byte `0x54`) resolves, copies its 4,920-byte
+payload and plays.
+
+RED (before the implementation; line numbers are that revision's):
+
+```
+FAIL port/tests/test_game.c:1793: 0 != 1                                  <- 0x1028C4 stand-in
+FAIL port/tests/test_game.c:1794: 0 != 1                                  <- 0x1028C0 stand-in
+FAIL port/tests/test_game.c:1617: 0 != 1                                  <- snd_music_request's AL
+FAIL port/tests/test_game.c:1618: 0 != 176160776                          <- DS_001028CC (0x0A800008)
+FAIL port/tests/test_game.c:1625: -559038242 != 176160776                 <- DS_001028DC
+FAIL port/tests/test_game.c:1626: 0 != 1                                  <- snd_music_playing
+FAIL port/tests/test_game.c:1630: the resolve copied into the 0x5100 buffer
+FAILURES: 7
+```
+
+The 9866-write title oracle and the capture comparison printed their unchanged
+lines in the same RED run. GREEN: `PR_ORACLE_REQUIRED=1 ./build/run_tests` →
+`all checks passed`, with `oracle C-vs-Python: 9866 writes byte-exact` and the
+same capture first difference (write 430).
+
+### §M2.4 The `UNROWED` boundary (measured)
+
+`0x1C930` stays in `tools/diff_verify.py`'s `UNROWED`. A row faithful enough
+to claim the hand-off would need all of:
+
+- the sequence dword `0x1028C0` to hold the handle the original's four AIL calls
+  receive. The raw's body uses it as an opaque AIL handle (`0x1C94D`, `0x1C983`,
+  `0x1C99E`, `0x1C9AD`, `0x1C9BB`, `0x1C9CE`, `0x1C9E9`, `0x1C9F8`); seeding a
+  value there is fabricating an AIL handle, and in the port the dword is the
+  stand-in 1 while the real object is `s_sequence`, a C pointer with no mem[]
+  representation. Ruling R3 and the plan's "do not fabricate AIL handles" rule
+  this out.
+- the original's `0x5DEAF`/`0x5DE48`/`0x5DECA`/`0x5DE79` (runtime, `>= 0x5D000`,
+  no ported body) to be stubs. The mem-only comparison would then check the
+  stores/copy and **not** the hand-off, which is the phase's functional claim
+  (spec §7.5). The row would not be a closure for it.
+- the resource layer **inside** the case: diffrun never calls `res_load_index`
+  (`port/tests/diff_runner.c` has no such call), so the INDEX table at
+  `DS_001014E0` and the payload block would have to be seeded by the case. The
+  sample-start rows do seed a table (line 33183), so that alone is not
+  disqualifying, but it makes the compared bytes a synthetic resource and still
+  leaves the hand-off out.
+
+The record does not add a synthetic row; the counter is unchanged (measured): `1033/1033 functions VERIFIED;
+14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed
+(188 have none); 807/845 closed on full rows; 8 ported functions with no row
+(45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape
+exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37)`, and the
+harness unittest `Ran 234 tests ... OK`.
+
+`game_audio_service`'s row is unaffected: its cases keep `0x1028CC = 0`, so the
+original never reaches `0x1CF39` and its `unhit_named` address is still unhit.
+**Deferred doc fix:** that entry's reason text still says the port "replaces
+`0x1C930` by host code (flow.c title_music_start)"; the counterpart now exists
+(`snd_music_start`) and the border is the host AIL hand-off, not the missing
+port. Task 7's docs pass should restate it (the plan's Task 2 file list allows
+`tools/diff_verify.py` only for a row).
+
+### §M2.5 The pins (measured on the changed tree)
+
+The title, attract, front-end, audio and gameplay first-unexplained/trace pins are
+unchanged. One class of pin moved: the nine ending captures' loader-overlay
+allowances became clean matches, so their `MAX_MISSING`/`MIN_REACH` pins were
+re-measured and retired (§M2.7). The table below is the final tree.
+
+| check | result |
+|---|---|
+| `PR_ORACLE_REQUIRED=1` suite | `all checks passed`; 9866 writes byte-exact; capture first difference 430, same registers/values |
+| `make title-oracle` | window `[216..326]`, 111 frames, **0 unexplained**, 95/96 port frames each capture, 0 determinism disagreements |
+| `make attract-oracle` | 173/690 exhibited, 74 missing classes (pin 74), first divergence capture 215 (expected) |
+| `make frontend-oracle` | window `[560..1884]`, 30 missing classes (pin 30), the 2 named unexplained frames only, 1145/1382 exhibited |
+| `make demo-fight-oracle` | N 1886; fight window empty; fully explained |
+| `make attract2-oracle` | N 3617; 126 missing classes (pin 126); 0 unexplained |
+| `make gp-charsel-oracle` | first unexplained 516 (pin 516); trace 1513 (pin 1513); poll sha `138fb537..a18d7e` |
+| `make gp-oracle` (gp-idle-loss) | first unexplained 7559 (pin 7559); trace 8320; poll sha `773e2647..8c8447` |
+| `make k11-oracle` | walk 38/38 settled, 47/47 non-black; menuesc END 388, 184 clean, poll sha `aacd3242..0f161e` |
+| `make save-reload-oracle` | write sha `dad3b1f6..f104f9`; load holds the five ranges at `f=01EB` |
+| `make diff-verify` | the §M2.4 counter, unchanged |
+| `make entry-triage` | exit 0 (233 unported / 262 ported targets; 131 supplement) |
+| `python3 tools/port_progress.py` | `799 1203 66` / `759 759 100` |
+| `make check frames=60` | exit 0; `PR_RESTART=1` driver exit 0 |
+| the nine ending oracles | re-measured in §M2.7 (the overlay names retired; the N/start/trace/win pins unchanged) |
+
+The gameplay and menu oracles exercise the new resolve: the stage bank (`0x20` =
+s16beach) is the same GRA the fight entry already loads, so no new loader
+presentation appears there; the ending captures' mode-0x12 entry did gain one
+(the music bank s16snd2), and that is §M2.7's measured change.
+
+### §M2.6 Named differences and what §M2 does not claim
+
+1. **The title bank starts twice in a port run** (measured). The attract's
+   `0x54`/`0x56` request (`0x111FF`, phase 4) now reaches the raw path; in a
+   gdb run of the `PR_ATTRACT_DUMP` driver the first `snd_music_start` hit has
+   `DS_001028CC = 0x03836102` and `DS_001028DC = 0`, and `title_music_start` is
+   hit once afterwards. So the attract starts S16TITLE at the original's moment
+   and `game_state_title`'s `s_music_request` substitute starts it again at the
+   title state (kept unchanged per the plan and §M1.2); the original starts the
+   bank once. The title/attract/front-end oracles above do not move (the ending
+   captures' loader allowances are §M2.7's separate, measured consequence), but
+   Task 4's register-stream oracle must treat the extra start as a declared
+   difference: the title fragment in the `.dro` files is the boot/attract
+   reference (§M1.6.3), and the restart is where the port's stream departs if
+   the first note has played. Retiring the substitute is a title-path change
+   this task is bound not to make; the controller's Task 7 may decide it.
+2. **The hand-off is host-side.** The OPL register stream is the claim (§M1.6);
+   rendered audibility stays the model claim (§M1.7). The unit test checks the
+   sequencer's playing state and the copied bytes, not a rendered sample.
+3. **No differential row** for the reasons in §M2.4; `0x1C930` and `0x1CF40`
+   stay `UNROWED`, and the counter is unmoved.
+4. **The menu/front-end banks' captured coverage** is Task 4's attribution
+   (§M1.6.7); §M2 claims only that a request selects and starts its table bank.
+
+### §M2.7 The ending loader allowances retire (a measured consequence)
+
+The full gate found one class of pin movement, and it is the fix working. The
+mode-0x12 (conquered lands) entry's first read of `s16snd2` (index 6) is a
+**music** request: voice `0x32` case 1, song handle `0x03021BFA`
+(`0x03021BFA = 6 << 23 | 0x21BFA`). The original's sequencer reads that song
+through the resource layer (`0x1B544`, draw arm) in the entry's window, so the
+`- LOADING -` text (string 489, `0x1B3EA/0x1B3EF`, rows 192..197 x 0..85) lands
+over the entry's screen. In the old port the music path never resolved the bank,
+so the replay's first `s16snd2` read was the later *sample* queue of voice `0x3A`
+(`0x03022554`, also index 6) and the same text landed one screen later. Nine
+captures had a named `OVERLAY_ALLOWED` entry for exactly that composition
+(`tools/gp_compare.py`'s header said so). With `0x1C930` ported, the entry's own
+music resolve presents the loader in the replay's own frame; every one of the
+nine capture frames is a **clean** match, so the allowance is stale by the tool's
+own rule ("a named frame the two-frame model explains now is reported as a stale
+name") and the pins are re-measured.
+
+| scenario | retired overlay (capture) | MAX_MISSING old -> new | MIN_REACH old -> new |
+|---|---:|---:|---:|
+| `gp-u9-win` | 2209 | 12 -> 12 | 1976 -> 1976 |
+| `gp-u10-ending` | 2062 | 65 -> 63 | 4662 -> 4661 |
+| `gp-u13-ending2` | 2188 | 59 -> 57 | 4952 -> 4951 |
+| `gp-u16-twop2` | 8066 | 23 -> 23 | 6817 -> 6818 |
+| `gp-u18-talon-ending` | 2227 | 57 -> 55 | 4864 -> 4863 |
+| `gp-u19-vertigo-ending` | 2312 | 51 -> 49 | 4989 -> 4988 |
+| `gp-u20-chaos-ending` | 2180 | 72 -> 70 | 4890 -> 4889 |
+| `gp-u21-armadon-ending` | 2217 | 55 -> 53 | 4973 -> 4972 |
+| `gp-u22-diablo-ending` | 2191 | 54 -> 52 | 4929 -> 4928 |
+
+Every other pin of those oracles is exact and unchanged: `MIN_FIRST` (U10 5437,
+U13 5904, U16 8069, U18 5735, U19 5991, U20 5776, U21 5932, U22 5798, U9 2452),
+`MAX_START`, `TRACE_MIN_FIRST` (U16's moves too), `WIN_MIN_FIRST`,
+`MILESTONES`, the capture shas/frame counts, and the scan3/band allowances. The
+`OVERLAY_ALLOWED` table is now empty (the nine entries are listed in its header
+and in `tools/tests/test_gp_compare.py`'s retirement test); the mechanism and its
+mutation tests stay for a future scenario.
+
+Why the reach moves (mostly -1, U16 +1): the reach is the highest port frame any
+classified capture frame exhibits. The entry frame that used to need a
+three-frame composition now matches one port frame directly, which changes the
+matching alignment by one port frame at the entry; it is a comparison-model
+consequence of the same improvement, not a lost port frame (the replay's dump
+length is unchanged and every other ratchet is exact). The missing-class counts
+drop because the loader-over-black frame the old port dumped at `f=0xC0E` is no
+longer produced (the bank is already resident) while the loader-over-entry frame
+the capture holds is now the replay's own.
+
+The nine affected targets were re-run with `PR_PINS_EXACT=1` after the re-pin and
+pass; the full gate result is in the Task 2 report.
