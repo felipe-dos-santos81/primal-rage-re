@@ -956,6 +956,15 @@ nor refuted numerically**; R2 stays a named gap, no port fix is taken, and no
 `k_miss_gp_u24_u16_state` pin is written (without a port script there is no replay, and the U23
 pair would be an unmeasured copy — §F4.5's dead-weight rule).
 
+**Recovery (2026-10-26, §F5.6).** The controller then authorized **one** recovery diagnostic capture
+(the S records are the measurement; the replay is not needed). It ran once, did not publish (it
+failed the port-script and unscripted-input checks, both starvation artifacts) and did reach the
+KO and the first finisher reaction — but the poller **missed the marker's `s0_54 = 2` set frame**
+(`f=0x1532`); the `s0_54 = 0` exit record at `f=0x1533` is present with `s0_30 = 0x1180`. The
+marker is therefore incomplete (no `2 -> 0` transition in the log): the gap stands, R2 stays a
+named gap, no fix is taken and no third capture was made. §F5.6 records the run, the preserved
+first artifact and the measured exit-neighborhood values.
+
 ### §F5.1 The scenario change
 
 ```python
@@ -1158,3 +1167,107 @@ the fields (the old U23 `poll.log` has no `s0_30`). So:
   count for that is U23's (its first hit at `f=0x5A4`); this run's 12 attempts all whiffed at
   `f=0x1389..0x144D`, which is the game's RNG/position outcome, not a script defect. No second
   diagnostic capture was made under the task's single-run rule.
+
+### §F5.6 The recovery diagnostic capture (2026-10-26)
+
+The controller authorized one recovery run with the S records as the measurement (the original's
+state, not the replay). The first artifact was preserved before it:
+
+```text
+$ cp -a data/k11-captures/gp-u24-u16-state.failed data/k11-captures/gp-u24-u16-state.failed.run1
+$ sha256sum .../gp-u24-u16-state.failed.run1/poll.log
+58dd6991f66d487a49dfd1b8b402d01ef6dcf6b49d00a7f5339e7b4e914e0045   (unchanged, §F5.3's run1)
+```
+
+The recovery ran **without** CPU confinement (the §F4.7 confinement made the poller worse) under
+the same host load (~31 on 20 cores):
+
+```text
+$ DISPLAY=:1 timeout 600 make gp-capture scenario=gp-u24-u16-state
+gp_capture: snapshots 5758, f 5..17DD, 347 frames missed (spec §3.7)
+gp_capture: CHECK base: ok
+gp_capture: CHECK steps fired 75/75 (0 skipped): ok
+gp_capture: CHECK end frame reached: ok
+gp_capture: CHECK mode 0x27 after the Enter: ok
+gp_capture: CHECK snapshots kb == raw (0 differ): ok
+gp_capture: CHECK frames written 5443/5443: ok
+gp_capture: CHECK port script v2 (key 16 (p1.b2) consumption at f=5CF unpinned): FAIL
+gp_capture: CHECK unscripted input: 0 key words, 0 pad presses, 2 pad releases, first at f=745: FAIL
+gp_capture: CHECK pokes written 1/1, 0 raced: ok
+gp_capture: CHECK stopped at the end (SIGTERM at f=17DD, rc=0): ok
+gp_capture: wrote 5443 frames to .../data/k11-captures/gp-u24-u16-state.failed
+  (raw 1375..8564), wall 124.8s; a CHECK failed, .../gp-u24-u16-state left as it was
+make: *** [Makefile:650: gp-capture] Error 1
+```
+
+All 75 steps fired (the run1 capture fired 65/75) and the poke is written once, unraced, so the
+**KO path was reached**: round 1 mode 6 from `f=0x0506`, the time-out result (mode 7 at
+`f=0x11DA`, `s1_5a = 0x3A`), mode 8 for one S, the 0x16 hold to `f=0x1333`; round 2 mode 6
+`f=0x13AF..0x1482`, then **mode 9 at `f=0x1486` with `s1_5a = 0x78`** (the `0x77` poke plus one
+real hit), mode 0x17 at `f=0x16B0`, mode 0x12 at `f=0x17A1` (the stop; SIGTERM at `f=0x17DD`).
+The mode path and its frames are the old U23 capture's (mode 9 `0x1486..0x16AF`, 0x17
+`0x16B0..0x17A0`, 0x12 `0x17A1..0x17DC`), so the marker's frame is the old capture's `0x1532`.
+
+The two failed checks are the starvation class, not the game's state:
+
+- `port script v2` fails on `key 16 (p1.b2)`'s consumption at `f=0x5CF` (no `S(0x5CE)`), the same
+  `S(c-1)` pin as §F4.5/§F4.7. Without a script there is no replay and no miss set.
+- The two "unscripted" pad releases at `f=0x745:0100`/`f=0x745:0200` are **the script's own
+  steps 33/34/35**, which the poller fired in a burst (`33`/`34` press at `0x740`, release
+  `0x744`; `35` press at `0x741`, release `0x745`). The I records list all of them
+  (`step=33/34/35`); the overlapping same-bit windows are what the check's model cannot express
+  (its docstring's own limitation). No stray input is involved.
+
+The artifact, now `data/k11-captures/gp-u24-u16-state.failed` (the recovery; run1 is the
+preserved copy): 5443 frames, `poll.log` 6157 lines / 5758 `S` records, sha256
+`0035aef8bd729470afd4acd41e7af47e6ee4109cbfada9b669771e6ce5cf0933`; `session.txt` reads
+`time_limit=300 wall_s=124.8 rc=0`, `stop_at_end=1 tail=60 signal_f=17DD`, `fps=70.0866
+frames=5443 raw_window=1375..8564`, `check=FAIL port script v2 (...)`, `check=FAIL unscripted
+input ...` and eight `check=ok` lines. Neither artifact is published: `gp-u24-u16-state` does not
+exist, `CAPTURE_DIRS` (35) and the gate's `34/35` are unchanged.
+
+**The marker is incomplete.** The first mode-9 entry is `f=0x1486` and the reaction schedule is
+the old capture's (`r0` 0x00 at `0x1486`, 0x11 at `0x1488`, 0x27 at `0x14F7`), so the D500 set
+would be `0x1532` — but the `S` records jump `0x1531 -> 0x1533` (the `0x1532` frame is one of the
+347 missed; no `S`/`P`/`H`/`I`/`W` record exists at that frame), so **the `s0_54 = 2` set record
+is absent** and the `s0_54 2 -> 0` transition is not in the log. The `s0_54 = 0` record at
+`f=0x1533` is present and is the exit frame by the old capture's marker (`0x1532`/`0x1533`), the
+identical reaction schedule and its post-exit y (`0x1180`, the value the port reaches at its own
+exit, §F5.4). The measured neighbourhood:
+
+| row | frame | `s0_30` | `s0_42` | `s0_54` |
+|---|---|---|---|---|
+| recovery reaction | `0x152C` | `0x09C0` | `0x8000` | 0 |
+| recovery last S before the marker | `0x1531` | `0x09C0` | `0x8000` | 0 |
+| **recovery exit (present, the set frame `0x1532` missing)** | **`0x1533`** | **`0x1180`** | `0x8000` | **0** |
+| recovery post-exit | `0x1536` | `0x0D40` | `0x8000` | 0 |
+| port reaction | `0x1531` | `0x1B40` | `0x8000` | 0 |
+| **port reaction set** | **`0x1532`** | **`0x202E`** | `0x8000` | **2** |
+| port at the capture's exit frame | `0x1533` | `0x22F4` | `0x8000` | 2 |
+| **port case-3 exit** | **`0x155C`** | `0x1180` | `0x8000` | **0** |
+
+The exit-neighbourhood values are **below** the gate and the port's same-frame values are
+**above** it; the recovery's exit value (`0x1180`) is exactly the port's post-exit value. That
+supports the y hypothesis, but it is not the marker-gated measurement:
+
+- the gate input is the *previous* frame's latched y (the port's own exit at `0x155C` follows
+  `0x155B`'s `0x1104`, while `0x155A`'s `0x147E` is still above), and the original's gate input
+  at `0x1532` is the missing frame — neither `0x1531`'s `0x09C0` nor `0x1533`'s `0x1180` is that
+  record;
+- the recovery is a **different RNG draw** from the replay target: its first `rng` difference from
+  the old U23 capture is `f=0x026D` (`723D2EA7` vs `70AC51C8`; the old capture and the port agree
+  until `0x1549`). Its y agrees with the old/port trace up to `0x14FD` (`0xA80`) and departs at
+  `0x14FE` (`FFFFFD00` vs `0xA80`) — the reaction's own y, which is the game's draw, not a
+  same-run comparison. Its `r0` also stays `0x27` (no `0x33`) because the second finisher entry's
+  five steps burst-fired together at `f=0x156B` (the old capture's `0x154D..0x1559`), so the
+  recovery's finisher path is only its first entry's.
+
+**Decision (unchanged, per the controller's absent-marker rule):** the deciding state is **not
+measured** at the marker's own frame. R2 stays a named gap; no port fix is taken (the four named
+functions are raw-faithful per design §7.3, the divergence is in the reaction's record/anchor
+upstream and no capture field separates them); no boundary test, no `k_miss_gp_u24_u16_state`, no
+Makefile or port change, and **no third capture**. The scenario and `TestU24U16State` stay. Both
+artifacts stay in `data/k11-captures/`: `.failed.run1` (the first, §F5.3) and `.failed` (this
+recovery). A future authorized run would need an uncontended poller so that `0x1532` (and the
+`S(c-1)` pin) are recorded; the U23 outcome and the first entry's reaction are already
+reproducible.
