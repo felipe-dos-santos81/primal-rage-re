@@ -1245,3 +1245,283 @@ relationship outside the compared window; the driver's intra-tick voice visit
 order (named); and the `seq_start` controller-state reset (`S.program`,
 `S.volume`, …), which this window's evidence neither supports nor opposes —
 Task 4's other songs are where it would show.
+
+## §M4 The register-stream oracle (Task 4)
+
+### §M4.1 The tool and the model
+
+`tools/audio_compare.py` compares the port's `PR_AUDIO_DUMP` register stream
+(port/tests/test_game.c, §M3.1) against a capture's DBRAWOPL `.dro`
+(tools/opl_trace.py's parser, §M1.6) for the 29 gameplay traces. It is
+stdlib-only and has three commands: `compare` (one trace), `summary` (the
+covered/missing inventory) and `capture-end` (the X frame capped for the
+replay cut). The unit tests are `tools/tests/test_audio_compare.py` (13 cases,
+the RED/GREEN and mutation evidence in §M4.5).
+
+**Sections.** The port dump's writes are grouped into songs where the song
+tick drops back to 0 (a new `AIL_init_sequence` or the same-song restart
+`0x1C93B`). A section's `dc` and bank hash come from the first `S` record at or
+after its first write's frame: the `S` line is emitted at the end of the
+iteration, after that iteration's writes, so the song's tick-0 writes precede
+it. The `dc` is the raw resource handle `(INDEX index << 23) | offset`; the
+tool prints `resource+0xoffset` from `INDEX` and the FNV-1a bank hash.
+
+**Anchor.** The section's first key-on is its first `0xB0..0xB8`/`0x1B0..0x1B8`
+write with bit `0x20` (both OPL banks: the match song's first note is
+`0x1B5=0x2E`, §M3.5). The candidate capture key-ons are the same
+`(register, value)`; each candidate is verified against the port's first 4
+relative tick groups before it is accepted, so a repeated note elsewhere in
+the capture (the selmo's `0xB4=0x2B` occurs at 7,156, 8,284 and 13,173 ms in
+`gp-u5-charsel`) cannot be mistaken for the section start.
+
+**Reduction.** Both streams start at the anchor's write (the same-tick
+preamble before the key-on is dropped symmetrically, as the title oracle
+does), and drop:
+
+  * a write whose value equals the last hardware value for that register
+    (write-on-change collapse; the capture records write-on-change only, the
+    port writes unconditionally). The shadow is seeded from the capture's
+    pre-anchor state on both sides. **The shadow tracks excluded writes too**:
+    an excluded carrier-TL/`0xBD` write still leaves its value in the chip and
+    the capture's own write-on-change sees it. Task 3's reduction skipped
+    excluded writes in the shadow; the measured consequence of the fix is
+    §M4.4 item 2. It changes the selmo's claimed reduced count from 1,687 to
+    1,703 and leaves the per-tick multisets equal.
+  * `0xBD` and the carrier-TL registers `0x43..0x45/0x4B..0x4D/0x53..0x55` on
+    MIDI channels 1 and 4 only (the engine's per-channel volume residual,
+    `port/spec/audio.md`). The capture records no MIDI channel: a captured
+    write inherits the attribution of the port's raw write at the same
+    relative tick/register (0xFF when none).
+
+**Comparison.** Per music tick, as a **sorted multiset** of `(register,
+value)`. The sorted group is the declared **intra-tick write-order model**:
+the port keys expired voices in ascending OPL-channel order, while the
+driver's per-tick voice visit order is not pinned (§M3.4). The capture's `ms`
+is the emulator's accumulated inter-write delay, not a shared clock; the same
+selmo note-off is at 479, 484 and 484 ms in `gp-u8-attract-start`,
+`gp-u5-charsel` and `gp-u8-handicap`, so a write within ~0.6 tick of a 1/120 s
+boundary can round to the adjacent label. The declared **whole-tick model**:
+a tick group (or one write of it) may match the capture's group one tick
+earlier or later (the tool's group alignment). The write content and order across ticks
+are exact; a dropped, extra or wrong write has no matching group and fails at
+its tick. The stronger per-tick multiset equality is reported as a statistic
+(exact for 25 of the 26 replayed traces' selmo sections; the exception is
+`gp-u8-attract-start`'s tick-57 jitter, §M4.4 item 6).
+
+**Boundary.** Each section's final tick is the request boundary and is not
+claimed: the section end is a game-frame event while the capture's music clock
+is its own, and the capture's stop burst can be a tick later (or earlier).
+The tool claims relative ticks `0..last_rel-1`; a first difference at
+`last_rel-1` is reported as the boundary, not a failure. The capture's writes
+after the claim are its own tail and are not compared.
+
+**Named gaps.** A section that cannot be anchored is a named gap when its bank
+hash is in the measured `TRACE_PINS` `allow-unanchored` list; a section that
+anchors but differs on a measured capture-side artifact is a named gap when it
+is in the `allow-diff` list (§M4.4 item 2). Anything else fails. A section with
+one tick (the replay's cut at the next song's start) has no claim and is
+reported by name; `--min-ticks` is what stops a trace shrinking to nothing.
+An absent capture exits 3 and the caller prints the skip by name.
+
+### §M4.2 The measured comparison on `gp-u5-charsel`
+
+The title section: anchor `0xB0=0x2B` at capture 0 ms (port frame 245, song
+tick 60), 30 claimed ticks, 38 reduced writes, per-tick multiset equal through
+tick 29; its final tick 30 is equal but not claimed. The selmo section:
+anchor `0xB4=0x2B` at 7,156 ms (port frame 658, song tick 50), **866 claimed
+ticks** (0..865), **1,703 reduced writes**, per-tick multiset equal through
+tick 865, boundary tick 866 differs (the port's stop burst is 9 music ticks
+before the capture's, §M3.4's clock measurement). The ordered streams differ
+first at reduced write **175** (relative tick 74): port `0xB2=0x0A` then
+`0xB4=0x0B`, capture `0xB4=0x0B` then `0xB2=0x0A` — the same registers, same
+values, same tick, reversed order: the declared intra-tick order model,
+unchanged from §M3.4. Task 3's 1,738 reduced writes counted the boundary tick
+and skipped excluded writes in the shadow; the tool's 1,703 is the claimed
+window under the corrected shadow, and the per-tick equality and the first
+ordered difference are the same measurement.
+
+The selmo section is the second section in the port's stream for every
+standard trace; its length is the character-select/menu window the capture
+holds (146..1,581 ticks). Later sections (`0x31`, the match songs) are only
+comparable when the driver's voice cursor still matches at their first
+key-on; most captures' cursors advanced by the boundary's extra note, so they
+are named gaps (§M4.4 item 1).
+
+### §M4.3 The 29 gameplay traces
+
+The inventory is the measured §M1.6.2 list: 28 `gp-*` directories, 29 `.dro`
+files (gp-pads holds `prage_000` and `prage_001`). Each trace's replayed cut is
+`min(1400, the capture's X frame)`; the cut is enough for the sections below
+and keeps the oracle inside the phase's budget. The table is the oracle run of
+§M4.5 on the phase tree; the pinned minimum is in §M4.5. "Claimed" is the
+section's bank/offset, capture anchor ms and claimed ticks; "named gap" is a
+section the capture cannot carry, with its bank hash.
+
+| trace | .dro | claimed | named gap | pin |
+|---|---|---|---:|---:|
+| `gp-idle-loss` | prage_000 | s16title+0x36102 (FD94B4E3) @0: 30; s16selmo+0x25C (286ED662) @7256: 1468 | — | 1498 |
+| `gp-idle-loss-run2` | prage_000 | title @0: 30; selmo+0x25C (286ED662) @7157: 1478 | — | 1508 |
+| `gp-keys-fight` | prage_000 | title @0: 30; selmo+0x25C @7157: 1478 | — | 1508 |
+| `gp-pads` | prage_000, prage_001 | title @0: 30 | — (no in-match music; the prage_001 restart fragment anchors nothing) | 30 |
+| `gp-twop` | prage_000 | title @0: 30; selmo+0x25C @7032: 446; selmo+0x8 (F1774E70) @11364: 480 | s16citys+0x8 (20DA829D) | 956 |
+| `gp-u10-ending` | prage_000 | title @0: 30; selmo+0x25C @7033: 146 | selmo+0x8 (F1774E70); s16citys+0x8 (20DA829D); s16sound+0x5B88 (3BA4C376) | 176 |
+| `gp-u12-endurance` | prage_000 | title @0: 30; selmo+0x25C @10684: 926; selmo+0x8 @19009: 72 | — | 1028 |
+| `gp-u13-ending2` | prage_000 | title @0: 30; selmo+0x25C @7000: 326 | selmo+0x8 (F1774E70); s16jungl+0x8 (BC44EF50); s16sound+0x5B88 (3BA4C376) | 356 |
+| `gp-u15-join` | prage_000 | title @0: 30; selmo+0x25C @7257: 1468 | — | 1498 |
+| `gp-u16-twop2` | prage_000 | title @0: 30; selmo+0x25C @7157: 446; selmo+0x8 @11493: 480 | s16citys+0x8 (20DA829D) | 956 |
+| `gp-u17-device2` | prage_000 | skip: no frame-keyed port script (wall-paced, §H6.9); the `.dro` is the 248 ms boot fragment | — | 0 |
+| `gp-u18-talon-ending` | prage_000 | title @0: 30; selmo+0x25C @7100: 206; selmo+0x8 @9424: 480; s16beach+0x8 (87E7C2DE) @14825: 248 | s16sound+0x5B88 (3BA4C376) | 964 |
+| `gp-u19-vertigo-ending` | prage_000 | title @0: 30; selmo+0x25C @7101: 266 | selmo+0x8 (F1774E70); s16sound+0x3E64 (3D536DDE); s16sound+0x5B88 (3BA4C376) | 296 |
+| `gp-u20-chaos-ending` | prage_000 | title @0: 30; selmo+0x25C @7032: 386 | selmo+0x8 (F1774E70); s16caves+0x8 (86946EB7); s16sound+0x5B88 (3BA4C376) | 416 |
+| `gp-u21-armadon-ending` | prage_000 | title @0: 30; selmo+0x25C @6716: 446; selmo+0x8 @11048: 480; s16jungl+0x8 (BC44EF50) @16425: 246 | s16sound+0x5B88 (3BA4C376) | 1200 |
+| `gp-u22-diablo-ending` | prage_000 | title @0: 5 (the early menu stop, boundary tick 6); selmo+0x25C @6049: 506; selmo+0x8 @10885: 480 | s16himal+0x8 (BF1C78E2); s16sound+0x5B88 (3BA4C376) | 991 |
+| `gp-u23-u16-finisher` | prage_000 | title @0: 30 | selmo+0x25C (286ED662, diff); selmo+0x8 (F1774E70, diff); s16citys+0x8 (20DA829D) | 30 |
+| `gp-u5-charsel` | prage_000 | title @0: 30; selmo+0x25C @7156: 866 | selmo+0x8 (F1774E70); s16beach+0x8 (87E7C2DE, one tick at the cut) | 896 |
+| `gp-u6-moves` | prage_000 | title @0: 30; selmo+0x25C @7184: 1478 | — | 1508 |
+| `gp-u6-moves-b` | prage_000 | title @0: 30; selmo+0x25C @7206: 1474 | — | 1504 |
+| `gp-u8-attract-start` | prage_000 | title @0: 30; selmo+0x25C @1684: 1633 | selmo+0x8 (F1774E70) | 1663 |
+| `gp-u8-endurance` | prage_000 | title @0: 30; selmo+0x25C @10825: 583 | — | 613 |
+| `gp-u8-handicap` | prage_000 | title @0: 30; selmo+0x25C @6316: 1581 | — | 1611 |
+| `gp-u8-left-training` | prage_000 | title @0: 30; selmo+0x25C @7548: 1433 | — | 1463 |
+| `gp-u8-right-arcade` | prage_000 | title @0: 30; selmo+0x25C @6700: 1533 | — | 1563 |
+| `gp-u8-right-training` | prage_000 | title @0: 30; selmo+0x25C @8817: 1281 | — | 1311 |
+| `gp-u8-tug-of-war` | prage_000 | title @0: 30; selmo+0x25C @9793: 1166 | — | 1196 |
+| `gp-u9-win` | prage_000 | title @0: 30; selmo+0x25C @7157: 146 | selmo+0x8 (F1774E70); s16citys+0x8 (20DA829D); s16sound+0x5B88 (3BA4C376) | 176 |
+
+All 29 gameplay files are accounted for: 26 have a music section (§M1.6.2's
+measured count), `gp-pads`' and `gp-u17-device2`'s boot fragments and
+`gp-pads/prage_001` hold none. The 8 other k11 `.dro` files
+(`de/prage_000`, `diags/prage_000`, `idle/prage_000`, `idle/prage_001`,
+`menuesc/prage_000`, `save-reload/prage_000`, `walk/prage_000`,
+`walk/prage_001`) and the 2 title captures (`data/audio-captures/prage_000.dro`,
+`prage_001.dro`) are not gameplay and the summary names them apart. The
+section-to-bank attribution is the measured output above: each claimed
+section's bank handle is the port's requested song, and the capture window at
+its anchor is attributed to it because every claimed tick's reduced multiset
+matches.
+
+### §M4.4 The measured model differences (named gaps)
+
+1. **The section-boundary voice cursor (the unanchored later sections).**
+   The driver's voice-rotation cursor (`S.next`, the SBPRO2.MDI `0x1408` over
+   `0x1a49`, §M3.3) advances on every allocated note and is not reset by a
+   song start. The game's next-song request is a game-frame event, so the port
+   can stop a song 1..9 music ticks before the capture does; a note in the
+   capture's tail advances the capture's cursor, and the port's later section's
+   first key-on is then on different OPL channels. Measure: `gp-u5-charsel`'s
+   selmo plays one more capture key-on at 14,409 ms (`0xB6=0x2B`, capture
+   channel 6) after the port's 866-tick window, so the port's `0x31` section's
+   first key-on is `0xB5=0x36` where the capture's is `0xB7=0x36` (two OPL
+   channels higher). No anchor candidate matches the port's first 4 tick
+   groups, and the section is a named gap by its bank hash. The same cause
+   names the `0x31`/match sections in the traces above; the sections that do
+   still anchor (`gp-twop`, `gp-u16-twop2`, `gp-u12-endurance`,
+   `gp-u18-talon-ending`, `gp-u21-armadon-ending`, `gp-u22-diablo-ending`) are
+   compared and match (446..480 ticks for `0x31`), so this is not a blanket
+   skip.
+2. **The `gp-u23-u16-finisher` capture's tick split (the two diff-allowed
+   sections).** The port's reduced selmo stream is **identical** to
+   `gp-u16-twop2`'s (901 writes each; the `0x31` stream likewise 281 each), and
+   the u23 port matches the **u16 capture** at both sections (446 and 480
+   ticks, §M4.5's cross-check). The u23 capture's own playback differs:
+   at its selmo tick 25 it splits the note's writes between ticks 25 and 26 and
+   records a carrier-TL `0x145=0x20` the port does not write (the port's
+   hardware value for that register was already `0x20`, so its write-on-change
+   suppression differs from the capture's). The first diff is at relative tick
+   25 (port group 23 writes vs capture 14) and at tick 21 in the `0x31`
+   section. These two sections are `diff-allowed` by hash; the trace's claim is
+   its 30-tick title, and the same music is claimed tolerance-free by
+   `gp-u16-twop2`.
+3. **`gp-u17-device2`.** The scenario is the wall-paced service-menu walk
+   (§H6.9); `gp_session.port-script` refuses it by design, and its `.dro` is
+   the 248 ms boot fragment (185 writes, no music). It is skipped by name; no
+   claim is made.
+4. **`gp-pads`.** The MAIN MENU path never reaches the character select, so
+   the port's stream has only the title section; both `.dro` files are boot
+   fragments/restart fragments with no in-match music. The title's 30 ticks are
+   claimed; the capture's missing selmo is not a port silence.
+5. **The section-end tick.** Every section's final tick is not claimed (§M4.1);
+   a first difference there (e.g. `gp-u22-diablo-ending`'s title stop at tick
+   5 vs the port's tick 6) is the request boundary, not a note difference.
+6. **The capture label jitter.** The one-tick model of §M4.1 is a measured,
+   not fitted, allowance: `gp-u8-attract-start`'s selmo has 2 label-slack
+   moves (the note-off at 57 vs 58), and `gp-u22-diablo-ending`'s title one.
+   The per-tick statistic reports where the exact per-tick equality stops
+   (tick 56 and tick 4 respectively); the claim continues under the group
+   model.
+7. **The banks absent from the 29 traces.** The claimed sections attribute
+   **10 distinct banks**: `s16title+0x36102` (FD94B4E3, 0x54/0x56),
+   `s16selmo+0x25C` (286ED662, 0x2E/0x30), `s16selmo+0x08` (F1774E70, 0x31),
+   `s16beach+0x08` (87E7C2DE, 0x20), `s16citys+0x08` (20DA829D, 0x1D),
+   `s16himal+0x08` (BF1C78E2, 0x1E), `s16caves+0x08` (86946EB7, 0x1F),
+   `s16jungl+0x08` (BC44EF50, 0x1B), `s16sound+0x5B88` (3BA4C376, 0x23) and
+   `s16sound+0x3E64` (3D536DDE, 0x21). The other **16 distinct banks** of
+   §M1.6.7's 26-bank code-reachable set are absent from the 29 traces:
+   `s16stone+0x08` (0x1C), `s16snd2+0x21BFA` (0x32), `s16sound+0x6EC8`
+   (0xDF), `s16conti+0x08` (0x2C), `s16sound+0x39F4` (0x3D),
+   `s16sound+0x335E` (0x3B), `s16hghsc+0x08` (0xE1/0xE3), `s16grave+0x1A10`
+   (0x25), `s16grave+0x0A8C` (0x26), `s16grave+0x05E4` (0x27),
+   `s16sound+0x08` (0x28), `s16grave+0x08` (0x2A), `s16sound+0x6CA8` (0x24),
+   `s16sound+0x7714` (0xE4), `s16sound+0x72D4` (0xEC) and `s16konsd+0x1CCB0`
+   (0xEB). Those are named gaps (a song/bank absent from the measured traces,
+   not a new capture); no captured window plays them, so the oracle cannot
+   claim them.
+
+### §M4.5 Pins, tests and the gate
+
+**The pins.** `tools/audio_compare.py`'s `TRACE_PINS` holds, per trace, the
+minimum total claimed ticks and the two named-gap lists. The minima are the
+total of two full oracle runs on the phase tree; **both runs produced every
+value byte-identically** (the two-run script's output diff is empty). The
+third run (the gate run) was equal or longer (only `gp-u21-armadon-ending`
+moved, 1,200 -> 1,202: its jungle section 244 -> 246), which the pin accepts.
+The per-trace values are in §M4.3's last column.
+
+**RED/GREEN.** The RED was taken with the tool absent (the task starts with
+no comparator): `python3 -m unittest tools.tests.test_audio_compare` with
+`tools/audio_compare.py` moved aside ran 13 tests and failed all 13 (`can't
+open file .../tools/audio_compare.py`); with the tool restored it ran 13 and
+passed (`Ran 13 tests ... OK`). The cases: an identical synthetic `.dro`/port pair
+passes; a dropped write, an extra write and a wrong value each fail with the
+first difference at the mutated tick; an intra-tick reversal passes (the
+declared order model); a single one-tick capture label shift passes (the
+declared label model, reported as a slack move); the boundary tick is not
+claimed; an unanchored stream fails; an absent `.dro` skips with exit 3; a
+short claim fails `--min-ticks`; `--allow-unanchored` and `--allow-diff` name a
+gap without failing; `capture-end` reads the X record.
+
+**Mutation proof on a real trace.** Dropping one write from the
+`gp-u5-charsel` selmo's claimed window (`audio.txt` write 1200 removed) fails:
+`FIRST DIFFERENCE (tick groups differ) at port relative tick 374: port [...
+0xf3=0x00] vs capture [... 0xf3=0x00 0x1b8=0x07]`, then `claimed 30 ticks,
+pinned minimum 896`; exit 1. Changing the title's first key-on to
+`0xB0=0x2C` fails as unanchored (`no capture key-on 0xb0=0x2c with matching
+first 4 ticks (0 candidates)`; exit 1).
+
+**Cross-check (the `gp-u23` cause).** `gp-u23-u16-finisher`'s port stream
+against `gp-u16-twop2`'s capture: title 30, selmo+0x25C 446, selmo+0x8 480 —
+all matched, no allowances. `gp-u16-twop2`'s port against the u23 capture
+fails at the same two sections. The two port streams are identical; the u23
+capture is the differing side.
+
+**The Makefile.** `make audio-oracle` (`AUDIO_DUMP=/tmp/pr_audio_dump`,
+`AUDIO_END=1400`, `AUDIO_JOBS=4`) loops the 28 scenario names through
+`audio-one`, which cuts each capture's script at `min(AUDIO_END, X)`, runs
+`PR_GP_DUMP`/`PR_AUDIO_DUMP`, and compares; the summary prints the 29-file
+inventory, each trace's total/pin/named gaps, the 8+2 non-gameplay files and
+the minimum measured claim. The 28 parallel cut replays take **2m48s** on the
+phase host. `make verify` runs it after `gp-ending-oracle` and before
+`diff-verify`, and the unit module is in the verify python list. A cut script
+is a prefix of the full replay, so the driver's `PR_GP_DUMP` fn-miss check
+(`count <= want`, `dropped == 0`) passes; the run's own `(cut at N)` header
+selects `cut`.
+
+### §M4.6 What §M4 does not claim
+
+Rendered audibility (the OPL core/mixer model, §M1.7); a song/bank absent from
+the 29 traces (a named gap, not a new capture); the sections named in §M4.4;
+the capture's ms timeline as a port/frame clock (§M1.6.5); the inside-tick
+write order (declared model); and the exact tick label of a write within the
+declared one-tick capture-label model. The claim is the register content,
+order across ticks, song choice and the per-section bank attribution in the
+captured windows.

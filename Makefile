@@ -121,6 +121,7 @@ chunk ?= 0
 
 .PHONY: help deps build gate-check test verify check run clean audio-render \
         smk-oracle title-pin title-capture title-oracle attract-oracle \
+        audio-one audio-oracle \
         frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report \
         save-reload-oracle \
@@ -2069,6 +2070,70 @@ AUDIO_SECONDS ?= 12
 audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV, AUDIO_SECONDS)
 	PR_AUDIO_WAV=$(AUDIO_WAV) PR_AUDIO_WAV_SECONDS=$(AUDIO_SECONDS) ./$(BUILD_DIR)/run_tests
 
+# ── audio · the register-stream oracle ───────────────────────────────────────
+# The 28 gameplay capture directories hold the 29 `gp-*` `.dro` traces of the
+# measured inventory (record 2026-10-25-music-truth-derivations §M1.6.2;
+# gp-pads holds prage_000 and prage_001). Each is the original's OPL register
+# stream for that scenario. The port replays the capture's script cut at
+# AUDIO_END frames (or the capture's X record, whichever is earlier: the
+# comparison only needs the music sections the cut reaches) and writes its own
+# stream with PR_AUDIO_DUMP. `tools/audio_compare.py` anchors each song at its
+# first key-on and compares the per-tick register multisets with no fitted
+# window: the declared models are the intra-tick write order (the port's
+# ascending OPL-channel key-off loop) and a one-tick capture-label slack (the
+# DRO's accumulated ms jitter: the same selmo note-off is at 479..484 ms in
+# three captures). Each trace's measured minimum is pinned in the tool's
+# TRACE_PINS table with its allowed named gaps; a section outside that table
+# must anchor and match, and a one-write mutation fails. A missing capture is
+# skipped by name; gp-u17-device2 has no frame-keyed port script (wall-paced,
+# record §H6.9) and its `.dro` is the 248 ms boot fragment, so it is skipped by
+# name too. The 8 other k11 captures and the 2 title captures are named by the
+# summary as not gameplay.
+# AUDIO_DUMP is a fixed shared /tmp path like GP_DUMP; a parallel lane must
+# override it (`make ... AUDIO_DUMP=/tmp/pr_audio_dump_<lane>`).
+AUDIO_DUMP ?= /tmp/pr_audio_dump
+AUDIO_END ?= 1400
+AUDIO_JOBS ?= 4
+AUDIO_TRACES = gp-idle-loss gp-idle-loss-run2 gp-keys-fight gp-pads gp-twop \
+	gp-u10-ending gp-u12-endurance gp-u13-ending2 gp-u15-join gp-u16-twop2 \
+	gp-u17-device2 gp-u18-talon-ending gp-u19-vertigo-ending gp-u20-chaos-ending \
+	gp-u21-armadon-ending gp-u22-diablo-ending gp-u23-u16-finisher gp-u5-charsel \
+	gp-u6-moves gp-u6-moves-b gp-u8-attract-start gp-u8-endurance gp-u8-handicap \
+	gp-u8-left-training gp-u8-right-arcade gp-u8-right-training gp-u8-tug-of-war \
+	gp-u9-win
+
+# One trace: the cut port script, the PR_AUDIO_DUMP replay, the comparison.
+# No build dependency: `audio-oracle` builds once and the parallel workers only
+# read the binary (a parallel `make build` would race on the build directory).
+audio-one: ## Replay and compare one gameplay trace (scenario=gp-…; used by audio-oracle)
+	@case "$(scenario)" in gp-?*) ;; *) echo "usage: make audio-one scenario=gp-<name>"; exit 2;; esac
+	@[ -n "$(AUDIO_DUMP)" ] || { echo "audio-one: AUDIO_DUMP is empty"; exit 2; }; \
+	cap=$(K11_CAPTURES)/$(scenario); \
+	dir=$(AUDIO_DUMP)/$(scenario); \
+	if [ ! -d $$cap ]; then \
+		mkdir -p $$dir; \
+		printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no capture"}\n' $(scenario) > $$dir/report.json; \
+		echo "audio-oracle: SKIP $(scenario) (no capture at $$cap)"; exit 0; fi; \
+	rm -rf $$dir; mkdir -p $$dir/gp; \
+	end=$$($(PYTHON) tools/audio_compare.py capture-end --capture $$cap --max $(AUDIO_END)); \
+	if [ "$$end" = "0" ]; then \
+		printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no X record"}\n' $(scenario) > $$dir/report.json; \
+		echo "audio-oracle: SKIP $(scenario) (no X record in poll.log)"; exit 0; fi; \
+	if ! $(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $$cap --out $$dir/script --end $$end > $$dir/script.log 2>&1; then \
+		printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no frame-keyed port script (wall-paced)"}\n' $(scenario) > $$dir/report.json; \
+		echo "audio-oracle: SKIP $(scenario) (no frame-keyed port script: $$(tail -1 $$dir/script.log))"; exit 0; fi; \
+	PR_GP_DUMP=$$dir/gp PR_GP_SCRIPT=$$dir/script PR_GAME_DIR=$(GAME_DIR) \
+		PR_AUDIO_DUMP=$$dir/audio.txt ./$(BUILD_DIR)/run_tests > $$dir/replay.log 2>&1 || { \
+		echo "audio-oracle: $(scenario) replay FAILED ($$dir/replay.log)"; exit 1; }; \
+	caps=""; for f in $$cap/*.dro; do caps="$$caps --capture $$f"; done; \
+	$(PYTHON) tools/audio_compare.py compare --name $(scenario) --port $$dir/audio.txt $$caps \
+		--game-dir $(GAME_DIR) --json-out $$dir/report.json
+
+audio-oracle: build ## The register-stream oracle over the 29 gameplay gp-* traces (skips absent traces by name)
+	@rm -rf $(AUDIO_DUMP); mkdir -p $(AUDIO_DUMP)
+	@printf '%s\n' $(AUDIO_TRACES) | xargs -P $(AUDIO_JOBS) -I{} $(MAKE) --no-print-directory audio-one scenario={}
+	@$(PYTHON) tools/audio_compare.py summary --captures $(K11_CAPTURES) --audio-captures data/audio-captures --reports $(AUDIO_DUMP)
+
 # The --check run must come immediately before the unit suite: test_fn_misslog
 # reads frames/fn_miss.txt from the CWD and verifies the run's pinned known-set.
 verify: gate-check build ## Full ladder: capture preflight, --check frames, oracle-required tests, every pixel and ratchet oracle, differential verification, E2 triage, symbols.h idempotence
@@ -2131,10 +2196,12 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u22-oracle
 	@$(MAKE) --no-print-directory gp-win-oracle
 	@$(MAKE) --no-print-directory gp-ending-oracle
+	@echo "== register-stream oracle (the 29 gp-* traces; each skips without its capture) =="
+	@$(MAKE) --no-print-directory audio-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
