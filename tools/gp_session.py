@@ -579,36 +579,72 @@ SCENARIOS['gp-u22-diablo-ending'] = dict(
 # won by fought hits, so the win path's pokes are not needed. The menu path is gp-idle-loss's
 # with WIN_MENU's immediate confirm of character 0 (SAURON); the two rounds are punched.
 # The presses are tools/gp_moves.py's (`steps --char 0 --facing 0 --step 4 --gap 16
-# --moves 1A,1B,1A,1B,...`, 32 entries): 1A = new b0+b1 (character 0's keyboard entry
+# --moves 1A,1B,1A,1B,...`): 1A = new b0+b1 (character 0's keyboard entry
 # 0x1A, reaction 0x10) and 1B = new b2+b3 (entry 0x1B, reaction 0x11), each held 4.
 # Those are the table's two 1-frame normals (0xC6B9C: m0 0x3 / 0xC, d = e = 1); the
-# motion moves cost 20+ frames per attempt. UNMEASURED: no capture has run this path — which presses land, whether the CPU
-# is KO'd in both rounds and the round lengths are Task 11's measurement. The damage note is
-# the raw's, not a measurement: 0x39834/0x39738/0x392A0 read the (character, reaction) record
+# motion moves cost 20+ frames per attempt. The phase's one authorized run (2026-10-26)
+# measured the reverse of the intended win: P1 was KO'd in both rounds and P2 won the
+# match 2-0 (record 2026-10-26-fought-match-truth §F2), so the pins stay empty and this
+# capture remains a named gap. The damage note is the raw's, not a measurement:
+# 0x39834/0x39738/0x392A0 read the (character, reaction) record
 # 0xDE114 + (char << 6 | reaction) * 11 and add a scaled byte to +0x5A, whose KO value is
 # 0x78 (0x27FA8). 0x10 and 0x11 start 16 and 15 in SAURON's rows (14 and 15 in CHAOS's —
-# this path's P2 is c1 = 6, afc = 5 in the same-path gp-u9-win (first mode-6 S f=0x480) and
-# gp-u10-ending (f=0x479) captures, 0x1078BE/0x104AFC) and 0x392A0's v * 0x78 / 0x64 makes a
-# first hit 16..19, while 0x39738's combo table (0xBEC28: 100, 60, 55, ...) scales a chain's
-# later hits; roughly 7-12 landed hits reach 0x78, so 32 attempts per round leave room for
-# whiffs. Harness values, not game values: the 10 frames into each
-# round (U9's poke delay), the 16-frame gap (>= the 4-frame hold + 0x500C4's 2-frame release,
-# gp_moves.REPRESS) and the 200 s limit (gp-idle-loss's; two fought rounds can run the round
-# timer's ~3280 frames each). The capture stops on the conquered-lands screen (mode 0x12,
-# STOP_AT_END).
+# the failed run's P2 was c1 = 3, VERTIGO, afc = 3 (§F2.6), where the same-path gp-u9-win
+# (first mode-6 S f=0x480) and gp-u10-ending (f=0x479) captures have c1 = 6, afc = 5,
+# 0x1078BE/0x104AFC), and 0x392A0's v * 0x78 / 0x64 makes a first hit 16..19, while
+# 0x39738's combo table (0xBEC28: 100, 60, 55, ...) scales a chain's later hits; roughly
+# 7-12 landed hits reach 0x78. The measured rate is ~3 landed hits per 32 attempts (spec
+# §7.1), so the script is 160 attempts per round (record 2026-10-23-endgame-truth §E8,
+# 2026-10-20-gameplay-truth-ii §J6 and this phase's plan §7.1): the U23 160-attempt run's
+# KO was attempt 88 (§E2), so 160 leaves room for whiffs, and the 12-frame p1.right
+# re-approach every eight attempts (the U16 builder) takes a knocked-back P2 back into
+# reach. 160 attempts are ~2,600 nominal frames, under the round timer's ~3,280.
+# Harness values, not game values: the 10 frames into each round (U9's poke delay), the
+# 16-frame gap (>= the 4-frame hold + 0x500C4's 2-frame release, gp_moves.REPRESS) and the
+# 260 s limit (the U23 160-attempt run's; two fought rounds can run the round timer's ~3280
+# frames each). skip_on_mode=(0x08, 0x09) drops a round's queued presses at its round or
+# match result and resumes at the next after_entry: the 160-attempt form would otherwise
+# fire the ~72 presses a measured attempt-88 KO leaves onto the result screen and overrun
+# the end (the U23 run's BIOS-ring overflow, record §E2). The capture stops on the
+# conquered-lands screen (mode 0x12, stop_mode, STOP_AT_END).
 U14_PUNCH = ('p1.b0', 'p1.b1')      # entry 1A, reaction 0x10
 U14_KICK = ('p1.b2', 'p1.b3')       # entry 1B, reaction 0x11
 U14_GAP = 16                        # frames between attempts (harness)
-U14_ATTEMPTS = 32                   # attempts per round (harness; see the landed-hit estimate)
-U14_PRESSES = tuple(('after', U14_GAP, ('pad', n, 4)) for n in
-                    ([U14_PUNCH, U14_KICK] * (U14_ATTEMPTS // 2))[1:])
-SCENARIOS['gp-u14-win-live'] = dict(time_limit=200, extra=WIN_EXTRA, steps=WIN_MENU + (
-    ('after_entry', 0x06, 1, 10, ('pad', U14_PUNCH, 4)),   # round 1's first press
-) + U14_PRESSES + (
-    ('after_entry', 0x06, 2, 10, ('pad', U14_PUNCH, 4)),   # round 2's first press
-) + U14_PRESSES + (
-    ('until_mode', 0x12, 0),                               # the conquered-lands screen
-))
+
+# The U16 builder (plan 2026-10-20-gameplay-truth-ii.md Task 8), shared with
+# gp-u16-twop2/gp-u23-u16-finisher and gp-u14-win-live's two rounds; it needs the
+# U14_PUNCH/U14_KICK entries above.
+U16_GAP = 16          # frames between the 1A/1B attempts
+U16_WALK = 12         # the p1.right hold between groups
+U16_GROUP = 8         # attempts per group
+
+
+def _u16_round(attempts, first_gap, anchor=None):
+    """P1's 1A/1B attempts (gp-u14-win-live's two 1-frame normals) `first_gap` frames
+    after the previous step, then U16_GAP apart, with a p1.right walk every U16_GROUP
+    (harness values). `anchor` = (mode, k) makes the first attempt an after_entry step."""
+    out, gap = [], first_gap
+    for k in range(attempts):
+        name = U14_PUNCH if k % 2 == 0 else U14_KICK
+        if k == 0 and anchor is not None:
+            out.append(('after_entry', anchor[0], anchor[1], first_gap, ('pad', name, 4)))
+            gap = U16_GAP
+            continue
+        if k and k % U16_GROUP == 0:
+            out.append(('after', gap, ('pad', ('p1.right',), U16_WALK)))
+            gap = 20
+        out.append(('after', gap, ('pad', name, 4)))
+        gap = U16_GAP
+    return tuple(out)
+
+
+SCENARIOS['gp-u14-win-live'] = dict(
+    time_limit=260, extra=WIN_EXTRA,
+    stop_mode=0x12, stop_delay=0, skip_on_mode=(0x08, 0x09),
+    steps=WIN_MENU
+    + _u16_round(160, 10, anchor=(0x06, 1))
+    + _u16_round(160, 10, anchor=(0x06, 2)),
+)
 
 # Gameplay truth II U15 (plan 2026-10-20-gameplay-truth-ii.md Task 7): P2 joins the
 # gp-idle-loss fight mid-round. F2 (p2.start) in mode 6 is the join poll 0x28CC8 (the
@@ -665,29 +701,8 @@ SCENARIOS['gp-u15-join'] = dict(time_limit=75, steps=(
 # take the idle P2 out of stationary punches' reach), the 10 frames into each anchored
 # mode (U9's), the end on the conquered-lands screen (mode 0x12: 0x4142C, the mode-0x17
 # hook 0x28BC6 installs after mode 9's hold, 0x41494) and the 240 s limit
-# (gp-u10-ending's; two fought rounds plus the result screen).
-U16_GAP = 16          # frames between the 1A/1B attempts
-U16_WALK = 12         # the p1.right hold between groups
-U16_GROUP = 8         # attempts per group
-
-
-def _u16_round(attempts, first_gap, anchor=None):
-    """P1's 1A/1B attempts (gp-u14-win-live's two 1-frame normals) `first_gap` frames
-    after the previous step, then U16_GAP apart, with a p1.right walk every U16_GROUP
-    (harness values). `anchor` = (mode, k) makes the first attempt an after_entry step."""
-    out, gap = [], first_gap
-    for k in range(attempts):
-        name = U14_PUNCH if k % 2 == 0 else U14_KICK
-        if k == 0 and anchor is not None:
-            out.append(('after_entry', anchor[0], anchor[1], first_gap, ('pad', name, 4)))
-            gap = U16_GAP
-            continue
-        if k and k % U16_GROUP == 0:
-            out.append(('after', gap, ('pad', ('p1.right',), U16_WALK)))
-            gap = 20
-        out.append(('after', gap, ('pad', name, 4)))
-        gap = U16_GAP
-    return tuple(out)
+# (gp-u10-ending's; two fought rounds plus the result screen). The constants and the
+# builder are above, beside gp-u14-win-live's.
 
 
 def steps_before_end(steps):
@@ -832,6 +847,21 @@ SCENARIOS['gp-u17-device2'] = dict(time_limit=90, wall=True, steps=(
     ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU (the walk's key 2)
 ) + tuple(('after_wall', U17_GAP, _u17_step(k)) for k in U17_WALK) + (
     ('after_wall', 1.5, ('end',)),                    # the wall end, 1.5 s after the leave
+))
+
+
+# A DISPOSABLE harness preflight (plan 2026-10-26-fought-match-truth Task 2; not a
+# measurement): the real stop-on-mode path in a capture, with no game claim. The mode
+# 0x27 entry (the boot's MAIN MENU) arms the stop 10 frames later, and the after_mode
+# press 30 frames into it must NOT fire (Poller.run injects no input once end_frame is
+# set). It does not prove skip-on-mode or the skipped-round rule (the unit tests do);
+# it only exercises DOSBox-X, title-pin, the poller and the stop path before the one
+# authorized U14 run. Not in CAPTURE_DIRS and not in the audio traces: the capture is
+# throwaway, outside the gate inventory.
+SCENARIOS['gp-harness-smoke'] = dict(
+    time_limit=30, stop_mode=0x27, stop_delay=10, steps=(
+    ('boot', ENTER_WAIT, ('key', 'enter')),
+    ('after_mode', 0x27, 30, ('pad', ('p1.start',), 4)),
 ))
 
 
@@ -1028,6 +1058,9 @@ class Schedule:
 # gp-u23-u16-finisher (endgame truth U23) stops too: its end is the conquered-lands
 # screen (mode 0x12) after the match-result screen's finisher attempts, and nothing
 # past it is compared.
+# gp-harness-smoke (plan 2026-10-26-fought-match-truth Task 2) stops too: its end is
+# 10 frames into mode 0x27 (stop_mode/stop_delay), and it is a disposable preflight,
+# not a gate-inventoried capture.
 # gp-u18-talon-ending (endgame truth Task 3) stops too: its end is mode 3 after the
 # high-score entry (u10's until_mode), and nothing past it is compared.
 # gp-u19-vertigo-ending (endgame truth Task 4) stops the same way: its end is mode 3
@@ -1046,7 +1079,8 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u15-join', 'gp-u16-twop2', 'gp-u17-device2',
                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
-                         'gp-u22-diablo-ending', 'gp-u23-u16-finisher'})
+                         'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
+                         'gp-harness-smoke'})
 
 
 class ScriptError(Exception):

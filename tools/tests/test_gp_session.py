@@ -835,30 +835,51 @@ class TestDiabloEnding(unittest.TestCase):
 
 class TestLiveWin(unittest.TestCase):
     """gp-u14-win-live (plan 2026-10-20-gameplay-truth-ii Task 6; spec W5): a match won
-    by fought hits, without the WIN_MENU pokes. The hit sequence is the builder's and
-    UNMEASURED (the Task 11 capture measures the KOs); these tests are shape-only."""
+    by fought hits, without the WIN_MENU pokes. The hit sequence is the builder's; the
+    160-attempt form's one authorized run (2026-10-26) measured P1 KO'd in both rounds
+    (record 2026-10-26-fought-match-truth §F2), so the pins stay empty and these tests
+    are shape-only."""
 
     def test_the_live_win_has_no_pokes(self):
         scn = gs.SCENARIOS['gp-u14-win-live']
         self.assertFalse(any(s[-1][0] == 'poke' for s in scn['steps'] if isinstance(s[-1], tuple)))
-        self.assertEqual(scn['extra'], gs.WIN_EXTRA)      # the milestones' WIN fields
+        self.assertEqual(scn['extra'], gs.WIN_EXTRA)
+        self.assertEqual(scn['time_limit'], 260)
+        self.assertEqual((scn['stop_mode'], scn['stop_delay']), (0x12, 0))
+        self.assertEqual(scn['skip_on_mode'], (0x08, 0x09))
 
-    def test_the_two_rounds_anchor_on_their_own_mode_6_entries(self):
+    def test_each_round_has_160_attempts_and_a_walk_every_eight(self):
         steps = gs.SCENARIOS['gp-u14-win-live']['steps']
         anchors = [st for st in steps if st[0] == 'after_entry']
         self.assertEqual([(a[1], a[2], a[3]) for a in anchors], [(0x06, 1, 10), (0x06, 2, 10)])
-        self.assertEqual(anchors[0][-1], ('pad', gs.U14_PUNCH, 4))
-        self.assertEqual(anchors[1][-1], ('pad', gs.U14_PUNCH, 4))
-        i = steps.index(anchors[0])
-        j = steps.index(anchors[1])
-        block = steps[i + 1:j]
-        self.assertEqual([st[-1][1] for st in (anchors[0],) + block],
-                         [('p1.b0', 'p1.b1'), ('p1.b2', 'p1.b3')] * 16)   # 1A/1B
-        self.assertTrue(all(st[0] == 'after' and st[1] == 16 and st[-1][2] == 4 for st in block))
-        self.assertEqual(steps[j + 1:-1], block)         # the same rows
-        self.assertIs(steps[j + 1], steps[i + 1])        # ... one shared tuple, not a copy
-        self.assertEqual(steps[-1], ('until_mode', 0x12, 0))   # stops on the conquered lands
+        for a in anchors:
+            i = steps.index(a)
+            j = next((k for k in range(i + 1, len(steps))
+                      if steps[k][0] == 'after_entry'), len(steps))
+            block = steps[i + 1:j]
+            attempts = [a] + [st for st in block
+                              if st[-1][1] in (gs.U14_PUNCH, gs.U14_KICK)]
+            walks = [st for st in block if st[-1][1] == ('p1.right',)]
+            self.assertEqual(len(attempts), 160)
+            self.assertEqual([st[-1][1] for st in attempts[:17]],
+                             [gs.U14_PUNCH, gs.U14_KICK] * 8 + [gs.U14_PUNCH])
+            self.assertTrue(all(st[0] == 'after' and st[-1][2] == 4 for st in block
+                                if st[-1][1] in (gs.U14_PUNCH, gs.U14_KICK)))
+            self.assertEqual(len(walks), 19)          # at k = 8, 16, ..., 152
+            self.assertTrue(all(st[-1][2] == 12 for st in walks))   # the hold, not the gap
         self.assertIn('gp-u14-win-live', gs.STOP_AT_END)
+
+
+class TestHarnessSmoke(unittest.TestCase):
+    """gp-harness-smoke (plan 2026-10-26-fought-match-truth Task 2): the disposable
+    stop-on-mode preflight, not a measurement and not a gate-inventoried capture."""
+
+    def test_the_smoke_is_a_throwaway_stop_on_mode_preflight(self):
+        scn = gs.SCENARIOS['gp-harness-smoke']
+        self.assertIn('gp-harness-smoke', gs.STOP_AT_END)
+        self.assertFalse(any(s[-1][0] == 'poke' for s in scn['steps']))
+        self.assertEqual(scn['steps'][-1][0], 'after_mode')
+        self.assertEqual(scn['steps'][-1][-1][0], 'pad')
 
 
 class TestMidMatchJoin(unittest.TestCase):

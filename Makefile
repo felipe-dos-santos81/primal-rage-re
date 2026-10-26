@@ -1461,24 +1461,34 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # Gameplay truth II U14 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 6;
 # gp_session.SCENARIOS['gp-u14-win-live'] and gp_win.MILESTONES['gp-u14-win-live']): a match
 # won by fought hits, without the WIN_MENU pokes (spec W5). The menu path is gp-idle-loss's
-# with the character-select confirm of character 0; two rounds of alternating 1A/1B presses
-# (tools/gp_moves.py's rows, UNMEASURED) aim at the CPU's KO byte. Its claim is the poked wins'
-# narrow one plus what a poke could not claim: the game itself raises P2's +0x5A to 0x78,
-# reaches the same mode-8/mode-9 entries and the land mark, and gp_win.py check requires an S
-# record with the death-done byte b0c = 1 at or after the round-2 KO (mode 9) with no
-# DEATH_DONE poke — the game's own 0x37EA0 -> 0x37FF6 write that U9/U10 poked (spec W5). The
-# byte is not cleared between rounds (only mode 0x17's setup 0x271E0 and the final's consumers
-# clear it), so the rule proves a game death animation ended by the match-end screen, not that
-# round 2's specifically did; the frames and the WIN trace carry which animation ran. Which
-# presses land and the round lengths are Task 11's measurement; spec W5's shared-code limit
-# still applies — the same path's gp-u9-win (first mode-6 S f=0x480) and gp-u10-ending (f=0x479)
-# captures have c1 = 6 (CHAOS), afc = 5, so the KO'd fighter's death stream is not U10's final
-# SAURON's; Task 11's own capture records both (SNAP fields) and records a raw surprise if
-# they differ. The pins are EMPTY until data/k11-captures/gp-u14-win-live is captured and
-# measured (Task 11): the target skips on the absent capture directory (`[ ! -d ]`), and a
-# present capture with an empty pin fails first in gp_win.py check's sha_ok ("poll.log sha256
-# ... != the pinned (unpinned)").
-# Provenance goes here with the measured values: MIN_FIRST the first unexplained capture frame,
+# with the character-select confirm of character 0. The script is the measured 160-attempt
+# form (plan docs/superpowers/plans/2026-10-26-fought-match-truth.md §7.1; record
+# 2026-10-23-endgame-truth §E8 and 2026-10-20-gameplay-truth-ii §J6): two rounds of the U16
+# builder's `_u16_round(160, 10, anchor=(0x06, 1/2))` — the two 1A/1B 1-frame normals
+# (tools/gp_moves.py's rows) 16 frames apart, held 4, with a 12-frame p1.right walk every 8
+# attempts — `time_limit=260`, a whole-capture stop on mode 0x12 (`stop_mode`, STOP_AT_END)
+# and `skip_on_mode=(0x08, 0x09)`: a round's queued presses are dropped at its round or match
+# result and the scheduler resumes at the next anchor (without it the ~72 presses the U23
+# run's attempt-88 KO left over fired onto the result screen and overran the end, record §E2).
+# Its claim is the poked wins' narrow one plus what a poke could not claim: the game itself
+# raises P2's +0x5A to 0x78, reaches the same mode-8/mode-9 entries and the land mark, and
+# gp_win.py check requires an S record with the death-done byte b0c = 1 at or after the
+# round-2 KO (mode 9) with no DEATH_DONE poke — the game's own 0x37EA0 -> 0x37FF6 write that
+# U9/U10 poked (spec W5). The byte is not cleared between rounds (only mode 0x17's setup
+# 0x271E0 and the final's consumers clear it), so the rule proves a game death animation
+# ended by the match-end screen, not that round 2's specifically did; the frames and the WIN
+# trace carry which animation ran. spec W5's shared-code limit still applies — the same path's
+# gp-u9-win (first mode-6 S f=0x480) and gp-u10-ending (f=0x479) captures have c1 = 6 (CHAOS),
+# afc = 5, while the failed 2026-10-26 run measured c0 = 0, c1 = 3 (VERTIGO), afc = 3 (record
+# 2026-10-26-fought-match-truth §F2.6): the KO'd fighter's death stream is not U10's final
+# SAURON's, and a later capture's own S fields decide it.
+# The pins are EMPTY: Task 2's one authorized run (2026-10-26) failed the game's win — P1 was
+# KO'd in both rounds and b0c never became 1 (record 2026-10-26-fought-match-truth §F2) — so no
+# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The target skips on the
+# absent directory; a later authorized capture fills the nine pins from tools/gp_compare.py
+# --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the report's
+# missing-class count; coverage_check fails closed without it).
+# MIN_FIRST the first unexplained capture frame,
 # TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
 # MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's
 # two ratchets, and the capture identity (poll.log sha256 and the frame_*.raw.gz count). Raise
@@ -1487,6 +1497,7 @@ GP_U14_MIN_FIRST =
 GP_U14_TRACE_MIN_FIRST =
 GP_U14_MAX_START =
 GP_U14_MIN_REACH =
+GP_U14_MAX_MISSING =
 GP_U14_CAPTURE_SHA256 =
 GP_U14_CAPTURE_FRAMES =
 GP_U14_MILESTONES =
@@ -1501,7 +1512,7 @@ gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips
 		$(PYTHON) tools/gp_compare.py --scenario gp-u14-win-live --capture $(K11_CAPTURES)/gp-u14-win-live \
 			--port $(GP_DUMP)/gp-u14-win-live --min-first "$(GP_U14_MIN_FIRST)" \
 			--trace-min-first "$(GP_U14_TRACE_MIN_FIRST)" --max-start "$(GP_U14_MAX_START)" \
-			--min-reach "$(GP_U14_MIN_REACH)" \
+			--min-reach "$(GP_U14_MIN_REACH)" --max-missing "$(GP_U14_MAX_MISSING)" \
 			--capture-sha256 "$(GP_U14_CAPTURE_SHA256)" --capture-frames "$(GP_U14_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u14-win-live --capture $(K11_CAPTURES)/gp-u14-win-live \
 			--port $(GP_DUMP)/gp-u14-win-live --min-milestones "$(GP_U14_MILESTONES)" \
