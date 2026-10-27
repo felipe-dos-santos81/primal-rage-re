@@ -1330,7 +1330,7 @@ path was added; the gate is still 35 paths with `gp-u14-win-live` declared absen
 | `tools/gp_win.py`, `tools/gp_twop.py` | `NO_RESULT`'s provenance now names the `-1` store at `0x27C3D` (the `-1` arms are `0x27C0C`); `gp_twop`'s poke failure says the W record **covers** the address (it prints the address, not the value) |
 | `tools/tests/test_gp_session.py` | `TestHarnessSmoke` asserts `time_limit=30` and `(stop_mode, stop_delay)=(0x27,10)` |
 | this record | §F1.1's load-bearing read citation (`fighter.c:4093`, not `camera.c`); §F2.1's `U14_GAP` note; §F3.1's `ad4` store address; §F3.4's "covers" quote; §F3.6's new join-scope named gap; §F4's "first capture", prefix-equality, cursor/cell 1, key-and-pad-pin and recovery gap-count corrections; §F5's `.failed.run1` path, `--failed` typo, inferred exit label, "is consistent with", old/port trace, mode-0x12 range, W/`s1_5a` frame and finisher-path corrections |
-| `port/RE_GUIDE.md` | unchanged — the phase changes no claim or oracle line |
+| `port/RE_GUIDE.md` | fix round 1 corrected the U13 enforced-reach/`GP_U13_MIN_REACH` figures 4952 → 4951 and the U14 paragraph (this phase's failed attempt, nine empty pins, `GATE_NAMED_GAPS`); the values are the Makefile's and `AGENTS.md`'s and no pin or oracle changed |
 
 The music-truth paragraph in `AGENTS.md` is unchanged (the register stream is verified; rendered
 audibility is a model gap); the phase adds no audio trace to `tools/audio_compare.py`'s 29-file
@@ -1386,10 +1386,11 @@ audio-compare: gp-u18-talon-ending: FAIL: claimed 716 ticks, pinned minimum 964
 make: *** [Makefile:2131: audio-one] Error 1
 ```
 
-The two `audio.txt` dumps have the same 3,012 lines and the same register data; the `W` rows'
-frame labels for the beach section are one frame lower in the failing run (`1060` vs `1061` at
-its first writes): that is consistent with the host audio callback's frame alignment shifting
-under load, and `audio_compare` anchors the section on that frame. A standalone `make audio-oracle`
+The two `audio.txt` dumps have the same 3,012 lines and the same register/value data; only labels
+differ (183 lines): 180 `W` frame labels are one lower in the failing run, two `W` tick labels are
+308→310, and one `S` `ticks` label is 2454→2456. That is consistent with the host audio callback's
+frame/tick alignment shifting under load, and `audio_compare` anchors the section on that frame. A
+standalone `make audio-oracle`
 retry failed the same way on `gp-u13-ending2` (`section s16jungl.gra+0x8 first difference ... at
 relative tick 250`) and `gp-u18-talon-ending` (`claimed 718 ticks, pinned minimum 964`), exit 2.
 No pin was weakened; the trace's `TRACE_PINS` entry is unchanged.
@@ -1470,10 +1471,11 @@ reported no `improved:`/`re-pin` line.
    not from the two-human join; unreachable in a single-match capture, but a multi-fight log could
    report an earlier KO (§F3.6 item 5).
 9. **The register-stream audio oracle's host-load nondeterminism.** Under host load the port's
-   `W` frame labels at a section start shift by a frame, so `audio_compare`'s section anchor fails
+   `W` frame labels and two tick labels at a section start shift (180 frame labels one lower,
+   two `W` ticks 308→310 and one `S` `ticks` 2454→2456), so `audio_compare`'s section anchor fails
    a trace that passes on a rerun (`gp-u18-talon-ending` 968 ticks `ok` vs 716 `FAIL`; the
    standalone oracle retry fails `gp-u13-ending2`/`gp-u18-talon-ending` the same way). No pin was
-   weakened; a future phase should make the replay's frame labels deterministic or widen the
+   weakened; a future phase should make the replay's frame/tick labels deterministic or widen the
    anchor model only with measured evidence.
 
 ### §F6.6 Deferred minors

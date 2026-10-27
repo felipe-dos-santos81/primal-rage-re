@@ -80,9 +80,11 @@ and rendered-audio audibility are not this phase.
   0 named gaps, `entry-triage` unchanged and `symbols.h` byte-identical. The
   full gate **stopped at the register-stream audio oracle under host load**
   (`gp-u18-talon-ending`'s beach section and, on a standalone retry,
-  `gp-u13-ending2`'s jungl section: section-anchor frame shifts; a standalone
-  U18 run passed at 968 ticks and failed at 716 ticks with the audio dumps
-  identical apart from the `W` rows' frame labels; no pin was weakened). The
+  `gp-u13-ending2`'s jungl section: section-anchor frame/tick shifts; a
+  standalone U18 run passed at 968 ticks and failed at 716 ticks with the
+  dumps' register/value data identical and only their labels differing — 180
+  `W` frame labels one lower, two `W` tick labels 308→310 and one `S` `ticks`
+  2454→2456; no pin was weakened). The
   remaining steps were run separately and are green; the gate is not a single
   green `make verify`, and the audio model's host-load nondeterminism is a
   pre-existing limit (record §F6.3).
@@ -512,9 +514,11 @@ attempt, recorded, nine pins empty, R1 named); item 4 holds (5120 unchanged);
 item 5 is **not a single green `make verify`**: the full gate stopped at the
 register-stream audio oracle under host load (`gp-u18-talon-ending`'s beach
 section, then `gp-u13-ending2`'s jungl section on a standalone retry:
-section-anchor frame shifts; a standalone U18 run passed at 968 ticks and
-failed at 716, with the audio dumps identical apart from the `W` rows' frame
-labels; no pin was weakened), while its remaining steps are green separately;
+section-anchor frame/tick shifts; a standalone U18 run passed at 968 ticks and
+failed at 716, with the dumps' register/value data identical and only their
+labels differing — 180 `W` frame labels one lower, two `W` tick labels 308→310
+and one `S` `ticks` 2454→2456; no pin was weakened), while its remaining steps
+are green separately;
 no pin moved and no function was added. Item 2's
 *game* half holds — two captures exhibit the hand-dealt two-human KO — but its
 pins do not: neither capture produced a port script, so there is no

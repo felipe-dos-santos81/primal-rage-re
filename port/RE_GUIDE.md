@@ -302,14 +302,20 @@ true original, and ported the divergence. Two pieces:
   ratchet records a measured port divergence, the replay leaving `r0=0x27`
   where the capture advances to `0x33`. The poked captures claim the ending
   content and the finisher reaction, not the KO by hits or the six earlier won
-  matches. **U14's fought live win (R1, §J6) is a named gap**: the retake was
-  declined, the two permitted attempts are spent, all `GP_U14_*` pins are empty
-  and `gp-u14-oracle` keeps its absent-capture skip. U13's pixel claim now
-  reaches the capture's last frame (5903): frames 4248, 4320 and 5120 are
-  explained by named, byte-pinned and mutation-tested per-frame recipes, the
+  matches. **U14's fought live win (R1, §J6) is a named gap**: the
+  fought-match-truth phase's one authorized attempt (2026-10-26) lost (P1 KO'd
+  in both rounds; `b0c` never 1; mode 0x12 never opened) and failed its harness
+  checks, so its artifact is preserved as `gp-u14-win-live.failed`, the published
+  target is absent, all nine `GP_U14_*` pins (the eight plus `MAX_MISSING`) are
+  empty, `GATE_NAMED_GAPS` keeps it declared, and `gp-u14-oracle` keeps its
+  absent-capture skip. (Endgame Task 8 had declined a further attempt after
+  gameplay truth II's two; this phase ran one under its own go-ahead.) U13's
+  pixel claim now reaches the capture's last frame (5903): frames 4248, 4320 and
+  5120 are explained by named, byte-pinned and mutation-tested per-frame
+  recipes, the
   tail 5891..5903 is byte-identical to the replay's own frames (the script now
   ends at the last `S`, f=10068, via `--end-to-last-s`), and the enforced reach
-  is port 4952 — `GP_U13_MIN_FIRST` = 5904, `GP_U13_MIN_REACH` = 4952,
+  is port 4951 — `GP_U13_MIN_FIRST` = 5904, `GP_U13_MIN_REACH` = 4951,
   trace/WIN = 10069 (R3, §J5; record `2026-10-23-endgame-truth-derivations.md`
   §E9). The game-set `b0c` is U10's (`GP_ENDING_WIN_MIN_FIRST=9954`), not a
   gap; only the fought no-poke win is open (§E1.3).

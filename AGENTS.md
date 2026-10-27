@@ -502,9 +502,10 @@ consolidation gate).
   `port_progress.py` stays `799 1203 66` / `759 759 100` and `make diff-verify` stays
   `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps`. The phase's full
   gate stopped at the register-stream audio oracle under host load (`gp-u18-talon-ending`'s beach
-  section, then `gp-u13-ending2`'s jungl section on a standalone retry: section-anchor frame
-  shifts; a standalone U18 run passed at 968 ticks and failed at 716, the audio dumps identical
-  apart from the `W` rows' frame labels; no pin weakened); the remaining steps are green
+  section, then `gp-u13-ending2`'s jungl section on a standalone retry: section-anchor frame/tick
+  shifts; a standalone U18 run passed at 968 ticks and failed at 716, the dumps' register/value
+  data identical and only their labels differing — 180 `W` frame labels one lower, two `W` tick
+  labels 308→310 and one `S` `ticks` 2454→2456; no pin weakened); the remaining steps are green
   separately (record §F6.3).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
