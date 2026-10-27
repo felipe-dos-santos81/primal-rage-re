@@ -1376,7 +1376,10 @@ byte-identical runs on this host; `seq_driver_reset()` makes the song WAV
 independent of the title render's `AUDIO_SECONDS`). The claim is deterministic
 non-silence, **not** audibility and not a match to the original's PCM; the AIL
 500 ms sequence-volume fade is not modelled (the target volume is applied at
-once). The title WAV is unchanged by the phase (`515b7c94…`, peak 4,090).
+once). The title WAV is **unchanged by Task 5** (`515b7c94…`, peak 4,090); it
+is not unchanged by the whole phase: the Task 1 baseline was
+`df74acfb…`/3,402 and Task 3's voice-cursor correction produced the current
+`515b7c94…`/4,090 artifact.
 
 **The gate.** Both `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify`
 and `make audio-render` must exit 0; the second is not part of `make verify`

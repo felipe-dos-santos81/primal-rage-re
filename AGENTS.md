@@ -470,7 +470,8 @@ consolidation gate).
   PCM pin is **determinism, not audibility**: `make audio-render` renders the selected
   selmo (`0x0980025C`, volume `0x50`) at peak **2790**, sha256
   `530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef` (two byte-identical
-  runs; the title WAV `515b7c94…` is unchanged). The phase's required gate is **both**
+  runs; the title WAV is unchanged by Task 5 — `515b7c94…`/4,090 followed Task 3's
+  voice-cursor correction from the Task 1 `df74acfb…`/3,402 baseline). The phase's required gate is **both**
   `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` **and** `make audio-render`.
   Task 6 is declared, not taken (the optional service-menu language reload, the
   coin-countdown capture the no-new-capture constraint forbids, and the proof-completion

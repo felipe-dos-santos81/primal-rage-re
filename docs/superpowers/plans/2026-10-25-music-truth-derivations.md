@@ -1394,7 +1394,7 @@ section the capture cannot carry, with its bank hash.
 | `gp-u5-charsel` | prage_000 | title @0: 30; selmo+0x25C @7156: 866 | selmo+0x8 (F1774E70); s16beach+0x8 (87E7C2DE, one tick at the cut) | 896 |
 | `gp-u6-moves` | prage_000 | title @0: 30; selmo+0x25C @7184: 1478 | — | 1508 |
 | `gp-u6-moves-b` | prage_000 | title @0: 30; selmo+0x25C @7206: 1474 | — | 1504 |
-| `gp-u8-attract-start` | prage_000 | title @0: 30; selmo+0x25C @1684: 1633 | selmo+0x8 (F1774E70) | 1663 |
+| `gp-u8-attract-start` | prage_000 | title @0: 30; selmo+0x25C @1684: 1633 | selmo+0x8 (F1774E70) | 1664 |
 | `gp-u8-endurance` | prage_000 | title @0: 30; selmo+0x25C @10825: 583 | — | 613 |
 | `gp-u8-handicap` | prage_000 | title @0: 30; selmo+0x25C @6316: 1581 | — | 1611 |
 | `gp-u8-left-training` | prage_000 | title @0: 30; selmo+0x25C @7548: 1433 | — | 1463 |
@@ -1547,7 +1547,7 @@ done
 | gp-u5-charsel | 896 | 897 | 896 | 1 |
 | gp-u6-moves | 1508 | 1509 | 1508 | 1 |
 | gp-u6-moves-b | 1504 | 1505 | 1504 | 1 |
-| gp-u8-attract-start | 1663 | 1664 | 1663 | 1 |
+| gp-u8-attract-start | 1664 | 1665 | 1664 | 1 |
 | gp-u8-endurance | 613 | 614 | 613 | 1 |
 | gp-u8-handicap | 1611 | 1612 | 1611 | 1 |
 | gp-u8-left-training | 1463 | 1464 | 1463 | 1 |
@@ -1663,6 +1663,62 @@ write order (declared model); and the exact tick label of a write within the
 declared one-tick capture-label model. The claim is the register content,
 order across ticks, song choice and the per-section bank attribution in the
 captured windows.
+
+### §M4.7 The final whole-branch review fixes
+
+The final review (`final-review-findings.md`, 2026-10-26) found two Critical and
+two Important issues; all six findings (plus the two Minor wording/test items)
+are fixed on the phase tip's successor commit.
+
+**C1, the unmatched capture write.** `align_groups` now rejects every
+unmatched non-empty capture group in the claimed range `0..last_rel-1`
+(`unmatched capture group in the claimed window`); only the group at
+`last_rel` (the request boundary/tail) may remain unclaimed. The exact
+public-CLI case: port anchor at rel 0, empty rel 1, `A` at rel 2, boundary at
+rel 3; capture anchor at 0, `A` one tick early at rel 1, extra `X` at rel 2.
+The pre-fix tool ignored `X` and returned `synthetic: ok`; the fixed tool exits
+1. `claimed` is also corrected to the port tick index (the number of matched
+port ticks) rather than the loop-iteration count: the branch2 `i += 2` used to
+count one group for two port ticks, so a section using it was one tick short.
+The final run's `gp-u8-attract-start` is 1,664 (the pin was 1,663; raised to
+1,664, +1 1,665 fails).
+
+**C2, one capture section validating duplicates.** `compare_trace` keeps a
+capture cursor `(file index, event index)` and each section's candidate search
+starts at the previous section's used interval, one-to-one and ordered. A
+duplicate port section reusing one occurrence fails; repeated songs still pass
+when later distinct occurrences exist; reordering fails. The **first-prefix
+anchor limitation remains declared**: a complete-match preference was measured
+to steal a later repeated occurrence from a declared `allow-diff` section (the
+`gp-u22-diablo-ending` title at 17,458 ms moved the cursor past the selmo/0x31
+sections), so the tool keeps the first prefix-passing candidate as the
+section's chronological occurrence.
+
+**I1, whole-song loss and silent write errors.** `TRACE_SECTIONS` is the
+expected per-scenario section identity/status inventory (27 scenarios, the
+`(bank hash, matched|named)` entries in port order after the boot); a missing
+section fails even when the remaining ticks meet the pin (the `gp-u23` 30-tick
+title-only case). The `--expect-sections` CLI overrides it for tests. The
+`PR_AUDIO_DUMP` emitter in `port/tests/test_game.c` checks `fprintf`
+(`gp_audio_err`), `ferror`, and the `fclose` return; a write/close error fails
+the driver. **I2, missing `S` metadata.** The emitter's trigger is
+`cc`/`dc`/`vol`/`bank`/`inits` (`ticks` is a counter, not a trigger), so a
+same-song restart (`inits` increments) emits its own `S` line; `parse_port`
+marks a section with no `S` at/after its first frame as `attributed == False`
+and the compare fails it (`unattributed`) instead of borrowing
+`s_lines[-1]`'s bank/allowances.
+
+**M1/M2.** `port/spec/audio.md` and `AGENTS.md` say the title WAV is unchanged
+by **Task 5** (it followed Task 3's voice-cursor correction from the Task 1
+`df74acfb…`/3,402 baseline; the current artifact is `515b7c94…`/4,090). The
+declared-skip positive test asserts `returncode == 0`.
+
+The final oracle run (`/tmp/pr_audio_finalfix3`, 2m49s) is all 27 replayed
+traces `ok`, the 29/29 inventory, and `summary ok`; the final +1 table is in
+the final-review fix report. `make audio-render` is the Task 5 selmo peak 2,790
+/ `530a9430…` with the title `515b7c94…` unchanged. The required gate
+`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` and the fix
+commit are recorded in the fix report.
 
 ## §M5 PCM determinism (Task 5)
 

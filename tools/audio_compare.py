@@ -124,7 +124,7 @@ TRACE_PINS = {
     'gp-u5-charsel': (896, (0xF1774E70,), ()),
     'gp-u6-moves': (1508, (), ()),
     'gp-u6-moves-b': (1504, (), ()),
-    'gp-u8-attract-start': (1663, (0xF1774E70,), ()),
+    'gp-u8-attract-start': (1664, (0xF1774E70,), ()),
     'gp-u8-endurance': (613, (), ()),
     'gp-u8-handicap': (1611, (), ()),
     'gp-u8-left-training': (1463, (), ()),
@@ -132,6 +132,67 @@ TRACE_PINS = {
     'gp-u8-right-training': (1311, (), ()),
     'gp-u8-tug-of-war': (1196, (), ()),
     'gp-u9-win': (176, (0xF1774E70, 0x20DA829D, 0x3BA4C376), ()),
+}
+
+# The expected per-scenario section identity/status inventory (the whole-song
+# guard, record §M4.5). Each entry is (bank hash, kind) in the port dump's
+# order, after the boot writes:
+#   'matched' — the section must anchor and match (the tick pins alone do not
+#               catch its disappearance; e.g. gp-u23's 30-tick title-only pin);
+#   'named'   — the section is present and is the measured named gap
+#               (unanchored/diff-allowed/no-claim); if it anchors and matches,
+#               that is an improvement and is accepted. A section missing from
+#               the port dump fails in both kinds.
+TRACE_SECTIONS = {
+    'gp-idle-loss': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-idle-loss-run2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-keys-fight': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-pads': ((0xFD94B4E3, 'matched'),),
+    'gp-twop': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                (0xF1774E70, 'matched'), (0x20DA829D, 'named')),
+    'gp-u10-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                      (0xF1774E70, 'named'), (0x20DA829D, 'named'),
+                      (0x3BA4C376, 'named')),
+    'gp-u12-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                         (0xF1774E70, 'matched')),
+    'gp-u13-ending2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                       (0xF1774E70, 'named'), (0xBC44EF50, 'named'),
+                       (0x3BA4C376, 'named')),
+    'gp-u15-join': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u16-twop2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                     (0xF1774E70, 'matched'), (0x20DA829D, 'named')),
+    'gp-u18-talon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                            (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched'),
+                            (0x3BA4C376, 'named')),
+    'gp-u19-vertigo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                              (0xF1774E70, 'named'), (0x3D536DDE, 'named'),
+                              (0x3BA4C376, 'named')),
+    'gp-u20-chaos-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                            (0xF1774E70, 'named'), (0x86946EB7, 'named'),
+                            (0x3BA4C376, 'named')),
+    'gp-u21-armadon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                              (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'),
+                              (0x3BA4C376, 'named')),
+    'gp-u22-diablo-ending': ((0xFD94B4E3, 'named'), (0x286ED662, 'matched'),
+                             (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'),
+                             (0x3BA4C376, 'named')),
+    'gp-u23-u16-finisher': ((0xFD94B4E3, 'matched'), (0x286ED662, 'named'),
+                            (0xF1774E70, 'named'), (0x20DA829D, 'named')),
+    'gp-u5-charsel': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                      (0xF1774E70, 'named'), (0x87E7C2DE, 'named')),
+    'gp-u6-moves': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u6-moves-b': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u8-attract-start': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                            (0xF1774E70, 'named')),
+    'gp-u8-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u8-handicap': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u8-left-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u8-right-arcade': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u8-right-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u8-tug-of-war': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-u9-win': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
+                  (0xF1774E70, 'named'), (0x20DA829D, 'named'),
+                  (0x3BA4C376, 'named')),
 }
 
 # The register shadow is indexed by the full 9-bit register so the second OPL2
@@ -202,6 +263,7 @@ class Section:
         self.first_frame = writes[0][0]
         self.dc = 0
         self.bank = 0
+        self.attributed = False
         self.anchor_idx = None
         self.anchor_tick = None
         for i, w in enumerate(writes):
@@ -218,7 +280,9 @@ class Section:
 def parse_port(path):
     """Returns (sections, s_lines). The `dc`/bank come from the first S record
     at or after the section's first write frame (the S line is emitted after
-    the iteration's writes)."""
+    the iteration's writes). A section with no such S record is unattributed:
+    its `dc`/bank stay 0 and `attributed` is False (it must not borrow the
+    preceding song's bank or allowances)."""
     s_lines = []
     writes = []
     with open(path) as f:
@@ -255,11 +319,10 @@ def parse_port(path):
     sections = [Section(g) for g in groups]
     for s in sections:
         rec = next((r for r in s_lines if r['frame'] >= s.first_frame), None)
-        if rec is None and s_lines:
-            rec = s_lines[-1]
         if rec is not None:
             s.dc = rec['dc']
             s.bank = rec['bank']
+            s.attributed = True
     return sections, s_lines
 
 
@@ -449,7 +512,6 @@ def align_groups(port_groups, cap_groups):
         if pg == cg:
             i += 1
             j += 1
-            r.claimed += 1
             r.matched += len(pg)
             continue
         nxt_p = sorted(P[i + 1]) if i + 1 < len(P) else []
@@ -459,7 +521,6 @@ def align_groups(port_groups, cap_groups):
         if pg and pg == nxt_c and not cg:
             i += 1
             j += 2
-            r.claimed += 1
             r.matched += len(pg)
             r.jittered += 1
             continue
@@ -468,7 +529,6 @@ def align_groups(port_groups, cap_groups):
         if cg and cg == nxt_p and not pg:
             i += 2
             j += 1
-            r.claimed += 1
             r.matched += len(cg)
             r.jittered += 1
             continue
@@ -494,11 +554,25 @@ def align_groups(port_groups, cap_groups):
                 r.jittered += 1
                 continue
         r.ok = False
+        r.claimed = i
         r.first_tick = i
         r.first_port = pg
         r.first_cap = cg
         r.reason = 'tick groups differ'
         return r
+    # Every unmatched non-empty capture group inside the claimed range is an
+    # extra capture write the port did not play. Only the group at index
+    # len(P) (the request boundary/tail) may remain unclaimed.
+    if r.ok:
+        for k in range(j, len(P)):
+            cg_k = C[k] if k < len(C) else []
+            if cg_k:
+                r.ok = False
+                r.first_tick = k
+                r.first_port = []
+                r.first_cap = cg_k
+                r.reason = 'unmatched capture group in the claimed window'
+                break
     if r.matched != r.port_writes:
         r.ok = False
         r.first_tick = n - 1 if n else 0
@@ -506,6 +580,7 @@ def align_groups(port_groups, cap_groups):
         r.first_cap = []
         r.reason = ('write accounting: %d matched, %d port writes'
                     % (r.matched, r.port_writes))
+    r.claimed = i
     return r
 
 
@@ -517,6 +592,7 @@ class SectionResult:
         self.capture_path = None
         self.anchor_ms = None
         self.anchor_event = None
+        self.capture_end = None      # (capture file index, next event index)
         self.claimed = 0
         self.boundary_rel = None
         self.boundary_equal = None
@@ -531,7 +607,61 @@ class SectionResult:
         self.reason = None
 
 
-def compare_section(section, index, captures, allow_unanchored, allow_diff):
+def _evaluate_candidate(section, index, capture_index, anchor_event,
+                        captures, attrs, allow_diff):
+    """The full comparison at one capture anchor; also records the capture
+    interval the next section may not reuse (the events through the claimed
+    window, or through the first difference for an allowed diff)."""
+    path, _header, events = captures[capture_index]
+    ms = events[anchor_event][0]
+    last_rel = section.last_tick - section.anchor_tick
+    shadow = _shadow_from(events, anchor_event)
+    pw = _reduce_port(section, bytearray(shadow))
+    cw = _reduce_capture(events, anchor_event, attrs, bytearray(shadow))
+    pd = _by_tick(pw)
+    cd = _by_tick(cw)
+    res = SectionResult(section, index)
+    res.status = 'anchored'
+    res.capture_path = path
+    res.anchor_ms = ms
+    res.anchor_event = anchor_event
+    res.boundary_rel = last_rel
+    res.boundary_equal = pd.get(last_rel, []) == cd.get(last_rel, [])
+    groups_p = [pd.get(t, []) for t in range(last_rel)]
+    groups_c = [cd.get(t, []) for t in range(last_rel + 1)]
+    al = align_groups(groups_p, groups_c)
+    res.claimed = al.claimed
+    res.jittered = al.jittered
+    res.reduced = sum(len(groups_p[t]) for t in range(min(al.claimed, last_rel)))
+    eq = _tick_diff(pd, cd, 0, last_rel)
+    res.per_tick_equal = eq[0] if eq is not None else last_rel
+    if not al.ok:
+        if section.bank in allow_diff:
+            res.status = 'diff-allowed'
+            res.reason = ('the measured capture-side register/write-on-change '
+                          'artifact at this section (allowed by name)')
+        else:
+            res.status = 'diff'
+        res.first_diff_kind = al.reason
+        res.first_diff = al.first_tick
+        res.first_diff_port = al.first_port
+        res.first_diff_cap = al.first_cap
+    limit = res.claimed
+    if res.status == 'diff-allowed' and res.first_diff is not None:
+        limit = max(limit, res.first_diff)
+    end = anchor_event
+    for k in range(anchor_event, len(events)):
+        rel = ((events[k][0] - ms) * TICKS_PER_SECOND + 500) // 1000
+        if rel <= limit:
+            end = k
+        else:
+            break
+    res.capture_end = (capture_index, end + 1)
+    return res
+
+
+def compare_section(section, index, captures, allow_unanchored, allow_diff,
+                    search_from=(0, 0)):
     res = SectionResult(section, index)
     if section.anchor_idx is None:
         res.status = 'no-key-on'
@@ -548,10 +678,12 @@ def compare_section(section, index, captures, allow_unanchored, allow_diff):
     cands = []
     for ci, (path, _header, events) in enumerate(captures):
         for j, (ms, reg, val) in enumerate(events):
+            if (ci, j) < search_from:
+                continue
             if reg == key_w[3] and val == key_w[4] and is_key_on(reg, val):
                 cands.append((ci, j, ms))
     prefix = min(ANCHOR_TICKS, last_rel)
-    for ci, j, ms in cands:
+    for ci, j, _ms in cands:
         path, _header, events = captures[ci]
         shadow = _shadow_from(events, j)
         pw = _reduce_port(section, bytearray(shadow))
@@ -560,46 +692,16 @@ def compare_section(section, index, captures, allow_unanchored, allow_diff):
         cd = _by_tick(cw)
         # The anchor prefix: the port's first `prefix` ticks against the
         # capture's groups at the same ticks (a candidate that cannot match
-        # them is a repeated note elsewhere, not this section).
+        # them is a repeated note elsewhere, not this section). The first
+        # prefix-passing candidate is the section's chronological occurrence;
+        # a declared allow-diff there stays the section's named gap (the
+        # deferred first-prefix limitation remains declared).
         pre = align_groups([pd.get(t, []) for t in range(prefix)],
                            [cd.get(t, []) for t in range(prefix + 1)])
         if not pre.ok:
             continue
-        res.status = 'anchored'
-        res.capture_path = path
-        res.anchor_ms = ms
-        res.anchor_event = j
-        res.boundary_rel = last_rel
-        res.boundary_equal = pd.get(last_rel, []) == cd.get(last_rel, [])
-        # The section's final tick is the request boundary, not claimed.
-        groups_p = [pd.get(t, []) for t in range(last_rel)]
-        groups_c = [cd.get(t, []) for t in range(last_rel + 1)]
-        al = align_groups(groups_p, groups_c)
-        res.claimed = al.claimed
-        res.jittered = al.jittered
-        res.reduced = sum(len(groups_p[t]) for t in range(min(al.claimed, last_rel)))
-        eq = _tick_diff(pd, cd, 0, last_rel)
-        res.per_tick_equal = eq[0] if eq is not None else last_rel
-        if not al.ok:
-            # Only tick `last_rel` is the unclaimed request boundary (it is not
-            # in groups_p). A difference anywhere in the claimed groups, the
-            # penultimate tick included, is a real difference unless the
-            # section's bank is an explicit named `allow-diff` artifact.
-            if section.bank in allow_diff:
-                res.status = 'diff-allowed'
-                res.first_diff_kind = al.reason
-                res.first_diff = al.first_tick
-                res.first_diff_port = al.first_port
-                res.first_diff_cap = al.first_cap
-                res.reason = ('the measured capture-side register/write-on-change '
-                              'artifact at this section (allowed by name)')
-            else:
-                res.status = 'diff'
-                res.first_diff_kind = al.reason
-                res.first_diff = al.first_tick
-                res.first_diff_port = al.first_port
-                res.first_diff_cap = al.first_cap
-        return res
+        return _evaluate_candidate(section, index, ci, j, captures, attrs,
+                                   allow_diff)
     if section.bank in allow_unanchored:
         res.status = 'unanchored-allowed'
         res.reason = ('no anchor in the capture for this bank (allowed by name: '
@@ -643,7 +745,7 @@ def summarize_section(res, index_names):
 
 def compare_trace(name, port_path, capture_paths, min_ticks=0,
                   allow_unanchored=(), allow_diff=(), game_dir=None,
-                  verbose=False, json_out=None):
+                  verbose=False, json_out=None, expect_sections=None):
     sections, _s_lines = parse_port(port_path)
     missing = [p for p in capture_paths if not os.path.exists(p)]
     if missing:
@@ -668,16 +770,28 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
     index_names = read_index_names(game_dir)
     allow = set(allow_unanchored)
     allow_d = set(allow_diff)
+    expected = expect_sections
+    if expected is None:
+        expected = TRACE_SECTIONS.get(name)
     results = []
     total = 0
     failed = []
     named_gaps = []
+    search_from = (0, 0)
     print('audio-compare: %s (capture %s)'
           % (name, ', '.join(os.path.basename(p) for p, _, _ in captures)))
     for i, s in enumerate(sections):
-        if s.anchor_idx is None and s.dc == 0:
+        if s.anchor_idx is None and s.dc == 0 and not s.attributed:
             continue                      # the boot's two OPL reset writes
-        r = compare_section(s, i, captures, allow, allow_d)
+        if not s.attributed:
+            r = SectionResult(s, i)
+            r.status = 'unattributed'
+            r.reason = ('no S metadata at or after the section start; its '
+                        'bank is unknown, not the preceding song\'s')
+        else:
+            r = compare_section(s, i, captures, allow, allow_d, search_from)
+            if r.capture_end is not None:
+                search_from = r.capture_end
         results.append(r)
         print('  ' + summarize_section(r, index_names))
         if r.status == 'anchored':
@@ -693,12 +807,28 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
             # no claim to make; it is reported by name, and --min-ticks is what
             # stops a trace shrinking to nothing.
             named_gaps.append('%08X' % s.bank)
-        elif r.status in ('unanchored', 'no-key-on'):
+        elif r.status in ('unanchored', 'no-key-on', 'unattributed'):
             failed.append('section %s %s (%s)'
                           % (resource_name(s.dc, index_names), r.status, r.reason))
         if verbose:
-            print('    writes=%d anchor_tick=%s last_tick=%s'
-                  % (len(s.writes), s.anchor_tick, s.last_tick))
+            print('    writes=%d anchor_tick=%s last_tick=%s attributed=%s'
+                  % (len(s.writes), s.anchor_tick, s.last_tick, s.attributed))
+    if expected is not None:
+        if len(results) != len(expected):
+            failed.append('expected %d section(s) from the scenario inventory, '
+                          'got %d' % (len(expected), len(results)))
+        else:
+            for (bank, kind), r in zip(expected, results):
+                if r.section.bank != bank:
+                    failed.append('section %d: expected bank %08X, got %08X'
+                                  % (r.index, bank, r.section.bank))
+                elif kind == 'matched' and r.status != 'anchored':
+                    failed.append('section %d bank %08X: expected matched, got %s'
+                                  % (r.index, bank, r.status))
+                elif kind == 'named' and r.status in (
+                        'unanchored', 'diff', 'no-key-on', 'unattributed'):
+                    failed.append('section %d bank %08X: expected a named gap, '
+                                  'got %s' % (r.index, bank, r.status))
     print('audio-compare: %s: %d compared ticks over %d section(s); %d named gap(s) %s'
           % (name, total, sum(1 for r in results if r.status == 'anchored'),
              len(named_gaps), ('[' + ' '.join(named_gaps) + ']') if named_gaps else ''))
@@ -718,6 +848,8 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
             'compared': sum(1 for r in results if r.status == 'anchored'),
             'named_gaps': named_gaps,
             'captures': [os.path.basename(p) for p, _, _ in captures],
+            'section_detail': [{'bank': '%08X' % r.section.bank,
+                                'status': r.status} for r in results],
             'failed': failed,
         }
         parent = os.path.dirname(json_out)
@@ -739,8 +871,16 @@ def cmd_compare(a):
             min_ticks = pin[0]
         allow = list(pin[1]) + allow
         allow_diff = list(pin[2]) + allow_diff
+    expect = None
+    if a.expect_sections:
+        expect = []
+        for part in a.expect_sections.split(','):
+            if not part:
+                continue
+            bank, kind = part.split(':')
+            expect.append((int(bank, 16), kind))
     return compare_trace(name, a.port, a.capture, min_ticks, allow, allow_diff,
-                         a.game_dir, a.verbose, a.json_out)
+                         a.game_dir, a.verbose, a.json_out, expect)
 
 
 def cmd_capture_end(a):
@@ -884,6 +1024,8 @@ def main(argv):
     c.add_argument('--allow-unanchored', default='')
     c.add_argument('--allow-diff', default='')
     c.add_argument('--game-dir')
+    c.add_argument('--expect-sections', default='',
+                   help='override the scenario inventory: hash:matched,hash:named')
     c.add_argument('--json-out')
     c.add_argument('--verbose', action='store_true')
     c.set_defaults(func=cmd_compare)

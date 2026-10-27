@@ -76,7 +76,7 @@ def synthetic_pair(port_writes, cap_writes, port_anchor=ANCHOR_TICK):
     `port_writes` are (relative tick, reg, val); `cap_writes` likewise. The
     port's key-on is `0xB0=0x2B` at `port_anchor`; the capture's at ms 0.
     """
-    port = [('S', 0,
+    port = [('S', port_anchor,
              'cc=00000000 dc=%08X vol=50 bank=%08X inits=1 ticks=0' % (DC, BANK))]
     n = 0
     # The anchor note's preamble then the key-on, as the sequencer writes it.
@@ -110,6 +110,39 @@ def write_capture(d, events, name='prage_000.dro'):
     with open(path, 'wb') as f:
         f.write(make_dro(events))
     return path
+
+
+def write_port_sections(d, sections):
+    """`sections`: [(bank, [(tick, reg, val), ...]), ...]; each section starts
+    at its own frame with an S line (unless `metadata` is False) and its writes
+    reset the song tick to 60, so the parser sees a new section. Returns the
+    path."""
+    path = os.path.join(d, 'port.txt')
+    n = 0
+    with open(path, 'w') as f:
+        for si, item in enumerate(sections):
+            bank, writes = item[0], item[1]
+            metadata = item[2] if len(item) > 2 else True
+            dc = item[3] if len(item) > 3 else (0x0A800000 | (si + 1))
+            frame = si * 10
+            if metadata:
+                f.write('S %d cc=00000000 dc=%08X vol=50 bank=%08X inits=%d ticks=0\n'
+                        % (frame, dc, bank, si + 1))
+            for tick, reg, val in writes:
+                f.write('W %d %d %d %04X %02X 00\n'
+                        % (frame, tick, n, reg, val))
+                n += 1
+    return path
+
+
+def write_capture_sections(d, sections):
+    """`sections`: [(anchor_ms, [(rel, reg, val), ...]), ...] -> one `.dro`."""
+    events = []
+    for anchor_ms, writes in sections:
+        for rel, reg, val in writes:
+            events.append((anchor_ms + ms_for(rel), reg, val))
+    events.sort(key=lambda e: e[0])
+    return write_capture(d, events)
 
 
 def run_tool(args, env=None):
@@ -154,6 +187,19 @@ def one_tick_later_pair(drop='none', keep_empty=True):
         # shape the pre-fix whole-group branch could skip B for.
         cap = [(rel - 1 if rel >= 3 else rel, reg, val) for rel, reg, val in cap]
     return port, cap
+
+
+SEC_A = [(60, 0x20, 0x01), (60, 0xB0, 0x2B), (61, 0x21, 0x01),
+         (62, 0x22, 0x02), (63, 0xB1, 0x0B)]
+SEC_B = [(60, 0x20, 0x01), (60, 0xB0, 0x2B), (61, 0x21, 0x02),
+         (62, 0x22, 0x02), (63, 0xB1, 0x0B)]
+SEC_A5 = [(60, 0x20, 0x01), (60, 0xB0, 0x2B), (61, 0x21, 0x01),
+          (62, 0x22, 0x02), (63, 0x23, 0x03), (64, 0x24, 0x04),
+          (65, 0xB1, 0x0B)]
+CAP_A = [(0, 0x20, 0x01), (0, 0xB0, 0x2B), (1, 0x21, 0x01),
+         (2, 0x22, 0x02)]
+CAP_B = [(0, 0x20, 0x01), (0, 0xB0, 0x2B), (1, 0x21, 0x02),
+         (2, 0x22, 0x02)]
 
 
 class AudioCompareTests(unittest.TestCase):
@@ -393,26 +439,6 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('summary FAIL: gp-pads: FAIL', r.stdout)
 
-    def test_summary_allows_the_declared_u17_skip_only(self):
-        cap = os.path.join(self.d, 'captures')
-        os.makedirs(os.path.join(cap, 'gp-u17-device2'))
-        with open(os.path.join(cap, 'gp-u17-device2', 'prage_000.dro'), 'wb') as f:
-            f.write(make_dro([(0, 0xB0, 0x2B)]))
-        rep = os.path.join(self.d, 'reports')
-        os.makedirs(os.path.join(rep, 'gp-u17-device2'))
-        with open(os.path.join(rep, 'gp-u17-device2', 'report.json'), 'w') as f:
-            f.write('{"name":"gp-u17-device2","ok":true,"total_ticks":0,'
-                    '"min_ticks":0,"named_gaps":[],"skipped":'
-                    '"no frame-keyed port script (wall-paced; record \u00a7H6.9)"}\n')
-        r = run_tool(['summary', '--captures', cap, '--reports', rep])
-        self.assertNotIn('gp-u17-device2: unexpected skip', r.stdout)
-        with open(os.path.join(rep, 'gp-u17-device2', 'report.json'), 'w') as f:
-            f.write('{"name":"gp-u17-device2","ok":true,"total_ticks":0,'
-                    '"min_ticks":0,"named_gaps":[],"skipped":"something else"}\n')
-        r = run_tool(['summary', '--captures', cap, '--reports', rep])
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn('unexpected skip', r.stdout)
-
     def test_absent_capture_skips_by_name(self):
         p = write_port(self.d, synthetic_pair([], [])[0])
         absent = os.path.join(self.d, 'no-such-dir', 'absent.dro')
@@ -451,6 +477,129 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertEqual(r.stdout.strip(), '1250')
 
+
+
+    # ---- final-review regressions (2026-10-26) -------------------------
+
+    def test_unmatched_capture_write_in_claimed_window_fails(self):
+        # C1: the port's A is at rel 2, the capture's A is one tick early at
+        # rel 1, and the capture has an extra X at rel 2 (the last claimed
+        # tick). The extra write must fail; the old tool ignored it.
+        port, _ = synthetic_pair([(2, 0x21, 0x01), (3, 0xB1, 0x0B)], [])
+        p = write_port(self.d, port)
+        c = write_capture(self.d, [(ms_for(0), 0xB0, 0x2B),
+                                   (ms_for(1), 0x21, 0x01),
+                                   (ms_for(2), 0x22, 0x02)])
+        r = compare(self.d, p, c)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+
+    def test_duplicate_port_section_reusing_one_capture_occurrence_fails(self):
+        # C2: two identical port sections but only one capture occurrence. The
+        # second must not reuse the first's anchor.
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A),
+                                         (0xAAAA0001, SEC_A)])
+        c = write_capture_sections(self.d, [(0, CAP_A)])
+        r = compare(self.d, p, c)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+
+    def test_repeated_song_with_later_capture_occurrence_passes(self):
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A),
+                                         (0xAAAA0001, SEC_A)])
+        c = write_capture_sections(self.d, [(0, CAP_A), (1000, CAP_A)])
+        r = compare(self.d, p, c)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('synthetic: ok', r.stdout)
+
+    def test_reordered_port_sections_fail(self):
+        # The port's B section is not the capture's A section: the prefix/full
+        # comparison rejects the wrong occurrence, then the second port section
+        # has no earlier A occurrence left.
+        p = write_port_sections(self.d, [(0xBBBB0002, SEC_B),
+                                         (0xAAAA0001, SEC_A)])
+        c = write_capture_sections(self.d, [(0, CAP_A), (1000, CAP_B)])
+        r = compare(self.d, p, c)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+
+    def test_expected_section_inventory_missing_song_fails(self):
+        # I1: the whole-song-loss guard. The port has only the first of the two
+        # expected sections; the tick minimum alone would pass.
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A)])
+        c = write_capture_sections(self.d, [(0, CAP_A), (1000, CAP_B)])
+        r = compare(self.d, p, c, '--expect-sections',
+                    'AAAA0001:matched,BBBB0002:matched')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('expected 2 section(s)', r.stdout)
+
+    def test_expected_section_inventory_present_passes(self):
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A),
+                                         (0xBBBB0002, SEC_B)])
+        c = write_capture_sections(self.d, [(0, CAP_A), (1000, CAP_B)])
+        r = compare(self.d, p, c, '--expect-sections',
+                    'AAAA0001:matched,BBBB0002:matched')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('synthetic: ok', r.stdout)
+
+    def test_parse_port_new_song_missing_metadata(self):
+        # I2: the second section has no S line; it must not borrow the first
+        # song's bank. (The old parser used s_lines[-1].)
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A, True),
+                                         (0xBBBB0002, SEC_B, False)])
+        sections, _ = audio_compare.parse_port(p)
+        self.assertTrue(sections[0].attributed)
+        self.assertFalse(sections[1].attributed)
+        self.assertEqual(sections[1].dc, 0)
+        self.assertEqual(sections[1].bank, 0)
+
+    def test_parse_port_same_song_restart_missing_metadata(self):
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A, True),
+                                         (0xAAAA0001, SEC_A, False, 0x0A800001)])
+        sections, _ = audio_compare.parse_port(p)
+        self.assertTrue(sections[0].attributed)
+        self.assertFalse(sections[1].attributed)
+        self.assertEqual(sections[1].bank, 0)
+
+    def test_unattributed_section_fails(self):
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A, True),
+                                         (0xAAAA0001, SEC_A, False, 0x0A800001)])
+        c = write_capture_sections(self.d, [(0, CAP_A), (1000, CAP_A)])
+        r = compare(self.d, p, c)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('unattributed', r.stdout)
+
+    def test_same_song_restart_with_metadata_is_attributed(self):
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A, True),
+                                         (0xAAAA0001, SEC_A, True, 0x0A800001)])
+        sections, _ = audio_compare.parse_port(p)
+        self.assertTrue(sections[0].attributed)
+        self.assertTrue(sections[1].attributed)
+        self.assertEqual(sections[1].dc, 0x0A800001)
+        c = write_capture_sections(self.d, [(0, CAP_A), (1000, CAP_A)])
+        r = compare(self.d, p, c)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_summary_allows_the_declared_u17_skip_only(self):
+        cap = os.path.join(self.d, 'captures')
+        os.makedirs(os.path.join(cap, 'gp-u17-device2'))
+        with open(os.path.join(cap, 'gp-u17-device2', 'prage_000.dro'), 'wb') as f:
+            f.write(make_dro([(0, 0xB0, 0x2B)]))
+        rep = os.path.join(self.d, 'reports')
+        os.makedirs(os.path.join(rep, 'gp-u17-device2'))
+        with open(os.path.join(rep, 'gp-u17-device2', 'report.json'), 'w') as f:
+            f.write('{"name":"gp-u17-device2","ok":true,"total_ticks":0,'
+                    '"min_ticks":0,"named_gaps":[],"skipped":'
+                    '"no frame-keyed port script (wall-paced; record \u00a7H6.9)"}\n')
+        r = run_tool(['summary', '--captures', cap, '--reports', rep])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn('gp-u17-device2: unexpected skip', r.stdout)
+        with open(os.path.join(rep, 'gp-u17-device2', 'report.json'), 'w') as f:
+            f.write('{"name":"gp-u17-device2","ok":true,"total_ticks":0,'
+                    '"min_ticks":0,"named_gaps":[],"skipped":"something else"}\n')
+        r = run_tool(['summary', '--captures', cap, '--reports', rep])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('unexpected skip', r.stdout)
 
 if __name__ == '__main__':
     unittest.main()
