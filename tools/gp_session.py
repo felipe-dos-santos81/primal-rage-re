@@ -598,7 +598,8 @@ SCENARIOS['gp-u22-diablo-ending'] = dict(
 # 2026-10-20-gameplay-truth-ii §J6 and this phase's plan §7.1): the U23 160-attempt run's
 # KO was attempt 88 (§E2), so 160 leaves room for whiffs, and the 12-frame p1.right
 # re-approach every eight attempts (the U16 builder) takes a knocked-back P2 back into
-# reach. 160 attempts are ~2,600 nominal frames, under the round timer's ~3,280.
+# reach. 160 attempts are ~2,934 nominal frames (the builder's per-round interior sum
+# is 2,924; the measured two-round span is 5,868), under the round timer's ~3,280.
 # Harness values, not game values: the 10 frames into each round (U9's poke delay), the
 # 16-frame gap (>= the 4-frame hold + 0x500C4's 2-frame release, gp_moves.REPRESS) and the
 # 260 s limit (the U23 160-attempt run's; two fought rounds can run the round timer's ~3280
@@ -609,7 +610,6 @@ SCENARIOS['gp-u22-diablo-ending'] = dict(
 # conquered-lands screen (mode 0x12, stop_mode, STOP_AT_END).
 U14_PUNCH = ('p1.b0', 'p1.b1')      # entry 1A, reaction 0x10
 U14_KICK = ('p1.b2', 'p1.b3')       # entry 1B, reaction 0x11
-U14_GAP = 16                        # frames between attempts (harness)
 
 # The U16 builder (plan 2026-10-20-gameplay-truth-ii.md Task 8), shared with
 # gp-u16-twop2/gp-u23-u16-finisher and gp-u14-win-live's two rounds; it needs the

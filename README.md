@@ -92,7 +92,21 @@ finisher reaction, not the KO by hits (U23's moves ratchet records the port's
 gaps remain the U14 fought live win (R1), the U16 live finisher without that
 fallback, the per-hit death streams the clean traces cannot see, the 5120
 band's unisolated cause, rendered-audio audibility (no device-recording
-oracle), and the bounded-missing limits above. U13's post-script tail is
+oracle), and the bounded-missing limits above. The fought-match truth phase
+(2026-10-26) measured the harness and two game-side results without adding a
+claim: U14's one authorized fought win lost again (P1 KO'd in both rounds; the
+failed capture is preserved and all nine `GP_U14_*` pins stay empty, so R1
+remains a named gap), the two-human hand-dealt KO was measured twice
+(`gp_twop.py check --ko`, `f=B9A` then `f=B91`, no pokes) but neither capture
+could be replayed (both failed the port-script pin under host starvation, so
+there is no published capture, oracle or pins — a game-evidence-only named
+gap), and U16's case-3 exit state was measured (`s0_30=0x1180`, below the
+gate) while the set-frame gate input `y(0x1532)` was missed, so R2 stays a
+named gap. The phase added no oracle and did not change the 35-path gate
+count; its full gate was stopped only by the register-stream audio oracle's
+host-load frame-alignment nondeterminism (a standalone U18 run passed and
+failed on consecutive runs; no pin was weakened), while the remaining steps
+are green. U13's post-script tail is
 claimed and the INT 8 tick vector is documented. The in-match and menu music
 now plays: the game-side song request/resolve is ported (`snd_music_start`,
 `0x1C930`) and the port's OPL register stream is compared tolerance-free

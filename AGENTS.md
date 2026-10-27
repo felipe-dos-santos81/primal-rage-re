@@ -383,19 +383,26 @@ consolidation gate).
   **The claims are the ending content and the finisher reaction, not the fight**: the WIN_MENU
   path, the seven land marks, the `0x10789E` damage and the `DEATH_DONE` pokes are harness writes,
   so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) is
-  a named gap: the endgame-truth plan's Task 8 was declined (its two permitted attempts are spent) and all eight `GP_U14_*`
-  pins are empty, so `gp-u14-oracle` keeps its absent-capture skip. U13's post-script tail is
+  a named gap: the fought-match-truth phase's one authorized attempt (2026-10-26) lost the game's
+  match (P1 KO'd in both rounds, P2 VERTIGO `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened)
+  and also failed its harness checks, so its artifact is preserved as
+  `data/k11-captures/gp-u14-win-live.failed`; the published target is absent, all nine `GP_U14_*`
+  pins (the eight plus `MAX_MISSING`) are empty, `GATE_NAMED_GAPS` keeps it declared, and
+  `gp-u14-oracle` keeps its absent-capture skip. (The endgame-truth plan's Task 8 had declined a
+  further attempt after gameplay truth II's two; this phase's attempt ran under its own go-ahead.)
+  U13's post-script tail is
   claimed (record §E9): `port_script`'s opt-in `--end-to-last-s` runs the script to the capture's
   last `S` (f=10068), the 5891..5903 tail is byte-identical to the replay's own 4940..4952 frames,
-  and `GP_U13_MIN_FIRST`/`MIN_REACH`/`TRACE`/`WIN` read 5904/4952/10069/10069. The game-set `b0c`
+  and `GP_U13_MIN_FIRST`/`MIN_REACH`/`TRACE`/`WIN` read 5904/4951/10069/10069. The game-set `b0c`
   is **not** a gap and needs no new capture: it is U10's `GP_ENDING_WIN_MIN_FIRST=9954` (the write
   at f=0x1602 in mode 0x0F, 190 frames after the mode-0x0F entry (`f=0x1544`) and 200 after the
   seventh poked final KO's `S` — record §E1.3); only the
   fought (no-poke) win is open (`live_death`'s `(0x09,1)` rule). The INT 8 tick item is done
   (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
   is 19,887 (59.998 Hz), and `0x2D62C` is the counter the AIL callback `0x1BDF4` calls — the
-  installer stays host-owned. Named gaps left by the phase: U14 R1, the 5120 band's unisolated
-  cause (its bounds capture-pinned), the differential frontier, and the poked-win status above.
+  installer stays host-owned. Named gaps left by the phase: U14 R1, the 5120 band (a byte-pinned
+  13-pixel allowance whose cause is unisolated), the differential frontier, and the poked-win
+  status above.
 - **The input sampler and its readers are ported; the game logic has no joystick path.** `0x2D2F0`
   (`input_joystick_device`) is `xor eax,eax; ret` (raw `31 c0 c3`; it has its own differential
   row), so `0x4F644` stores 0 in `0x1088D4`/`0x1088DC`; its gate at `0x4F68B`
@@ -468,6 +475,37 @@ consolidation gate).
   Task 6 is declared, not taken (the optional service-menu language reload, the
   coin-countdown capture the no-new-capture constraint forbids, and the proof-completion
   housekeeping). The title/attract 9866-write oracle and every existing pin are unchanged.
+- **The fought-match truth phase: the harness and two measurements, not the two claims** (plan
+  `docs/superpowers/plans/2026-10-26-fought-match-truth.md`, record
+  `2026-10-26-fought-match-truth-derivations.md` §F1–§F6; design
+  `2026-10-25-fought-match-truth-design.md`, status **Partially implemented**). The harness gained
+  the four fighter-slot state fields (`s0_30`/`s0_42`/`s1_30`/`s1_42` — the `+0x30` dword and the
+  `+0x42` word) and stop/skip-on-mode; no game code changed. **U14 R1 stays open:** the one
+  authorized capture (2026-10-26) lost the game's match (P1 KO'd both rounds, P2 VERTIGO
+  `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened) and also failed its harness checks, so it
+  is preserved as `data/k11-captures/gp-u14-win-live.failed`; the published target is absent and
+  all nine `GP_U14_*` pins (the eight plus `MAX_MISSING`) are empty, so `gp-u14-oracle` skips and
+  `GATE_NAMED_GAPS` keeps the path declared (the gate reads 34/35). **The two-human KO is
+  game-evidence-only:** the first run and its CPU-confined recovery each produced the game's
+  hand-dealt KO (`gp_twop.py check --ko`: `ko f=B9A` then `f=B91`, P1's round result
+  `ad4=0xFFFFFFFF`, no pokes, `w2=1`/`w3=0`), but both failed the port-script pin under host
+  starvation; the recovery's publish path replaced the first `.failed` artifact, so only the
+  recovery's `data/k11-captures/gp-twop-ko.failed` survives and the first run's rows are the
+  record's §F4.3–§F4.5. There is no published `gp-twop-ko`, no `gp-twop-ko-oracle`, no
+  `GP_TWOP_KO_*` pin, no miss set and no gate entry. **U16 R2 stays open:** the recovery measured
+  the `0x4844C` case-3 exit at `f=0x1533` (`s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400`
+  gate) against the port's set `0x202E` at `0x1532` and exit `0x1180` at `0x155C`, but the poller
+  missed the `s0_54=2` set record, so the deciding gate input `y(0x1532)` is unmeasured; no fix, no
+  oracle/miss set, no third capture. `gp-harness-smoke`, `gp-twop-ko` and `gp-u24-u16-state` are
+  not in `CAPTURE_DIRS` and their `.dro` files are not in `tools/audio_compare.py`'s 29-trace
+  inventory (unattributed; no audio claim). The phase adds no oracle, no capture path and no pin;
+  `port_progress.py` stays `799 1203 66` / `759 759 100` and `make diff-verify` stays
+  `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps`. The phase's full
+  gate stopped at the register-stream audio oracle under host load (`gp-u18-talon-ending`'s beach
+  section, then `gp-u13-ending2`'s jungl section on a standalone retry: section-anchor frame
+  shifts; a standalone U18 run passed at 968 ticks and failed at 716, the audio dumps identical
+  apart from the `W` rows' frame labels; no pin weakened); the remaining steps are green
+  separately (record §F6.3).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`

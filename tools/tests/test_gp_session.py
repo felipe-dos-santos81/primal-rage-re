@@ -922,6 +922,8 @@ class TestHarnessSmoke(unittest.TestCase):
 
     def test_the_smoke_is_a_throwaway_stop_on_mode_preflight(self):
         scn = gs.SCENARIOS['gp-harness-smoke']
+        self.assertEqual(scn['time_limit'], 30)
+        self.assertEqual((scn['stop_mode'], scn['stop_delay']), (0x27, 10))
         self.assertIn('gp-harness-smoke', gs.STOP_AT_END)
         self.assertFalse(any(s[-1][0] == 'poke' for s in scn['steps']))
         self.assertEqual(scn['steps'][-1][0], 'after_mode')

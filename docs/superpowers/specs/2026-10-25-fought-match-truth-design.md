@@ -1,10 +1,12 @@
 # Fought-Match Truth — design
 
-Status: Proposed, revised 2026-10-26 after the music-truth closure and a fresh
-evidence audit. Follows the proof-completion, endgame-truth and music-truth
-phases. The port is complete against its declared population; the remaining
-honesty gap is the fight itself, which the captured wins reach only under
-harness pokes or with a measured replay divergence.
+Status: **Partially implemented**, revised 2026-10-26 after the phase's runs.
+Follows the proof-completion, endgame-truth and music-truth phases. The harness
+and two game-side measurements landed; U14's fought win (R1), a publishable
+two-human replay and the U16 set-frame state remain named gaps (§1.1). The
+port is complete against its declared population; the remaining honesty gap is
+the fight itself, which the captured wins reach only under harness pokes or
+with a measured replay divergence.
 
 ## 1. Intent and why
 
@@ -51,21 +53,58 @@ band, the campaign's matches 2-7, the time-out winner, ENDURANCE past entry,
 U17's wall-paced walk, the service-menu language reload, the coin countdown
 and rendered-audio audibility are not this phase.
 
+### 1.1 Phase outcome (measured 2026-10-26)
+
+- **Harness:** `SNAP_FIELDS` and the port trace gained the four slot state
+  fields (`s0_30`/`s0_42`/`s1_30`/`s1_42`); `Schedule`/`Poller` gained
+  `stop_mode`/`stop_delay`/`skip_on_mode`. No game code changed.
+- **U14 (R1 open):** the one authorized capture lost — P1 KO'd in both
+  rounds, P2 VERTIGO `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened —
+  and also failed its harness checks, so it is preserved as
+  `gp-u14-win-live.failed`; the published target is absent and the nine
+  `GP_U14_*` pins (the eight plus `MAX_MISSING`) are empty. `GATE_NAMED_GAPS`
+  keeps it declared; the gate reads `34/35 present, 1 missing`.
+- **Two-human KO (game-evidence-only, no claim):** two captures produced the
+  game's hand-dealt KO (`check --ko`: `ko f=B9A`, then `f=B91`; P1's round
+  result `ad4=0xFFFFFFFF`, `w2=1`, `w3=0`, no pokes), but both failed the
+  port-script pin under host starvation. There is no published capture, no
+  `gp-twop-ko-oracle`, no `GP_TWOP_KO_*` pin, no miss set and no gate entry;
+  the first run's artifact was replaced by the recovery's publish path.
+- **U16 (R2 open):** the recovery measured the `0x4844C` case-3 exit at
+  `f=0x1533` (`s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400` gate), but
+  the poller missed the `s0_54=2` set record, so the gate input `y(0x1532)`
+  is unmeasured. No fix, oracle or miss set; no third capture.
+- **5120:** unchanged named gap with its measured facts; no pixel fix.
+- **Gate:** no new oracle and no new capture path (35); counters
+  `799 1203 66` / `759 759 100`, `diff-verify` `1033/1033`, `14993/14993`,
+  0 named gaps, `entry-triage` unchanged and `symbols.h` byte-identical. The
+  full gate **stopped at the register-stream audio oracle under host load**
+  (`gp-u18-talon-ending`'s beach section and, on a standalone retry,
+  `gp-u13-ending2`'s jungl section: section-anchor frame shifts; a standalone
+  U18 run passed at 968 ticks and failed at 716 ticks with the audio dumps
+  identical apart from the `W` rows' frame labels; no pin was weakened). The
+  remaining steps were run separately and are green; the gate is not a single
+  green `make verify`, and the audio model's host-load nondeterminism is a
+  pre-existing limit (record §F6.3).
+
 ## 2. Current state (measured 2026-10-26)
 
 - `port_progress.py`: `799 1203 66` / `759 759 100`.
 - `diff-verify`: `1033/1033`, `14993/14993`, 0 named gaps, `825/845` with
   callees, `807/845` full, 8 unrowed; 20 open rows declared terminal (19
   distinct addresses), 15 `WEAKER`. No differential task is planned.
-- Captures: 35 expected paths; 34 present; `gp-u14-win-live` absent by design
-  (R1). The U23 finisher, the U13 ending, `gp-u17-device2` and the seven
-  ending captures are present.
-- U14: the tree still has the original 32-attempt script
-  (`tools/gp_session.py`: `U14_ATTEMPTS = 32`, `time_limit=200`, no walk).
-  Attempt 1 died on the shell's 200 s timeout before its checks. Attempt 2 ran
-  to the scenario's 200 s limit: 7,287 frames, 9,761 `S`, 0 `X`/0 `W`, P1 KO'd
-  in both rounds (`s0_5a=0x78`), `b0c` never 1. The failed artifact is gone.
-  All eight `GP_U14_*` pins are empty and `gp-u14-oracle` skips.
+- Captures: 35 expected paths; 34 present; `gp-u14-win-live` absent after the
+  phase's failed attempt (R1), with its artifact preserved as
+  `gp-u14-win-live.failed`. The U23 finisher, the U13 ending,
+  `gp-u17-device2` and the seven ending captures are present.
+- U14: the revised 160-attempt script (two `_u16_round(160, 10,
+  anchor=(0x06, 1/2))` blocks, `time_limit=260`, `stop_mode=0x12`,
+  `skip_on_mode=(0x08,0x09)`) ran once on 2026-10-26 and lost: P1 was KO'd in
+  both rounds, P2 (VERTIGO, `c1=3`, `afc=3`) won 2-0, `b0c` never became 1 and
+  mode 0x12 never opened; the capture also failed its harness checks and was
+  preserved as `.failed` (record §F2). The earlier two attempts (gameplay
+  truth II) had also failed. All nine `GP_U14_*` pins are empty and
+  `gp-u14-oracle` skips.
 - `gp-twop`: 680 frames; two-human join (b1f 1→3, cred 4→4); ends mid-round 1
   at X f=0x5E1 in mode 6; P2 `+0x5A` peaks 0x19; no KO, no round result.
   Pins: N 612, F 1506, reach 463, start 83, missing 5, moves 1506.
@@ -80,9 +119,13 @@ and rendered-audio audibility are not this phase.
   first differences: `s0_54` at f=0x1533 (capture 00, port 02), `s0_52` at
   f=0x1545 (00 vs 09), `rng` at f=0x1549 (75B49A54 vs BA99085D), `r0` at
   f=0x155B (33 vs 27). The offsets are one uniform +0x29 frames. Slot 1
-  matches. The port's `slot+0x30` at f=0x1533 is 0x202E; the gate is
+  matches. The port's `slot+0x30` is 0x202E at the reaction set `f=0x1532`
+  and 0x22F4 at `f=0x1533`; the gate is
   `0xBD884[2]=0x1400` (`0x48599 cmp edx,[eax+0x30]`, `0x4859C jle`). The
-  original's `slot+0x30`/`slot+0x42` at that frame is not in any capture.
+  phase's recovery measured the original's exit state at `f=0x1533`
+  (`s0_30=0x1180`, `s0_42=0x8000`, below the gate) but the poller missed the
+  `s0_54=2` set record, so the gate input `y(0x1532)` is unmeasured
+  (record §F5.6).
 - `gp-idle-loss`: 8,173 frames; the CPU KOs P1 by hits in round 1
   (`s0_5a=0x78`, f=0xC74), round 2 times out; no mode 0x12. Pins: N 7559,
   F 8320, reach 6300, start 90, missing 29. This is a CPU win, not a
@@ -92,11 +135,12 @@ and rendered-audio audibility are not this phase.
   seven host-owned/unreachable/terminal, one genuine functional gap (the
   service-menu language reload, `§K11.3`) and one oracle gap (the coin
   countdown). No porting task is planned.
-- Docs: `AGENTS.md:390` still reads U13 `MIN_REACH` 4952 where the Makefile
-  pins 4951; the music-truth audio paragraph in this design's predecessor was
-  stale (music truth has landed: `make verify` runs `audio-oracle`, and
-  `make audio-render` pins the selected selmo at peak 2790 / sha256
-  `530a9430…`). Rendered audibility remains a model gap.
+- Docs: the phase's Task 6 fixed the `AGENTS.md` U13 `MIN_REACH` line to 4951,
+  the U14 attribution and the nine-pin count, the 5120 wording and the gate
+  count; the music-truth audio paragraph is current (music truth has landed:
+  `make verify` runs `audio-oracle`, and `make audio-render` pins the selected
+  selmo at peak 2790 / sha256 `530a9430…`). Rendered audibility remains a model
+  gap.
 
 ## 3. Goals
 
@@ -251,9 +295,13 @@ presses, and the U23 brief's 160-attempt run overran the result screen and
 never reached its end frame when they all fired. With the skip, the round's
 remaining attempts are dropped at its result and the scheduler resumes at the
 next `after_entry` (round 2); the capture's "steps fired" check counts the
-skipped steps as deliberately dropped. 160 attempts per round = about 2,600
-frames at the measured walk/gap pattern, under the round timer; two rounds
-plus the menu fit inside 260 s.
+skipped steps as deliberately dropped. 160 attempts per round = about 2,934
+frames at the measured walk/gap pattern (the builder's per-round interior sum
+is 2,924; the measured two-round span is 5,868), under the round timer; two
+rounds plus the menu fit inside 260 s. **The phase's one run (2026-10-26)
+lost** — P1 was KO'd in both rounds, `b0c` never 1, mode 0x12 never opened —
+and also failed its harness checks, so the script is as written but R1 remains
+a named gap (record §F2, §1.1).
 
 ### 7.2 The two-human fight
 
@@ -302,8 +350,8 @@ The port's y chain is raw-faithful at every checked instruction:
 
 - `0x4844C` case 3 ends when `BD884[own char] > slot+0x30` (`0x48599
   cmp edx,[eax+0x30]`, `0x4859C jle`); the port matches.
-- `0xBD884[2] = 0x1400` (TALON); the port's `slot+0x30` at f=0x1533 is
-  0x202E.
+- `0xBD884[2] = 0x1400` (TALON); the port's `slot+0x30` at the reaction set
+  `f=0x1532` is 0x202E (0x22F4 at the capture's exit frame `f=0x1533`).
 - The y is `ab4 0x1D40` + `rec+0x1C 0x2EE`: `ab4` is anchor 0x1E7 → sprite
   0x0DBB (the `0xED8FE` stream's first id) − TALON's cam word 0x0BD4 at
   `0xECBD8`; the table `0xCFC32[0x1E7] = (-99,+117)` gives 117*64 = 0x1D40.
@@ -313,10 +361,14 @@ The port's y chain is raw-faithful at every checked instruction:
 - `fighter_48374` transcribes `0x48374` exactly, including the pre-fixup
   stream constant `0x6D8FE` → `0xED8FE`.
 
-The original's `slot+0x30`/`+0x42` at f=0x1533 is not measured. If the
-original's y is below 0x1400, the difference is real but its source is still
-upstream (the stream, the anchor table, the latch arm, or a `+0x42` bit-3
-state). If the original's y matches the port's, the y hypothesis is refuted
+The phase's recovery measured the original's exit state at `f=0x1533`
+(`slot+0x30 = 0x1180`, `slot+0x42 = 0x8000`, below the gate), but it missed
+the `s0_54 = 2` set record: the deciding gate input `y(0x1532)` is
+unmeasured, and the exit value is a different RNG draw's (record §F5.6). The
+exit is consistent with the y hypothesis but does not decide it. If a future
+capture's y is below 0x1400 at the set frame, the difference is real but its
+source is still upstream (the stream, the anchor table, the latch arm, or a
+`+0x42` bit-3 state). If it matches the port's, the y hypothesis is refuted
 and the `+0x54` clear has another writer (`0x36870`, `0x4811C`, `0x36F10`, or
 an anim target). The phase measures the state; it does not fit the gate.
 
@@ -334,14 +386,18 @@ allowance.
 
 ### 7.5 Docs
 
-`AGENTS.md:390` reads U13 `MIN_REACH` 4952; the Makefile pins 4951. The
-predecessor design's §7.6 said music had not landed; music truth has landed
-(`audio-oracle` is in `make verify`; `make audio-render` pins peak 2790 /
-sha256 `530a9430…`). The U14 attribution ("the endgame phase's two permitted
-attempts") is wrong: the attempts were spent in gameplay truth II and endgame
-Task 8 declined. The 5120 "last unexplained pixel" wording overstates: it is
-a byte-pinned allowance. The gate is 3 required + 2 compare-if-present + 30
-skip = 35, not "3 enforced, 30 skip".
+`AGENTS.md`'s U13 `MIN_REACH` line read 4952 where the Makefile pins 4951;
+Task 6 corrected it to 4951. The predecessor design's §7.6 said music had not
+landed; music truth has landed (`audio-oracle` is in `make verify`;
+`make audio-render` pins peak 2790 / sha256 `530a9430…`). The U14 attribution
+("the endgame phase's two permitted attempts") is wrong: the attempts were
+spent in gameplay truth II, endgame Task 8 declined a third, and this phase's
+one authorized attempt also lost (record §F2). The 5120 "last unexplained
+pixel" wording overstates: it is a byte-pinned allowance. The gate is 3
+required + 2 compare-if-present + 30 skip = 35; because the phase added no
+gate-inventoried capture and did not wire the two-human arm, it stays **35**
+(the plan's conditional 36 applies only if `gp-twop-ko` were wired, which it
+was not).
 
 ## 8. The approach
 
@@ -450,3 +506,20 @@ change) but is run as a regression check if the gate has budget.
    counter unchanged unless a raw-derived fix adds a row; docs current.
 6. The derivation record has every measurement, poke, allowance and named gap;
    the final review is done.
+
+**Measured outcome (2026-10-26):** item 1 holds through its failure branch (one
+attempt, recorded, nine pins empty, R1 named); item 4 holds (5120 unchanged);
+item 5 is **not a single green `make verify`**: the full gate stopped at the
+register-stream audio oracle under host load (`gp-u18-talon-ending`'s beach
+section, then `gp-u13-ending2`'s jungl section on a standalone retry:
+section-anchor frame shifts; a standalone U18 run passed at 968 ticks and
+failed at 716, with the audio dumps identical apart from the `W` rows' frame
+labels; no pin was weakened), while its remaining steps are green separately;
+no pin moved and no function was added. Item 2's
+*game* half holds — two captures exhibit the hand-dealt two-human KO — but its
+pins do not: neither capture produced a port script, so there is no
+`gp-twop-ko` target, oracle, miss set or gate entry (record §F4, §1.1). Item
+3's exit state holds (`s0_30=0x1180`, `s0_42=0x8000` at `f=0x1533`) but the
+set-frame gate input `y(0x1532)` was missed, so R2 remains a named gap and no
+fix was taken. Item 6 is the record and §F6. The design is therefore
+**Partially implemented**.

@@ -1484,10 +1484,15 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # SAURON's, and a later capture's own S fields decide it.
 # The pins are EMPTY: Task 2's one authorized run (2026-10-26) failed the game's win — P1 was
 # KO'd in both rounds and b0c never became 1 (record 2026-10-26-fought-match-truth §F2) — so no
-# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The target skips on the
-# absent directory; a later authorized capture fills the nine pins from tools/gp_compare.py
-# --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the report's
-# missing-class count; coverage_check fails closed without it).
+# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed artifact is
+# preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays absent); the
+# run also failed the port-script/unscripted-input/end-frame checks after a BIOS-ring burst. The
+# phase's other two scenarios (gp-twop-ko's two-human KO and gp-u24-u16-state's U16 state) are
+# diagnostic: neither is in CAPTURE_DIRS, both failed the same harness pin, and their .dro traces
+# are not in tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
+# skips on the absent directory; a later authorized capture fills the nine pins from
+# tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the
+# report's missing-class count; coverage_check fails closed without it).
 # MIN_FIRST the first unexplained capture frame,
 # TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
 # MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's

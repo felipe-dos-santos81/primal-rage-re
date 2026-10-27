@@ -1,6 +1,8 @@
 # Fought-Match Truth — derivations
 
-Status: in progress, 2026-10-26. Branch `fought-match-truth`, base `a5552639`
+Status: closed 2026-10-26; the phase is **Partially implemented** — U14 R1, a
+publishable two-human replay and the U16 set-frame state remain named gaps
+(§F6). Branch `fought-match-truth`, base `a5552639`
 (`docs: plan the fought-match truth phase`). Plan
 `docs/superpowers/plans/2026-10-26-fought-match-truth.md`; spec
 `docs/superpowers/specs/2026-10-25-fought-match-truth-design.md`.
@@ -8,7 +10,7 @@ Status: in progress, 2026-10-26. Branch `fought-match-truth`, base `a5552639`
 The record is the authoritative raw-byte source for the tasks that implement from it.
 §F1 is Task 1 (the harness: the fighter-slot state fields, stop-on-mode and
 skip-on-mode), which changes no game code and no oracle pin. Later tasks append their
-own sections.
+own sections; §F6 closes the phase with the docs pass and the gate.
 
 Conventions: an address is a Ghidra linear address (code `0x10000..0x73B14`, data
 `0x80000..0x10B0CF`, `DSB/DSW/DSD(addr)` in the port's flat `mem[]`); a raw-file byte
@@ -59,9 +61,12 @@ The same function's mode-0 arm establishes the `0x94` stride raw:
 `0x12DA8`'s field meaning is the demo-fight record's
 (`2026-09-20-demo-fight-derivations.md` §1.1/§2.7): `+0x30` is the **latched y**, a copy
 of the fighter record's `+0x1C` (`0x186B0`/`0x18ACA`), and the second slot begins at
-`0x107844` (`= 0x1077B0 + 0x94`). The port already reads it as a dword
-(`port/src/game/camera.c` `camera_y_commit`, `DSD(DS_001077E0)` and
-`DSD(DS_001077E0 + 0x94u * idx)`), so the field width is not a new claim.
+`0x107844` (`= 0x1077B0 + 0x94`). The port already reads the two slots as dwords
+in `hit_vert_distance` (`port/src/game/fighter.c:4093`, `DSD(DS_001077E0) -
+DSD(DS_001077E0 + 0x94u)`), so the field width is not a new claim. (The
+citation in the task's draft said `port/src/game/camera.c`; its `camera_y_commit`
+reads `word [0x1077E0]` in one arm and the two dwords separately in the other,
+so it does not pin the width.)
 
 **`+0x42` is two bytes, a word.** `FUN_00036f10`'s arm A, the one write that sets the
 U16 gate's `+0x42` bit 5 and `+0x43` bit 3 (`2026-10-23-endgame-truth-derivations.md`
@@ -236,9 +241,10 @@ made.
 ### §F2.1 The scenario change
 
 `_u16_round` and its constants (`U16_GAP = 16`, `U16_WALK = 12`, `U16_GROUP = 8`) moved above the
-U14 block, beside `U14_PUNCH`/`U14_KICK`/`U14_GAP`; the U16 block below keeps its comment and its
-callers and points at the builder. `U14_ATTEMPTS`/`U14_PRESSES` had no other reader and are gone;
-`U14_GAP = 16` stays the documented 1A/1B gap. The scenario is:
+U14 block, beside `U14_PUNCH`/`U14_KICK`; the U16 block below keeps its comment and its
+callers and points at the builder. `U14_ATTEMPTS`/`U14_PRESSES` had no other reader and are gone.
+`U14_GAP = 16` was kept at Task 2's close but had no reader; Task 6 removed it — the gap is the
+builder's `U16_GAP = 16` (§F6). The scenario is:
 
 ```python
 SCENARIOS['gp-u14-win-live'] = dict(
@@ -446,7 +452,8 @@ Every condition is required, each with its own `fail` entry:
 8. **The result names the winner.** The first result record after the KO is the round result
    (mode 8) with `ad4 = NO_RESULT = 0xFFFFFFFF` and `w[winner] >= 1, w[loser] = 0`, or the
    match result (mode 9) with `ad4 = winner` and the same `w` (`0x27C48`'s counters
-   `DS_00104AF2`/`AF3` and `0x27BA4`'s `DS_00104AD4`; §W.3). The draw `ad4 = 2` fails.
+   `DS_00104AF2`/`AF3` and `0x27BA4`'s `DS_00104AD4`, stored at `0x27C3D` — the `-1` arms are
+   `0x27C0C`; §W.3). The draw `ad4 = 2` fails.
 9. **The match result, when reached.** A mode-9 entry at or after the KO has `ad4 = winner`
    and `w[winner] >= 1, w[loser] = 0` (scoped at/after the KO: an earlier match's result is
    not this match's).
@@ -531,7 +538,7 @@ exit=1
 
 $ python3 tools/gp_twop.py check --ko --capture data/k11-captures/gp-u9-win
 gp_twop: gp-u9-win: hand-dealt KO of side 0: ko f=48D; round result f=48D; match result f=85A; death-done f=-
-gp_twop: gp-u9-win: FAIL: poke: the W record at f=489 wrote 0010789E, a KO/death field: the round must be the game's own write, not a poked one
+gp_twop: gp-u9-win: FAIL: poke: the W record at f=489 covers 0010789E, a KO/death field: the round must be the game's own write, not a poked one
 gp_twop: gp-u9-win: FAIL: b1f never reaches 3 (no S record has both sides human)
 gp_twop: gp-u9-win: FAIL: side 1 s1_5a jumps to 78 at f=48D with no earlier 0 < value < 78 in the mode-6 entry the KO ends: the damage path adds to a live value
 gp_twop: gp-u9-win: hand-dealt KO: FAIL
@@ -587,10 +594,16 @@ argument), and the `--ko --join`/`--ko --finisher` pairs exit 2.
    non-fight, non-result mode, and a result record with no mode-6 run before it. They exist for
    capture shapes the tree has not measured (a poller gap that skips a result window); no
    capture in `data/` produces them, and Task 4's script runs to mode 0x12 through both results.
+5. **The KO search is not scoped to the two-human join.** `ko()` takes the first S record whose
+   loser `+0x5A` reads `0x78` anywhere before the X, not the first after `two_human`'s join. In a
+   single-match capture that is unreachable (the join precedes every fight frame), but a future
+   multi-fight log could report an earlier match's KO as this one's. Task 4's capture is one
+   round and one match, so no claim depends on it; a multi-fight predicate would need a join- or
+   match-scoped search.
 
 ## §F4 The two-human KO capture and oracle (Task 4)
 
-Outcome: the scenario and its test are committed; the phase's one authorized capture ran on
+Outcome: the scenario and its test are committed; the phase's one authorized first capture ran on
 2026-10-26 and **the game's verdict was the hand-dealt two-human KO** — `gp_twop.py check --ko`
 passed on it (`ko f=B9A`, `round result f=B9A`, no match result inside the 240-frame window,
 `death-done f=-`: `b0c` stayed 0, reported not required) — **but the capture failed one harness
@@ -624,8 +637,9 @@ SCENARIOS['gp-twop-ko'] = dict(
 
 `gp-twop-ko` joins `STOP_AT_END`. The kept prefix is gp-twop's own steps through the walk-in (the
 boot, the two menu Enters, P2's join in the character select, both cursors, both confirms and the
-mode-6 walk-in); `[:9]` is computed from `steps_before_end(SCENARIOS['gp-twop']['steps'])` so a
-future change to gp-twop before its end shows up as a test failure, not a silent divergence. The
+mode-6 walk-in); `[:9]` is computed from `steps_before_end(SCENARIOS['gp-twop']['steps'])`, and
+`TestTwopKo` pins the current nine-step prefix equality, so a change to those first nine steps
+fails the test. A change later in gp-twop's steps is outside the prefix and is not guarded. The
 walk-in step (`('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 30))`) is load-bearing:
 its `p2.left` is the second side's mode-6 pad press, which `gp_twop.two_human`'s fight-press rule
 needs (P1's 140 attempts alone would be a one-human fight). The round is one `_u16_round(140, 30)`
@@ -723,7 +737,7 @@ exit=0
 
 Both sides are human from the character select's join at `f=0x285` (`b1f` 1 → 3, no credit
 debit), every S record's command word for both sides is a pad word, and both sides pressed in
-mode 6 (P1's scripted attempts; P2's 30-frame walk-in `left`). P1 is TALON (`c0 = 2`, cursor 0
+mode 6 (P1's scripted attempts; P2's 30-frame walk-in `left`). P1 is TALON (`c0 = 2`, cursor/cell 1
 confirmed) and P2 is CHAOS (`c1 = 6`, `afc = 4`; the P2 cursor's `left` 5 → 4). The damage
 progression in the last mode-6 entry (`f=0x4D1`, the first fight frame) is a live path:
 
@@ -796,7 +810,8 @@ at `0x7C7` and could be up to two frames late. The rule refuses that, and relaxi
 capture would be fitting the model: the harness's input truth is exactly that a consumed word's
 frame is pinned by a neighbouring snapshot. The run's other gaps (26 gaps, 127 missed frames)
 matter less because a missing capture frame is simply not compared (`gp_compare`'s missing-frame
-rule); only the key pin is load-bearing.
+rule); what is load-bearing is the script's ability to pin every consumed key and every pad
+change to a neighbouring `S` record — here the missing `S(0x7C6)` breaks the key pin.
 
 The host was heavily loaded throughout (load average 26.39 on 20 cores; twenty CPU-bound
 `difftest.py` processes from another project at ~97 % each), and the poller is a Python thread
@@ -912,13 +927,16 @@ exit=1
 `S(0x595)` does not exist: the S records jump `0x593 → 0x596` (frames `0x594` and `0x595` missing),
 so `prev = snap.get(c - 1)` is `None`. Two attempts (steps 12 and 13) had burst-fired together at
 `f=0x593` after a 23-frame poller gap (`0x57B → 0x593`), queuing four BIOS words in one pass; the
-game consumed all four at `f=0x596`. This is the same mechanism as §F4.5 one step earlier in the
-log, and it shows the pin rule needs exactly one thing the starved poller cannot guarantee: an S
-record at `c - 1`.
+game consumed all four at `f=0x596`. This is the same mechanism as §F4.5, with steps 12/13 instead
+of step 49, and it shows the pin rule needs exactly one thing the starved poller cannot guarantee:
+an S record at `c - 1`.
 
-The CPU pinning made the poller worse, not better: the missed-frame count rose 127 → 166 (two
-23-frame gaps instead of one 64-frame gap), because the scope put DOSBox-X and the poller thread on
-the same core while the host's other ~20 CPU-bound processes stayed unconstrained across all 20
+The CPU pinning made the poller worse, not better: the missed-frame count rose 127 → 166, and the
+recovery's poll log has **42** `S` gaps (166 missing frames) whose largest is `0x7D9 → 0x801`
+(39 frames missing; a difference of 40), with two 23-frame gaps (`0xCB → 0xE3` and
+`0x57B → 0x593`). The first run's 26 gaps / 127 missing had its largest at `0x7C4 → 0x804` (63
+frames missing; a difference of 64). The scope put DOSBox-X and the poller thread on the same core
+while the host's other ~20 CPU-bound processes stayed unconstrained across all 20
 cores. Every other check passed again (stop path, end frame, kb/raw, frames written, no unscripted
 input, no pokes).
 
@@ -1024,7 +1042,7 @@ removed between runs because a same-size, same-second rewrite can reuse stale by
 
 `git diff` was clean after the restore (`cmp` against the saved copy: identical).
 
-### §F5.3 The diagnostic capture's harness checks (the `.failed` state)
+### §F5.3 The diagnostic capture's harness checks (the first run, now `.failed.run1`)
 
 ```text
 $ DISPLAY=:1 timeout 600 make gp-capture scenario=gp-u24-u16-state
@@ -1053,7 +1071,8 @@ published captures' 8-17 (U23: 17), and no `S` record exists at `f=0x57A` for th
 script must anchor. `make gp-replay scenario=gp-u24-u16-state` is therefore not runnable: there is
 no script, no dump and no trace for this scenario.
 
-The artifact: `data/k11-captures/gp-u24-u16-state.failed` — 8133 frames, `poll.log` 8607 lines /
+The artifact (the first run; §F5.6's recovery later wrote the `.failed` directory, so this one is
+now `data/k11-captures/gp-u24-u16-state.failed.run1`): 8133 frames, `poll.log` 8607 lines /
 8243 `S` records, sha256
 `58dd6991f66d487a49dfd1b8b402d01ef6dcf6b49d00a7f5339e7b4e914e0045`; `session.txt` reads
 `time_limit=300 wall_s=167.6 rc=0`, `stop_at_end=1 tail=60 signal_f=2199`, `fps=70.0866
@@ -1064,7 +1083,8 @@ caveats of AGENTS.md still apply).
 **The game's run did not reproduce U23's path.** Round 1: mode 6 `f=0x04DE..0x119F`, then the
 time-out result (mode 7 at `f=0x11A3`, `s1_5a = 0x2A`, P1 `0`), mode 8 for one S (`f=0x120B`), the
 0x16 result hold to `f=0x12FC`. Round 2: mode 6 `f=0x1378..0x203B`; the labelled poke writes P2's
-`0x10789E = 0x77` at `f=0x1382` (the `s1_5a` S field shows `0x77` from that frame on), the 12
+`0x10789E = 0x77` at `f=0x1381` (the `W` record; the `s1_5a` S field shows `0x77` from
+`f=0x1382`), the 12
 real 1A/1B attempts fire at `f=0x1389..0x144D` (the builder's 16-frame spacing, steps 47..59 with
 the walk at 55) and **all whiff**: `s1_5a` never leaves `0x77`, no `0x78`, no `0x48374`. The round
 timer runs out at `f=0x203F` (mode 7), and the already-decided match goes mode 9 at `f=0x20A7` (one
@@ -1079,8 +1099,9 @@ differently from U23, not a harness write (the poke and every press are logged a
 
 The **port side** of the brief's Step 6 one-off, run on the **existing U23 replay** as the
 controller allows (its capture is present and its port script is valid), plus the **manual
-capture-side checks** (`--failed` is the only capture; the brief's own script raises
-`StopIteration` at its set lookup, so the "absent" line is a manual result, not the script's):
+capture-side checks** (`gp-u24-u16-state.failed.run1` — the first run's capture, named `.failed`
+at the time — is the only one; the brief's own script raises `StopIteration` at its set lookup, so
+the "absent" line is a manual result, not the script's):
 
 ```text
 $ make gp-replay scenario=gp-u23-u16-finisher
@@ -1155,8 +1176,8 @@ and no other capture carried the fields (the old U23 `poll.log` has no `s0_30`).
 unmeasured is the **set-frame gate input `y(0x1532)`** (the poller missed that record). So:
 
 - The y/anchor hypothesis is **not decided by a marker-gated value**: the recovery's exit state
-  (`0x1180 < 0x1400`) supports it, but the set-frame input is missing and the recovery is a
-  different RNG draw, so no source is isolated. The narrowing stands: the fight's y range matches
+  (`0x1180 < 0x1400`) is consistent with it, but the set-frame input is missing and the recovery
+  is a different RNG draw, so no source is isolated. The narrowing stands: the fight's y range matches
   on both sides and the mode-9 entry y differs by 0x80 (a different run's positions), so a
   divergence is confined to the reaction's own stream/anchor state — the same four candidates
   design §7.3 named (the `0xED8FE` stream, the `0xCFC32` anchor table, the `0x186D0` latch arm, or
@@ -1219,7 +1240,7 @@ All 75 steps fired (the run1 capture fired 65/75) and the poke is written once, 
 `f=0x13AF..0x1482`, then **mode 9 at `f=0x1486` with `s1_5a = 0x78`** (the `0x77` poke plus one
 real hit), mode 0x17 at `f=0x16B0`, mode 0x12 at `f=0x17A1` (the stop; SIGTERM at `f=0x17DD`).
 The mode path and its frames are the old U23 capture's (mode 9 `0x1486..0x16AF`, 0x17
-`0x16B0..0x17A0`, 0x12 `0x17A1..0x17DC`), so the marker's frame is the old capture's `0x1532`.
+`0x16B0..0x17A0`, 0x12 `0x17A1..0x17DD`), so the marker's frame is the old capture's `0x1532`.
 
 The two failed checks are the starvation class, not the game's state:
 
@@ -1252,7 +1273,7 @@ exit, §F5.4). The measured neighbourhood:
 |---|---|---|---|---|
 | recovery reaction | `0x152C` | `0x09C0` | `0x8000` | 0 |
 | recovery last S before the marker | `0x1531` | `0x09C0` | `0x8000` | 0 |
-| **recovery exit (present, the set frame `0x1532` missing)** | **`0x1533`** | **`0x1180`** | `0x8000` | **0** |
+| **recovery S at the old marker's exit frame (inferred; the set frame `0x1532` is missing)** | **`0x1533`** | **`0x1180`** | `0x8000` | **0** |
 | recovery post-exit | `0x1536` | `0x0D40` | `0x8000` | 0 |
 | port reaction | `0x1531` | `0x1B40` | `0x8000` | 0 |
 | **port reaction set** | **`0x1532`** | **`0x202E`** | `0x8000` | **2** |
@@ -1260,8 +1281,8 @@ exit, §F5.4). The measured neighbourhood:
 | **port case-3 exit** | **`0x155C`** | `0x1180` | `0x8000` | **0** |
 
 The exit-neighbourhood values are **below** the gate and the port's same-frame values are
-**above** it; the recovery's exit value (`0x1180`) is exactly the port's post-exit value. That
-supports the y hypothesis, but it is not the marker-gated measurement:
+**above** it; the recovery's exit value (`0x1180`) is exactly the port's post-exit value. That is
+consistent with the y hypothesis, but it is not the marker-gated measurement:
 
 - the gate input is the *previous* frame's latched y (the port's own exit at `0x155C` follows
   `0x155B`'s `0x1104`, while `0x155A`'s `0x147E` is still above), and the original's gate input
@@ -1269,11 +1290,12 @@ supports the y hypothesis, but it is not the marker-gated measurement:
   record;
 - the recovery is a **different RNG draw** from the replay target: its first `rng` difference from
   the old U23 capture is `f=0x026D` (`723D2EA7` vs `70AC51C8`; the old capture and the port agree
-  until `0x1549`). Its y agrees with the old/port trace up to `0x14FD` (`0xA80`) and departs at
+  until `0x1549`). Its y agrees with the old capture's trace (and the port's) up to `0x14FD`
+  (`0xA80`) and departs at
   `0x14FE` (`FFFFFD00` vs `0xA80`) — the reaction's own y, which is the game's draw, not a
-  same-run comparison. Its `r0` also stays `0x27` (no `0x33`) because the second finisher entry's
-  five steps burst-fired together at `f=0x156B` (the old capture's `0x154D..0x1559`), so the
-  recovery's finisher path is only its first entry's.
+  same-run comparison. Its `r0` also stays `0x27` (no `0x33`); the second finisher entry's
+  five steps burst-fired together at `f=0x156B` (the old capture's `0x154D..0x1559`), so only the
+  first entry's reaction window is reproduced, and the second entry's effect is not inferred.
 
 **Decision (unchanged, per the controller's absent-marker rule):** the exit state **is measured**
 (`f=0x1533 s0_30 = 0x1180`, `s0_42 = 0x8000`); the deciding **gate input at the marker's own frame
@@ -1286,3 +1308,205 @@ artifacts stay in `data/k11-captures/`: `.failed.run1` (the first, §F5.3) and `
 recovery). A future authorized run would need an uncontended poller so that `0x1532` (and the
 `S(c-1)` pin) are recorded; the U23 outcome and the first entry's reaction are already
 reproducible.
+
+## §F6 The docs pass, the counters and the phase gate (Task 6)
+
+Outcome: the docs truth pass and the counter/E2 measurements are committed, and the full gate was
+run; it stopped at the register-stream audio oracle under host load, with every other step green
+separately (§F6.3). The phase closes **Partially implemented**: U14 R1, a publishable two-human
+replay and the U16 set-frame state remain named gaps (§F6.5). No game code, oracle, pin or capture
+path was added; the gate is still 35 paths with `gp-u14-win-live` declared absent.
+
+### §F6.1 The docs changes
+
+| file | change |
+|---|---|
+| `AGENTS.md` | U13 `MIN_REACH` 4952 → 4951; the U14 paragraph states the phase's failed attempt, the `.failed` artifact and the nine empty pins (`MAX_MISSING` included); the 5120 wording becomes "a byte-pinned 13-pixel allowance whose cause is unisolated"; a new fought-match-truth bullet records the harness, the two-human game-evidence result, the U16 exit state, the 35-path gate and the unattributed `.dro` files; no `gp-twop-ko-oracle` command is added |
+| `README.md` | the named-gaps paragraph records the phase's measured outcomes (U14 still R1; the two-human KO game-evidence-only; U16's exit measured, set-frame input missed) and the unchanged 35-path gate; the 66 % title line is unchanged |
+| `docs/PROGRESS.md` | the phase narrative appended (Tasks 1–6, the measured outcomes, the gate evidence, the named gaps) |
+| design `2026-10-25-fought-match-truth-design.md` | status **Partially implemented**; new §1.1 phase outcome; §2's U14/U16/capture/docs bullets re-measured; §7.1's per-round figure 2,600 → 2,934 (builder interior 2,924; two-round span 5,868); §7.3's port `slot+0x30` corrected to 0x202E at the set `f=0x1532` (0x22F4 at `f=0x1533`) and the recovery's exit state added; §7.5's gate count stays 35 (the conditional 36 is not reached); §9's measured-outcome note |
+| `Makefile` | the U14 provenance comment names the `.failed` artifact, the harness failure, the two diagnostic scenarios and the unattributed `.dro` files; the gate/pins are unchanged |
+| `tools/gp_session.py` | the U14 comment's nominal-frame figure 2,600 → 2,934; the unused `U14_GAP` removed (the builder's `U16_GAP` is the gap) |
+| `tools/gp_win.py`, `tools/gp_twop.py` | `NO_RESULT`'s provenance now names the `-1` store at `0x27C3D` (the `-1` arms are `0x27C0C`); `gp_twop`'s poke failure says the W record **covers** the address (it prints the address, not the value) |
+| `tools/tests/test_gp_session.py` | `TestHarnessSmoke` asserts `time_limit=30` and `(stop_mode, stop_delay)=(0x27,10)` |
+| this record | §F1.1's load-bearing read citation (`fighter.c:4093`, not `camera.c`); §F2.1's `U14_GAP` note; §F3.1's `ad4` store address; §F3.4's "covers" quote; §F3.6's new join-scope named gap; §F4's "first capture", prefix-equality, cursor/cell 1, key-and-pad-pin and recovery gap-count corrections; §F5's `.failed.run1` path, `--failed` typo, inferred exit label, "is consistent with", old/port trace, mode-0x12 range, W/`s1_5a` frame and finisher-path corrections |
+| `port/RE_GUIDE.md` | unchanged — the phase changes no claim or oracle line |
+
+The music-truth paragraph in `AGENTS.md` is unchanged (the register stream is verified; rendered
+audibility is a model gap); the phase adds no audio trace to `tools/audio_compare.py`'s 29-file
+inventory.
+
+### §F6.2 The counters and E2
+
+```text
+$ python3 tools/port_progress.py
+799 1203 66
+759 759 100 (portable: excludes 53 host-owned/deferred and runtime >= 5D000)
+```
+
+The phase adds no `FN_` function (its changes are tools/tests/docs), so the README title stays
+66 % and the E2 table and `symbols.h` are unchanged; `make entry-triage` matches a fresh run
+(§F6.3's gate line). The differential counter is `1033/1033`, `14993/14993`, 0 named gaps.
+
+### §F6.3 The gate
+
+The authoritative run is `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify`, log
+`/tmp/opencode/fought-match-task6-verify.log`. It exits **2**, not 0: every step through the
+endgame oracles is green, and the register-stream audio oracle then fails on
+`gp-u18-talon-ending`. The exact lines:
+
+```text
+gate: captures 34/35 present, 1 missing (strict=1, pins_exact=1)
+gate: declared gap (absent): data/k11-captures/gp-u14-win-live
+...
+audio-compare: gp-u18-talon-ending: FAIL
+audio-compare: gp-u18-talon-ending: FAIL: section s16beach.gra+0x8 first difference (tick groups differ) at relative tick 253
+audio-compare: gp-u18-talon-ending: FAIL: claimed 718 ticks, pinned minimum 964
+make[2]: *** [Makefile:2131: audio-one] Error 1
+...
+make[1]: *** [Makefile:2159: audio-oracle] Error 123
+make: *** [Makefile:2225: verify] Error 2
+EXIT:2
+```
+
+**Classification: host-load nondeterminism in the pre-existing audio model, not this phase's
+code.** No audio code, audio trace or pin changed in the phase. The same trace measured two
+different section anchors in back-to-back standalone runs:
+
+```text
+$ make audio-one scenario=gp-u18-talon-ending AUDIO_DUMP=/tmp/opencode/audio-u18-run1
+audio-compare: gp-u18-talon-ending: 968 compared ticks over 4 section(s); 1 named gap(s) [3BA4C376]
+audio-compare: gp-u18-talon-ending: ok
+
+$ make audio-one scenario=gp-u18-talon-ending AUDIO_DUMP=/tmp/opencode/audio-u18-run2
+audio-compare: gp-u18-talon-ending: 716 compared ticks over 3 section(s); 1 named gap(s) [3BA4C376]
+audio-compare: gp-u18-talon-ending: FAIL
+audio-compare: gp-u18-talon-ending: FAIL: section s16beach.gra+0x8 first difference (tick groups differ) at relative tick 253
+audio-compare: gp-u18-talon-ending: FAIL: claimed 716 ticks, pinned minimum 964
+make: *** [Makefile:2131: audio-one] Error 1
+```
+
+The two `audio.txt` dumps have the same 3,012 lines and the same register data; the `W` rows'
+frame labels for the beach section are one frame lower in the failing run (`1060` vs `1061` at
+its first writes): that is consistent with the host audio callback's frame alignment shifting
+under load, and `audio_compare` anchors the section on that frame. A standalone `make audio-oracle`
+retry failed the same way on `gp-u13-ending2` (`section s16jungl.gra+0x8 first difference ... at
+relative tick 250`) and `gp-u18-talon-ending` (`claimed 718 ticks, pinned minimum 964`), exit 2.
+No pin was weakened; the trace's `TRACE_PINS` entry is unchanged.
+
+The steps after the audio oracle were run separately on the same tree:
+
+```text
+$ make diff-verify
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37).
+EXIT:0
+```
+
+(Not `PR_DIFF_FULLSCAN=1`: the write-tracking mode; the counter is the same and the phase changes
+no port source. Log `/tmp/opencode/fought-match-task6-diff-verify.log`.)
+
+```text
+$ make entry-triage
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+EXIT:0
+
+$ python3 tools/gen_symbols.py port/decomp port/src/symbols.h
+1304 globals, 1206 functions -> port/src/symbols.h
+  dropped 11 globals, 1 functions outside the LE objects
+$ git diff --quiet -- port/src/symbols.h      # exit 0, byte-identical
+
+$ PR_ORACLE_REQUIRED=1 PR_GAME_DIR=data/game/C python3 -m unittest <the 14 tool modules>
+Ran 374 tests ... OK
+$ python3 -m unittest tools.tests.test_title_compare
+Ran 25 tests ... OK
+$ PR_ORACLE_REQUIRED=1 make re-extract-test
+Ran 33 tests ... OK
+```
+
+The remaining gate steps are therefore green; the phase's gate is **DONE_WITH_CONCERNS** for the
+audio oracle's host-load nondeterminism, and no pin or claim was weakened to pass it.
+
+### §F6.4 Pins and one-step proofs
+
+No pin was written or moved: all nine `GP_U14_*`, the eight would-be `GP_TWOP_KO_*` and every
+existing pin are unchanged; `GP_TWOP_KO_*` does not exist. `make gp-u14-oracle` skips on the
+absent published target (its nine pins are blank, so a later capture cannot pass without filling
+them; `MAX_MISSING` is already wired). The phase's only test additions are the three constant
+assertions in `TestHarnessSmoke`, each proved to fail under a mutation and restored (`cmp`
+identical):
+
+| mutation | failure |
+|---|---|
+| `time_limit=30` → `31` | `AssertionError: 31 != 30` |
+| `stop_mode=0x27` → `0x26` | `AssertionError: Tuples differ: (38, 10) != (39, 10)` |
+| `stop_delay=10` → `11` | `AssertionError: Tuples differ: (39, 11) != (39, 10)` |
+
+`PR_PINS_EXACT=1` makes an unexpected pin improvement fail rather than silently re-pin; the gate
+reported no `improved:`/`re-pin` line.
+
+### §F6.5 Named gaps left open
+
+1. **U14 R1 (the fought live win).** One attempt, lost; the published target is absent, all nine
+   pins empty and `GATE_NAMED_GAPS` keeps the path declared. The CPU KO coin flip is the game's;
+   no second run was authorized. (Record §F2.)
+2. **The two-human KO's publishable capture/replay.** Two captures exhibit the game's hand-dealt
+   KO (`check --ko` passed, no pokes, the round result naming P1), but both failed the port-script
+   pin under host starvation. There is no `gp-twop-ko` directory, no `gp-twop-ko-oracle`, no
+   `GP_TWOP_KO_*` pin, no miss set and no gate entry. The first `.failed` artifact was replaced by
+   the recovery's publish path; its measurements survive in §F4.3–§F4.5. (Record §F4, §F4.7.)
+3. **The U16 set-frame state (R2).** The recovery measured the `0x4844C` case-3 exit
+   (`f=0x1533`: `s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400` gate) but the poller missed the
+   `s0_54=2` set record, so the gate input `y(0x1532)` is unmeasured; the exit is a different RNG
+   draw's. No fix/boundary test/oracle/miss set; no third capture. (Record §F5.5, §F5.6.)
+4. **The 5120 band.** A byte-pinned 13-pixel allowance whose cause is unisolated; no pixel fix.
+5. **Rendered-audio audibility.** The OPL core/mixer is a model; the register stream is the claim.
+6. **The differential frontier.** The 20 terminal rows, 15 `WEAKER`, 8 `UNROWED` and the 158
+   span-writer targets outside E2 are unchanged and declared.
+7. **The unattributed `.dro` files.** `gp-harness-smoke`, `gp-twop-ko` and `gp-u24-u16-state`
+   wrote `.dro` traces that are not in `tools/audio_compare.py`'s 29-trace inventory; they are not
+   added (no bank attribution) and no audio claim is made.
+8. **The two-human KO predicate's join scope.** `ko()` searches the whole log for the first `0x78`,
+   not from the two-human join; unreachable in a single-match capture, but a multi-fight log could
+   report an earlier KO (§F3.6 item 5).
+9. **The register-stream audio oracle's host-load nondeterminism.** Under host load the port's
+   `W` frame labels at a section start shift by a frame, so `audio_compare`'s section anchor fails
+   a trace that passes on a rerun (`gp-u18-talon-ending` 968 ticks `ok` vs 716 `FAIL`; the
+   standalone oracle retry fails `gp-u13-ending2`/`gp-u18-talon-ending` the same way). No pin was
+   weakened; a future phase should make the replay's frame labels deterministic or widen the
+   anchor model only with measured evidence.
+
+### §F6.6 Deferred minors
+
+Every task review's minor was either fixed above or is recorded here for the whole-branch review:
+
+| task | minor | status |
+|---|---|---|
+| 1 | derivation citation says `camera.c` reads the two-slot dword | **fixed** (§F1.1: `fighter.c:4093`) |
+| 1 | no C-side assertion of the four trace addresses (`DS_ + 0x94 + 0x30/0x42`) | **deferred** by the Task 6 brief ("do not add the C-side address test now"); the addresses are pinned by `SNAP_FIELDS`' test and §F1.1's bytes |
+| 1 | `main` forwarding and `run_checks` wiring exercised only by a capture | **exercised** by Tasks 2/4/5 (the smoke, U14 and the two-human/U16 captures ran the real path) |
+| 1 | `run_checks` label gained `(%d skipped)`; historical quotes differ | **noted**; the phase's records quote the new form |
+| 1 | `steps_ok` resume / `main` forwarding exercised only by the captures | **exercised** by Tasks 2/4/5's real captures (`steps fired 137/362 (225 skipped)` etc.) |
+| 2 | walk cadence asserted by count, not positions | **fixed in Task 4's** `TestTwopKo` (walk positions/gaps/partition) |
+| 2 | smoke's `time_limit`/`stop_mode`/`stop_delay` unasserted | **fixed** (§F6.1, mutation proofs §F6.4) |
+| 2 | `U14_GAP` unused | **fixed**: removed (the builder's `U16_GAP` is the gap) |
+| 2 | 2,600-vs-2,934 nominal-frame note | **fixed** in `tools/gp_session.py` and design §7.1 (2,934; interior 2,924; span 5,868) |
+| 3 | `NO_RESULT` cites `0x27C0C` (the `-1` store is `0x27C3D`) | **fixed** in `gp_win.py`, `gp_twop.py` and §F3.1 |
+| 3 | KO search not scoped to the two-human join | **recorded** as a named gap (§F3.6 item 5, §F6.5 item 8); no filter added |
+| 3 | "wrote %08X" address-vs-value wording | **fixed**: the message says "covers" (address), and §F3.4's quote is updated |
+| 3 | winner-1 pass path not exercised by the planned P1-winner capture | **partially exercised**: `check --ko --winner 1` on `gp-u14-win-live.failed` reports the KO and fails only the two-human claim (§F3.2); no published winner-1 capture |
+| 4 | "cursor 0 confirmed" | **fixed**: cursor/cell 1 (§F4.4) |
+| 4 | "only the key pin is load-bearing" | **fixed**: the key and pad-change pins (§F4.5) |
+| 4 | prefix-equality future-change claim | **fixed**: the test pins the current nine-step prefix; later steps are unguarded (§F4.1) |
+| 4 | recovery nits: "one authorized capture", gap counts | **fixed**: "one authorized first capture" + one recovery; the measured 42 gaps/166 missing, largest `0x7D9 → 0x801` (39 missing, difference 40), two 23-frame gaps (§F4.7) |
+| 5 | `--failed` typo | **fixed** (§F5.4: `.failed.run1`) |
+| 5 | "recovery exit" label inferred | **fixed**: "recovery S at the old marker's exit frame (inferred; the set frame `0x1532` is missing)" (§F5.6) |
+| 5 | "supports" overstates | **fixed**: "is consistent with" (§F5.5, §F5.6) |
+| 5 | old/port trace wording | **fixed**: "the old capture's trace (and the port's)" (§F5.6) |
+| 5 | mode-0x12 S range | **fixed**: `0x17A1..0x17DD` (§F5.6) |
+| 5 | finisher-path wording | **fixed**: only the first entry's reaction is reproduced; the second's effect is not inferred (§F5.6) |
+| 5 | artifact paths | **fixed**: §F5.3's first-run artifact is `.failed.run1` (the recovery wrote `.failed`) |
+| 5 | W/`s1_5a` frame | **fixed**: the W record at `f=0x1381` (first run) / `f=0x13B8` (recovery), the S field one frame later (§F5.3, §F5.6) |
+| 5 | check wording | **verified unchanged**: the check lines are quoted verbatim; the first run is nine `ok`/one `FAIL`, the recovery eight `ok`/two `FAIL` (§F5.3, §F5.6) |
+| 5 | design's 0x202E/0x22F4 frame correction | **fixed**: design §7.3 and §2 (set `0x1532` = 0x202E; exit `0x1533` = 0x22F4) |
+| 6 | U14 pin count "nine on success" vs "eight"; inventory 35 vs 36; no `gp-twop-ko-oracle` | **fixed** throughout: nine empty pins on this failed run, 35 paths with the U14 gap, no new command |

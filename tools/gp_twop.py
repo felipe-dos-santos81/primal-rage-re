@@ -60,7 +60,7 @@ KO_VALUE = 0x78
 TIMEOUT_MODE = 0x07             # the round's time-up result (mode 7)
 ROUND_MODE = 0x08               # the round result (mode 8, 0x27FA8)
 MATCH_MODE = 0x09               # the match result (mode 9, 0x28024..0x2803B)
-NO_RESULT = 0xFFFFFFFF          # DS_00104AD4 = -1 (0x25A0E, 0x27C0C): 0x27BA4's undecided match
+NO_RESULT = 0xFFFFFFFF          # DS_00104AD4 = -1 (0x25A0E; the -1 store at 0x27C3D): 0x27BA4's undecided match
 # The WIN fields a poked win writes: the two +0x5A damage bytes (s0_5a/s1_5a), the
 # round wins (w2/w3), the match result (ad4), the death-done byte (b0c) and the
 # seven land marks (m106/m10a; gp_session.lands_marked writes them at 0x108106 with
@@ -258,7 +258,7 @@ def ko(lines, winner=0):
     for r in parsed:
         hit = _poked_field(r) if r['kind'] == 'W' else None
         if hit is not None:
-            out['fail'].append('poke: the W record at f=%X wrote %08X, a KO/death field: the round '
+            out['fail'].append('poke: the W record at f=%X covers %08X, a KO/death field: the round '
                                "must be the game's own write, not a poked one" % (r['f'], hit))
             break
     out['fail'] += two_human(lines)['fail']
