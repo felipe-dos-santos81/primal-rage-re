@@ -279,7 +279,7 @@ git commit -m "tools: capture fighter slot state and stop on a mode"
 
 **Interfaces:**
 - Consumes: `_u16_round(attempts, first_gap, anchor=(mode, k))`, `stop_mode`/`skip_on_mode` from Task 1, `WIN_EXTRA`, `WIN_MENU`.
-- Produces: `SCENARIOS['gp-u14-win-live']` with `time_limit=260`, `stop_mode=0x12`, `skip_on_mode=(0x08, 0x09)`, two `_u16_round(160, 10, anchor=...)` blocks; a throwaway `gp-harness-smoke` scenario; updated `TestLiveWin`; either the nine `GP_U14_*` pins (and an empty `GATE_NAMED_GAPS`) or a recorded failure.
+- Produces: `SCENARIOS['gp-u14-win-live']` with `time_limit=260`, `stop_mode=0x12`, `skip_on_mode=(0x08, 0x09)`, two `_u16_round(160, 10, anchor=...)` blocks; a throwaway `gp-harness-smoke` scenario; updated `TestLiveWin`; either the nine `GP_U14_*` pins (and an empty `GATE_NAMED_GAPS`) or a recorded failure. (`0x07` joined `skip_on_mode` in the final review's fix round, so the time-up round's queued presses cannot overrun the end; record `2026-10-26-fought-match-truth-derivations.md` §F2.1.)
 
 - [ ] **Step 1: Update `TestLiveWin` first**
 

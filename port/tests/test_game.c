@@ -13716,11 +13716,14 @@ static void gp_trace_line(void)
             (unsigned)DSW(DSD(DS_00101514) + 0x2D6u),
             /* Plan 2026-10-26-fought-match-truth Task 1 (§F1): the fighter slots'
              * latched y (+0x30, a dword) and the +0x42 word the 0x36F10 gate
-             * sets 0x820 in (DSD for +0x30, the word [slot+0x42]). */
+             * sets 0x820 in (DSD for +0x30, the word [slot+0x42]). Slot 1 is
+             * base + 0x94, written as the single offsets 0xC4/0xD6 so the
+             * address test can read one DS_ + offset per argument (fix round:
+             * the two-term form was outside its single-term regex). */
             (unsigned)DSD(DS_001077B0 + 0x30u),
             (unsigned)DSW(DS_001077B0 + 0x42u),
-            (unsigned)DSD(DS_001077B0 + 0x94u + 0x30u),
-            (unsigned)DSW(DS_001077B0 + 0x94u + 0x42u),
+            (unsigned)DSD(DS_001077B0 + 0xC4u),
+            (unsigned)DSW(DS_001077B0 + 0xD6u),
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */

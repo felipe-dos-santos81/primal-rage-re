@@ -390,13 +390,61 @@ class TestKO(unittest.TestCase):
         # to side 1, so side 0 is not the winner (0x27C48's counter)
         lines = _ko_log()
         lines[-2] = _s(0x420, mode=0x08, b1f=3, w3=1, ad4=0xFFFFFFFF, b0c=1)
-        self.assertIn('names side w3', ' '.join(gt.ko(lines)['fail']))
+        self.assertIn('names side 1 (w3 = 1', ' '.join(gt.ko(lines)['fail']))
 
     def test_the_match_result_must_name_the_winner(self):
         # the round result names side 0, but the match result's counter is side 1's
         lines = _ko_log()
         lines.insert(-1, _s(0x425, mode=0x09, b1f=3, w3=1, ad4=0, b0c=1))
-        self.assertIn('match result at f=425 names side w3', ' '.join(gt.ko(lines)['fail']))
+        self.assertIn('match result at f=425 names side 1 (w3 = 1',
+                      ' '.join(gt.ko(lines)['fail']))
+
+    def test_a_round_two_ko_after_a_split_and_a_two_one_match_pass(self):
+        # w2/w3 are cumulative (0x27C48): round 1 is side 1's (w2=0, w3=1), so the
+        # round-2 result after side 0's KO is level (1-1) and names side 0 only by
+        # its counter rising there; the 2-1 match result then has w2=2 > w3=1.
+        # The old w[winner] > 0 and w[loser] == 0 rule rejected both (review fix).
+        L = [_s(f, mode=0x10, b1f=1) for f in range(0x2F0, 0x300)]
+        L += [_s(f, mode=0x10) for f in range(0x300, 0x310)]
+        L += [_s(0x400, mode=0x06, b1f=3, new=0x01000100, s0_5a=0x10, s1_5a=0)]
+        L += [_s(0x410, mode=0x06, b1f=3, new=0x01000100, s0_5a=0x78, s1_5a=0)]
+        L += [_s(0x420, mode=0x08, b1f=3, w2=0, w3=1, ad4=0xFFFFFFFF)]
+        L += [_s(0x500, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x10, w2=0, w3=1)]
+        L += [_s(0x510, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x78, w2=1, w3=1)]
+        L += [_s(0x520, mode=0x08, b1f=3, w2=1, w3=1, ad4=0xFFFFFFFF)]
+        L += [_s(0x600, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x10, w2=1, w3=1)]
+        L += [_s(0x610, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x78, w2=2, w3=1)]
+        L += [_s(0x620, mode=0x09, b1f=3, w2=2, w3=1, ad4=0)]
+        L += ['X ms=0 f=0630 step=1 end']
+        r = gt.ko(L, winner=0)
+        self.assertEqual(r['fail'], [])
+        self.assertEqual((r['ko'], r['round'], r['result']), (0x510, 0x520, 0x620))
+
+    def test_a_winner_1_hand_dealt_ko_passes(self):
+        # the mirror of _ko_log: side 0 KO'd, side 1's counter and ad4 name it
+        # (the winner-1 pass path had no passing case, review fix)
+        L = [_s(f, mode=0x10, b1f=1) for f in range(0x2F0, 0x300)]
+        L += [_s(f, mode=0x10) for f in range(0x300, 0x310)]
+        L += [_s(0x400, mode=0x06, b1f=3, new=0x01000100, s0_5a=0x10)]
+        L += [_s(0x410, mode=0x06, b1f=3, new=0x01000100, s0_5a=0x78)]
+        L += [_s(0x420, mode=0x09, b1f=3, w2=0, w3=1, ad4=1)]
+        L += ['X ms=0 f=0430 step=1 end']
+        r = gt.ko(L, winner=1)
+        self.assertEqual(r['fail'], [])
+        self.assertEqual((r['ko'], r['result']), (0x410, 0x420))
+
+    def test_a_stale_death_byte_is_not_this_kos_death(self):
+        # b0c is not cleared between rounds (spec §7.2): a prior round's 1 at the
+        # KO is not a 0 -> 1 transition, so no death frame is reported
+        L = [_s(f, mode=0x10, b1f=1) for f in range(0x2F0, 0x300)]
+        L += [_s(f, mode=0x10) for f in range(0x300, 0x310)]
+        L += [_s(0x400, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x10, b0c=1)]
+        L += [_s(0x410, mode=0x06, b1f=3, new=0x01000100, s1_5a=0x78, b0c=1)]
+        L += [_s(0x420, mode=0x08, b1f=3, w2=1, ad4=0xFFFFFFFF, b0c=1)]
+        L += ['X ms=0 f=0430 step=1 end']
+        r = gt.ko(L)
+        self.assertEqual(r['fail'], [])
+        self.assertIsNone(r['death'])
 
     def test_a_ko_with_no_result_after_it_fails(self):
         # a capture that stops at the KO: the damage byte alone is not the round's
@@ -434,6 +482,24 @@ class TestKO(unittest.TestCase):
                         gt.main()
             self.assertEqual(cm.exception.code, 2)
             self.assertIn('not allowed with argument', stderr.getvalue())
+
+    def test_cli_ko_accepts_t_records_from_a_trace(self):
+        # --trace is the same check over a port trace.txt (the T records carry the
+        # same fields); load() reads any T-record file as a trace, not only one
+        # named trace.txt (review fix: the basename rule was undocumented and
+        # --ko's snapshots are S-only otherwise).
+        lines = [('T' + l[1:]) if l.startswith('S ') else l for l in _ko_log()]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'dump.txt')
+            with open(path, 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+            stdout = io.StringIO()
+            with mock.patch.object(sys, 'argv',
+                                   ['gp_twop.py', 'check', '--ko', '--trace', path]):
+                with contextlib.redirect_stdout(stdout):
+                    rc = gt.main()
+        self.assertEqual(rc, 0)
+        self.assertIn('hand-dealt KO: ok', stdout.getvalue())
 
 
 if __name__ == '__main__':

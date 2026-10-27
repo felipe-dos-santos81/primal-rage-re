@@ -22,10 +22,9 @@ record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
                                      whose loser's +0x5A reached 0x78 from a live value in
                                      a mode-6 entry that no poke wrote and that did not
                                      time out, and whose result names side N (default 0)
-  gp_twop.py check --trace FILE     the same over a port trace.txt (T records)
-                                    (a trace is converted only when the file is named
-                                    trace.txt; any other name is read as a poll.log
-                                    and finds no S records)
+  gp_twop.py check --trace FILE     the same over a port trace.txt (its T records
+                                    are read as S records; any file whose records
+                                    are T lines is a trace)
   gp_twop.py path  --capture DIR    the mode path with b1f, cred, e0 and e2
 
 The raw (record §T.1): DS_00104B1F (`b1f`) holds one bit per human side.
@@ -92,10 +91,12 @@ def classify(r, side):
 
 
 def load(path):
-    """poll.log lines, or a port trace.txt with its T records read as S records."""
+    """poll.log lines, or a port trace.txt with its T records read as S records
+    (any file whose records are T lines is read as a trace, so --trace works on
+    a renamed dump too; a poll.log has no T records)."""
     with open(path) as f:
         lines = f.read().splitlines()
-    if os.path.basename(path) == 'trace.txt':
+    if any(l.startswith('T ') for l in lines):
         lines = ['S' + l[1:] for l in lines if l.startswith('T ')]
     return lines
 
@@ -214,6 +215,48 @@ def _hx(v):
     return '-' if v is None else '%X' % v
 
 
+def _named_side(res):
+    """The side a result's cumulative round counters (w2/w3, 0x27C48) name, or
+    None when they are level: (side, field, value)."""
+    if res['w2'] > res['w3']:
+        return 0, 'w2', res['w2']
+    if res['w3'] > res['w2']:
+        return 1, 'w3', res['w3']
+    return None
+
+
+def _result_fail(label, res, winner):
+    """A result's counter failure line, naming the side the counters favour
+    (not the field: "names side 1 (w3 = 1 > w2 = 0)", record §F3.1)."""
+    named = _named_side(res)
+    if named is None:
+        what = 'names no side (w2 = %d, w3 = %d)' % (res['w2'], res['w3'])
+    else:
+        side, field, value = named
+        other = 'w3' if field == 'w2' else 'w2'
+        what = 'names side %d (%s = %d > %s = %d)' % (side, field, value, other, res[other])
+    return 'the %s at f=%X %s, not winner side %d' % (label, res['f'], what, winner)
+
+
+def _result_names(res, wfield, lfield, rmode, prev):
+    """Whether a result's cumulative w2/w3 counters name the winner. A match
+    result (mode 9) needs w[winner] > w[loser]; a round result (mode 8) may
+    instead show the winner's counter rising at that result, because a split
+    match's counters can be level (1-1) at its round-2 result (0x27C48
+    increments the round's winner). `prev` is the last result record before
+    `res`, or None."""
+    wv = res[wfield]
+    if wv < 1:
+        return False
+    if wv > res[lfield]:
+        return True
+    # A split match's counters are level at its round-2 result; that round
+    # result names the side whose counter rose there. A result whose counters
+    # favour the loser names the loser, not the claimed winner.
+    return rmode == ROUND_MODE and wv == res[lfield] and (
+        prev is None or wv > prev[wfield])
+
+
 def ko(lines, winner=0):
     """The hand-dealt KO evidence (plan 2026-10-26-fought-match-truth §F3).
 
@@ -231,10 +274,15 @@ def ko(lines, winner=0):
     records it (record §F3.2); that round did not time out (no mode-7 record at
     its result); the winner's +0x5A stays below 0x78 at the KO; and the result
     names the winner — the round result (mode 8, ad4 = NO_RESULT = 0xFFFFFFFF)
-    or the match result (mode 9, ad4 = winner), never the draw 2. A mode-9
-    entry at or after the KO must also carry ad4 = winner and w[winner] >= 1,
-    w[loser] = 0 (0x27C48's round wins). b0c is reported, not required: a
-    hand-dealt KO leaves the death animation to run (record §W.5)."""
+    or the match result (mode 9, ad4 = winner), never the draw 2. w2/w3 are
+    cumulative match wins (0x27C48 increments the round's winner): a result
+    names the winner when w[winner] >= 1 and w[winner] > w[loser], or — at a
+    round result, where a split match's counters can be level — when the
+    winner's counter rose at that result; a mode-9 entry at or after the KO
+    must carry ad4 = winner and w[winner] > w[loser]. b0c is reported, not
+    required: the first 0 -> 1 transition at or after the KO is the death-done
+    frame (b0c is not cleared between rounds, so a stale 1 is not this KO's),
+    and a hand-dealt KO leaves the death animation to run (record §W.5)."""
     out = dict(ko=None, round=None, result=None, death=None, fail=[])
     if winner not in (0, 1):
         out['fail'].append('side %r cannot win: the slots are 0 and 1' % (winner,))
@@ -337,15 +385,20 @@ def ko(lines, winner=0):
         rmode = res['mode']
         want = NO_RESULT if rmode == ROUND_MODE else winner
         out['round' if rmode == ROUND_MODE else 'result'] = res['f']
+        label = 'round result' if rmode == ROUND_MODE else 'match result'
         if res['ad4'] != want:
             out['fail'].append('the %s at f=%X has ad4 = %X, not %X: it does not name side %d%s'
-                               % ('round result' if rmode == ROUND_MODE else 'match result',
-                                  res['f'], res['ad4'], want, winner,
+                               % (label, res['f'], res['ad4'], want, winner,
                                   ' (2 is the draw)' if res['ad4'] == 2 else ''))
-        if not (res[wfield] >= 1 and res[lfield] == 0):
-            out['fail'].append('the %s at f=%X names side %s (w2 = %d, w3 = %d), not winner side %d'
-                               % ('round result' if rmode == ROUND_MODE else 'match result',
-                                  res['f'], lfield, res['w2'], res['w3'], winner))
+        # w2/w3 are cumulative (0x27C48 increments the round's winner), so a
+        # later round's result can be level after a split (1-1); the round
+        # result's rule is then that the winner's counter rose there, not that
+        # it exceeds the loser's (review fix: the old w[loser] == 0 rule
+        # rejected a legitimate 2-1 match and a round-2 KO after a split).
+        prev = next((r for r in reversed(recs) if r['f'] < res['f']
+                     and r['mode'] in (ROUND_MODE, MATCH_MODE)), None)
+        if not _result_names(res, wfield, lfield, rmode, prev):
+            out['fail'].append(_result_fail(label, res, winner))
 
     if out['result'] is None:
         m9 = next((rows9[0] for mode, rows9 in entries
@@ -356,12 +409,22 @@ def ko(lines, winner=0):
                 out['fail'].append('the match result at f=%X has ad4 = %X, not winner side %d%s'
                                    % (m9['f'], m9['ad4'], winner,
                                       ' (2 is the draw)' if m9['ad4'] == 2 else ''))
-            if not (m9[wfield] >= 1 and m9[lfield] == 0):
-                out['fail'].append('the match result at f=%X names side %s (w2 = %d, w3 = %d), not '
-                                   'winner side %d'
-                                   % (m9['f'], lfield, m9['w2'], m9['w3'], winner))
+            if not (m9[wfield] >= 1 and m9[wfield] > m9[lfield]):
+                out['fail'].append(_result_fail('match result', m9, winner))
 
-    out['death'] = next((r['f'] for r in recs if r['f'] >= ko_r['f'] and r['b0c'] == 1), None)
+    # b0c is not cleared between rounds (spec §7.2), so a previous round's 1
+    # would otherwise be reported as this KO's: only a 0 -> 1 transition at or
+    # after the KO is the death-done frame (report-only; review fix).
+    death, before = None, None
+    for r in recs:
+        if r['f'] < ko_r['f']:
+            before = r['b0c']
+            continue
+        if r['b0c'] == 1 and before == 0:
+            death = r['f']
+            break
+        before = r['b0c']
+    out['death'] = death
     return out
 
 

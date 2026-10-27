@@ -1,6 +1,6 @@
 # Fought-Match Truth — derivations
 
-Status: closed 2026-10-26; the phase is **Partially implemented** — U14 R1, a
+Status: closed as a partial phase 2026-10-26; the phase is **Partially implemented** — U14 R1, a
 publishable two-human replay and the U16 set-frame state remain named gaps
 (§F6). Branch `fought-match-truth`, base `a5552639`
 (`docs: plan the fought-match truth phase`). Plan
@@ -200,12 +200,14 @@ the raw addresses:
 ```c
 (unsigned)DSD(DS_001077B0 + 0x30u),
 (unsigned)DSW(DS_001077B0 + 0x42u),
-(unsigned)DSD(DS_001077B0 + 0x94u + 0x30u),
-(unsigned)DSW(DS_001077B0 + 0x94u + 0x42u),
+(unsigned)DSD(DS_001077B0 + 0xC4u),     /* slot 1: 0x107844 + 0x30 */
+(unsigned)DSW(DS_001077B0 + 0xD6u),     /* slot 1: 0x107844 + 0x42 */
 ```
 
 The DSW/DSD accessor is the width rule: `DSD` for the `+0x30` dword, `DSW` for the
-`+0x42` word.
+`+0x42` word. Slot 1's two-term `+ 0x94 + 0x30` spelling was replaced by the
+single offsets `0xC4`/`0xD6` in the final review's fix round, so the address
+test's single-`DS_ + offset` regex can read them (the earlier named gap).
 
 ### §F1.5 Plan-vs-raw correction
 
@@ -217,14 +219,15 @@ every one of the four arguments). `port/src/symbols.h` defines
 `+0x94 + 0x30` = `0x107874`). The correction is the brief's only raw conflict; every
 address and width in §F1.1 is the raw's.
 
-**Named gap.** The port-trace unit test checks these fields' names, placeholder widths
-and accessor letter, but its per-address assertion (`test_the_port_t_line_writes_every_snap_field_in_order`)
-only sums a single `DS_ + 0xoffset` form and covers `MOVE_FIELDS` and
-`KEYS_EXTRA + WIN_EXTRA`; a two-term `+ 0x94u + 0x30u` argument does not fit that
-regex, and this task does not extend it. The slot addresses are therefore asserted
-here and in `SNAP_FIELDS` (whose entries the Python test pins), not by the C-side test;
-the raw evidence above is the source. Task 5's diagnostic replay, which consumes
-`s0_30`/`s0_42`, is the place to add a two-term address assertion if it wants one.
+**The address assertion (closed by the final review's fix round).** The port-trace unit
+test (`test_the_port_t_line_writes_every_snap_field_in_order`) checks these fields'
+names, placeholder widths, accessor letter and now their addresses: the four names are
+in `gs.SLOT_STATE_FIELDS`, which the test's per-address branch includes beside
+`MOVE_FIELDS` and `KEYS_EXTRA + WIN_EXTRA`. Slot 1 is written as the single offsets
+`0xC4`/`0xD6` so the single-`DS_ + offset` regex reads it. Mutation proofs: `s0_30`'s
+`+0x30u` → `+0x34u` fails `1079412 != 1079416`; slot 1's `+0xC4u` → `+0x30u` (the wrong
+slot) fails `1079264 != 1079412`; each was reverted. The addresses were already pinned
+by `SNAP_FIELDS`' test; the C-side test now pins them too.
 
 ## §F2 U14's measured script and the one authorized run (Task 2)
 
@@ -249,12 +252,17 @@ builder's `U16_GAP = 16` (§F6). The scenario is:
 ```python
 SCENARIOS['gp-u14-win-live'] = dict(
     time_limit=260, extra=WIN_EXTRA,
-    stop_mode=0x12, stop_delay=0, skip_on_mode=(0x08, 0x09),
+    stop_mode=0x12, stop_delay=0, skip_on_mode=(0x07, 0x08, 0x09),
     steps=WIN_MENU
     + _u16_round(160, 10, anchor=(0x06, 1))
     + _u16_round(160, 10, anchor=(0x06, 2)),
 )
 ```
+
+The `0x07` is the final review's fix round: a round that ends on the timer (mode 7,
+`0x27DC8`) is a failed run, but its queued attempts must not fire onto the result
+screen (the 2026-10-26 run's script listed only `0x08`/`0x09`). The run's rows are
+unchanged; the scenario now skips the time-up result too.
 
 The builder's own output (measured, not counted by hand): per round 1 `after_entry` anchor + 159
 `after` attempts + 19 `p1.right` walks (at k = 8, 16, ..., 152) = 179 steps; the scenario is
@@ -264,8 +272,8 @@ frames later, so the two attempts a walk separates are 36 frames apart. Nominal 
 round 1's anchor through round 2's last attempt: 5,868 (~98 s at 60.05 Hz), inside
 `time_limit=260`. The old `('until_mode', 0x12, 0)` step is replaced by
 `stop_mode=0x12, stop_delay=0` (a whole-capture stop on the conquered-lands screen), and
-`skip_on_mode=(0x08, 0x09)` drops a round's queued presses at its round/match result (Task 1's
-`Schedule` change).
+`skip_on_mode=(0x07, 0x08, 0x09)` drops a round's queued presses at its round/match/time-up
+result (Task 1's `Schedule` change; `0x07` added by the fix round above).
 
 Provenance of the 160/8/260 values: the measured ~3 landed hits per 32 attempts (spec §7.1), the
 U23 160-attempt run's KO at attempt 88 (record `2026-10-23-endgame-truth` §E2), and the round
@@ -450,16 +458,22 @@ Every condition is required, each with its own `fail` entry:
    (§W.3: "round 2 timeout → mode 7 → 9"; record 2026-09-30-gameplay-ground-truth §G.23 lists
    mode 7 on U4's round path).
 8. **The result names the winner.** The first result record after the KO is the round result
-   (mode 8) with `ad4 = NO_RESULT = 0xFFFFFFFF` and `w[winner] >= 1, w[loser] = 0`, or the
-   match result (mode 9) with `ad4 = winner` and the same `w` (`0x27C48`'s counters
-   `DS_00104AF2`/`AF3` and `0x27BA4`'s `DS_00104AD4`, stored at `0x27C3D` — the `-1` arms are
-   `0x27C0C`; §W.3). The draw `ad4 = 2` fails.
+   (mode 8) with `ad4 = NO_RESULT = 0xFFFFFFFF`, or the match result (mode 9) with
+   `ad4 = winner` (`0x27C48`'s counters `DS_00104AF2`/`AF3` and `0x27BA4`'s `DS_00104AD4`,
+   stored at `0x27C3D` — the `-1` arms are `0x27C0C`; §W.3). `w2`/`w3` are cumulative match
+   wins, so a result names the winner when `w[winner] >= 1` and `w[winner] > w[loser]`; at a
+   round result a split match's counters can be level (`1-1` at its round-2 result), so the
+   round result may instead show the winner's counter rising at that result (`0x27C48`
+   increments the round's winner). The draw `ad4 = 2` fails. (Fix round: the original
+   `w[winner] >= 1, w[loser] = 0` rule rejected a legitimate 2-1 match and a round-2 KO
+   after a split; the raw's counters are cumulative, so that rule was too strict.)
 9. **The match result, when reached.** A mode-9 entry at or after the KO has `ad4 = winner`
-   and `w[winner] >= 1, w[loser] = 0` (scoped at/after the KO: an earlier match's result is
-   not this match's).
-10. **Reported, not required.** `death` = the first S at/after the KO with `b0c = 1`
-    (`0x37EA0` → `0x37FF6`, record §W.5): a hand-dealt KO leaves the death animation to run,
-    so an early capture legitimately has it still 0.
+   and `w[winner] > w[loser]` (scoped at/after the KO: an earlier match's result is not this
+   match's). A 2-1 match (`w2 = 2, w3 = 1`) passes.
+10. **Reported, not required.** `death` = the first `b0c` 0 → 1 transition at/after the KO
+    (`0x37EA0` → `0x37FF6`, record §W.5): `b0c` is not cleared between rounds (spec §7.2), so
+    a previous round's 1 is not this KO's death, and a hand-dealt KO leaves the death
+    animation to run, so an early capture legitimately has it still 0.
 
 `no result after the KO` and `the record after the KO ... is mode X` are the remaining
 rejections: the damage byte alone is not the round's result, and only modes 8/9 name a winner.
@@ -770,8 +784,9 @@ undecided match (the round result, not the match result: the KO ended round 1). 
 `0x224` mode 0x1A (`b1f = 1`) → `0x248` mode 0x10 (the character select) → `0x285` join (`b1f =
 3`, `e2` first shows P2's start mask) → `0x31C`/`0x330`/`0x341` → `0x432`/`0x444` → `0x456` mode 5
 (the entrances) → **`0x4D1` mode 6** (the fight) → **`0xB9A` mode 8** (the round result) → `0xC7C`
-mode 0x16. `b0c` is 0 in all 3135 S records: the 240-frame window ends before the death animation
-does, which the predicate reports and does not require (§F3.1 item 10).
+mode 0x16. `b0c` is 0 in all 3135 S records: the window ends with `b0c` still 0;
+whether a later frame sets it is not measured. The predicate reports it and does not require it
+(§F3.1 item 10).
 
 The KO landed on the round's **90th attempt** (`k = 89`, step index 109; the press fired at
 `f=0xB96`) and the round result appeared four frames later, close to the measured attempt-88 KO.
@@ -1464,9 +1479,11 @@ reported no `improved:`/`re-pin` line.
 5. **Rendered-audio audibility.** The OPL core/mixer is a model; the register stream is the claim.
 6. **The differential frontier.** The 20 terminal rows, 15 `WEAKER`, 8 `UNROWED` and the 158
    span-writer targets outside E2 are unchanged and declared.
-7. **The unattributed `.dro` files.** `gp-harness-smoke`, `gp-twop-ko` and `gp-u24-u16-state`
-   wrote `.dro` traces that are not in `tools/audio_compare.py`'s 29-trace inventory; they are not
-   added (no bank attribution) and no audio claim is made.
+7. **The unattributed `.dro` files.** `gp-harness-smoke`, `gp-twop-ko.failed`,
+   `gp-u14-win-live.failed` (its `prage_000` and `prage_001`), `gp-u24-u16-state.failed` and
+   `gp-u24-u16-state.failed.run1` wrote `.dro` traces that are not in
+   `tools/audio_compare.py`'s 29-trace inventory; they are not added (no bank attribution) and
+   no audio claim is made.
 8. **The two-human KO predicate's join scope.** `ko()` searches the whole log for the first `0x78`,
    not from the two-human join; unreachable in a single-match capture, but a multi-fight log could
    report an earlier KO (§F3.6 item 5).
@@ -1485,9 +1502,9 @@ Every task review's minor was either fixed above or is recorded here for the who
 | task | minor | status |
 |---|---|---|
 | 1 | derivation citation says `camera.c` reads the two-slot dword | **fixed** (§F1.1: `fighter.c:4093`) |
-| 1 | no C-side assertion of the four trace addresses (`DS_ + 0x94 + 0x30/0x42`) | **deferred** by the Task 6 brief ("do not add the C-side address test now"); the addresses are pinned by `SNAP_FIELDS`' test and §F1.1's bytes |
+| 1 | no C-side assertion of the four trace addresses (`DS_ + 0x94 + 0x30/0x42`) | **fixed by the final review's fix round**: slot 1 is written as the single offsets `0xC4`/`0xD6` and the four names are in the address check (mutation proofs: §F1.5) |
 | 1 | `main` forwarding and `run_checks` wiring exercised only by a capture | **exercised** by Tasks 2/4/5 (the smoke, U14 and the two-human/U16 captures ran the real path) |
-| 1 | `run_checks` label gained `(%d skipped)`; historical quotes differ | **noted**; the phase's records quote the new form |
+| 1 | `run_checks` label gained `(%d skipped)`; historical quotes differ | **noted**; the phase's records quote the new form. The fix round also appends `; stopped on mode 0xNN` / `; last skip on mode 0xNN`, so a premature stop or a time-up skip is named (record §F6.7) |
 | 1 | `steps_ok` resume / `main` forwarding exercised only by the captures | **exercised** by Tasks 2/4/5's real captures (`steps fired 137/362 (225 skipped)` etc.) |
 | 2 | walk cadence asserted by count, not positions | **fixed in Task 4's** `TestTwopKo` (walk positions/gaps/partition) |
 | 2 | smoke's `time_limit`/`stop_mode`/`stop_delay` unasserted | **fixed** (§F6.1, mutation proofs §F6.4) |
@@ -1512,3 +1529,19 @@ Every task review's minor was either fixed above or is recorded here for the who
 | 5 | check wording | **verified unchanged**: the check lines are quoted verbatim; the first run is nine `ok`/one `FAIL`, the recovery eight `ok`/two `FAIL` (§F5.3, §F5.6) |
 | 5 | design's 0x202E/0x22F4 frame correction | **fixed**: design §7.3 and §2 (set `0x1532` = 0x202E; exit `0x1533` = 0x22F4) |
 | 6 | U14 pin count "nine on success" vs "eight"; inventory 35 vs 36; no `gp-twop-ko-oracle` | **fixed** throughout: nine empty pins on this failed run, 35 paths with the U14 gap, no new command |
+
+### §F6.7 The final review's fix round
+
+The whole-branch review's findings (`final-review-findings.md`) were closed in one commit on top of
+`76982b05`; the full per-finding evidence is `.superpowers/sdd/2026-10-26-fought-match-truth/final-review-fix-report.md`.
+Code/tests: `gp_twop.ko`'s cumulative-counter rule (§F3.1 items 8/9; a legitimate 2-1 match and a
+round-2 KO after a split now pass, with new tests), the `death` 0→1 transition (§F3.1 item 10), the
+`--trace` T-record read, the four trace fields' address check (§F1.5), `publish()`'s numbered
+`.failed.N` (a failed run is never deleted), the step check's stop/skip mode, and U14's mode-7 skip
+(§F2.1). Docs: the U16 exit is labelled inferred wherever it is measured (`f=0x1533`, the old
+marker's frame), the `.dro` inventory names the failed captures, "no measured pin" replaces "no
+pin", and the status is "closed as a partial phase". No pin, oracle, gate count or capture changed;
+`PR_DIFF_FULLSCAN=1 make diff-verify` is green on the fix commit (`1033/1033 functions VERIFIED;
+14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none);
+807/845 closed on full rows; 8 ported functions with no row`). The full gate's register-stream
+audio exception (§F6.3) stands: the phase remains a partial-phase checkpoint, not merge-ready.

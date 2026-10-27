@@ -489,16 +489,20 @@ consolidation gate).
   game-evidence-only:** the first run and its CPU-confined recovery each produced the game's
   hand-dealt KO (`gp_twop.py check --ko`: `ko f=B9A` then `f=B91`, P1's round result
   `ad4=0xFFFFFFFF`, no pokes, `w2=1`/`w3=0`), but both failed the port-script pin under host
-  starvation; the recovery's publish path replaced the first `.failed` artifact, so only the
+  starvation; the recovery's publish path replaced the first `.failed` artifact (the fix round's
+  `publish()` now keeps a later failure under a numbered `.failed.N` suffix instead), so only the
   recovery's `data/k11-captures/gp-twop-ko.failed` survives and the first run's rows are the
   record's §F4.3–§F4.5. There is no published `gp-twop-ko`, no `gp-twop-ko-oracle`, no
   `GP_TWOP_KO_*` pin, no miss set and no gate entry. **U16 R2 stays open:** the recovery measured
-  the `0x4844C` case-3 exit at `f=0x1533` (`s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400`
-  gate) against the port's set `0x202E` at `0x1532` and exit `0x1180` at `0x155C`, but the poller
-  missed the `s0_54=2` set record, so the deciding gate input `y(0x1532)` is unmeasured; no fix, no
-  oracle/miss set, no third capture. `gp-harness-smoke`, `gp-twop-ko` and `gp-u24-u16-state` are
+  the `0x4844C` case-3 exit at the old marker's exit frame, `f=0x1533` (inferred: the `s0_54=2`
+  set record is missing), as `s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400`
+  gate, against the port's set `0x202E` at `0x1532` and exit `0x1180` at `0x155C`; the missed
+  set record leaves the deciding gate input `y(0x1532)` unmeasured. No fix, no
+  oracle/miss set, no third capture. `gp-harness-smoke`, `gp-twop-ko`, `gp-u14-win-live.failed`,
+  `gp-u24-u16-state` and its two failed runs are
   not in `CAPTURE_DIRS` and their `.dro` files are not in `tools/audio_compare.py`'s 29-trace
-  inventory (unattributed; no audio claim). The phase adds no oracle, no capture path and no pin;
+  inventory (unattributed; no audio claim). The phase adds no oracle, no capture path and no
+  measured pin (the nine `GP_U14_*` are empty);
   `port_progress.py` stays `799 1203 66` / `759 759 100` and `make diff-verify` stays
   `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps`. The phase's full
   gate stopped at the register-stream audio oracle under host load (`gp-u18-talon-ending`'s beach

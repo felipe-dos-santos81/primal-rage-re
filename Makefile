@@ -1467,9 +1467,11 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # builder's `_u16_round(160, 10, anchor=(0x06, 1/2))` — the two 1A/1B 1-frame normals
 # (tools/gp_moves.py's rows) 16 frames apart, held 4, with a 12-frame p1.right walk every 8
 # attempts — `time_limit=260`, a whole-capture stop on mode 0x12 (`stop_mode`, STOP_AT_END)
-# and `skip_on_mode=(0x08, 0x09)`: a round's queued presses are dropped at its round or match
-# result and the scheduler resumes at the next anchor (without it the ~72 presses the U23
-# run's attempt-88 KO left over fired onto the result screen and overran the end, record §E2).
+# and `skip_on_mode=(0x07, 0x08, 0x09)`: a round's queued presses are dropped at its round,
+# match or time-up result and the scheduler resumes at the next anchor (without it the ~72
+# presses the U23 run's attempt-88 KO left over fired onto the result screen and overran the
+# end, record §E2; mode 7 is the fix round's addition, since a timed-out round is a failed
+# run but its presses must not overrun the end either).
 # Its claim is the poked wins' narrow one plus what a poke could not claim: the game itself
 # raises P2's +0x5A to 0x78, reaches the same mode-8/mode-9 entries and the land mark, and
 # gp_win.py check requires an S record with the death-done byte b0c = 1 at or after the
@@ -1488,8 +1490,9 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays absent); the
 # run also failed the port-script/unscripted-input/end-frame checks after a BIOS-ring burst. The
 # phase's other two scenarios (gp-twop-ko's two-human KO and gp-u24-u16-state's U16 state) are
-# diagnostic: neither is in CAPTURE_DIRS, both failed the same harness pin, and their .dro traces
-# are not in tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
+# diagnostic: neither is in CAPTURE_DIRS, both failed the same harness pin, and neither their .dro
+# traces nor the failed U14 run's (data/k11-captures/gp-u14-win-live.failed) are in
+# tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
 # skips on the absent directory; a later authorized capture fills the nine pins from
 # tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the
 # report's missing-class count; coverage_check fails closed without it).

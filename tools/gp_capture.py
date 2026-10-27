@@ -188,18 +188,31 @@ def stage_dir(out):
 
 def publish(stage, out, ok):
     """Move a staged capture into place only when every CHECK passed; a failing
-    run goes to <out>.failed and leaves a good capture at <out> untouched."""
-    dest = out if ok else out + '.failed'
-    old = dest + '.old'
-    if os.path.exists(old):
-        shutil.rmtree(old)
-    if os.path.exists(dest):
-        os.rename(dest, old)
+    run goes to <out>.failed and leaves a good capture at <out> untouched.
+
+    An existing <out>.failed is never deleted or replaced: each failed run is
+    evidence (its poll.log is where a failed scenario's rows survive), so a
+    later failed run takes the next numbered suffix (<out>.failed.1, .2, ...).
+    A good publish still replaces <out> (the prior good run is the disposable
+    one) and leaves every .failed artifact alone (fix round: the old path
+    renamed a prior .failed to .old and rmtree'd it, which lost the first
+    two-human KO artifact)."""
+    if ok:
+        dest = out
+        old = out + '.old'
+        if os.path.exists(old):
+            shutil.rmtree(old)
+        if os.path.exists(dest):
+            os.rename(dest, old)
+        os.rename(stage, dest)
+        if os.path.exists(old):
+            shutil.rmtree(old)
+        return dest
+    dest, n = out + '.failed', 0
+    while os.path.exists(dest):
+        n += 1
+        dest = '%s.failed.%d' % (out, n)
     os.rename(stage, dest)
-    if os.path.exists(old):
-        shutil.rmtree(old)
-    if ok and os.path.exists(out + '.failed'):     # a stale failed run must not outlive a good one
-        shutil.rmtree(out + '.failed')
     return dest
 
 
@@ -230,8 +243,18 @@ def run_checks(name, lines, sched, n_frames, n_want):
                and recs[first27]['f'] >= recs[enter]['f'])
     snap = gs.snapshots(lines)
     kbraw = sum(1 for v in snap.values() if v['kb'] != gs.raw_to_kb(v['raw']))
+    # The step check's label names what ended the script: a stop_on_mode capture
+    # passes steps_ok with most steps unfired (the smoke's 1/2), so without the
+    # reason a premature stop would read as a completed script. The last skip's
+    # mode is named too: a time-up round (mode 7) is a failed run, not a
+    # completed one, even though steps_ok counts a deliberate skip (review fix).
+    fired = 'steps fired %d/%d (%d skipped)' % (sched.fired, sched.total, sched.skipped)
+    if sched.stopped_on_mode:
+        fired += '; stopped on mode 0x%02X' % sched.stop_hit
+    if sched.skip_hit is not None:
+        fired += '; last skip on mode 0x%02X' % sched.skip_hit
     return [('base', any(x['kind'] == 'B' for x in recs)),
-            ('steps fired %d/%d (%d skipped)' % (sched.fired, sched.total, sched.skipped), sched.steps_ok),
+            (fired, sched.steps_ok),
             ('end frame reached', any(x['kind'] == 'X' for x in recs)),
             (arm_label, ordered),
             ('snapshots kb == raw (%d differ)' % kbraw, kbraw == 0),

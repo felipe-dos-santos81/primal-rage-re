@@ -67,6 +67,10 @@ POINTER_FIELDS = frozenset(('dev1', 'dev2'))
 DEV_FIELDS = ('dev1', 'dev2')                   # the device-word claim's fields
 TRACE_FIELDS = ('mode', 'st', 'raw', 'pad', 'e0', 'e2', 'rng', 'cred', 's0_5a', 's1_5a')
 MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (record gameplay-u6 §U6.11)
+# Plan 2026-10-26-fought-match-truth Task 1 (§F1): the four appended fighter-slot
+# fields (the +0x30 dword and +0x42 word, x two sides). The port trace reads
+# slot 1 as base + 0x94 + its offset, i.e. the single DS offsets 0xC4/0xD6.
+SLOT_STATE_FIELDS = ('s0_30', 's0_42', 's1_30', 's1_42')
 
 # BIOS keys: (scan, the BIOS word a press queues; record named-gaps-a §A.9).
 KEYS = {'enter': (0x1C, 0x1C0D), 'esc': (0x01, 0x011B)}
@@ -603,10 +607,13 @@ SCENARIOS['gp-u22-diablo-ending'] = dict(
 # Harness values, not game values: the 10 frames into each round (U9's poke delay), the
 # 16-frame gap (>= the 4-frame hold + 0x500C4's 2-frame release, gp_moves.REPRESS) and the
 # 260 s limit (the U23 160-attempt run's; two fought rounds can run the round timer's ~3280
-# frames each). skip_on_mode=(0x08, 0x09) drops a round's queued presses at its round or
-# match result and resumes at the next after_entry: the 160-attempt form would otherwise
-# fire the ~72 presses a measured attempt-88 KO leaves onto the result screen and overrun
-# the end (the U23 run's BIOS-ring overflow, record §E2). The capture stops on the
+# frames each). skip_on_mode=(0x07, 0x08, 0x09) drops a round's queued presses at its
+# round or match result and resumes at the next after_entry: the 160-attempt form would
+# otherwise fire the ~72 presses a measured attempt-88 KO leaves onto the result screen and
+# overrun the end (the U23 run's BIOS-ring overflow, record §E2). Mode 7 (the time-up
+# result, 0x27DC8's round end) is skipped too: a round that ends on the timer is a failed
+# run, but its queued attempts must not overrun the end the same way (fix round: the
+# 2026-10-26 run's first script listed only 0x08/0x09). The capture stops on the
 # conquered-lands screen (mode 0x12, stop_mode, STOP_AT_END).
 U14_PUNCH = ('p1.b0', 'p1.b1')      # entry 1A, reaction 0x10
 U14_KICK = ('p1.b2', 'p1.b3')       # entry 1B, reaction 0x11
@@ -640,7 +647,7 @@ def _u16_round(attempts, first_gap, anchor=None):
 
 SCENARIOS['gp-u14-win-live'] = dict(
     time_limit=260, extra=WIN_EXTRA,
-    stop_mode=0x12, stop_delay=0, skip_on_mode=(0x08, 0x09),
+    stop_mode=0x12, stop_delay=0, skip_on_mode=(0x07, 0x08, 0x09),
     steps=WIN_MENU
     + _u16_round(160, 10, anchor=(0x06, 1))
     + _u16_round(160, 10, anchor=(0x06, 2)),
@@ -694,8 +701,12 @@ SCENARIOS['gp-u15-join'] = dict(time_limit=75, steps=(
 # 0x41310 awards 50000 (0x3774F..0x37760).
 # The presses are tools/gp_moves.py's (`steps --char 2 --facing 0 --moves 15,16,17
 # --gap 100 --step 4`; P1 is TALON, character-select cell 1 = class 2, gp-twop's
-# p1.right), the builder's and UNMEASURED: which presses land, and whether the gate is
-# open on the frames they reach, is Task 12's capture. Harness values, not game values:
+# p1.right), the builder's. Measured since: gp-u16-twop2's two rounds both ended on the
+# timer (mode 7) with no reaction; gp-u23-u16-finisher reached the reaction only under its
+# labelled damage poke (r0 = 0x33); and the 2026-10-26 diagnostic gp-u24-u16-state reached
+# the 0x4844C case-3 exit (s0_30 = 0x1180) but missed the s0_54 = 2 set frame, so the live
+# finisher gate input is still unmeasured (record 2026-10-26-fought-match-truth §F5.6).
+# Harness values, not game values:
 # gp-twop's 60/30-frame gaps and 5-frame holds, the 16-frame 1A/1B gap and 4-frame hold
 # (gp-u14-win-live's), a 12-frame p1.right walk every eight attempts (a knockback would
 # take the idle P2 out of stationary punches' reach), the 10 frames into each anchored
@@ -957,6 +968,8 @@ class Schedule:
         self.stop_delay = stop_delay
         self.skipped = 0
         self.stopped_on_mode = False
+        self.stop_hit = None        # the mode a stop_on_mode ended the capture on
+        self.skip_hit = None        # the last mode a skip_on_mode dropped steps on
 
     @property
     def steps_ok(self):
@@ -986,8 +999,10 @@ class Schedule:
                 if self.steps[k][0] != 'until_mode' and self.steps[k][-1] != ('end',):
                     self.skipped += 1
             self.i = end
+            self.skip_hit = mode
         if mode in self.stop_modes and self.end_frame is None:
             self.stopped_on_mode = True
+            self.stop_hit = mode
             self.end_frame = f + self.stop_delay
         if self.i < len(self.steps):
             st = self.steps[self.i]

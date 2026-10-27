@@ -100,7 +100,8 @@ remains a named gap), the two-human hand-dealt KO was measured twice
 (`gp_twop.py check --ko`, `f=B9A` then `f=B91`, no pokes) but neither capture
 could be replayed (both failed the port-script pin under host starvation, so
 there is no published capture, oracle or pins — a game-evidence-only named
-gap), and U16's case-3 exit state was measured (`s0_30=0x1180`, below the
+gap), and U16's case-3 exit state was measured at the old marker's exit frame
+(inferred: the `s0_54=2` set record is missing) (`s0_30=0x1180`, below the
 gate) while the set-frame gate input `y(0x1532)` was missed, so R2 stays a
 named gap. The phase added no oracle and did not change the 35-path gate
 count; its full gate was stopped only by the register-stream audio oracle's

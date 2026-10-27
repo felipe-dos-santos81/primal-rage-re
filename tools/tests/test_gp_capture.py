@@ -183,16 +183,22 @@ class TestOutput(unittest.TestCase):
             return st
         self.assertEqual(gc.publish(staged('good'), out, True), out)
         self.assertEqual(gc.publish(staged('bad'), out, False), out + '.failed')
+        # fix round: a second failed run is kept under a numbered suffix, never
+        # replacing the first (the first two-human KO's .failed was lost to the
+        # old rename-and-rmtree path, so its poll.log is only in the record).
+        self.assertEqual(gc.publish(staged('bad2'), out, False), out + '.failed.1')
         with open(os.path.join(out, 'poll.log')) as f:
             self.assertEqual(f.read(), 'good')
         with open(os.path.join(out + '.failed', 'poll.log')) as f:
             self.assertEqual(f.read(), 'bad')
-        self.assertEqual(sorted(os.listdir(d)), ['gp-x', 'gp-x.failed'])
+        with open(os.path.join(out + '.failed.1', 'poll.log')) as f:
+            self.assertEqual(f.read(), 'bad2')
         self.assertEqual(gc.publish(staged('good2'), out, True), out)
         with open(os.path.join(out, 'poll.log')) as f:
             self.assertEqual(f.read(), 'good2')
-        # re-review: a good publish removes a stale <out>.failed (U3/U4 glob gp-*)
-        self.assertEqual(sorted(os.listdir(d)), ['gp-x'])
+        # a good publish replaces <out> but leaves every .failed artifact alone
+        self.assertEqual(sorted(os.listdir(d)),
+                         ['gp-x', 'gp-x.failed', 'gp-x.failed.1'])
 
 
 def _s(f, raw=0, kb=None, mode=0x27):
@@ -473,6 +479,22 @@ class TestStopAtEnd(unittest.TestCase):
         s = gs.Schedule((('after', 1, ('pad', ('p1.b0',), 4)),), skip_on_mode=0x08)
         s.on_mode(10, 0x08)
         self.assertTrue(s.steps_ok)                 # the one step is deliberately skipped
+        # the check names the skip's mode: a time-up round (0x07) is a failed run,
+        # so a bare "(1 skipped): ok" must not read as a completed script
+        label, ok = next(c for c in gc.run_checks('_t', [], s, 0, 0)
+                         if c[0].startswith('steps fired'))
+        self.assertEqual(label, 'steps fired 0/1 (1 skipped); last skip on mode 0x08')
+        self.assertTrue(ok)
+
+    def test_the_step_check_names_the_mode_a_stop_ended_the_capture_on(self):
+        steps = (('boot', 0.0, ('key', 'enter')),
+                 ('after_mode', 0x27, 30, ('pad', ('p1.start',), 4)))
+        s = gs.Schedule(steps, stop_mode=0x27, stop_delay=10)
+        s.on_mode(0x10, 0x27)                       # the smoke's own shape: 1 of 2 steps
+        label, ok = next(c for c in gc.run_checks('_t', [], s, 0, 0)
+                         if c[0].startswith('steps fired'))
+        self.assertEqual(label, 'steps fired 0/2 (0 skipped); stopped on mode 0x27')
+        self.assertTrue(ok)                         # the stop is the script's end
 
 
 class TestMemsize(unittest.TestCase):

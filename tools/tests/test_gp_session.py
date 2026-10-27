@@ -150,9 +150,11 @@ class TestTables(unittest.TestCase):
             self.assertEqual(part, '%s=%%0%dX' % (n, 2 * size), n)
             # review of U6b Task 2 (m4): the accessor reads the field's size
             self.assertRegex(arg, r'\b%s\(' % acc[size], (n, arg))
-            # the five U6 fields (record gameplay-u6 §U6.11) and the three U11 key fields
-            # (record gameplay-u11 §K.3) read the field's address
-            if n in gs.MOVE_FIELDS or (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA:
+            # the five U6 fields (record gameplay-u6 §U6.11), the three U11 key fields
+            # (record gameplay-u11 §K.3), the twelve U9/U10 win fields and the four
+            # 2026-10-26 slot-state fields (record §F1) read the field's address
+            if (n in gs.MOVE_FIELDS or n in gs.SLOT_STATE_FIELDS
+                    or (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA):
                 m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
                 self.assertIsNotNone(m, (n, arg))
                 got = int(m.group(1), 16) + (int(m.group(2), 0) if m.group(2) else 0)
@@ -272,6 +274,7 @@ class TestSchedule(unittest.TestCase):
         self.assertFalse(s.ended(229))
         self.assertTrue(s.ended(230))
         self.assertTrue(s.stopped_on_mode)
+        self.assertEqual(s.stop_hit, 0x08)          # the reason the step check prints
         self.assertTrue(s.steps_ok)                 # the unfinished steps are intentional
 
     def test_skip_on_mode_drops_the_round_and_resumes_at_the_next_anchor(self):
@@ -284,7 +287,22 @@ class TestSchedule(unittest.TestCase):
         s.on_mode(200, 0x08)
         self.assertEqual(s.i, 2)                    # the next after_entry stays armed
         self.assertEqual(s.skipped, 2)              # both remaining round steps dropped
+        self.assertEqual(s.skip_hit, 0x08)
         self.assertFalse(s.steps_ok)                # the anchor and its tail still to fire
+
+    def test_u14s_skip_covers_the_time_up_result(self):
+        # A round that ends on the timer (mode 7, 0x27DC8) is a failed run, but its
+        # queued presses must not fire onto the result screen: the U14 script skips
+        # 0x07 as well as the round/match results (fix round; the 2026-10-26 run's
+        # script listed only 0x08/0x09, record §F2).
+        steps = (('after', 10, ('pad', ('p1.b0',), 4)),
+                 ('after', 10, ('pad', ('p1.b1',), 4)))
+        s = gs.Schedule(steps, skip_on_mode=gs.SCENARIOS['gp-u14-win-live']['skip_on_mode'])
+        s.on_mode(100, 0x06)
+        s.on_mode(200, 0x07)
+        self.assertEqual(s.skipped, 2)
+        self.assertEqual(s.skip_hit, 0x07)
+        self.assertTrue(s.steps_ok)                 # a deliberate skip is not unfinished work
 
     def test_expand(self):
         self.assertEqual(gs.expand(('key', 'enter')), [('enter', 0x1C, 0x1C0D, gs.HOLD_FRAMES)])
@@ -846,7 +864,7 @@ class TestLiveWin(unittest.TestCase):
         self.assertEqual(scn['extra'], gs.WIN_EXTRA)
         self.assertEqual(scn['time_limit'], 260)
         self.assertEqual((scn['stop_mode'], scn['stop_delay']), (0x12, 0))
-        self.assertEqual(scn['skip_on_mode'], (0x08, 0x09))
+        self.assertEqual(scn['skip_on_mode'], (0x07, 0x08, 0x09))
 
     def test_each_round_has_160_attempts_and_a_walk_every_eight(self):
         steps = gs.SCENARIOS['gp-u14-win-live']['steps']

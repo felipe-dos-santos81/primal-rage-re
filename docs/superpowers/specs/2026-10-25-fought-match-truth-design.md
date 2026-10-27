@@ -70,10 +70,11 @@ and rendered-audio audibility are not this phase.
   port-script pin under host starvation. There is no published capture, no
   `gp-twop-ko-oracle`, no `GP_TWOP_KO_*` pin, no miss set and no gate entry;
   the first run's artifact was replaced by the recovery's publish path.
-- **U16 (R2 open):** the recovery measured the `0x4844C` case-3 exit at
-  `f=0x1533` (`s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400` gate), but
-  the poller missed the `s0_54=2` set record, so the gate input `y(0x1532)`
-  is unmeasured. No fix, oracle or miss set; no third capture.
+- **U16 (R2 open):** the recovery measured the `0x4844C` case-3 exit at the old
+  marker's exit frame, `f=0x1533`, as `s0_30=0x1180`, `s0_42=0x8000` (below the
+  `0x1400` gate); that exit reading is inferred, because the `s0_54=2` set record is
+  missing, so the gate input `y(0x1532)` is unmeasured. No fix, oracle or miss set;
+  no third capture.
 - **5120:** unchanged named gap with its measured facts; no pixel fix.
 - **Gate:** no new oracle and no new capture path (35); counters
   `799 1203 66` / `759 759 100`, `diff-verify` `1033/1033`, `14993/14993`,
@@ -101,7 +102,8 @@ and rendered-audio audibility are not this phase.
   `gp-u17-device2` and the seven ending captures are present.
 - U14: the revised 160-attempt script (two `_u16_round(160, 10,
   anchor=(0x06, 1/2))` blocks, `time_limit=260`, `stop_mode=0x12`,
-  `skip_on_mode=(0x08,0x09)`) ran once on 2026-10-26 and lost: P1 was KO'd in
+  `skip_on_mode=(0x08,0x09)` at the run; the fix round added `0x07`) ran once on
+  2026-10-26 and lost: P1 was KO'd in
   both rounds, P2 (VERTIGO, `c1=3`, `afc=3`) won 2-0, `b0c` never became 1 and
   mode 0x12 never opened; the capture also failed its harness checks and was
   preserved as `.failed` (record §F2). The earlier two attempts (gameplay
@@ -124,10 +126,10 @@ and rendered-audio audibility are not this phase.
   matches. The port's `slot+0x30` is 0x202E at the reaction set `f=0x1532`
   and 0x22F4 at `f=0x1533`; the gate is
   `0xBD884[2]=0x1400` (`0x48599 cmp edx,[eax+0x30]`, `0x4859C jle`). The
-  phase's recovery measured the original's exit state at `f=0x1533`
-  (`s0_30=0x1180`, `s0_42=0x8000`, below the gate) but the poller missed the
-  `s0_54=2` set record, so the gate input `y(0x1532)` is unmeasured
-  (record §F5.6).
+  phase's recovery measured the original's exit state at `f=0x1533`, the old
+  marker's exit frame (inferred: the `s0_54=2` set record is missing)
+  (`s0_30=0x1180`, `s0_42=0x8000`, below the gate); the missed record leaves the
+  gate input `y(0x1532)` unmeasured (record §F5.6).
 - `gp-idle-loss`: 8,173 frames; the CPU KOs P1 by hits in round 1
   (`s0_5a=0x78`, f=0xC74), round 2 times out; no mode 0x12. Pins: N 7559,
   F 8320, reach 6300, start 90, missing 29. This is a CPU win, not a
@@ -285,13 +287,14 @@ zero pokes, stopping on mode 0x12. 1A = new `b0+b1` (character 0's keyboard
 entry 0x1A, reaction 0x10); 1B = new `b2+b3` (entry 0x1B, reaction 0x11).
 Both are the table's 1-frame normals. The measured hit rate is ~3 landed hits
 per 32 attempts; 7-12 landed hits reach `0x78`; a round timer is ~3,280
-frames. The failed attempt 2's P1 was KO'd in both rounds, `b0c` never 1.
+frames. The earlier gameplay-truth-II attempt's P1 was KO'd in both rounds,
+`b0c` never 1.
 
 The revised script is the U16 builder's: `_u16_round(160, 10,
 anchor=(0x06, 1))` and `_u16_round(160, 10, anchor=(0x06, 2))`, with a
 12-frame `p1.right` walk every 8 attempts, `time_limit=260`, a **per-round
-skip** on the round or match result (`skip_on_mode=(0x08, 0x09)`) and a
-whole-capture stop on mode 0x12.
+skip** on the round, match or time-up result (`skip_on_mode=(0x07, 0x08, 0x09)`;
+the run's script predates the `0x07`) and a whole-capture stop on mode 0x12.
 The skip is required: a KO at the measured ~88th attempt leaves ~72 queued
 presses, and the U23 brief's 160-attempt run overran the result screen and
 never reached its end frame when they all fired. With the skip, the round's
@@ -363,10 +366,10 @@ The port's y chain is raw-faithful at every checked instruction:
 - `fighter_48374` transcribes `0x48374` exactly, including the pre-fixup
   stream constant `0x6D8FE` → `0xED8FE`.
 
-The phase's recovery measured the original's exit state at `f=0x1533`
-(`slot+0x30 = 0x1180`, `slot+0x42 = 0x8000`, below the gate), but it missed
-the `s0_54 = 2` set record: the deciding gate input `y(0x1532)` is
-unmeasured, and the exit value is a different RNG draw's (record §F5.6). The
+The phase's recovery measured the original's exit state at `f=0x1533`, the old marker's
+exit frame (inferred: the `s0_54 = 2` set record is missing), as
+`slot+0x30 = 0x1180`, `slot+0x42 = 0x8000`, below the gate; the missed record leaves
+the deciding gate input `y(0x1532)` unmeasured (record §F5.6). The
 exit is consistent with the y hypothesis but does not decide it. If a future
 capture's y is below 0x1400 at the set frame, the difference is real but its
 source is still upstream (the stream, the anchor table, the latch arm, or a
@@ -408,12 +411,12 @@ was not).
 Move the U16 builder's constants and `_u16_round` above the U14 block (or
 redefine the U14 block after it), replace the 32-attempt tuples with the two
 anchored `_u16_round` calls, and set `time_limit=260`, `stop_mode=0x12,
-stop_delay=0` and **`skip_on_mode=(0x08, 0x09)`**. The skip drops a round's
-queued attempts at its round or match result and resumes at the next
+stop_delay=0` and **`skip_on_mode=(0x07, 0x08, 0x09)`**. The skip drops a round's
+queued attempts at its round, match or time-up result and resumes at the next
 `after_entry`; without it the 160-attempt form repeats the U23 run's ring
 overflow after an early KO. Update `TestLiveWin` to assert 160 attempts, the
 walk every 8, the two anchors, `time_limit=260`, `stop_mode=0x12` and
-`skip_on_mode=(0x08, 0x09)`.
+`skip_on_mode=(0x07, 0x08, 0x09)`.
 
 Before the U14 run, validate the harness with a throwaway
 `gp-harness-smoke` scenario (boot Enter → mode 0x27, stop 10 frames later;
@@ -523,7 +526,8 @@ no pin moved and no function was added. Item 2's
 *game* half holds — two captures exhibit the hand-dealt two-human KO — but its
 pins do not: neither capture produced a port script, so there is no
 `gp-twop-ko` target, oracle, miss set or gate entry (record §F4, §1.1). Item
-3's exit state holds (`s0_30=0x1180`, `s0_42=0x8000` at `f=0x1533`) but the
+3's exit state holds (`s0_30=0x1180`, `s0_42=0x8000` at `f=0x1533`, the old marker's
+exit frame, inferred because the set frame is missing) but the
 set-frame gate input `y(0x1532)` was missed, so R2 remains a named gap and no
 fix was taken. Item 6 is the record and §F6. The design is therefore
 **Partially implemented**.
