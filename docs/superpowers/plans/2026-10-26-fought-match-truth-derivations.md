@@ -1471,7 +1471,7 @@ reported no `improved:`/`re-pin` line.
    not from the two-human join; unreachable in a single-match capture, but a multi-fight log could
    report an earlier KO (§F3.6 item 5).
 9. **The register-stream audio oracle's host-load nondeterminism.** Under host load the port's
-   `W` frame labels and two tick labels at a section start shift (180 frame labels one lower,
+   `W` frame labels and three tick labels at a section start shift (180 frame labels one lower,
    two `W` ticks 308→310 and one `S` `ticks` 2454→2456), so `audio_compare`'s section anchor fails
    a trace that passes on a rerun (`gp-u18-talon-ending` 968 ticks `ok` vs 716 `FAIL`; the
    standalone oracle retry fails `gp-u13-ending2`/`gp-u18-talon-ending` the same way). No pin was
