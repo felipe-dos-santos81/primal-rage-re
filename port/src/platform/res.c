@@ -297,6 +297,9 @@ u8  res_flags(u32 index)          { return (u8)(DSD(res_table() + index * RES_RE
 
 u32 res_handle(u32 index, u32 offset) { return (index << 23) | (offset & 0x7FFFFFu); }
 
+/* 0x1B544 — resolve a resource handle to its payload's mem[] offset, or NULL
+ * when the index is out of range or the entry is not resident (the handle's low
+ * 23 bits name the offset within the payload). */
 void *res_resolve(u32 handle)
 {
     u32 index = handle >> 23;

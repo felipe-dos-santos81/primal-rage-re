@@ -29,12 +29,15 @@ and covers the whole game — boot, title, attract cycles, front end, service
 menu, character select, one- and two-player matches, the win path, all seven
 character endings, the game-over/high-score flows. Two claims back that:
 
-- **Porting — 66% raw, 100% portable.** 799 of Ghidra's 1203 indexed
+- **Porting — 66% raw, 100% portable.** 798 of Ghidra's 1203 indexed
   functions have a ported, header-commented counterpart in `port/src/` (see
-  `AGENTS.md` for how that figure is computed). The 404 that are not are not
+  `AGENTS.md` for how that figure is computed). The 405 that are not are not
   porting targets: 53 are classified host-owned or deferred (41 + 12;
-  `tools/port_classification.txt`, each with its evidence) and 351 are WATCOM libc / DOS/4GW runtime code (at or
-  above `0x5D000`, served by the host libc). Excluding them, **100%** (759 of
+  `tools/port_classification.txt`, each with its evidence), 37 are the replaced
+  clean-room runtime replacement layer (the boot/movie/attract spine's runtime
+  closure, all at or above `0x5D000`), and 315 are WATCOM libc / DOS/4GW runtime code (at or
+  above `0x5D000`, served by the host libc; the AIL runtime set within it is
+  named unreproducible). Excluding them, **100%** (759 of
   759) of the portable functions are ported. The last 12 were the input sampler
   and its keyboard/game-port readers (the host input truth phase); the 16 before
   them the storage layer (settings, high scores and audit counters kept in a save

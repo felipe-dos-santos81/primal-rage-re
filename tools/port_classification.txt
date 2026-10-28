@@ -3,6 +3,13 @@
 #               sampler reads, the 60 Hz AIL callback, allocator, drive plumbing; the ISR key
 #               sampler itself and its 12 pure readers were ported by host input truth, §H)
 #   deferred    a declared no-op layer (Smacker movie audio; the EEPROM/config storage was ported by track S)
+#   replaced    the clean-room runtime replacement layer: runtime code (>= 0x5D000) the port replaces
+#               with the host libc / clean-room decoder rather than ports. The measured set is the
+#               boot/movie/attract spine's runtime closure (record-§C4): 37 functions / 19,261 B whose
+#               game-side ancestor set E(r) == {0x11000, 0x11D04, 0x1BEC4, 0x1C740, 0x20C10, 0x24C5C,
+#               0x255CC}. Every address is >= 0x5D000, so the portable denominator is unaffected. The
+#               AIL runtime set is named unreproducible (no graph rule yields the recon's 56 / 10,824 B
+#               reading; the failed rules are in record-§C4).
 # Every line needs the record section that proves it; seeded from the triage tables §50-C/D/E
 # tools/port_progress.py excludes these from the portable denominator
 10024 deferred record-§50-E; zero payload on the shipped data; no stream opens; §H1
@@ -63,3 +70,40 @@
 4FB98 host-owned record-§K9.2 (k1-k9 derivations: int 10h set-mode, 0x13 at 0x1BFEA and the saved mode at 0x1BEB0; SDL host_init/host_shutdown own the window)
 # 4FF8F/4FFD8: the pure axis readers left the classification — ported by host input truth, record §H4
 50D23 host-owned record-§K10 (k10 movie-blit derivations: movie dirty-rect blit, E87A4 vs E87A0 dwords into the aperture (0x50D4A add ebx,0xa0000) and the E87A0 shadow (EDI); the shadow is zeroed by 0x52106(0) at 0x1C873 before any reader; only caller 0x1C82D; movie_present/gfx_present replaces it, smk oracle 120/120 + 41/41, test_movie_blit)
+5E000 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E09B replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E394 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E400 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E482 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E488 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E4B8 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E4E8 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E6D9 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5E783 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+5F758 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+60A90 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6122C replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+61243 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+62756 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+62770 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6279C replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+62A2C replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+62C1C replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+62F3C replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+63180 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6345C replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+63CE8 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+63E30 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+640B8 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+64130 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+641F8 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+643CC replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+649B0 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+64ED8 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+65240 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+65340 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6C760 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6C7B9 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6C851 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6C875 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})
+6C881 replaced record-§C4 (boot/movie/attract spine runtime closure; game-side ancestors == {0x11000,0x11D04,0x1BEC4,0x1C740,0x20C10,0x24C5C,0x255CC})

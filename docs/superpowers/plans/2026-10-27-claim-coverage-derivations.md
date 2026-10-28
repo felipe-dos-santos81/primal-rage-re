@@ -872,3 +872,120 @@ fails shorter; restore N):
 `audio-oracle` (the PCM determinism pin; a parallel lane overrides
 `AUDIO_WAV`/`AUDIO_SONG_WAV`). Added run time ≈ 13 s (the render is a second
 `run_tests` pass).
+
+---
+
+## §C4 The classification truth (Task 4)
+
+### §C4.1 The measured result
+
+The baseline §C1.2 read `799 1203 66` / `759 759 100`. After this task:
+
+```text
+$ python3 tools/port_progress.py
+798 1203 66
+759 759 100
+ported 798 (759 portable + 39 runtime)  host-owned 41  deferred 12  replaced 37  runtime 315
+```
+
+The one raw-count change is the `0x62003` false positive (§C1.4.2): the
+`fighter.c:1175` note is now `/* PORT: 0x62003 out of scope; … */`, so the
+credit rule does not match it. `0x62003` is the runtime error exit (>= 0x5D000),
+so the portable population is untouched. `0x62003` re-enters the unported list as
+a `runtime` row; the `--unported` list now holds 315 runtime rows (it was 351).
+
+### §C4.2 The counting rule
+
+`port_progress.py` now counts an `FN_` address as ported iff it has a column-0
+`/* 0xADDR` header, an `fn_register(0xADDR` call, or a declared
+`PORT_PROGRESS_EXCEPTIONS` entry — the same strict rule `tools/diff_verify.py`'s
+`NonPortable.ported` uses (record §J1). The loose "anywhere in a comment" form is
+retired: it read prose mentions as implementations (diff_verify.py:35269-35272).
+`port_classification.txt` gains the `replaced` class; the portable denominator
+excludes host-owned, deferred and replaced addresses, all `replaced` being
+>= 0x5D000, and everything else >= 0x5D000.
+
+### §C4.3 The `replaced` set and its rule
+
+**The rule.** Universe: the 351 unported `FN_` functions at >= 0x5D000 (§C1.4.4,
+69,098 bytes). Graph: the `caller,callee` edges of `port/decomp/prage.calls.csv`
+restricted to Ghidra functions. For each `r` in the universe, `E(r)` is its
+game-side ancestor set (`< 0x5D000`). The group with `E(r)` exactly
+`{0x11000, 0x11D04, 0x1BEC4, 0x1C740, 0x20C10, 0x24C5C, 0x255CC}` — the
+boot/movie/attract spine — is **37 functions / 19,261 bytes**, reproducing
+§C1.4.4 exactly. Those 37 are the clean-room runtime replacement layer the port
+replaces with the host decoder.
+
+```text
+5E000 5E09B 5E394 5E400 5E482 5E488 5E4B8 5E4E8 5E6D9 5E783 5F758 60A90 6122C
+61243 62756 62770 6279C 62A2C 62C1C 62F3C 63180 6345C 63CE8 63E30 640B8 64130
+641F8 643CC 649B0 64ED8 65240 65340 6C760 6C7B9 6C851 6C875 6C881
+```
+
+Each is in `tools/port_classification.txt` with class `replaced` and one evidence
+line (the ancestor set and `record-§C4`).
+
+### §C4.4 The AIL set is named unreproducible
+
+The recon's **56 AIL-only / 10,824 bytes** does not reproduce. Beyond §C1.4.4's
+four mechanical rules, the richer readings all fail to yield 56/10,824:
+
+- forward closure from the 15 AIL thunks (`0x1CA40`…`0x444C8`): **161 / 17,258 B**;
+- forward closure from the 13 runtime AIL library thunks the game wrappers call
+  directly (`0x5D86A`, `0x5DC0F`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DC8B`,
+  `0x5DCA6`, `0x5DCC5`, `0x5DCE4`, `0x5DD03`, `0x5DEAF`, `0x5DECA`, `0x5DEED`):
+  **73 / 7,294 B**;
+- forward closure from the AIL wrappers plus the movie-audio deferred set:
+  **243 / 30,953 B**;
+- "AIL-reachable minus movie-spine-reachable": **0** — the AIL wrappers are
+  themselves reached from the frame loop (`0x24C5C`) and init chain (`0x1BEC4`),
+  so every AIL runtime function's ancestor set includes the spine and no
+  AIL-exclusive set exists in the direct graph;
+- the direct-caller boundary `B(r) ⊆` the AIL wrapper set: **13 / 408 B** (the
+  library thunks only).
+
+The structural cause is that `prage.calls.csv` carries only Ghidra's direct-call
+edges; the AIL library's internal dispatch (indirect calls through its data
+tables) is not in the graph, so the library body cannot be closed under any
+mechanical rule from this data. The 56/10,824 reading, and the earlier 43/76 pair
+(§C1.4.4), are **named unreproducible**, not replaced by a fitted number: the
+`replaced` class is the measured 37 / 19,261 B only, and the AIL library remains
+in the runtime class (part of the 315).
+
+### §C4.5 The inline credits
+
+§C1.4.3's fifteen comment-only credits resolve as:
+
+- **six real functions** gain a column-0 header: `0x12484` `game_state_3`,
+  `0x1B544` `res_resolve`, `0x1C350` `render_list_init`, `0x2BF08`
+  `game_overlay_step`, `0x389C4` `render_scroll_edge`, `0x38A38`
+  `render_scroll_fill`;
+- **four non-functions** become `PORT_PROGRESS_EXCEPTIONS` entries: `0x29D60`
+  (ret-only no-op), `0x2EA30` (inert interrupt lock), `0x2EA64` (bare `ret`),
+  `0x500BB` (inlined DPMI clock read);
+- the **three `UNROWED_HEADER_SHAPE`** addresses (`0x1B120`, `0x20C10`,
+  `0x4FBA2`) join the same table (real functions named mid-comment, matching
+  diff_verify.py's set);
+- the **runtime** `0x61A70` (the WATCOM memset wrapper, `host_memset`/`mem_fill`)
+  joins it too — it cannot take a column-0 header, which would re-open the 26
+  runtime allow-mode rows (diff_verify.py:35269-35272);
+- `0x62003` is **not** declared: its credit is removed.
+
+The eight exceptions are the whole `PORT_PROGRESS_EXCEPTIONS` table; the test
+asserts `inline_credits() ⊆ PORT_PROGRESS_EXCEPTIONS`, so no undeclared inline
+credit survives.
+
+### §C4.6 The test and the differential counter
+
+`tools/tests/test_port_progress.py` (in the Makefile's unittest list beside
+`test_capture_manifest`) asserts: `0x62003` is not credited and is not a declared
+exception; every `FN_` is in exactly one class; every `replaced`/host/deferred
+address is classified and every `replaced` is >= 0x5D000; every inline credit is
+declared; and the measured counts (798/1203, 759/759, replaced 37, runtime 315).
+Mutation proofs: reverting the `0x12484` header drops it from the registry, and
+dropping one `replaced` line re-classifies it as runtime.
+
+The differential counter is unchanged (`make diff-verify` reads the §C1.2 string
+byte-identically): the six new headers are all rowed, so `ported_unrowed`'s
+scan-portable 5 / declared 8 / runtime 37 figures do not move, and each is a
+portable porting target (`class_of` is None), so the closure rule is untouched.

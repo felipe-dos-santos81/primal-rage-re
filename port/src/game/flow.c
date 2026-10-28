@@ -4648,7 +4648,7 @@ void game_state_3_handoff(void)
     DSW(DS_00107A44) = 0;                                       /* 0x12712 */
 }
 
-/* PORT: 0x12484. State 3, the post-select presentation. Phase 0
+/* 0x12484 — State 3, the post-select presentation. Phase 0
  * (DS_000F0A6F == 0) re-spawns the four corner rows, spawns a type-6 effect for
  * the live list entry whose handle is 0x3E688, then takes the DS_00104528 bit-1
  * branch (text rows or an actor through 0x2AE14) and hands off through 0x12658.
@@ -8062,7 +8062,7 @@ void game_state_step(void)
     game_overlay_step();        /* 0x2BF08 */
 }
 
-/* PORT: 0x2BF08. Raw disassembly fixes the branch order and the misstated
+/* 0x2BF08 — PORT: raw disassembly fixes the branch order and the misstated
  * arguments (prage.c drops them): 0x45 FREE PLAY, 0x46 CREDITS, 0x47 INSERT
  * COINS. `sprintf(buf, "%s:%d", ...)` becomes snprintf; the 0x65546 formatter
  * itself is not ported. The message branch is ungated by DS_000EF6DC & 0x1f —

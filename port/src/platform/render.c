@@ -66,6 +66,8 @@ void render_splice(u32 *headp, u32 node)
     else DSD(prev) = node;
 }
 
+/* 0x1C350 — rebuild the 580-node render free list in pool order and reset the
+ * free-head and count (the raw's display-list init). */
 void render_list_init(void)
 {
     for (u32 i = 0; i < RENDER_NODE_COUNT; i++) {
@@ -235,7 +237,7 @@ void render_list(void)
     }
 }
 
-/* PORT: 0x389C4. The raw divides by 64 with MSVC's `sar`/`shl`/`sbb` signed
+/* 0x389C4 — PORT: the raw divides by 64 with MSVC's `sar`/`shl`/`sbb` signed
  * idiom: for a negative numerator it adds 63, so the quotient truncates toward
  * zero. C's `/` on int is exactly that; an arithmetic `>> 6` would floor and
  * differ on negative inputs. The < 1 arm's numerator is a zero-extended u16, so
@@ -272,7 +274,7 @@ void render_scroll_track(void)
                              + (s32)DSW(DS_00107A4E));                  /* 0x389BC */
 }
 
-/* PORT: 0x38A38. The same signed truncating form: every `/ 256` and `/ 32` is
+/* 0x38A38 — PORT: the same signed truncating form: every `/ 256` and `/ 32` is
  * the raw's `sar`/`shl`/`sbb` divide by 2^n, truncating toward zero, not a
  * plain arithmetic shift. The table entry is the raw's `t = (row / 256) >> 1`
  * -- the truncating /256 at 0x38a88 (`sar eax,8`) followed by the arithmetic

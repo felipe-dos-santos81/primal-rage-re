@@ -1172,7 +1172,7 @@ void ai_state_setup(u32 side)
         break;
     case 0xCu: ai_weight(side, 0x89u); break;
     case 0xDu: ai_weight(side, 0x8Au); break;
-    default: break;   /* 0x62003 out of scope; state is 0..0xD by construction */
+    default: break;   /* PORT: 0x62003 out of scope; state is 0..0xD by construction */
     }
     DSD(b + 0x10u) = state;                             /* 0x46DA4 */
 }

@@ -699,23 +699,32 @@ consolidation gate).
 - **Keep `README.md`'s title percentage current.** It reads
   `— Reverse Engineering NN%`. Run `python3 tools/port_progress.py`: it prints
   `ported total percent`, counting only real functions (`symbols.h` `FN_`
-  addresses) that have a `/* 0xADDR` header or an `fn_register` in `port/src`.
+  addresses) that have a column-0 `/* 0xADDR` header, an `fn_register` call, or
+  a declared `PORT_PROGRESS_EXCEPTIONS` entry in `port/src` (the strict rule
+  `tools/diff_verify.py`'s `NonPortable.ported` shares; the loose "anywhere in a
+  comment" form reads prose mentions as implementations and is not used).
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
-  It also prints the adjusted (portable) figure; the README title keeps the raw
-  percentage. As of 2026-10-24 (endgame truth) the two lines still read `799 1203 66` and
-  `759 759 100` (the phase added no `FN_` function; host input truth set them, track S read
-  `787 1203 65` / `747 747 100`; the 12 input functions left the
-  classification, 65 → 53 host-owned, record §H7):
-  - **Raw:** 799 ported of 1203 real functions (66%). The 404 unported functions
+  It also prints the adjusted (portable) figure and the class breakdown; the
+  README title keeps the raw
+  percentage. As of 2026-10-28 (claim coverage Task 4) the lines read `798 1203 66`,
+  `759 759 100` and `ported 798 (759 portable + 39 runtime) host-owned 41
+  deferred 12 replaced 37 runtime 315` (the classification-truth phase removed
+  the `0x62003` false positive and declared the `replaced` class; record §C4):
+  - **Raw:** 798 ported of 1203 real functions (66%). The 405 unported functions
     are not porting targets: 53 are classified host-owned or deferred — 41
     host-owned + 12 deferred (the rows of `tools/port_classification.txt` that
-    are not ported, one evidence line each)
-    and 351 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
-    port serves from the host libc.
+    are not ported, one evidence line each) — 37 are the `replaced` clean-room
+    runtime replacement layer (the boot/movie/attract spine's runtime closure,
+    every address >= 0x5D000, one evidence line each), and 315 are runtime code
+    (>= 0x5D000: WATCOM libc, DOS/4GW glue, the AIL library) that the port
+    serves from the host libc / clean-room decoder. The AIL runtime set within
+    the 315 is named unreproducible (no call-graph rule yields the recon's
+    56/10,824 B reading; record §C4).
   - **Portable:** 759 of 759 (100%). The denominator leaves out the 53
-    host-owned/deferred functions (41 + 12) and everything at or above 0x5D000; the
-    other 40 ported functions (799 - 759) sit in that runtime region, so they
+    host-owned/deferred functions (41 + 12), the 37 `replaced` addresses and
+    everything else at or above 0x5D000; the
+    other 39 ported functions (798 - 759) sit in that runtime region, so they
     count in the raw figure only.
   `--unported` lists what is left (addr, size, callers, callees), largest
   first; the `runtime` rows are not targets.
