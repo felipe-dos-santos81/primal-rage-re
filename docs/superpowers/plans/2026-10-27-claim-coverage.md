@@ -506,7 +506,7 @@ captures. No new dependency.
 - Create: `tools/gp_u16_state.py` (the transition reader), maybe
   `tools/gp_debug_capture.py` (the breakpoint path).
 - Modify: `tools/gp_capture.py` only if the guarded retry needs a flag;
-  `docs/superpowers/plans/2026-10-27-claim-coverage-derivations.md` (§C4).
+  `docs/superpowers/plans/2026-10-27-claim-coverage-derivations.md` (§C5).
 - Read: the fought-match record §F5, `gp-u24-u16-state`,
   `port/src/game/fighter.c:16258` (the `0x4844C` function; the case-3 arm is
   around `:16283`), `0x48599`.
@@ -600,7 +600,7 @@ captures. No new dependency.
 
 - [ ] **Step 1: Check the authorization.** If the design approval does not name
   the form (the 1P 160-attempt script or the two-human substitute), skip this
-  task and record "not authorized" in §C5. Do not run.
+  task and record "not authorized" in the final record §C6. Do not run.
 - [ ] **Step 2: Run the authorized form.** Use the guard/preflight; the 1P form
   is `gp-u14-win-live` unchanged (it has not won in three attempts: one tool
   timeout, two 0-2 losses); the two-human form is a new scenario with `b1f=3`
