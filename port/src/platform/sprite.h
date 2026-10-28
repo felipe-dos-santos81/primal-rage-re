@@ -62,10 +62,11 @@ void sprite_blit_at(SpriteNode *n, u8 *base);
 
 /* The loader's text blit 0x51ED8 (record §K1.6 of
  * 2026-09-29-k1-k9-derivations.md), called by 0x1C5E8: the span blit into the
- * VGA aperture (gfx_aperture()), and, unlike 0x51E5C, the node keeps
- * rows - clip_b afterwards (0x51F2F, never restored; the raw's live renderers
- * then use the node as their scratch, sprite.c PORT). A zero-width or
- * zero-row node is left untouched. */
+ * VGA aperture (gfx_aperture()), and, unlike 0x51E5C, the node keeps the
+ * blit's stores afterwards: rows - clip_b on the table's `ret` entries, or,
+ * on the live renderers the caller reaches (types 1, 2, 9), rows 0 and
+ * stride 0x140 -/+ width (the raw's renderer scratch, sprite.c). A zero-width
+ * or zero-row node is left untouched. */
 void sprite_blit_aperture(SpriteNode *n);
 
 /* PORT: sets the frame number the PR_PALETTE_DUMP hook (sprite.c) tags

@@ -404,9 +404,9 @@ def compare(orig, port, mask=0xFFFFFFFF):
 # stock divisor 0x1088D0 is never zero; its zero-divisor deviation (the port returns where the raw's
 # idiv would fault) is named separately in record 2026-10-22-pixel-and-proof-closure §P8.3,
 # not a weaker row.
-WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1BE30, 0x1C740,
+WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1C740,
                     0x249F0, 0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30,
-                    0x51ED8, 0x1D0BC})
+                    0x1D0BC})
 # The 8 ported functions with no differential row at all (record §J1:26; AGENTS.md's
 # WEAKER/UNROWED paragraph): "1 named gaps" is the spec NAMED_GAP count and never named
 # these.
@@ -27103,9 +27103,10 @@ D5B_SPECS += [
 # `lea ebx,[esp+4]` 0x1C6B4), passed by value. It saves ECX and ESI. A stub cannot advance the column in
 # the caller's frame (0x1C647/0x1C64C add 0xF or 8), so every character is recorded at the first column.
 D5B_GLYPH = E.Call(0x1C5E8, ("eax", "[edx]", "[ebx]"), clobbers=("ebx", "edx", "edi", "ebp"))
-# 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument. Its caller-observed
-# set is EDI alone (record §G4): 0x1C65C does not read EBP after it.
-D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
+# 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument. Its body writes
+# EBX/ECX/EDX/ESI only (saving them), never EDI/EBP, so it clobbers nothing a caller observes (record
+# §G4; claim coverage Task 6 removed the EDI poison: game_loop's full copy reads EDI = 0xA0000 after it).
+D5B_FLUSH = E.Call(0x1C470, ())
 D5B_TEXT = 0x10A010
 
 
@@ -31131,7 +31132,7 @@ D5H_PUMP = E.Call(0x500C4, ())
 # preserve it (`_CALLEE_CLOBBER_FIXES` in tools/diff_emu.py; the scan's ebp/esi/edi are conservatism).
 D5H_SCENE = E.Call(0x292AC, (), clobbers=())
 D5H_EDGE = E.Call(0x389C4, ())
-D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
+D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi"))
 # The stubs model what the loop waits on (record §2.5): render entry 0 sets the quit flag 0xA81A8, the
 # effects step arms render entries 0 and 4 for the next iteration, and the audio service steps the ISR
 # tick 0x101508 to 0x10001 (above the
@@ -31141,7 +31142,7 @@ D5H_RENDER4 = E.Call(0x4F5C8, ())
 D5H_FX = E.Call(0x134C0, (), writes=((None, 0x00104AEC, le32(0x00000011)),))
 D5H_SORT = E.Call(0x1C3FC, ())
 D5H_LIST = E.Call(0x14328, (), clobbers=("ebx", "edx"))
-D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi",))
+D5H_FLUSH = E.Call(0x1C470, ())
 D5H_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x00101508, le32(0x00010001)),))
 # 0x5D7DC (track G §G4): the master loop's two draws, stubbed on rng_next's own row. The return is
 # dead on both sides (see the row comment above), so the Call carries no per-case EAX (`stub_eax`):
@@ -31171,10 +31172,20 @@ def d5h_loop_case(aec=0, a54=1, f4=0, af4=0xFFFF, a55=0x55, f5=0xF5):
     return p
 
 
+def d5h_loop_copy_case():
+    """k4: the copy flag 0x1014FC set, so the full copy 0x25680 (rep movsd to the aperture) runs instead
+    of the dirty blit. The back buffer 0xE87A4 stays the aperture itself (0xA0000, the d5h_loop_case
+    seed), so the copy rewrites the bytes it reads — the loop's RAM in the aperture range (the render
+    table 0xA86C4, the quit flag 0xA81A8) is preserved and the present stays blind, as in
+    config_screen_wait (record §H.2). No aperture model: the loop's RAM overlaps the aperture range, so
+    Machine.aperture would classify the quit-flag write as a screen byte on the original side alone. Two
+    iterations, like k0."""
+    p = d5h_loop_case()
+    p[0x001014FC] = bytes([0x01, 0xFD, 0xFE, 0xFF])           # the copy flag set, the three bytes seeded
+    return Case("k4", {}, p)
+
+
 D5H_LOOP_UNHIT = {
-    0x25680: "the full copy to the VGA aperture (`mov edi,0xa0000` 0x255E9, the rep movs at 0x25693): the "
-             "port presents through gfx_present and never writes mem[0xA0000] (the aperture rule); a named "
-             "gap (record §4)",
     0x256D4: "the spin on the ISR tick 0x101508, which the timer ISR 0x1BDF4 steps: the emulator has no "
              "ISR (the 0x1CF20 stub steps the tick past the frame count) and the port models it in the spin "
              "(game_isr_ticks); the spin's own 0x5D7DC draw (0x256D6) is a recorded stub like the body's "
@@ -31200,6 +31211,7 @@ D5H_SPECS += [
         Case("k1", D2E_DIRTY, d5h_loop_case(aec=0x00000011, a54=0, f4=1)),
         Case("k2", {}, d5h_loop_case(aec=0x00000010, a54=0x80, f4=0x80, af4=0x1233)),
         Case("k3", {}, d5h_loop_case(aec=0x80000004, a54=0, f4=0, a55=0, f5=0)),
+        d5h_loop_copy_case(),
     ], unhit_named=D5H_LOOP_UNHIT, allow_calls=(0x501A3, 0x50188, 0x5D812), calls=D5H_LOOP_CALLS, eax_mask=0,
        mutants=("@no508", "@no50c", "@nopump", "@notick", "@tickorder", "@scroll", "@scrollw", "@scrollorder",
                 "@noframe", "@frameearly", "@nortbl", "@rorder", "@rearly", "@af4d", "@noaf4", "@af4late", "@nofx",
@@ -34398,58 +34410,41 @@ def h2_compare(case, orig, port, mask):
 
 # 0x51ED8's drawing cases (the N1 row): the caller's node (0x1C5E8: types 1, 2, 9, 0xA, zero clips) on the
 # screen of the machine model. The renderers the table sends it to (0x5D218 type 1, 0x58CBD type 2, 0x57F80
-# type 9) use the node as their scratch, which the port's by-value renderers do not (sprite.c PORT): +0x14
-# ends at 0 (`dec dword [ebp+0x14]; jne` 0x5D262/0x5D289, 0x57FCE/0x57FF5; 0x58CBD's loop measured) where
-# the port keeps 0x51F2F's rows - clip_b, and +0x38 = 0x140 - ECX (0x5D218..0x5D21F, 0x58CD6..0x58CDD) or
-# 0x140 + ECX (0x57F80..0x57F8B), ECX the width (0x51F26), where the port leaves the node. Those two dwords
-# are the declaration; the cases keep clip_l, clip_r and clip_t 0 (the caller's), so 0x58CBD neither
+# type 9) use the node as their scratch: +0x14 ends at 0 (`dec dword [ebp+0x14]; jne` 0x5D262/0x5D289,
+# 0x57FCE/0x57FF5; 0x58CBD's loop measured) and +0x38 = 0x140 - ECX (0x5D218..0x5D21F, 0x58CD6..0x58CDD) or
+# 0x140 + ECX (0x57F80..0x57F8B), ECX the width (0x51F26). sprite_blit_aperture writes those two dwords back
+# (rows 0, stride 0x140 -/+ width; the `ret` entries 0x0A/5 keep 0x51F2F's rows - clip_b), so the node bytes
+# are compared, not declared. The cases keep clip_l, clip_r and clip_t 0 (the caller's), so 0x58CBD neither
 # subtracts +0x30 from +0x14 (0x58CC0 `je`) nor changes +0x18 (0x58CD3 stores the width back).
 H2_SCREEN_ROWS = (0x3C0, 0x80, 0x500)          # the 0x1088F8 offsets of rows 1, 2 and 3: the node's y is 2
 
 
-def h2_scratch(rows, clip_b, w, typ, seed38=0x38383838):
-    """The declaration of a drawing case: the bytes of the node's +0x14 and +0x38 (seeded `rows` and
-    `seed38`) where the original's renderer and the port end apart."""
-    d = {}
-    for off, seed, o, p in ((0x14, rows, 0, rows - clip_b),
-                            (0x38, seed38, 0x140 + w if typ & 8 else 0x140 - w, seed38)):
-        for i in range(4):
-            sb, ob, pb = (seed >> 8 * i) & 0xFF, (o >> 8 * i) & 0xFF, (p >> 8 * i) & 0xFF
-            pair = (None if ob == sb else ob, None if pb == sb else pb)
-            if pair[0] != pair[1]:
-                d[N1_NODE + off + i] = pair
-    return d
-
-
 def h2_draw(cid, typ, pix, clip_b=0, w=8, rows=4):
-    """n1_blit's node (x 10, y 2) with zero clips but clip_b, its row offsets, the machine's screen seeded
-    under the four rows it can draw (x 0..31), and the renderers' scratch declared."""
+    """n1_blit's node (x 10, y 2) with zero clips but clip_b, its row offsets, and the machine's screen
+    seeded under the four rows it can draw (x 0..31)."""
     c = n1_blit(cid, typ, w=w, rows=rows, clips=(0, 0, 0, clip_b), pix=pix)
     p = {**c.pokes, 0x1088F8 + 4: b"".join(le32(o) for o in H2_SCREEN_ROWS)}
     for r in range(4):
         p[0xA0000 + H2_SCREEN_ROWS[1] + r * 320] = d5b_bytes(0x9A0 + r, 32)
-    return H2Case(cid, c.regs, p, machine=E.Machine(aperture=True), declared=h2_scratch(rows, clip_b, w, typ))
+    return H2Case(cid, c.regs, p, machine=E.Machine(aperture=True))
 # ---- h2 end ----
 
 
-# ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a partial row ----
+# ---- track N batch n1 (record 2026-10-14-reverse-n §N.1): the aperture blit 0x51ED8, a full row ----
 # 0x51ED8 sprite_blit_aperture: EAX = the node. 0x51E5C's shape with the aperture as the base: a zero
 # width (+0x18, `je` 0x51EDF) or zero rows (+0x14, `je` 0x51EE8) returns; else six pushes, 0x1B544(+0x20)
 # (run), the bank dword 0x81310[byte [[+0x1C] + 8]], EDI = [0x1088F8 + y * 4] + 0xA0000 + x (`add
 # edi,0xa0000` 0x51F1B), +0x14 = +0x14 - +0x34 (0x51F2F, never restored), ECX = +0x18 and `call [(+0x10 &
 # 0x7F) * 4 + 0x80C8C]` (0x51F35), EAX = the node (0x51F3C) and six pops.
-# A partial row: the two guards and the +0x14 store, on the table's `ret` entries (0x51E58), where nothing
-# is drawn and the immediate 0xA0000 is never used for a store (no poke). Every live renderer the one
-# caller 0x1C5E8 reaches (types 1, 2, 9: 0x5D218, 0x58CBD, 0x57F80) uses the node as its scratch: `mov
-# [ebp+0x38],edx` (0x5D21F, 0x58CDD, 0x57F8B) and `dec dword [ebp+0x14]` per row down to 0 (0x5D262,
-# 0x5D289, 0x57FCE, 0x57FF5; 0x58CBD's measured), and 0x58CBD also `sub [ebp+0x14],eax` (0x58CC4) and `mov
-# [ebp+0x18],ecx` (0x58CD3); the port's renderers take the fields by value and store nothing back
-# (sprite.c PORT). With the imm32 at 0x51F1D poked to a scratch in mem[] and the binding mapping the
-# port's host aperture onto it, the drawn pixels of the three agreed and the node's +0x14 and +0x38
-# differed (measured, record §N.1): a difference this row cannot hide, so the draw, the aperture base and
-# the live renderers were not compared here. The node is a frame local of 0x1C5E8 that it reads again only
-# at +0x1C (0x1C64F). Track H h2 (record 2026-10-14-reverse-h §H.3): the draw runs unpoked on the machine's
-# screen and the renderers' +0x14/+0x38 is the cases' one declared difference (H2Case, h2_draw).
+# The two guards and the +0x14 store, on the table's `ret` entries (0x51E58), where nothing is drawn. Every
+# live renderer the one caller 0x1C5E8 reaches (types 1, 2, 9: 0x5D218, 0x58CBD, 0x57F80) uses the node as
+# its scratch: `mov [ebp+0x38],edx` (0x5D21F, 0x58CDD, 0x57F8B) and `dec dword [ebp+0x14]` per row down to 0
+# (0x5D262, 0x5D289, 0x57FCE, 0x57FF5; 0x58CBD's measured), and 0x58CBD also `sub [ebp+0x14],eax` (0x58CC4)
+# and `mov [ebp+0x18],ecx` (0x58CD3); sprite_blit_aperture writes those back (rows 0, stride 0x140 -/+
+# width), so the node bytes are compared. The cases keep clip_l, clip_r and clip_t 0 (the caller's), so
+# 0x58CBD's `sub`/`mov [ebp+0x18]` arms are not reached (measured, record §H.3). The node is a frame local
+# of 0x1C5E8 that it reads again only at +0x1C (0x1C64F). Track H h2 (record 2026-10-14-reverse-h §H.3):
+# the draw runs unpoked on the machine's screen.
 N1_NODE = 0x0010A900
 
 
@@ -34475,8 +34470,8 @@ N1_SPECS = [
     # track H h2 (record 2026-10-14-reverse-h §H.3) every case runs on the machine's screen (a0..a3 draw
     # nothing) and d1, d2, d9 draw the caller's three live types through their renderers, unpoked (the
     # immediate 0xA0000 at 0x51F1B is the screen), the pixels compared byte by byte with gfx_aperture();
-    # d3 draws type 1 with clip_b 1 (three rows: the renderer's +0x14). The one declared difference is the
-    # renderers' node scratch (h2_scratch), named by its bytes and both sides' values.
+    # d3 draws type 1 with clip_b 1 (three rows: the renderer's +0x14). The renderers' node scratch
+    # (+0x14 = 0, +0x38 = 0x140 -/+ width) is now compared too.
     Spec("sprite_blit_aperture", 0x51ED8, [
         dataclasses.replace(n1_blit("a0", 1, w=0, clips=(0, 0, 0, 2)), machine=E.Machine(aperture=True)),
         dataclasses.replace(n1_blit("a1", 2, rows=0, clips=(0, 0, 0, 1), pix=0x00800180),
@@ -34493,64 +34488,63 @@ N1_SPECS = [
 ]
 D1_SPECS += N1_SPECS
 
-# ---- track N batch n2 (record 2026-10-14-reverse-n §N.2): the teardown 0x1BE30 --------------------------
-# A row under one code poke and a partial row (the weaker class). 0x1BE30: 0x1D018; with the dword
-# 0x101514 non-zero (`test edx,edx; je` 0x1BE3E) three word tests, each guarding 0x1ADE4 (DPMI 0x201,
-# set real-mode vector: `mov ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, the runtime's int386 0x61564):
-# vector 9 from [0x101514]+0x14/+0x16 (0x1BE44), 0x23 from 0x10151A/0x10151C (0x1BE61), 0x1B from
-# 0x101518/0x10151E (0x1BE87); then 0x4FB98 with EAX = [0x101504] (0x1BEAB), 0x1B084, 0x10D34. The port
-# (flow.c game_shutdown) makes 0x1D018 and 0x1B084 and leaves the rest to the host (PORT).
-# - The poke: `int 0x10` at 0x4FB9E is `cmp eax,eax` (39 C0). 0x4FB98 is `pushad; and eax,0xff; int
-#   0x10; popad; ret`: the popad restores all eight registers and no flag is read after it (0x1BEB5 is a
-#   call), so the poke is exact for every path but the BIOS's mode set itself, which the row does not
-#   see (and with it the mode byte [0x101504]). Unpoked, the original stops there (`unmodeled: int`).
+# ---- track N batch n2 (record 2026-10-14-reverse-n §N.2): the teardown 0x1BE30, a full row ------------
+# 0x1BE30: 0x1D018; with the dword 0x101514 non-zero (`test edx,edx; je` 0x1BE3E) three word tests, each
+# guarding 0x1ADE4 (DPMI 0x201, set real-mode vector: `mov ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, the
+# runtime's int386 0x61564): vector 9 from [0x101514]+0x14/+0x16 (0x1BE44), 0x23 from 0x10151A/0x10151C
+# (0x1BE61), 0x1B from 0x101518/0x10151E (0x1BE87); then 0x4FB98 with EAX = [0x101504] (0x1BEAB), 0x1B084,
+# 0x10D34. The port (flow.c game_shutdown) makes 0x1D018, the three restores and 0x4FB98 (host-owned
+# no-ops: the port has no real mode and the SDL host owns the window) and 0x1B084; 0x10D34 is the host's.
+# - 0x4FB98 runs from its bytes: `pushad; and eax,0xff; int 0x10; popad; ret`. The Machine's `bios`
+#   answer covers the `int 0x10` (the SDL host owns the window) and 0x1ADE4's `int 0x31` (DPMI, the port
+#   has no real mode): each advances EIP and leaves every register (0x4FB98's popad restores them, and no
+#   call site reads the DPMI return). Unanswered, the original stops at those ints.
 # - 0x10D34 runs from its bytes with the -f byte 0x101520 = 1 (`cmp byte [0x101520],0; jne` 0x10D38),
 #   which returns at once keeping EAX and EDX, as in the rows of 0x1AFE8 and 0x1B084 (track S, SC_NO_CD).
 #   Its other path, the runtime's drive calls 0x61984/0x61A22, is not seen.
-# - The three restores are named unhit: with a segment word set the original reaches 0x1ADE4 -> 0x61564
-#   -> int 0x31, which a stub of 0x1ADE4 would record and the port does not make. In a run of the port
-#   no restore is reached by the raw's own tests: [0x101514] is GAME_BIOS_BASE, zeroed at init and never
-#   written at +0x14..+0x17, and 0x101518..0x10151F are written only by 0x1ADAC at 0x1C017..0x1C03F,
-#   which the port does not make (PORT, game_init).
-N2_TEARDOWN_INT10 = {0x0004FB9E: b"\x39\xc0"}
+# - The three restores run 0x1ADE4 through the runtime's int386 chain (0x61564 -> 0x61A88/0x61AB0 ->
+#   0x6B9D0 -> 0x6BA08 -> ret to the `int 0x31` stub), all allow-mode runtime callees. In a run of the
+#   port no restore is reached by the raw's own tests ([0x101514] is GAME_BIOS_BASE, zeroed at init), but
+#   t2 seeds every segment word so the three blocks 0x1BE4B/0x1BE6B/0x1BE93 run on both sides.
 N2_SHUT = E.Call(0x1D018, ())                                  # sound_shutdown, seamed here
 N2_SAVE = E.Call(0x1B084, (), clobbers=("edi", "ebp"))          # config_file_save, seamed here
 N2_PTR = 0x0010A900                                            # a [0x101514] inside the image
-N2_UNHIT = {
-    0x1BE4B: "0x1ADE4(9, [0x101514]+0x14, +0x16): the keyboard vector's real-mode restore (DPMI 0x201 through "
-             "the runtime's int386 0x61564, int 0x31); the port has no real mode and its word is zero "
-             "(GAME_BIOS_BASE, zeroed at init), a named part of a partial row (record 2026-10-14-reverse-n N.2)",
-    0x1BE6B: "0x1ADE4(0x23, 0x10151A, 0x10151C): the Ctrl-C vector's real-mode restore (DPMI 0x201, int 0x31); "
-             "the port never writes 0x10151C (0x1ADAC at 0x1C02B is not made), a named part of a partial row",
-    0x1BE93: "0x1ADE4(0x1B, 0x101518, 0x10151E): the Ctrl-Break vector's real-mode restore (DPMI 0x201, "
-             "int 0x31); the port never writes 0x10151E (0x1ADAC at 0x1C03F is not made), a named part of a "
-             "partial row"}
+# 0x1ADE4's int386 chain, all runtime >= 0x5D000 (excused by the closure rule as allow-mode): 0x1ADE4 ->
+# 0x61564 -> 0x61A88/0x61AB0 -> 0x6B9D0 -> 0x6BA08, whose `ret` lands on the `int 0x31` stub (answered by
+# Machine.bios).
+N2_INT386 = (0x61564, 0x61A88, 0x61AB0, 0x6B9D0, 0x6BA08)
 
 
-def n2_teardown(cid, regs, ptr, shut=0, save=0):
-    """0x1BE30: the poke; the -f byte; the mode dword 0x101504; [0x101514] = `ptr`, then the two
-    vectors' offset words 0x101518/0x10151A seeded and both segment words 0x10151C/0x10151E zero (with
-    `ptr` = 0, seeded too: the `je` 0x1BE40 skips their tests); at `ptr` + 0x12..+0x1B every byte seeded
-    but the segment word +0x16/+0x17. The stubs of 0x1D018 and 0x1B084 answer `shut` and `save`."""
-    words = le32(ptr) + le32(0x5A5A1A1A) + (le32(0x1C1C1E1E) if ptr == 0 else le32(0))
-    p = {**N2_TEARDOWN_INT10, **SC_NO_CD, 0x00101504: le32(0x00000003), 0x00101514: words}
+def n2_teardown(cid, regs, ptr, shut=0, save=0, segwords=False):
+    """0x1BE30: the -f byte; the mode dword 0x101504; [0x101514] = `ptr`, then the two vectors' offset
+    words 0x101518/0x10151A seeded and both segment words 0x10151C/0x10151E zero (with `ptr` = 0, seeded
+    too: the `je` 0x1BE40 skips their tests); at `ptr` + 0x12..+0x1B every byte seeded but the segment
+    word +0x16/+0x17. `segwords` sets every segment word non-zero, so all three 0x1ADE4 restores run.
+    The stubs of 0x1D018 and 0x1B084 answer `shut` and `save`; Machine.bios answers int 0x10/0x31."""
+    segs = le32(0x23231C1C) if segwords else le32(0)
+    words = le32(ptr) + le32(0x5A5A1A1A) + (le32(0x1C1C1E1E) if ptr == 0 else segs)
+    p = {**SC_NO_CD, 0x00101504: le32(0x00000003), 0x00101514: words}
     if ptr:
-        p[ptr + 0x12] = bytes([0x12, 0x13, 0x14, 0x15, 0, 0, 0x18, 0x19, 0x1A, 0x1B])
-    return Case(cid, regs, p, {0x1D018: shut, 0x1B084: save})
+        tail = bytes([0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B]) if segwords else \
+               bytes([0x12, 0x13, 0x14, 0x15, 0, 0, 0x18, 0x19, 0x1A, 0x1B])
+        p[ptr + 0x12] = tail
+    return Case(cid, regs, p, {0x1D018: shut, 0x1B084: save}, machine=E.Machine(bios=True))
 
 
 N2_SPECS = [
     # 0x1BE30 game_shutdown: no argument. t0: [0x101514] = 0 (the `je` 0x1BE40), every register dirty,
     # both segment words set (their tests are not reached). t1: a pointer whose segment word is zero
     # between seeded bytes, both DOS segment words zero with their offset words seeded: every test is
-    # made and none restores. The calls, in order: 0x1D018, 0x1B084, with the memory at each. The
-    # original's EAX is 0x1B084's stub's (0x10D34's fast path keeps it); none of the four call sites
-    # reads it (0x1C0CC `xor eax,eax`; 0x1C1C9 and 0x1D298 push and call 0x62734; 0x1C2C2 `mov eax,edx`
-    # after 0x1C2AF): mask 0.
+    # made and none restores. t2: every segment word non-zero, so all three 0x1ADE4 restores run. The
+    # calls, in order: 0x1D018, 0x1B084, with the memory at each (the restores, 0x4FB98 and 0x10D34 are
+    # allow-mode and write nothing the row sees). The original's EAX is 0x1B084's stub's (0x10D34's fast
+    # path keeps it); none of the four call sites reads it (0x1C0CC `xor eax,eax`; 0x1C1C9 and 0x1D298
+    # push and call 0x62734; 0x1C2C2 `mov eax,edx` after 0x1C2AF): mask 0.
     Spec("game_shutdown", 0x1BE30, [
         n2_teardown("t0", D2E_DIRTY, 0, shut=0x11111111, save=0x12345678),
         n2_teardown("t1", {}, N2_PTR, shut=0xFFFFFFFF, save=1),
-    ], unhit_named=N2_UNHIT, allow_calls=(0x4FB98, 0x10D34), calls=(N2_SHUT, N2_SAVE), eax_mask=0,
+        n2_teardown("t2", {}, N2_PTR, shut=0xFFFFFFFF, save=1, segwords=True),
+    ], allow_calls=(0x4FB98, 0x10D34, 0x1ADE4) + N2_INT386, calls=(N2_SHUT, N2_SAVE), eax_mask=0,
        mutants=("@noshut", "@nosave", "@order", "@free")),
 ]
 D1_SPECS += N2_SPECS

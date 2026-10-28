@@ -409,20 +409,31 @@ void sprite_blit(SpriteNode *n)
  * Unlike 0x51E5C it does not push/pop the node's +0x14/+0x30: it stores
  * rows - clip_b into +0x14 (0x51F23..0x51F2F) after the pixel resolve and
  * leaves it there. A zero-width or zero-row node returns first (0x51EDF,
- * 0x51EE8). PORT: the raw renderers' own stores into the node are not
- * modelled (the port's renderers take its fields by value): the live entries
- * the one caller reaches count +0x14 down to 0 (`dec dword [ebp+0x14]`
- * 0x5D262, 0x5D289, 0x57FCE, 0x57FF5; 0x58CBD's measured) and set +0x38
- * (0x5D21F, 0x57F8B, 0x58CDD), and 0x58CBD also writes +0x14 and +0x18
- * (0x58CC4, 0x58CD3), so the stored rows - clip_b survives
- * only the table's `ret` entries (0x51E58). The one caller's node is a dead
- * stack local with zeroed clips (0x1C5EA, 0x1C620..0x1C62C), read again only
- * at +0x1C (0x1C64F). */
+ * 0x51EE8). The live renderers the one caller 0x1C5E8 reaches (types 1, 2, 9:
+ * 0x5D218, 0x58CBD, 0x57F80) then use the node as their scratch and write it
+ * back: +0x14 counted down to 0 (`dec dword [ebp+0x14]` 0x5D262, 0x5D289,
+ * 0x57FCE, 0x57FF5; 0x58CBD's loop measured) and +0x38 = 0x140 -/+ width
+ * (0x5D21F, 0x58CDD, 0x57F8B; +width on the mirrored type 9), so the stored
+ * rows - clip_b survives only the table's `ret` entries (0x51E58). The one
+ * caller's node is a dead stack local with zeroed clips (0x1C5EA,
+ * 0x1C620..0x1C62C), read again only at +0x1C (0x1C64F). */
 void sprite_blit_aperture(SpriteNode *n)
 {
     PR_SEAM(0x51ED8u, (u32)n->x, (u32)n->y, (u32)n->xorg, (u32)n->yorg, n->type, (u32)n->rows, (u32)n->width,
             n->pal_ptr, n->pixel_handle, (u32)n->clip_l, (u32)n->clip_r, (u32)n->clip_t, (u32)n->clip_b);
     if (n == NULL || n->width == 0 || n->rows == 0) return;
     sprite_blit_at(n, gfx_aperture());
-    n->rows -= n->clip_b;                       /* 0x51F2F, not restored */
+    switch (n->type & 0x1Fu) {
+    case 0x01u: case 0x02u:                     /* 0x5D218, 0x58CBD */
+        n->rows = 0;                            /* the `dec [ebp+0x14]` loop ends at 0 */
+        n->stride = 0x140 - n->width;           /* 0x5D21F/0x58CDD: 0x140 - ECX */
+        break;
+    case 0x09u:                                 /* 0x57F80, mirrored */
+        n->rows = 0;
+        n->stride = 0x140 + n->width;           /* 0x57F8B: 0x140 + ECX */
+        break;
+    default:                                    /* the `ret` entries (0x51E58): 0x0A, 5 */
+        n->rows -= n->clip_b;                   /* 0x51F2F, not restored */
+        break;
+    }
 }

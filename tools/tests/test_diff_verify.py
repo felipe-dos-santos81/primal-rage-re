@@ -26364,39 +26364,39 @@ D5H_CASES = [
     ("game_frame_rr@b1acache", ['r0']),
     ("game_frame_rr@bdearly", ['r1']),
     ("game_frame_rr@inccache", ['r1']),
-    ("game_loop@no508", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@no50c", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@nopump", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@notick", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@tickorder", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@no508", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@no50c", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@nopump", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@notick", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@tickorder", ['k0', 'k1', 'k2', 'k3', 'k4']),
     ("game_loop@scroll", ['k1', 'k3']),
     ("game_loop@scrollw", ['k1']),
-    ("game_loop@scrollorder", ['k0', 'k2']),
-    ("game_loop@noframe", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@frameearly", ['k0', 'k2']),
-    ("game_loop@nortbl", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@rorder", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@rearly", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@af4d", ['k0', 'k1', 'k3']),
-    ("game_loop@noaf4", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@af4late", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@nofx", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@gate", ['k0', 'k2', 'k3']),
-    ("game_loop@gatew", ['k0', 'k2', 'k3']),
-    ("game_loop@nosort", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@scrollorder", ['k0', 'k2', 'k4']),
+    ("game_loop@noframe", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@frameearly", ['k0', 'k2', 'k4']),
+    ("game_loop@nortbl", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@rorder", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@rearly", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@af4d", ['k0', 'k1', 'k3', 'k4']),
+    ("game_loop@noaf4", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@af4late", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@nofx", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@gate", ['k0', 'k2', 'k3', 'k4']),
+    ("game_loop@gatew", ['k0', 'k2', 'k3', 'k4']),
+    ("game_loop@nosort", ['k0', 'k1', 'k2', 'k3', 'k4']),
     ("game_loop@f4", ['k1', 'k2']),
-    ("game_loop@f4w", ['k0']),
-    ("game_loop@listorder", ['k0', 'k3']),
-    ("game_loop@noflush", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@fcd", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@noswap", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@swapearly", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@incearly", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@noinc", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@noaudio", ['k0', 'k1', 'k2', 'k3']),
-    ("game_loop@once", ['k0', 'k2', 'k3']),
-    ("game_loop@quitw", ['k0', 'k2', 'k3']),
-    ("game_loop@rng", ['k0', 'k1', 'k2', 'k3']),
+    ("game_loop@f4w", ['k0', 'k4']),
+    ("game_loop@listorder", ['k0', 'k3', 'k4']),
+    ("game_loop@noflush", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@fcd", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@noswap", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@swapearly", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@incearly", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@noinc", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@noaudio", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("game_loop@once", ['k0', 'k2', 'k3', 'k4']),
+    ("game_loop@quitw", ['k0', 'k2', 'k3', 'k4']),
+    ("game_loop@rng", ['k0', 'k1', 'k2', 'k3', 'k4']),
 ]   # D5H_CASES end
 D1_MASKS.update(D5H_MASKS)
 D1_KINDS.update(D5H_KINDS)
@@ -30587,8 +30587,10 @@ I_CASES = [
 D1_MASKS.update(I_MASKS)
 D1_KINDS.update(I_KINDS)
 D1_CASES.extend(I_CASES)
-# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a partial row; track H batch h2 (record
-# 2026-10-14-reverse-h section H.3): the drawing cases d1, d2, d9, d3 and four mutants; @nostore and @clipt also in d3
+# track N batch n1 (record 2026-10-14-reverse-n section N.1): 0x51ED8, a full row since claim coverage Task 6
+# (sprite_blit_aperture writes the renderers' node scratch back); track H batch h2 (record 2026-10-14-reverse-h
+# section H.3): the drawing cases d1, d2, d9, d3 and four mutants. @nostore now catches every draw case (the
+# write-back), and @clipt only a2/a3 (d3 is a live renderer whose rows write-back is 0, not rows - clip).
 N1_MASKS = {
     "sprite_blit_aperture": 0x0,
 }   # N1_MASKS end
@@ -30599,12 +30601,12 @@ N1_KINDS = {
     "sprite_blit_aperture@norows": {'byte'},
     "sprite_blit_aperture@nodraw": {'aperture'},
     "sprite_blit_aperture@noclipb": {'aperture'},
-    "sprite_blit_aperture@nomirror": {'aperture'},
+    "sprite_blit_aperture@nomirror": {'aperture', 'byte'},
     "sprite_blit_aperture@xoff": {'aperture'},
 }   # N1_KINDS end
 N1_CASES = [
-    ("sprite_blit_aperture@nostore", ['a2', 'a3', 'd3']),
-    ("sprite_blit_aperture@clipt", ['a2', 'a3', 'd3']),
+    ("sprite_blit_aperture@nostore", ['a2', 'a3', 'd1', 'd2', 'd3', 'd9']),
+    ("sprite_blit_aperture@clipt", ['a2', 'a3']),
     ("sprite_blit_aperture@nowidth", ['a0']),
     ("sprite_blit_aperture@norows", ['a1']),
     ("sprite_blit_aperture@nodraw", ['d1', 'd2', 'd3', 'd9']),
@@ -30615,7 +30617,8 @@ N1_CASES = [
 D1_MASKS.update(N1_MASKS)
 D1_KINDS.update(N1_KINDS)
 D1_CASES.extend(N1_CASES)
-# track N batch n2 (record 2026-10-14-reverse-n section N.2): the teardown 0x1BE30, a poked partial row
+# track N batch n2 (record 2026-10-14-reverse-n section N.2): the teardown 0x1BE30, a full row since claim
+# coverage Task 6 (the restores run through the int386 chain, the int 0x10 poke replaced by Machine.bios)
 N2_MASKS = {
     "game_shutdown": 0x0,
 }   # N2_MASKS end
@@ -30626,10 +30629,10 @@ N2_KINDS = {
     "game_shutdown@free": {'byte', 'call #1 memory'},
 }   # N2_KINDS end
 N2_CASES = [
-    ("game_shutdown@noshut", ['t0', 't1']),
-    ("game_shutdown@nosave", ['t0', 't1']),
-    ("game_shutdown@order", ['t0', 't1']),
-    ("game_shutdown@free", ['t1']),
+    ("game_shutdown@noshut", ['t0', 't1', 't2']),
+    ("game_shutdown@nosave", ['t0', 't1', 't2']),
+    ("game_shutdown@order", ['t0', 't1', 't2']),
+    ("game_shutdown@free", ['t1', 't2']),
 ]   # N2_CASES end
 D1_MASKS.update(N2_MASKS)
 D1_KINDS.update(N2_KINDS)
@@ -30899,8 +30902,6 @@ WEAKER_CENSUS = {
               "proof-completion §P7.2"),
     0x1B544: ("The row covers only the resident arm; the slow tail-jump arm is named unhit (2/11 blocks).",
               "reverse-g §G3"),
-    0x1BE30: ("The teardown row pokes the BIOS int 0x10 and leaves three 0x1ADE4 blocks unhit (5/8).",
-              "reverse-n §N.2.1"),
     0x1C740: ("The movie row pokes runtime/Smacker entry points and covers only the port's prefix (4/23 blocks).",
               "reverse-n §N.3"),
     0x1D0BC: ("The two buffer-failure arms 0x1D10E/0x1D183, ending in runtime printf, remain unhit.",
@@ -30909,8 +30910,8 @@ WEAKER_CENSUS = {
               "proof-completion §P6.3"),
     0x24C5C: ("The key rows omit the Alt-J/calibration path through 0x5004A and the restart arm by design.",
               "reverse-h §H.2"),
-    0x255CC: ("The loop row leaves the full-copy and second-RNG blocks 0x25680/0x256D4 unhit (18/20).",
-              "reverse-g §G4"),
+    0x255CC: ("The loop row leaves the spin block 0x256D4 unhit (19/20); the full copy 0x25680 runs in k4.",
+              "reverse-g §G4; claim-coverage Task 6"),
     0x2CADC: ("Three raw calls the port deliberately omits are nop pokes; only the seven calls the port makes are compared.",
               "reverse-d6a §4"),
     0x2EA30: ("The SET-lock clear block 0x2EA49 is named unhit (7/8 blocks).",
@@ -30921,8 +30922,6 @@ WEAKER_CENSUS = {
               "reverse-h §H.2"),
     0x2EA78: ("The key wait leaves the 0x5004A calibration path and two other blocks named unhit (20/23).",
               "reverse-h §H.2"),
-    0x51ED8: ("The aperture row declares the renderer node-scratch +0x14/+0x38 byte difference (h2_scratch).",
-              "proof-completion §P7.4; reverse-h §H.3"),
 }
 
 # entry -> (the port's replacement, why a row would mask that boundary, evidence)
@@ -32069,7 +32068,7 @@ class RealFunctionTests(unittest.TestCase):
         # D5 d5b (record 2026-10-12-reverse-d5b): the stubs its rows add
         0x1631C: ("ebx", "ecx", "edx"), 0x15C30: ("ebx", "edx"), 0x16DA4: ("ebx", "ecx", "edx"), 0x17BC8: ("edi", "ebp"),
         0x176CC: (), 0x1790C: ("ebx", "ecx", "edx"), 0x170A0: (),
-        0x51E5C: (), 0x1C5E8: ("ebx", "edx", "edi", "ebp"), 0x1C470: ("edi",),
+        0x51E5C: (), 0x1C5E8: ("ebx", "edx", "edi", "ebp"), 0x1C470: (),
         # D5 d5c (record 2026-10-12-reverse-d5c): the stubs its rows add
         0x12DA8: (), 0x1A978: ("edi", "ebp"), 0x2BAF4: (), 0x349C8: ("ebp",), 0x34B6C: ("ebp",), 0x3531C: (),
         0x354F0: (), 0x35658: ("edi", "ebp"), 0x359E0: ("ebx", "edx"), 0x35D20: ("edx",),
@@ -32094,9 +32093,9 @@ class RealFunctionTests(unittest.TestCase):
         # D5 d5h (record 2026-10-12-reverse-d5h): the stubs its rows add
         0x10DB0: (), 0x10E18: (), 0x10EE4: (), 0x11000: ("ebp",), 0x11578: (), 0x11A8C: ("edi", "ebp"),
         0x11D04: ("esi", "edi", "ebp"), 0x11F6C: ("esi", "edi", "ebp"), 0x121A0: ("ebp",), 0x12484: (), 0x12D48: (),
-        0x12FD8: (), 0x1324C: (), 0x134C0: (), 0x14328: ("ebx", "edx"), 0x1C3FC: (), 0x1C470: ("edi",),
+        0x12FD8: (), 0x1324C: (), 0x134C0: (), 0x14328: ("ebx", "edx"), 0x1C3FC: (), 0x1C470: (),
         0x1CF20: (), 0x1EA08: (), 0x1EEB0: ("ebp",), 0x208F8: ("ebp",),
-        0x24C5C: ("ebx", "ecx", "edx", "esi", "edi"), 0x257A4: (), 0x25AE8: (), 0x25C88: ("ebp",), 0x25FAC: (),
+        0x24C5C: ("ebx", "ecx", "edx", "esi"), 0x257A4: (), 0x25AE8: (), 0x25C88: ("ebp",), 0x25FAC: (),
         0x26194: ("esi", "edi", "ebp"), 0x26254: ("esi", "edi", "ebp"), 0x263F4: ("edi", "ebp"),
         0x26540: ("esi", "edi", "ebp"), 0x266AC: ("ebp",), 0x26A50: ("ebp",), 0x26C8C: ("edi", "ebp"),
         0x26F58: ("ebp",), 0x27380: ("edi", "ebp"), 0x274FC: ("esi", "edi", "ebp"), 0x277C0: ("edi", "ebp"),
@@ -32304,10 +32303,10 @@ class RealFunctionTests(unittest.TestCase):
                 self.assertTrue(entry["class"] and entry["reason"] and entry["record"])
 
     def test_the_weaker_and_unrowed_census_sets_match_the_harness(self):
-        # The 15 weaker and 8 portable-unrowed declarations are sets in the harness, not counts in
+        # The 13 weaker and 8 portable-unrowed declarations are sets in the harness, not counts in
         # prose. Their census keys must be exact, and every real row's weaker flag must agree with
         # the same WEAKER set (including rows that share an entry with another spec).
-        self.assertEqual(len(WEAKER_CENSUS), 15)
+        self.assertEqual(len(WEAKER_CENSUS), 13)
         self.assertEqual(frozenset(WEAKER_CENSUS), V.WEAKER)
         for row in self.real.values():
             self.assertEqual(row.weaker, row.entry in V.WEAKER, row.name)
@@ -32418,17 +32417,16 @@ class RealFunctionTests(unittest.TestCase):
         self.assertIn((0x6C4CF, "stub"), r.callees)
 
     def test_the_weaker_entries_name_the_declared_differences(self):
-        # Proof completion task 6 (record §P7): a declared byte difference is no full row, so the
-        # aperture blit 0x51ED8 (the renderers' node +0x14/+0x38, record §H.3) leaves the full figure;
-        # 0x1D0BC's two unhit buffer-failure arms keep it out too. 0x249F0 joined in task 5. The
+        # Claim coverage Task 6 closed the aperture blit 0x51ED8 (its renderer node-scratch write-back is
+        # now compared, so the h2_scratch declaration and the WEAKER entry are gone) and the teardown
+        # 0x1BE30 (its three restores run through the int386 chain); 0x1D0BC's two unhit buffer-failure
+        # arms keep it out, 0x249F0 joined in task 5, and 0x255CC keeps its 0x256D4 spin unhit. The
         # figure is derived from the set (V.full_rows), not counted by hand.
-        self.assertEqual(len(V.WEAKER), 15)
-        self.assertTrue({0x51ED8, 0x1D0BC, 0x249F0} <= V.WEAKER)
-        self.assertTrue(self.real["sprite_blit_aperture"].weaker)
+        self.assertEqual(len(V.WEAKER), 13)
+        self.assertTrue({0x1D0BC, 0x249F0} <= V.WEAKER)
+        self.assertFalse(self.real["sprite_blit_aperture"].weaker)
+        self.assertFalse(self.real["game_shutdown"].weaker)
         self.assertTrue(self.real["sound_buffers_alloc"].weaker)
-        verdicts = {row.entry: row.verdict for row in self.real.values()}
-        closed, _ = V.closed_rows(list(self.real.values()), verdicts)
-        self.assertNotIn("sprite_blit_aperture", {row.name for row in V.full_rows(closed)})
 
     def test_a_call_set_callee_without_a_port_seam_is_a_mismatch(self):
         # 0x33950 (fighter_ctx_same) has no PR_SEAM: recorded on the original side only
@@ -32578,8 +32576,14 @@ class RealFunctionTests(unittest.TestCase):
         # flush stub 0x6C4CF (SC_FLUSH), so closed 826 -> 825 and open 19 -> 20; the aperture blit
         # 0x51ED8 joins WEAKER for its declared byte difference, so full 808 -> 807 (the weaker
         # entries number 15). Functions, mutants and the callee-less rows are unchanged.
+        # Claim coverage Task 6: sprite_blit_aperture writes the renderers' node scratch back (rows 0,
+        # stride 0x140 -/+ width) so its declared difference and WEAKER entry go, and game_shutdown runs
+        # its three 0x1ADE4 restores through the int386 chain (allow-mode, Machine.bios answers int
+        # 0x10/0x31) so its poke and WEAKER entry go: full 807 -> 809, the weaker entries 15 -> 13
+        # (game_loop keeps its 0x256D4 spin unhit; 0x25680 now runs in k4). Functions and mutants are
+        # unchanged.
         self.assertIn("diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; "
-                      "825/845 rows with callees closed (188 have none); 807/845 closed on full rows; "
+                      "825/845 rows with callees closed (188 have none); 809/845 closed on full rows; "
                       "8 ported functions with no row (45 FN_ ported-unrowed: 8 portable "
                       "[5 registry-visible + 3 header-shape exceptions] + 37 runtime; "
                       "the scan-visible subset is 42 = 5 + 37). "

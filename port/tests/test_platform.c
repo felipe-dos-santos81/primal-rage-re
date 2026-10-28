@@ -2383,7 +2383,9 @@ static int k1_all(const u8 *p, u8 v, size_t len)
 /* Record §K1.6 (2026-09-29-k1-k9-derivations.md): 0x51ED8 is 0x51E5C's span
  * blit with the aperture as its base (0x51F1B `add edi,0xa0000`) that does
  * not save/restore the node's +0x14: it stores rows - clip_b there
- * (0x51F23..0x51F2F) and keeps it. Both buffers are seeded 0xEE. */
+ * (0x51F23..0x51F2F) and keeps it on the table's `ret` entries, while the
+ * live renderer the caller reaches writes the node scratch back (rows 0,
+ * stride 0x140 -/+ width). Both buffers are seeded 0xEE. */
 static void check_k1_blit_aperture(void)
 {
     enum { SCREEN = 320 * 200 };
@@ -2418,11 +2420,13 @@ static void check_k1_blit_aperture(void)
     CHECK(!k1_all(back, 0xEE, SCREEN), "0x51E5C drew into the back buffer");
     memcpy(got, back, SCREEN);
 
-    /* 0x51ED8: the same pixels in the aperture, the back buffer untouched,
-     * and the node keeps rows - clip_b = 3. */
+    /* 0x51ED8: the same pixels in the aperture, the back buffer untouched, and
+     * the live renderer's node scratch written back: rows 0 (the dec loop),
+     * stride 0x140 - width (0x5D21F). */
     memset(back, 0xEE, SCREEN);
     sprite_blit_aperture(&n);
-    CHECK_EQ_INT(n.rows, 3);
+    CHECK_EQ_INT(n.rows, 0);
+    CHECK_EQ_INT(n.stride, 0x140 - n.width);
     CHECK(memcmp(ap, got, SCREEN) == 0, "0x51ED8 draws 0x51E5C's pixels");
     CHECK(k1_all(back, 0xEE, SCREEN), "0x51ED8 does not draw to the back buffer");
 

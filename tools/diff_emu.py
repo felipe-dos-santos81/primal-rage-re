@@ -83,6 +83,12 @@ FLAT_SEGMENT_CALLEES |= {0x6C8EB}
 # pops it back. Without the flat descriptors its `ret` pops through a 16-bit stack (the run stopped `int3 at
 # 0x10000`). No row before this batch names 0x653A1.
 FLAT_SEGMENT_CALLEES |= {0x653A1}
+# Claim coverage Task 6 (the teardown 0x1BE30's int386 chain): the WATCOM int386 0x61564 -> 0x61A88/0x61AB0
+# -> 0x6B9D0 -> 0x6BA08 loads and saves segment registers (0x6BA13 `mov es,[ebx]`, 0x6BA2A `mov ds,ebp`,
+# 0x6B9E1 `mov ds,[ebp+0xc]`; `push es`/`push ds` at 0x6B9D1/0x6B9D3). Under the flat descriptors those
+# loads resolve to the flat data descriptor, so the chain's push/pop keep the 32-bit stack; without them the
+# run stops `int3 at 0x10000` (the empty SS cache). Opting in 0x6BA08 alone names the chain, as 0x653A1 does.
+FLAT_SEGMENT_CALLEES |= {0x6BA08}
 
 
 def flat_segments(mu):
@@ -237,6 +243,13 @@ class Machine:
       outcome "exit", stopping AT the int (a process that terminates returns nothing). The same int
       with any other AH, and every other int/in/out, stop as `unmodeled`, and without exits the
       terminate stops exactly as it does today.
+    bios: int 0x10 (BIOS set video mode, 0x4FB98's `pushad; and eax,0xff; int 0x10; popad`) and int
+      0x31 (DPMI, 0x1ADE4's int386 chain 0x61564 -> 0x61A88/0x61AB0 -> 0x6B9D0 -> 0x6BA08 -> the
+      `int 0x31` stub) are answered as no-ops: they advance EIP and leave every register and flag.
+      That is exact for the two teardown rows, whose code reads nothing after them — 0x4FB98's popad
+      restores all eight registers from the stack, and 0x1ADE4's chain epilogue pops its saves; the
+      DPMI 0x201 return (EAX, CF) is dead at the call sites (0x1BE61 reloads EAX, 0x1BE87 uses CX).
+      With bios unset those ints stop as `unmodeled`, as today.
     Only the byte forms of in/out are modelled; the word and dword forms stay unmodeled."""
     keys: tuple = None
     ins: tuple = ()
@@ -245,6 +258,7 @@ class Machine:
     files: dict = None
     short_write: tuple = None
     exits: bool = False
+    bios: bool = False
 
     def __post_init__(self):
         if self.keys is not None and not all(0 <= k <= 0xFFFF for k in self.keys):
@@ -299,19 +313,23 @@ class _Devices:
                     return stop
                 self.terminal = ("exit", eax & 0xFF)
                 return ("exit", "terminate with code %d at 0x%X" % (eax & 0xFF, addr))
-            if ins.bytes[1] != 0x16 or self.keys is None:
+            if ins.bytes[1] in (0x10, 0x31) and self.m.bios:
+                pass                                    # int 0x10 (BIOS set mode) / int 0x31 (DPMI): the
+                                                        # host owns both; EIP advances, registers stay
+            elif ins.bytes[1] == 0x16 and self.keys is not None:
+                eax = uc.reg_read(ux.UC_X86_REG_EAX)
+                ah = (eax >> 8) & 0xFF
+                if ah == 0 and not self.keys:
+                    return ("unmodeled", "int 0x16 AH=0 at 0x%X: the key queue is empty" % addr)
+                if ah not in (0, 1):
+                    return ("unmodeled", "int 0x16 AH=0x%X at 0x%X" % (ah, addr))
+                if ah == 1:
+                    fl = uc.reg_read(ux.UC_X86_REG_EFLAGS)
+                    uc.reg_write(ux.UC_X86_REG_EFLAGS, fl & ~0x40 if self.keys else fl | 0x40)
+                if self.keys:
+                    uc.reg_write(ux.UC_X86_REG_EAX, (eax & 0xFFFF0000) | (self.keys.pop(0) if ah == 0 else self.keys[0]))
+            else:
                 return stop
-            eax = uc.reg_read(ux.UC_X86_REG_EAX)
-            ah = (eax >> 8) & 0xFF
-            if ah == 0 and not self.keys:
-                return ("unmodeled", "int 0x16 AH=0 at 0x%X: the key queue is empty" % addr)
-            if ah not in (0, 1):
-                return ("unmodeled", "int 0x16 AH=0x%X at 0x%X" % (ah, addr))
-            if ah == 1:
-                fl = uc.reg_read(ux.UC_X86_REG_EFLAGS)
-                uc.reg_write(ux.UC_X86_REG_EFLAGS, fl & ~0x40 if self.keys else fl | 0x40)
-            if self.keys:
-                uc.reg_write(ux.UC_X86_REG_EAX, (eax & 0xFFFF0000) | (self.keys.pop(0) if ah == 0 else self.keys[0]))
         elif op in (0xE4, 0xEC):                          # in al,imm8 / in al,dx
             port = ins.bytes[1] if op == 0xE4 else uc.reg_read(ux.UC_X86_REG_EDX) & 0xFFFF
             if not self.ins.get(port):
@@ -1220,10 +1238,12 @@ _CALLEE_CLOBBER_FIXES[0x2CADC] = ("edi",)
 # The scan's EBP (and for 0x24C5C its ESI/EDI, for 0x1C470 its EDI) comes from its callee tree: an
 # indirect call, or a path reaching >= 0x5D000, which the scan takes to clobber everything. In the
 # row's exercised path only EBP is read after these calls (0x256AF/0x256D4), so the others stay in the
-# caller-observed sets (no caller shown to read them, as 0x36870's ESI/EBP in the entry above).
+# caller-observed sets (no caller shown to read them, as 0x36870's ESI/EBP in the entry above). Claim
+# coverage Task 6 removed EDI from 0x24C5C and 0x1C470: the loop's full copy 0x25680 reads EDI = 0xA0000
+# (set at 0x255E9) after both, and the bodies preserve it (0x24C5C saves it, 0x1C470 never writes it).
 _CALLEE_CLOBBER_FIXES[0x292AC] = ()
-_CALLEE_CLOBBER_FIXES[0x24C5C] = ("ebx", "ecx", "edx", "esi", "edi")
-_CALLEE_CLOBBER_FIXES[0x1C470] = ("edi",)
+_CALLEE_CLOBBER_FIXES[0x24C5C] = ("ebx", "ecx", "edx", "esi")
+_CALLEE_CLOBBER_FIXES[0x1C470] = ()
 # D6 d6a (record 2026-10-13-reverse-d6a section 6): the runtime memcpy 0x655FF loads ES from DS around its
 # copy (0x65608 `push es`, 0x65609 `mov eax,ds`, 0x6560B `mov es,eax`, 0x6561D `pop es`), as the memmove
 # 0x653A1 does: without the flat descriptors its `ret` pops through a 16-bit stack (the run stopped `int3

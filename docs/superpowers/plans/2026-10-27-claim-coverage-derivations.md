@@ -836,6 +836,37 @@ executed this phase (the approval does not name U14); U14 R1 stays a named gap.
   behaviour at all, the two-human KO a game-side KO with no replay, the U16 ones
   their own rows with the gate operand absent.
 
+### §C1.10 Task 6 differential micro-closures (measured)
+
+Task 6 closed two weaker rows and left one named, measured by `make diff-verify`:
+the counter reads **`1033/1033 functions VERIFIED; 14993/14993 mutants detected;
+0 named gaps; 825/845 rows with callees closed (188 have none); 809/845 closed on
+full rows`** — full 807 → 809 and `WEAKER` 15 → 13 (`0x51ED8` and `0x1BE30` left;
+`0x255CC` stays for its `0x256D4` spin, whose `0x25680` full copy now runs in a
+new case k4). Three plan-vs-raw corrections, all from the bytes:
+
+1. **The game_loop full copy is blind, not aperture-modelled.** The brief's
+   `Machine(aperture=True)` for `0x25680` does not work: the loop's RAM overlaps
+   the aperture range `0xA0000..0xAFA00` (the render table `0xA86C4`, the quit
+   flag `0xA81A8`), so with `aperture=True` the original classifies the
+   `0x4F4E8` stub's quit-flag write as a screen byte and the port as RAM — a
+   spurious mismatch. A non-aperture back buffer (`0xE87A4` = a scratch) makes
+   the original's `repne movsd` overwrite that RAM, so the present is inherently
+   blind: the case keeps `0xE87A4 = 0xA0000` (the self-copy of
+   `config_screen_wait`, record §H.2) and no aperture model. Block 0x25680 is
+   reached (19/20); its bytes are not claimed.
+2. **`0x24C5C`/`0x1C470` preserve EDI, which the full copy reads.** `§G4`'s
+   caller-observed clobber sets poisoned EDI (`0x24C5C` pushes it,
+   `0x1C470` never writes it) because no caller was shown to read it; the full
+   copy `0x25680` reads `EDI = 0xA0000` (set at `0x255E9`) after both, so the
+   poison is removed (`D5H_FRAME`/`D5H_FLUSH` and `_CALLEE_CLOBBER_FIXES`).
+3. **The int386 chain needs the flat descriptors.** `0x1ADE4`'s restore runs
+   `0x61564 → 0x61A88/0x61AB0 → 0x6B9D0 → 0x6BA08` (allow-mode runtime, excused),
+   whose `ret` lands on the `int 0x31` stub; the segment loads recompute the SS
+   cache from an empty descriptor table (the run stopped `int3 at 0x10000`), so
+   `0x6BA08` joins `FLAT_SEGMENT_CALLEES`, and a new `Machine.bios` flag answers
+   `int 0x10` (0x4FB98's set-mode) and `int 0x31` (DPMI) as no-ops.
+
 ---
 
 ## §C2 The deterministic sequencer clock (Task 2)

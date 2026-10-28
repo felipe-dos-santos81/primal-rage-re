@@ -7192,17 +7192,44 @@ void sound_shutdown(void)
 
 /* 0x1BE30 — record 2026-10-14-reverse-n §N.2. The teardown: 0x1D018, the three real-mode vector
  * restores, 0x4FB98 with AL = [0x101504], 0x1B084, 0x10D34.
- * PORT: 0x1BE38..0x1BEA6 are not memory frees: each restores a real-mode interrupt vector that
- * 0x1ADAC (DPMI 0x200) saved in the init, through 0x1ADE4 (DPMI 0x201, set real-mode vector:
- * `mov ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, 0x61564), when its segment word is non-zero:
- * vector 9 from [0x101514]+0x14/+0x16 (0x1BE44, saved at 0x1C017), 0x23 from 0x10151A/0x10151C
- * (0x1BE61, saved at 0x1C02B) and 0x1B from 0x101518/0x10151E (0x1BE87, saved at 0x1C03F). The
- * port has no real mode and never sets those words (GAME_BIOS_BASE is zeroed at init), so in a run
- * of the port the raw's own tests skip all three. 0x1BEB0 0x4FB98 (int 10h set mode) and 0x1BEBA
- * 0x10D34 (the CD-drive restore) are the host's. */
+ * 0x1BE38..0x1BEA6 are not memory frees: each restores a real-mode interrupt vector that 0x1ADAC
+ * (DPMI 0x200) saved in the init, through 0x1ADE4 (DPMI 0x201, set real-mode vector: `mov
+ * ecx,0x201` 0x1ADF1, `mov eax,0x31` 0x1AE07, 0x61564), when its segment word is non-zero: vector
+ * 9 from [0x101514]+0x14/+0x16 (0x1BE44, saved at 0x1C017), 0x23 from 0x10151A/0x10151C (0x1BE61,
+ * saved at 0x1C02B) and 0x1B from 0x101518/0x10151E (0x1BE87, saved at 0x1C03F).
+ * PORT: the port has no real mode and never saves the vectors (0x1ADAC is not made, GAME_BIOS_BASE
+ * is zeroed at init), so the restores and 0x4FB98 (int 10h set mode, the SDL host owns the window)
+ * are host-owned no-ops; the guards still read the raw's words so the differential row exercises the
+ * blocks. 0x1BEBA 0x10D34 (the CD-drive restore) is the host's. */
+#define DS_00101518 0x00101518u  /* no symbols.h name: the Ctrl-Break vector's saved offset word */
+#define DS_0010151A 0x0010151Au  /* no symbols.h name: the Ctrl-C vector's saved offset word */
+static void game_shutdown_restore(u32 vector, u32 offset, u32 segment)
+{
+    /* 0x1ADE4 (DPMI 0x201 set real-mode vector): the port has no real mode. */
+    (void)vector; (void)offset; (void)segment;
+}
+
+static void game_shutdown_set_mode(u32 mode)
+{
+    /* 0x4FB98 (int 10h set mode, `and eax,0xff`): the SDL host owns the window. */
+    (void)mode;
+}
+
 void game_shutdown(void)
 {
     sound_shutdown();                                      /* 0x1BE33 0x1D018 */
+    {
+        u32 ptr = DSD(DS_00101514);                        /* 0x1BE38 mov edx,[0x101514] */
+        if (ptr != 0u) {                                   /* 0x1BE3E test edx,edx; je */
+            if (DSW(ptr + 0x16u) != 0u)                    /* 0x1BE42 cmp word [edx+0x16],0 */
+                game_shutdown_restore(9u, DSW(ptr + 0x14u), DSW(ptr + 0x16u));   /* 0x1BE4B */
+            if (DSW(DS_0010151C) != 0u)                    /* 0x1BE61 cmp word [0x10151c],0 */
+                game_shutdown_restore(0x23u, DSW(DS_0010151A), DSW(DS_0010151C));  /* 0x1BE6B */
+            if (DSW(DS_0010151E) != 0u)                    /* 0x1BE87 mov cx,[0x10151e]; test */
+                game_shutdown_restore(0x1Bu, DSW(DS_00101518), DSW(DS_0010151E));  /* 0x1BE93 */
+        }
+    }
+    game_shutdown_set_mode(DSB(DS_00101504));              /* 0x1BEAB 0x4FB98 */
     (void)config_file_save();   /* 0x1BEB5 0x1B084; AL is not read (0x1BEBA calls on) */
 }
 

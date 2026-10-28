@@ -39812,8 +39812,16 @@ static void d5h_255cc_core(u32 mut)
             if (!D5H_L(listorder) && (D5H_L(f4) || (D5H_L(f4w) ? DSW(0x001088F4u) : DSB(0x001088F4u)) == 0u))
                 d5h_seam0(0x14328u);                             /* 0x25655/0x2566D */
             if (!D5H_L(noflush)) d5h_seam0(0x1C470u);            /* 0x25672 */
-            /* 0x25677..0x256A5: the aperture copy or the dirty blit 0x501A3, host-owned */
-            if (D5H_L(fcd)) DSD(0x001014FCu) = 0u;
+            /* 0x25677..0x256A5: the full copy 0x25680 (copy flag 0x1014FC set: gfx_present, the port's
+             * present) or the dirty blit 0x501A3, host-owned (skipped; the other cases' back buffer is the
+             * aperture itself, so the blit rewrites what it reads). @fcd: the pre-D5 dword clear. */
+            if (DSB(0x001014FCu) != 0u) {
+                gfx_present(mem + DSD(0x000E87A4u), 320, 200);         /* 0x25680 the copy */
+                if (D5H_L(fcd)) DSD(0x001014FCu) = 0u;
+                else DSB(0x001014FCu) = 0u;                            /* 0x2569D */
+            } else if (D5H_L(fcd)) {
+                DSD(0x001014FCu) = 0u;
+            }
             if (!D5H_L(noswap) && !D5H_L(swapearly)) swap_buffers();   /* 0x256AA */
         }
         if (D5H_L(rng)) DSD(DS_000EF6D8) = DSD(DS_000EF6D8) * 0xB90D12B9u + 0x38CE051Fu;   /* @rng: the real
@@ -43259,7 +43267,16 @@ static void n1_51ed8_run(const u32 *r, u32 mut)
         if (mut == 6u) d.clip_b = 0;                                           /* @noclipb */
         if (mut == 7u) d.type &= ~8u;                                          /* @nomirror */
         if (mut != 5u) sprite_blit_at(&d, gfx_aperture() + ((mut == 8u) ? 1u : 0u));   /* @nodraw @xoff */
-        if (mut != 1u) n.rows -= (mut == 2u) ? n.clip_t : n.clip_b;           /* @nostore @clipt */
+        if (mut != 1u) {                                                       /* @nostore: the write-back */
+            switch (d.type & 0x1Fu) {
+            case 0x01u: case 0x02u:
+                n.rows = 0; n.stride = 0x140 - d.width; break;
+            case 0x09u:
+                n.rows = 0; n.stride = 0x140 + d.width; break;
+            default:
+                n.rows -= (mut == 2u) ? n.clip_t : n.clip_b; break;            /* @clipt */
+            }
+        }
     }
     n1_51ed8_store(r[R_EAX], &n);
 }
