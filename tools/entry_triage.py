@@ -11,6 +11,8 @@ The universe (record §E2.1; U0 §U0.12's "575 plausible entries"): every addres
   (c) follows a `ret` (C3 just before, or C2 three bytes before), directly or after FILLERS
       skipped backwards (at most MAX_FILL bytes), the ret tested before each filler is skipped;
   (d) decodes as one instruction.
+One span-writer slot of the proof-completion census, `0x5D004` (`0x81110[127]`, dword `0x8130C`),
+lies above RUNTIME_BASE: rule (b) excludes it, so it is a supplement row, never a candidate.
 U0's own rule (after_ret_u0) skipped the fillers greedily before testing, so the 00 that ends
 `ret 4` (C2 04 00) was eaten as a filler: every row says whether U0's rule admits it (§E2.1).
 Every candidate gets exactly one class: the first rule of §E2.2 whose evidence exists (`classify` applies
@@ -36,8 +38,10 @@ CODE_HI = 0x73B14
 DATA_LO = 0x80000          # AGENTS.md: data object 0x80000-0x10B0CF
 RUNTIME_BASE = 0x5D000     # tools/port_progress.py: WATCOM libc and DOS/4GW glue from here up
 # The fillers between functions (§E2.1): nop, `mov eax,eax` (E1 record §E.5, 0x19066),
-# `lea eax,[eax+0]`, and zero fill (k7-k12 §1.2, 0x475C0). Order matters: 8D 40 00 before 00.
-FILLERS = (b"\x90", b"\x8b\xc0", b"\x8d\x40\x00", b"\x00")
+# `lea eax,[eax+0]`, `xchg ebx,ebx` (the padding after a `ret` before 157 span-writer slots;
+# record 2026-10-27-claim-coverage-derivations §C1.5.1), and zero fill (k7-k12 §1.2, 0x475C0).
+# Order matters: 8D 40 00 before 00.
+FILLERS = (b"\x90", b"\x8b\xc0", b"\x8d\x40\x00", b"\x87\xdb", b"\x00")
 MAX_FILL = 16
 FINISHER_TABLES = (0xBDAE4, 0xBDB00)          # U0 §U0.4: one dword per character
 FINISHER_SLOTS = 7

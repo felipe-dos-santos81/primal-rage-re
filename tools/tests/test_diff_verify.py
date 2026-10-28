@@ -33689,10 +33689,12 @@ class SpanCensusTests(unittest.TestCase):
         self.assertEqual({0x5D580, 0x582F4} - o.executed, set(), "missing both-edges renderer path")
         self.assertEqual({a for a, _ in o.calls}, tail, "the clipped paths must reach both 14/15-word tails")
 
-    def test_the_e2_triage_split_is_227_and_158(self):
-        # The 231 span-writer rows of the committed E2 table are 227 of these writers plus the four
-        # renderers whose only slot is a span table (0x5215C, 0x57F80, 0x57FFB, 0x58CBD); the other
-        # 158 writer targets E2's `ret` rule never triaged. 0x5D110 is not a slot, so not a row.
+    def test_the_e2_triage_split_is_384_and_1(self):
+        # The 388 span-writer rows of the committed E2 table are 384 of these writers plus the four
+        # renderers whose only slot is a span table (0x5215C, 0x57F80, 0x57FFB, 0x58CBD). The one
+        # writer target with no row is 0x5D004 (0x81110[127]): above RUNTIME_BASE, so outside the E2
+        # universe and only a supplement row (record 2026-10-27-claim-coverage-derivations §C1.5.1).
+        # 0x5D110 is not a slot, so not a row.
         rows = {}
         with open(E2_TRIAGE, encoding="utf-8") as f:
             for line in f:
@@ -33703,8 +33705,8 @@ class SpanCensusTests(unittest.TestCase):
                     except ValueError:
                         pass
         writers = {t for name, _, t in self.slots() if name in SPAN_WRITERS}
-        self.assertEqual(len(writers & set(rows)), 227)
-        self.assertEqual(len(writers - set(rows)), 158)
+        self.assertEqual(len(writers & set(rows)), 384)
+        self.assertEqual(writers - set(rows), {0x5D004})
         self.assertEqual({a for a, c in rows.items() if c == "span-writer"} - writers,
                          {0x5215C, 0x57F80, 0x57FFB, 0x58CBD})
         self.assertIn(SPAN_DEAD, rows)

@@ -522,6 +522,105 @@ universe 579 → 736 and U0 575 → 732**, with the 158th writer `0x5D004` above
 db` and does not re-measure those three numbers; Task 5 owns them.
 `tools/entry_triage.py` was not edited.
 
+### §C1.5.1 The `87 db` filler and the 157 span-writer admissions (Task 5)
+
+Task 5 added `b"\x87\xdb"` (`xchg ebx,ebx`) to `FILLERS` in
+`tools/entry_triage.py` and re-measured with the AGENTS.md command. The design
+recon (157 / 736 / 732) **held exactly**; nothing was forced:
+
+```text
+$ ./build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/opencode/e2img
+$ python3 tools/entry_triage.py --image /tmp/opencode/e2img \
+    --live docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt \
+    --out docs/superpowers/plans/2026-10-01-reverse-e2-triage.md
+entry-triage: 736 candidates (732 by U0's rule); finisher=9 move-callback=71 span-writer=388
+  call-table=7 anim-target=112 mid-instruction=3 data=75 code-immediate=15 direct=2 interior=6 data-pointer=48
+entry-triage: targets 390 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+```
+
+| class | before | after | delta |
+|---|---|---|---|
+| `span-writer` | 231 | 388 | +157 |
+| the other ten classes present (348 rows) | unchanged (each count identical) | unchanged | 0 |
+| **universe** | **579** | **736** | **+157** |
+| **U0's rule** | **575** | **732** | **+157** |
+
+Diffed row-wise against the previous table, the 157 additions are **all
+`span-writer`**, nothing was removed, and no existing row changed class. Every
+addition is U0's too (`after_ret_u0` also skips the new filler), which is why
+the not-U0 set is unchanged (`0x10602 0x10604 0x36114 0x3C87C`). There is no
+non-writer set to classify: the plan's alternative split did not arise. The new
+filler also joins `starts_with_fill`'s "the candidate begins with a filler"
+rule (it reads `FILLERS[:-1]`): no candidate in either universe begins with
+`87 db`, which is why no class moved.
+
+**What the filler chain is.** Of the 158 writer slots that were untriaged, 157
+follow `ret` + `87 db` (93 directly: `C3 87 DB <entry>`; 64 through one more
+filler, `C3 87 DB 90 <entry>`, the backwards walk trying `90` before `87 DB`).
+The 158th, `0x5D004`, follows a `ret` directly (`0x5D000` is `F0 03 F8 C3`,
+`0x5D004` begins `8B 16`).
+
+**The residual, `0x5D004`.** It is slot 127 of the literal-forward table
+`0x81110` (dword `0x8130C`), read by the `call` at `0x521AE` — one of the **385**
+writer slots. It lies at `0x5D004 >= RUNTIME_BASE` (`0x5D000`), so universe
+rule (b) excludes it: **384 of the 385 writer slots now have an E2 row**, and
+`0x5D004` is named where the tool already lists it — the table's supplement row
+`| 5D004 | slot 8130C of table 81110, read by call at 521AE | - | no | leaf | - |`
+(it is trusted code, so the supplement lists it, but it is never a candidate).
+No hand edit and no exception list: this is the rule's measured output, and the
+tool's docstring now states it.
+
+The table's **388** `span-writer` rows are the **384** writer-slot targets plus
+the four renderers §C1.5 names (`0x5215C`, `0x57F80`, `0x57FFB`, `0x58CBD`),
+unchanged. The span census itself is untouched — 417 slots, 392 distinct
+targets, 385 writer slots, 386 distinct writer targets (385 reachable) — only
+its E2-split assertion moved (below). Task 5 changed only `FILLERS`, the table,
+the pins and the tests.
+
+**The gate re-pin, proved both ways.** `Makefile:2127` now reads
+`--expect 736 --expect-u0 732`. Against the new image the old pins fail and the
+new ones pass:
+
+```text
+$ python3 tools/entry_triage.py --image /tmp/opencode/e2img \
+    --live docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt \
+    --check docs/superpowers/plans/2026-10-01-reverse-e2-triage.md --expect 579 --expect-u0 575
+entry-triage: FAIL: 736 candidates, expected 579
+entry-triage: FAIL: 732 candidates by U0's rule, expected 575
+EXIT:1
+$ python3 tools/entry_triage.py --image /tmp/opencode/e2img \
+    --live docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt \
+    --check docs/superpowers/plans/2026-10-01-reverse-e2-triage.md --expect 736 --expect-u0 732
+EXIT:0                     # and no `differs from a fresh run`: the committed table is the fresh one
+```
+
+Both runs print no `--check` difference line, so the regenerated table is the
+tool's own output.
+
+**The tests.** `tools/tests/test_entry_triage.py` gained
+`UniverseTests.test_the_xchg_filler_is_skipped` (`C3 87 DB` and `C3 87 DB 90`
+admit the following entry under both rules): it failed before the `FILLERS`
+change (RED, `after_ret` False) and passes after. The real-image pins moved to
+the measured values: universe **736 / 732** (was 579 / 575), `span-writer`
+**388** (was 231), the live column's `-` **710** (was 553; the 157 new rows have
+no live-Ghidra evidence), and the target count **652** (was 495); the universe
+test now also asserts `0x521E0` (the `0x80D0C[1]` writer after `C3 87 DB`) is a
+`span-writer` row and that `0x5D004` is absent from the rows but present in the
+supplement. The synthetic fixture's own pins (`--expect 24 --expect-u0 23`) are
+unchanged: its fillers and planted bodies do not include `87 db`, so its
+universe is still 24/23. `python3 -m unittest tools.tests.test_entry_triage`
+passes 45/45.
+
+`tools/tests/test_diff_verify.py`'s `SpanCensusTests` also asserted the split
+(`test_the_e2_triage_split_is_227_and_158`), so that assertion moved with the
+claim: it is now `test_the_e2_triage_split_is_384_and_1` and asserts **384**
+writer slots intersected with the table's rows, `writers - rows == {0x5D004}`,
+and the same four non-slot renderers. Its census counts are unchanged (the five
+tables, 417 slots, 392 distinct, 385 writer slots, 386 distinct writer targets,
+385 reachable, the 27 class keys); `python3 -m unittest
+tools.tests.test_diff_verify.SpanCensusTests` passes 7/7.
+
 ### §C1.6 The audio bank and rotation measurement (plan Step 4, second half)
 
 The record's measurement (music truth §M4.4 item 7, over the 26-bank

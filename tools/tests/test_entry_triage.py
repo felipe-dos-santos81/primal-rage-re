@@ -216,6 +216,19 @@ class UniverseTests(unittest.TestCase):
         self.assertTrue(t.after_ret(0x10014))          # 8D 40 00 must be tried before 00
         self.assertTrue(t.after_ret_u0(0x10014))
 
+    def test_the_xchg_filler_is_skipped(self):
+        # 87 db (`xchg ebx,ebx`) follows the ret before 157 of the 158 span-writer slots the census
+        # names (record 2026-10-27-claim-coverage-derivations §C1.5.1): it is a filler like the others
+        w = World()
+        w.put(0x10000, b"\xc3\x87\xdb")
+        t = T.Triage(w.image(), [])
+        self.assertTrue(t.after_ret(0x10003))
+        self.assertTrue(t.after_ret_u0(0x10003))
+        w.put(0x10000, b"\xc3\x87\xdb\x90")
+        t = T.Triage(w.image(), [])
+        self.assertTrue(t.after_ret(0x10004))          # nop, then 87 db, then C3
+        self.assertTrue(t.after_ret_u0(0x10004))
+
     def test_ret_imm16_and_the_byte_level_c3_count(self):
         w = World()
         w.put(0x10010, bytes.fromhex("C20400" "90"))
@@ -568,7 +581,7 @@ U0_VOICE = {int(x, 16) for x in (
 # record, never alone). The ported-state figures (how many targets are ported, the per-batch split, the
 # voice sites' ported flag) move with every track-P port, so no assertion below pins them: they live in
 # the committed table, which `--check` regenerates in the P commit.
-REAL_CLASSES = {"finisher": 9, "move-callback": 71, "span-writer": 231, "call-table": 7, "anim-target": 112,
+REAL_CLASSES = {"finisher": 9, "move-callback": 71, "span-writer": 388, "call-table": 7, "anim-target": 112,
                 "mid-instruction": 3, "data": 75, "code-immediate": 15, "direct": 2, "interior": 6,
                 "data-pointer": 48}
 
@@ -593,10 +606,15 @@ class RealImageTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_the_universe_is_579_and_u0s_rule_gives_575(self):
-        self.assertEqual(len(self.rows), 579)
-        self.assertEqual(sum(1 for r in self.rows if r["u0"]), 575)
+    def test_the_universe_is_736_and_u0s_rule_gives_732(self):
+        self.assertEqual(len(self.rows), 736)
+        self.assertEqual(sum(1 for r in self.rows if r["u0"]), 732)
         self.assertEqual({r["addr"] for r in self.rows if not r["u0"]}, {0x10602, 0x10604, 0x36114, 0x3C87C})
+        # the 157 span writers the `87 db` filler admits (record §C1.5.1), all U0's: one of them, and
+        # the 158th writer, 0x5D004, which is above RUNTIME_BASE and so a supplement row, never a row
+        self.assertEqual(self.by[0x521E0]["cls"], "span-writer")        # 0x80D0C[1], after C3 87 DB
+        self.assertNotIn(0x5D004, self.by)
+        self.assertIn(0x5D004, {s["addr"] for s in self.supp})
 
     def test_the_class_counts(self):
         self.assertEqual(dict(collections.Counter(r["cls"] for r in self.rows)), REAL_CLASSES)
@@ -623,7 +641,7 @@ class RealImageTests(unittest.TestCase):
 
     def test_the_live_column(self):
         self.assertEqual(collections.Counter(r["live"].split(" ")[0] for r in self.rows),
-                         {"-": 553, "entry": 22, "body": 4})
+                         {"-": 710, "entry": 22, "body": 4})
 
     def test_the_voice_sites(self):
         sites = self.t.rel32_anywhere(T.VOICE_FN)
@@ -645,6 +663,6 @@ class RealImageTests(unittest.TestCase):
         self.assertNotIn(0x3A588, self.by)                  # follows data, not a ret: outside the universe
         self.assertTrue(self.t.is_ported(0x3A588))          # but its strict entry (header and fn_register) is there
         targets = [r for r in self.rows if r["batch"] != "-"]
-        self.assertEqual(len(targets), 495)             # a class-only figure (329 + 166 at U6a)
+        self.assertEqual(len(targets), 652)             # a class-only figure (495 + the 157 span writers)
         # ports only add: at least U6a's 166 are ported (a P port raises this, never lowers it)
         self.assertGreaterEqual(sum(1 for r in targets if r["ported"]), 166)

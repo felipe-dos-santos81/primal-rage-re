@@ -2124,7 +2124,7 @@ entry-triage: build ## E2 triage of the non-Ghidra entry candidates: unit tests 
 	else $(PYTHON) -m unittest tools.tests.test_entry_triage && \
 		./$(BUILD_DIR)/diffrun --exe $(GAME_DIR)/PRAGE.EXE --image-out $(E2_IMAGE) && \
 		$(PYTHON) tools/entry_triage.py --image $(E2_IMAGE) --live $(E2_LIVE) --check $(E2_TABLE) \
-			--expect 579 --expect-u0 575; fi
+			--expect 736 --expect-u0 732; fi
 
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
