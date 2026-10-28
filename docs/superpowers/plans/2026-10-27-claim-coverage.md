@@ -93,10 +93,10 @@ captures. No new dependency.
   make diff-verify
   ```
   Record the `799 1203 66` / `759 759 100` line, the diff counter line, the
-  20 open rows, the 15 `WEAKER` entries and the 8 `UNROWED` addresses. The
-  three lists are `TERMINAL_CENSUS`, `WEAKER` and `UNROWED` in
-  `tools/diff_verify.py`; extract them with a one-liner over those module sets
-  rather than retyping AGENTS.md.
+  20 open rows, the 15 `WEAKER` entries and the 8 `UNROWED` addresses.
+  `WEAKER`/`UNROWED` live in `tools/diff_verify.py`; `TERMINAL_CENSUS` lives in
+  `tools/tests/test_diff_verify.py`. Extract them with a one-liner over those
+  module sets rather than retyping AGENTS.md.
 - [ ] **Step 2: Reproduce the audio flake.** Run `make audio-oracle` twice under
   load (a `make -j` or a host load generator); record the `W`/`S` label
   differences and the failing trace/claim exactly as the fought-match record
@@ -106,16 +106,20 @@ captures. No new dependency.
   `0x62003` false-positive comment (`port/src/game/fighter.c:1175`), the ten
   inline credits besides the three `UNROWED_HEADER_SHAPE` addresses
   (`0x1B120`, `0x20C10`, `0x4FBA2`), and the caller-closure reading of the 351
-  runtime rows (exclusive-ancestor: 37 movie-only / 19,261 B, 56 AIL-only /
-  10,824 B, 258 remainder; the 43/76 reading does not reproduce — record the
-  rule).
+  runtime rows: 37 / 19,261 B reproduces (the boot/movie/attract spine); the
+  recon's 56 AIL-only / 10,824 B does **not** reproduce under four mechanical
+  rules (nearest 55/21,385 and 59/21,585); the 43/76 reading does not reproduce.
+  Record the rule and the failed readings; Task 4 derives or names the AIL
+  set.
 - [ ] **Step 4: Record the E2 and audio measurements.** Paste the 227/158
   split, the `FILLERS` line (`tools/entry_triage.py:40`), the measured
   admission (157, all `span-writer`; universe 579 → 736, U0 575 → 732; the
   158th writer `0x5D004` is above `RUNTIME_BASE`) and the audio rotation
   measurement (the five matched / five requested-only / sixteen unattributed
-  banks; the `documented_excluded` second-bank line and the record's
-  `0x145=0x20` at gp-u23's selmo tick 25).
+  banks; the `documented_excluded` second-bank line and the four measured
+  `0x145` rows at gp-u23's selmo section: rel 25 `0x20` attr `0x01` and rel 98
+  `0x98` attr `0x04` are already excluded; rel 326/387 `0x16` attr `0x09`/`0x03`
+  are not).
 - [ ] **Step 5: Record the capture artefacts.** `data/k11-captures/gp-u14-win-live.failed*`,
   `gp-twop-ko.failed*`, `gp-u24-u16-state.failed*`: frames, S records, the
   failing check, and what they still prove. Record the absent U14 target and
@@ -243,10 +247,12 @@ captures. No new dependency.
 - [ ] **Step 1: Write the failing count test.** Assert `0x62003` is not credited
   by the `fighter.c:1175` comment, and that the class map covers every `FN_`
   exactly once. Expected: FAIL on the current tree.
-- [ ] **Step 2: Derive the `replaced` class.** Measure the movie-only and
-  AIL-only closures from `prage.calls.csv` with a **recorded rule** (the
-  exclusive-ancestor reading is 37 movie-only / 19,261 B and 56 AIL-only /
-  10,824 B; the 43/76 reading does not reproduce). Add one evidence line per
+- [ ] **Step 2: Derive the `replaced` class.** Measure the movie-path and AIL
+  closures from `prage.calls.csv` with a **recorded rule**. 37 / 19,261 B
+  reproduces (the boot/movie/attract spine); the recon's 56 AIL-only / 10,824 B
+  does **not** reproduce under four mechanical rules; the 43/76 reading does not
+  reproduce either. Derive the AIL set from a richer graph (indirect/table
+  calls) or name it unreproducible — do not fit it. Add one evidence line per
   address and the closure rule in the file header. Update the header comment to
   define `replaced` and say the portable denominator is unaffected (all are
   `>= 0x5D000`). Do not ship a split without the rule.
@@ -265,9 +271,9 @@ captures. No new dependency.
   the class breakdown (ported / host-owned / deferred / replaced / runtime) and
   stops printing "excludes 53" after the `replaced` class lands. README
   title/lines, `AGENTS.md`'s raw/portable paragraph and `docs/PROGRESS.md`:
-  "759/759 addresses implemented or declared; the measured movie-only and
-  AIL-only closures are replaced; 0x62003 is not a port". Keep the raw
-  percentage at the measured value.
+  "759/759 addresses implemented or declared; the measured movie-path and AIL
+  closures are replaced (or the AIL set is named unreproducible); 0x62003 is
+  not a port". Keep the raw percentage at the measured value.
 - [ ] **Step 6: Add the test to the gate.** Add `test_port_progress` to the
   Makefile's explicit unittest list (`Makefile:2232`).
 - [ ] **Step 7: Commit (when authorized).** `docs: classify the runtime
@@ -372,15 +378,15 @@ captures. No new dependency.
   re-pinned traces, and the claimed sections/banks.
 
 - [ ] **Step 1: Write the failing second-bank case.** Use the record's measured
-  write `0x145=0x20` at `gp-u23-u16-finisher`'s selmo tick 25 (gp-u5's selmo is
-  per-tick equal with and without the exclusion, so it is not the case). A
-  first-bank write on the same channel must still be excluded only for the
+  **unexcluded** rows `0x145=0x16` attr `0x09` at rel 326 and attr `0x03` at rel
+  387 in `gp-u23-u16-finisher`'s selmo section. (`0x145=0x20` attr `0x01` and
+  `0x98` attr `0x04` are already excluded, so they cannot be the failing case.)
+  A first-bank write on the same channel must still be excluded only for the
   declared channels. Expected: FAIL on the current `attr in (1, 4)` rule.
 - [ ] **Step 2: Fix the exclusion.** Derive the predicate from the measured
-  attr (bank-1 channel 11 for `0x145`; `11 % 9 = 2`, so the guessed
-  `attr % 9 in (1, 4)` does not cover it) and cover the second bank's
-  `0x143..0x155` carrier-TL writes. Record the exact register/attr pair the
-  capture proves.
+  unexcluded attrs `0x09`/`0x03`; the guessed `attr % 9 in (1, 4)` does not
+  cover them. Cover the second bank's `0x143..0x155` carrier-TL writes and
+  record the exact register/attr pairs the capture proves.
 - [ ] **Step 3: Add the rotation anchor.** Derive the constant channel rotation
   `k` from the sequencer's voice-cursor state (the driver state that outlives a
   song), not by searching; verify the first `ANCHOR_TICKS` groups, then compare

@@ -35,13 +35,17 @@ strongly than the evidence supports, and one that is simply missing:
    have killed a full gate; it must be fixed before any more captures.
 2. **The completion figure is defensible as address coverage, not as written.**
    The 351 unported functions above `0x5D000` are **not** all WATCOM libc/DOS
-   glue: a caller-closure measurement finds a substantial licensed-middleware
-   layer the port clean-room replaces — under the exclusive-ancestor rule,
-   **37 movie-only (19,261 bytes)** and **56 AIL-only (10,824 bytes)**. Neither
-   split is recorded in `tools/port_classification.txt` (which declares 53
-   effective entries, 41 host + 12 deferred); the earlier recon reading of
-   43/76 does not reproduce. **The exact set and closure rule are Task 4's
-   output; do not ship a split without the rule.** `0x62003` is credited as
+   glue. The baseline reproduces **37 functions / 19,261 bytes** — the
+   boot/movie/attract spine, which includes the movie player `0x1C740` plus six
+   other entry points, not "movie-only" and not all middleware. The recon's
+   **56 AIL-only / 10,824 bytes does not reproduce** under four mechanical
+   closure rules (the nearest readings are 55/21,385 and 59/21,585); a richer
+   call graph (indirect/table calls) is the likely cause. Neither set is in
+   `tools/port_classification.txt` (which declares 53 effective entries, 41
+   host + 12 deferred); the earlier recon reading of 43/76 does not reproduce.
+   **The exact sets and closure rule are Task 4's output; do not ship a split
+   without the rule, and name the AIL set unreproducible if the graph cannot
+   settle it.** `0x62003` is credited as
    ported by a comment that says it is out of scope
    (`port/src/game/fighter.c:1175`); removing it makes the raw count 798, not
    799 (the portable figure is unaffected — it is a runtime address). Ten
@@ -109,10 +113,12 @@ gap unless its next attempt is explicitly authorized.
   `documented_excluded` (`tools/audio_compare.py:219-230`) decides by the
   register's low byte and `attr in (1, 4)`; the second OPL bank's channels
   (`0x143..0x145`, `0x14B..0x14D`, `0x153..0x155`) carry attrs outside `(1, 4)`,
-  so their carrier-TL writes are not excluded — the record's measured
-  second-bank write is `0x145=0x20` at `gp-u23-u16-finisher`'s selmo tick 25
-  (gp-u5's selmo is per-tick equal with and without the exclusion, so it is not
-  the citation).
+  so their carrier-TL writes are not excluded. The baseline measured four
+  `0x145` writes in `gp-u23-u16-finisher`'s `s16selmo+0x25C`: rel 25 `0x20`
+  attr `0x01` and rel 98 `0x98` attr `0x04` (both already excluded), and rel
+  326/387 `0x16` attr `0x09`/`0x03` (not excluded). The earlier `0x145=0x20`
+  citation was the already-excluded row; Task 7 derives the rule from the
+  unexcluded attrs.
 - **Captures:** 34/35 present. `gp-u14-win-live` absent and declared. The
   two-human KO (`gp-twop-ko`) and U16 state (`gp-u24-u16-state`) are diagnostic
   scenarios, not in `CAPTURE_DIRS`; both failed the port-script pin under host
@@ -153,10 +159,11 @@ pin-baseline tripwire (a sha256 over the marked pin regions) so a silent
 
 **G3 — An honest completion figure.** Give every `FN_` address exactly one
 declared class: ported (header or `fn_register`), host-owned, deferred,
-replaced-middleware, or runtime-libc. Derive the movie-only and AIL-only
-closures with a recorded caller-closure rule and declare them `replaced` (the
-recon's exclusive-ancestor reading is 37 + 56, not 43 + 76; the exact set is the
-task's output), remove the `0x62003` false positive, and either give the
+replaced-middleware, or runtime-libc. Derive the movie-path and AIL closures
+with a recorded caller-closure rule and declare them `replaced` (37/19,261
+reproduces as the boot/movie/attract spine; the 56/10,824 AIL reading does not
+reproduce; the exact sets are the task's output, and an unreproducible AIL set
+is named rather than fitted), remove the `0x62003` false positive, and either give the
 inline-credited functions real headers or list them as declared exceptions
 (besides the three `UNROWED_HEADER_SHAPE` addresses). Update
 `port_progress.py` to print the class breakdown, the README title/line,
@@ -301,10 +308,11 @@ claims still stand. This is the design below.
    `K11_*`, `DEMO_FIGHT_MIN_FIRST`, `TITLE_*`, `SMK`, `TRACE_PINS`,
    `SCAN3_ALLOWED`/`OVERLAY_ALLOWED`/`BANDS_ALLOWED`) and a derived capture
    count, replacing the literal `35`.
-4. **Classification truth.** Derive the movie-only and AIL-only closures with a
+4. **Classification truth.** Derive the movie-path and AIL closures with a
    recorded caller-closure rule; add them as `replaced` with one evidence line
-   per address (the recon's exclusive-ancestor reading is 37 + 56, not 43 + 76;
-   measure before writing). Remove the `0x62003` false positive; give `0x2EA64`
+   per address (37/19,261 reproduces; the 56/10,824 AIL reading does not, so
+   measure it or name it unreproducible; the 43/76 reading does not reproduce
+   either). Remove the `0x62003` false positive; give `0x2EA64`
    and `0x500BB` real headers (or a declared exception); enumerate the ten
    inline credits besides the three header-shape exceptions. Change
    `port_progress.py` to require a header or a declared exception, to print the
@@ -334,8 +342,10 @@ claims still stand. This is the design below.
    that close; report 810 or the measured 809 with the `0x255CC` reason,
    `WEAKER` 15 → 12 or 13.
 7. **Audio coverage.** Fix `documented_excluded` to cover the second bank's
-   carrier-TL writes (the measured `0x145=0x20` at `gp-u23`'s selmo tick 25;
-   the attr rule is derived from that measurement, not guessed). Add the
+   carrier-TL writes (the measured unexcluded rows are `0x145=0x16` attr `0x09`
+   at rel 326 and attr `0x03` at rel 387; `0x145=0x20` attr `0x01` and `0x98`
+   attr `0x04` are already excluded; the rule is derived from the measured
+   attrs, not guessed). Add the
    constant-rotation anchor for the `0x31` sections with `k` derived from the
    sequencer's voice-cursor state, not chosen by a search; the null test
    includes a rotated copy of the correct trace and a shuffled capture, and the
