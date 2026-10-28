@@ -10,7 +10,7 @@ frame loop and pixel path) before changing engine code.
 ```bash
 make help                  # the authoritative target list
 make build                 # cmake -S port -B build && cmake --build build
-make gate-check            # inventory 35 capture paths; strict/partial modes; reports the declared U14 gap
+make gate-check            # inventory the CAPTURE_DIRS paths; strict/partial modes; reports the declared U14 gap
 make verify                # THE gate: gate-check + frames + oracle-required tests + all oracles + symbols.h idempotence
 PR_ORACLE_REQUIRED=1 ./build/run_tests    # tests alone, with the byte-exact oracles enabled
 make check frames=60       # headless run → frames/frame_*.ppm/.pal/.idx
