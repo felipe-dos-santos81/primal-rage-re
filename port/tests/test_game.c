@@ -1866,11 +1866,13 @@ int test_flow(void)
         for (int i = 0; i < 4096 * 2; i++) if (abuf[i]) { nz = 1; break; }
         CHECK(nz, "mixer rendered non-silence with the 0x40 sample active");
     }
-    /* The service is paced by the host's 60 Hz clock, not the loop count, so
-     * drive that clock here: one host_wait_vblank() per service advances it one
-     * tick, which becomes two sequencer ticks. */
+    /* The service is paced by a 60 Hz tick, not the loop count: with no device
+     * the sequencer's clock is the master-loop frame counter DS_000EF6DC
+     * (Task 2, record §C2), so drive that clock here — one frame-counter
+     * increment per service advances it one tick, which becomes two sequencer
+     * ticks. */
     for (int i = 0; i < 40; i++) {
-        host_wait_vblank();
+        DSW(DS_000EF6DC) = (u16)(DSW(DS_000EF6DC) + 1u);
         game_audio_service();
     }
     CHECK(game_audio_ticks() > 0, "audio service advances the sequencer");

@@ -736,3 +736,139 @@ executed this phase (the approval does not name U14); U14 R1 stays a named gap.
 - **The failed captures prove only what §C1.7 states** — the U14 one no port
   behaviour at all, the two-human KO a game-side KO with no replay, the U16 ones
   their own rows with the gate operand absent.
+
+---
+
+## §C2 The deterministic sequencer clock (Task 2)
+
+### §C2.1 The determinism check
+
+A new `make audio-determinism` target (Makefile, after `audio-oracle`) runs two
+`make audio-one scenario=gp-u18-talon-ending` replays into two dump roots under
+the same `AUDIO_DET_DUMP` and `cmp`s the two `.../audio.txt` dumps. The
+`audio-one` comparison status is deliberately ignored (under load it fails
+before the fix while the dumps are still written); `cmp` is the verdict. It is
+a standalone check, not wired into `verify` (the brief's Step 1 — a driver
+cannot spawn itself), and is load-agnostic: it must be run under the load the
+RED/GREEN pair used or the two dumps are byte-identical on an idle host for the
+wrong reason.
+
+### §C2.2 RED: the wall-clock sequencer is non-deterministic under load
+
+On the unmodified tree, `make audio-determinism` under 20 CPU-bound
+`python3 -c 'while True: pass'` processes (`taskset -c N`, one per core,
+started 10 s before, killed after) **fails** — the two dumps differ:
+
+```text
+$ make audio-determinism          # AUDIO_DET_EXIT:2 (make Error 1)
+audio-determinism: FAIL (the two audio.txt dumps differ)
+1c1
+< S 0 cc=00000000 dc=00000000 vol=50 bank=00000000 inits=0 ticks=56
+---
+> S 0 cc=00000000 dc=00000000 vol=50 bank=00000000 inits=0 ticks=60
+4c4
+< S 216 cc=00000000 dc=03836102 vol=50 bank=FD94B4E3 inits=1 ticks=488
+---
+> S 216 cc=00000000 dc=03836102 vol=50 bank=FD94B4E3 inits=1 ticks=496
+63c63
+< S 631 cc=00000000 dc=0980025C vol=50 bank=286ED662 inits=2 ticks=1326
+---
+> S 631 cc=00000000 dc=0980025C vol=50 bank=286ED662 inits=2 ticks=1334
+...
+```
+
+`wc -l`: 3012 vs 3028 lines; `diff` counts **1704 `<` lines** (6 `S` + 1698
+`W`). The `S` `ticks` labels shift (56→60, 488→496, 1326→1334 …) and the `W`
+frame labels shift, exactly the §C1.3 mechanism (a label, not the music,
+moving). Load averages: `17.65, 10.10, 9.13` before, `22.74, 12.64, 10.05`
+after.
+
+### §C2.3 Plan-vs-raw correction: the ISR tick breaks the oracle; the frame counter is right
+
+The brief/design prescribe `host_audio_rate() == 0 ? DSD(DS_00101500) :
+host_tick_count()` for the headless sequencer clock (the "same source the mixer
+uses"). **The raw contradicts this.** Implementing it makes the dump
+deterministic (two runs byte-identical) but **breaks the register-stream
+oracle**: every trace's `s16selmo+0x25C` section diverges from the capture and
+the downstream sections fail to anchor, collapsing the claims to the 30-tick
+title section only (e.g. `gp-u18-talon-ending` "FIRST DIFFERENCE … at relative
+tick 215: port [\<none\>] vs capture […]"; claimed 30 ticks vs pinned 964).
+This is beyond the brief's "re-pin the minimums": the sections would have to be
+re-classified from matched to named gaps, gutting the oracle's claim.
+
+**The cause.** `DS_00101500` (the ISR tick) is advanced by the spin (1/frame)
+**and** by the res.c read-stall model `res_load_present`
+(`port/src/platform/res.c:93`, `game_isr_ticks(bytes / RES_READ_BYTES_PER_TICK)`,
+132 674 bytes/tick — a *derived* model whose named gap, record §45-A, is a
+drift of up to 4 ticks from the original's wall-time disk reads). Those model
+ticks land inside the song windows and shift every later note, while the
+capture's sequencer is the original's 60 Hz AIL timer (wall time). The mixer's
+use of `DS_00101500` is the *render frame count* (tolerant); the sequencer's
+tick count is compared exactly, so the two are not interchangeable.
+
+**The correct clock** is the master-loop **frame counter `DS_000EF6DC`**
+(advanced once per frame at `flow.c:7595`, `0x24CDB`), which the res.c
+read-stall model does **not** touch: one uniform tick per frame = 2 sequencer
+ticks = 120 Hz, matching the capture, with no load drift and no wall time. It
+is the deterministic equivalent of the old wall-clock pacing on an idle host.
+The section anchor absorbs the pre-section (loader-screen) drift, so the
+within-section per-tick multisets match. Measured `S`-line ticks for
+`gp-u18-talon-ending` under the frame counter:
+
+```text
+S 0 ticks=24   S 216 ticks=456   S 631 ticks=1314   S 759 ticks=1580
+S 1037 ticks=2194   S 1188 ticks=2508        # song-start frames are unchanged
+```
+
+The only change from the idle wall-clock run is a small uniform shortening
+(the wall clock's accumulated ±1 jitter is gone): `gp-u18-talon-ending` claims
+**962** (was 964) and `gp-u21-armadon-ending` **1198** (was 1200); every other
+trace's claim is unchanged and the full 29-trace oracle is green (twice).
+
+### §C2.4 GREEN: the frame counter is deterministic and faithful
+
+`make audio-determinism` under the same load now **passes** (byte-identical):
+
+```text
+$ make audio-determinism          # AUDIO_DET_EXIT:0
+audio-determinism: PASS (the two audio.txt dumps are byte-identical)
+$ sha256sum /tmp/pr_audio_determinism/run{1,2}/gp-u18-talon-ending/audio.txt
+04401d83ef920c3454893d76cc1e3c5382b5874a07b5b60516d262b45ee1f5cc  …/run1/…
+04401d83ef920c3454893d76cc1e3c5382b5874a07b5b60516d262b45ee1f5cc  …/run2/…
+```
+
+`wc -l` both 3122. `make audio-oracle` twice (`AUDIO_DUMP` per lane) exits 0
+both times, `summary ok`, 0 `FAIL`s.
+
+### §C2.5 The re-pins, proved at ±1
+
+Only the two moved minima are re-pinned in `tools/audio_compare.py` `TRACE_PINS`;
+each proved by the manual `N`/`N+1` procedure (set N+1, confirm the claim
+fails shorter; restore N):
+
+| trace | old pin | new pin (measured) | N+1 fails? |
+|---|---|---|---|
+| `gp-u18-talon-ending` | 964 | **962** | yes — "claimed 962 ticks, pinned minimum 963" |
+| `gp-u21-armadon-ending` | 1200 | **1198** | yes — "claimed 1198 ticks, pinned minimum 1199" |
+
+### §C2.6 The pins that did not move
+
+- **`audio-render` PCM pin**: `make audio-render` still writes the selmo WAV
+  `peak 2790 sha256 530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef`
+  (the test's `SELMO_WAV_PEAK`/`SELMO_WAV_SHA256`, unchanged), and the title WAV
+  is unchanged at `515b7c94a9d0cfb36afa183f9e6642c04ff8ac0150a1f324182cee6bb8d82f3a`
+  peak 4090 (documented; not asserted). The render blocks pace the sequencer
+  from rendered audio, not `game_audio_service`, so this is expected — and it
+  is confirmed, not re-fitted.
+- **Title/attract path**: `make title-oracle` passes (pixel-exact), and the
+  9866-write title oracle still reads "oracle C-vs-Python: 9866 writes
+  byte-exact" with "capture oracle first difference at C write 430" unchanged.
+  `./build/prageport --check 820` still passes (the sequencer does not outrun
+  the host clock, because `g_tick` includes the init chain's wall time).
+
+### §C2.7 `audio-render` in `verify`
+
+`verify` now runs `@$(MAKE) --no-print-directory audio-render` after
+`audio-oracle` (the PCM determinism pin; a parallel lane overrides
+`AUDIO_WAV`/`AUDIO_SONG_WAV`). Added run time ≈ 13 s (the render is a second
+`run_tests` pass).

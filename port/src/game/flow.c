@@ -103,6 +103,12 @@ static u32 s_last_host_tick;     /* host clock at the last service call */
 /* PORT: the ISR tick DS_00101500 at the last service call; the virtual
  * mixer clock's base (game_audio_service). */
 static u32 s_last_isr_tick;
+/* PORT: the sequencer clock at the last service call — the same source the
+ * sequencer elapsed-delta uses (Task 2, record §C2): the master-loop frame
+ * counter DS_000EF6DC with no device, host_tick_count() with one. Kept
+ * separate from s_last_isr_tick, which is the mixer's and is consumed
+ * independently. */
+static u32 s_last_seq_tick;
 static int s_music_notes;        /* sticky: a note has been keyed */
 static s16 s_audio_buf[AUDIO_FRAMES_MAX * 2];
 
@@ -6132,6 +6138,8 @@ void game_audio_init(void)
     AIL_start_timer(timer);
     s_last_host_tick = host_tick_count();
     s_last_isr_tick = DSD(DS_00101500);
+    s_last_seq_tick = (host_audio_rate() == 0) ? DSW(DS_000EF6DC)
+                                               : host_tick_count();
 }
 
 /* PORT: the title state's music request, the substitute for the attract's
@@ -6284,14 +6292,18 @@ static void snd_music_start(void)
 /* 0x1CF20: the master loop's per-frame audio service (0x255CC). Starts each
  * slot's queued sample (0x1CB18, slots 0..3), then the pending music,
  * advances the sequencer, then renders and submits one frame of mixed stereo
- * audio. PORT: no PIT/ISR — the music tick is driven here from the
- * host's measured 60 Hz tick delta. Task 8 measured one XMIDI tick = 8.333 ms
- * (120 Hz) for the shipped profile, so two sequencer ticks per host tick; both
- * the tick count and the sample count derive from that one delta, and a stalled
- * frame is clamped to the host clock's own catch-up bound, so the music tracks
- * wall time without bursting. With no
- * device (host_audio_rate() == 0, e.g. --check) the sequencer still advances
- * and the mixer renders on the virtual clock below; nothing is submitted. */
+ * audio. PORT: no PIT/ISR — the music tick is driven here from a 60 Hz tick
+ * delta. Task 8 measured one XMIDI tick = 8.333 ms (120 Hz) for the shipped
+ * profile, so two sequencer ticks per tick; with a device that delta is the
+ * host's measured wall-clock tick (host_tick_count), and with no device
+ * (host_audio_rate() == 0, e.g. --check and the PR_AUDIO_DUMP replay) it is
+ * the master-loop frame counter DS_000EF6DC (Task 2, record §C2), so the
+ * sequencer stays deterministic under host load. The mixer's frame count
+ * derives from the device-path wall-time delta (or the ISR delta without a
+ * device), and a stalled frame is clamped to the host clock's own catch-up
+ * bound, so the music tracks time without bursting. With no device the
+ * sequencer still advances and the mixer renders on the virtual clock below;
+ * nothing is submitted. */
 void game_audio_service(void)
 {
     PR_SEAM0(0x1CF20u);
@@ -6303,17 +6315,34 @@ void game_audio_service(void)
         title_music_start();
     }
 
-    /* Both the sequencer tick count and the audio frame count come from the
-     * same measured host tick delta, so they stay matched and a slow iteration
-     * cannot change the tempo. A stall is clamped to the host clock's own
-     * catch-up bound, so time the host clock drops is dropped here too and a
-     * stall it replays keeps the music's wall-clock time. */
+    /* The audio frame count (the device path below) comes from the measured
+     * host tick delta, so a slow iteration cannot change the tempo. A stall is
+     * clamped to the host clock's own catch-up bound, so time the host clock
+     * drops is dropped here too and a stall it replays keeps the music's
+     * wall-clock time. */
     u32 now = host_tick_count();
     u32 elapsed = now - s_last_host_tick;
     s_last_host_tick = now;
     if (elapsed > HOST_TICK_MAX_CATCHUP) elapsed = HOST_TICK_MAX_CATCHUP;
 
-    u32 ticks = elapsed * GAME_AUDIO_TICKS_PER_HOST_TICK;
+    /* PORT: the sequencer's tick count uses its own clock (Task 2, record
+     * §C2). With a device it stays wall time, as before, so the music tracks
+     * the live audio device; with no device (host_audio_rate() == 0, e.g.
+     * --check and the PR_AUDIO_DUMP replay) it paces from the master-loop
+     * frame counter DS_000EF6DC — one tick per frame, the game's own 60 Hz
+     * clock — so the dump's W/S labels no longer shift when the host
+     * deschedules the process. It is not DS_00101500, the ISR tick: the res.c
+     * read-stall model advances that counter past the capture's wall time and
+     * breaks the register-stream section matching (§C2). A tick that moved
+     * back (a test restoring mem[]) or wrapped (the 16-bit frame word)
+     * rebases without advancing, as the mixer's does. */
+    u32 seq_now = (host_audio_rate() == 0) ? DSW(DS_000EF6DC) : now;
+    u32 seq_elapsed = seq_now - s_last_seq_tick;
+    s_last_seq_tick = seq_now;
+    if (seq_elapsed > 0x7FFFFFFFu) seq_elapsed = 0;
+    if (seq_elapsed > HOST_TICK_MAX_CATCHUP) seq_elapsed = HOST_TICK_MAX_CATCHUP;
+
+    u32 ticks = seq_elapsed * GAME_AUDIO_TICKS_PER_HOST_TICK;
     for (u32 i = 0; i < ticks; i++) seq_tick();
     s_audio_ticks += ticks;
     if (seq_active_track() > 0) s_music_notes = 1;

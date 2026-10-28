@@ -121,7 +121,7 @@ chunk ?= 0
 
 .PHONY: help deps build gate-check test verify check run clean audio-render \
         smk-oracle title-pin title-capture title-oracle attract-oracle \
-        audio-one audio-oracle \
+        audio-one audio-oracle audio-determinism \
         frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report \
         save-reload-oracle \
@@ -2162,6 +2162,32 @@ audio-oracle: build ## The register-stream oracle over the 29 gameplay gp-* trac
 	@printf '%s\n' $(AUDIO_TRACES) | xargs -P $(AUDIO_JOBS) -I{} $(MAKE) --no-print-directory audio-one scenario={}
 	@$(PYTHON) tools/audio_compare.py summary --captures $(K11_CAPTURES) --audio-captures data/audio-captures --reports $(AUDIO_DUMP)
 
+# Determinism check (Task 2, record §C2): two headless replays of the same
+# trace into two dump roots must write a byte-identical audio.txt (the W/S
+# labels included). The audio-one comparison status is deliberately ignored —
+# under load it fails before the fix while the dumps are still written — and
+# cmp of the two dumps is the verdict. gp-u18-talon-ending is §C1.3's flake
+# scenario; run it under the same load the controller generated for the
+# RED/GREEN pair (a load-agnostic cmp cannot otherwise tell the two apart).
+AUDIO_DET_DUMP ?= /tmp/pr_audio_determinism
+audio-determinism: build ## Two gp-u18-talon-ending replays must be byte-identical (labels included; run under load)
+	@[ -d "$(K11_CAPTURES)/gp-u18-talon-ending" ] || { echo "audio-determinism: SKIP (no capture)"; exit 0; }
+	@rm -rf $(AUDIO_DET_DUMP)
+	@$(MAKE) --no-print-directory audio-one scenario=gp-u18-talon-ending AUDIO_DUMP=$(AUDIO_DET_DUMP)/run1 >/dev/null 2>&1 || true
+	@$(MAKE) --no-print-directory audio-one scenario=gp-u18-talon-ending AUDIO_DUMP=$(AUDIO_DET_DUMP)/run2 >/dev/null 2>&1 || true
+	@if [ ! -f $(AUDIO_DET_DUMP)/run1/gp-u18-talon-ending/audio.txt ] || \
+	    [ ! -f $(AUDIO_DET_DUMP)/run2/gp-u18-talon-ending/audio.txt ]; then \
+		echo "audio-determinism: FAIL (a dump is missing)"; exit 1; fi
+	@if cmp -s $(AUDIO_DET_DUMP)/run1/gp-u18-talon-ending/audio.txt \
+	           $(AUDIO_DET_DUMP)/run2/gp-u18-talon-ending/audio.txt; then \
+		echo "audio-determinism: PASS (the two audio.txt dumps are byte-identical)"; \
+	else \
+		echo "audio-determinism: FAIL (the two audio.txt dumps differ)"; \
+		diff $(AUDIO_DET_DUMP)/run1/gp-u18-talon-ending/audio.txt \
+		     $(AUDIO_DET_DUMP)/run2/gp-u18-talon-ending/audio.txt | head -n 20; \
+		exit 1; \
+	fi
+
 # The --check run must come immediately before the unit suite: test_fn_misslog
 # reads frames/fn_miss.txt from the CWD and verifies the run's pinned known-set.
 verify: gate-check build ## Full ladder: capture preflight, --check frames, oracle-required tests, every pixel and ratchet oracle, differential verification, E2 triage, symbols.h idempotence
@@ -2226,6 +2252,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-ending-oracle
 	@echo "== register-stream oracle (the 29 gp-* traces; each skips without its capture) =="
 	@$(MAKE) --no-print-directory audio-oracle
+	@echo "== headless FM render (the PCM determinism pin; Task 2, record §C2) =="
+	@$(MAKE) --no-print-directory audio-render
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
