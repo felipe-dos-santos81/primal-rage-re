@@ -2306,11 +2306,13 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_check_docs_claims
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory re-extract-test
+	@echo "== docs claims guard (no ported function stated as a gap) =="
+	$(PYTHON) tools/check_docs_claims.py
 	@echo "== symbols.h must regenerate byte-identically =="
 	$(PYTHON) tools/gen_symbols.py $(DECOMP_DIR) $(PORT_DIR)/src/symbols.h
 	@git diff --quiet -- $(PORT_DIR)/src/symbols.h || { \

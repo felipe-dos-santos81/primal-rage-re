@@ -13,16 +13,20 @@ Every claim below is marked with the source of evidence:
 Cycle status (sub-project 2a, Task 13): the port implements this spec's AIL
 surface, event grammar and tick; the register trace was captured and governs the
 comparison, which the port matches at the data/decode level but **not**
-structurally (the driver's reconstruction is unverified), and the port's audio
-was never heard on this host. The full scope, deviations and open risks are in
+structurally (the driver's reconstruction is unverified). The audio device opens
+on this host (`host_audio_open(49716,2) -> 1`, coreaudio, record §J2.5) and the
+music-truth phase plays the in-match/menu songs; rendered audibility stays
+unclaimed (the OPL/mixer core is an invented model with no device-recording
+oracle). The full scope, deviations and open risks are in
 `../../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`.
 
 **Music truth (2026-10-25)** supersedes the cycle status above for music
 selection and the register oracle: the game-side song request/resolve is ported
 (`snd_music_request`/`snd_music_start`), the in-match and menu songs play, and
 the port's OPL register stream is compared tolerance-free against the original's
-captured gameplay traces (29 `.dro` files, 27 replayed; the wall-paced device-2
-walk skips by name) — see "Music truth — the in-match/menu music and the
+captured gameplay traces (29 `.dro` files across 28 capture directories; gp-pads
+holds two; the wall-paced device-2 walk skips by name) — see "Music truth — the
+in-match/menu music and the
 register oracle" at the end of this file. The 9866-write title oracle and its
 declared divergences are unchanged; the PCM pin is a determinism check, not an
 audibility claim.
@@ -814,7 +818,7 @@ driver offset +0x2e at its `0x300` init.`
 | `0x5d7dc` is `rand()`, not audio | **verified** |
 | Game music/frame AIL timer = 60 Hz | **verified** |
 | Streaming AIL timer = 250 Hz (4 ms counter) | **verified** |
-| Sequencer tick = MDI-driver timer (offset +0x2e), rate not in EXE | **verified**; value `TODO(verify)` |
+| Sequencer tick = MDI-driver timer (offset +0x2e), rate not in EXE | **verified**; value **verified** (120 Hz, measured from the capture — "Music tick rate" below) |
 | AIL names for rows 14/19/24 and rows 21–23 | **likely** / `TODO(verify)` by AIL 3.02 header match |
 
 ---

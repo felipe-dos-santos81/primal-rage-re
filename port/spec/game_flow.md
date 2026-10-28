@@ -375,9 +375,11 @@ attract subsystem is owned by `port/src/game/attract.{c,h}`:
   `DS_000C98A0`, enqueues each entry via `0x33874`, and clears `DS_00104AD0` bit
   0 after 10 frames) is ported as `attract_palette_advance` (registered into the
   dispatch), as is the starter `0x4F83C` (`attract_palette_start`) and the
-  `0x33874` reflow (`palette_reflow`). Neither driver runs at runtime: the port
-  never sets `DS_00104AD0` bit 0 (its image value is 0 and only `0x4F83C` sets
-  it, whose `0xE8916`-table callers are unported), so the attract's palette
+  `0x33874` reflow (`palette_reflow`). Neither driver runs on the boot-attract
+  path the attract oracle covers: the port never sets `DS_00104AD0` bit 0 there
+  (its image value is 0 and only `0x4F83C` sets it, whose `0xE8916` `0xD100`
+  targets — the lightning stream's — are registered since record §36 as
+  `anim_code_4F83C`), so the attract's palette
   animation does not render and the attract oracle's first divergence
   (`tools/attract_compare.py`, capture frame 215 raw 2180/2175) is unmoved. Its
   owner is the loader-frame DAC state / read-gate model (record §3.5), not these
@@ -483,8 +485,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   (`camera_y_commit`) now live in `port/src/game/camera.c`; `flow.c:1346` calls
   `camera_dispatch()` at the raw's `0x25422` site. The raw gives `0x12CD4`
   exactly one caller (`0x1317C` at `0x131CB`), so the chain is self-contained.
-  `0x17580`'s `0x140E4`/`0x170A0` tails remain named gaps inside the ported
-  functions (`camera.c`'s `/* PORT: */` notes). The mode-1 split arm's two
+  `0x17580` and its `0x140E4`/`0x170A0` tails are ported (`camera_decay`,
+  `camera_box_overlap`, `camera_unfreeze`, `camera.c`, each with a differential
+  row). The mode-1 split arm's two
   `0x18714` record writes (`0x12F02`/`0x12F22`) were one too until the
   frame-1358 fix ported them (demo-pose record §24).
   **The effect call sites are ported; their callers are not (front-end-chain
@@ -1828,8 +1831,8 @@ derived:
   (`test_game.c`), and `check_state6` asserts the full 14-draw model and the
   dust entries' fields.
 * **Residual.** The dust entries' type-0 processing (`0x49C78`'s default arm →
-  `0x4AAD0` and its callees) is still a named gap, so the dust's motion and
-  despawn are not faithful; its actor is spawned and rendered. The aligned
+  `0x4AAD0` and its callees) is ported (`fight_4aad0`, and `0x4B144` as
+  `fight_4b144`, `fight.c`, each with a differential row). The aligned
   stream's picks are `0xC9524` indices 0, 1, 3, 4 → the descriptors
   `0xBB470`/`0xBB484`/`0xBB4AC`/`0xBB4C0`, types `0x20`/`0x21`/`0x23`/`0x24`,
   whose per-type callbacks at `0xBB9DC + type*0xC` are all the `0x5D812` stub.
@@ -2021,7 +2024,8 @@ scope got **no engine change**: record §4 shows no faithful standalone change.
 
 **Named gaps carried out of the cycle.** 831/832's held-frame presentation (the
 post-read ISR ticks, a host property — un-derivable, so excluded, not fitted);
-the unported `0x36870` 9→4 closer and `0x37178`/`0x37D18`; the five unported
+the `0x36870` 9→4 closer and `0x37178`/`0x37D18` (ported since —
+`fighter_36870`/`fighter_37178`/`fighter_37d18`, `fighter.c`); the five unported
 `+0x52` handlers (`0x359E0`, `0x35C1C`/`0x35D20`, `0x37464`, `0x33B00`,
 `0x35E6C`); and the `0x19020`/`0x3Fxxx` freeze subsystem (cycle 4).
 
@@ -2061,9 +2065,10 @@ human-ratified caller chain 5/1 741).
   the missing initial record `{0xBD470, 0, 1, 0}` (`0x336C0`'s `0x33734`
   enqueue), is now enqueued and asserted (`test_game.c:485-489`).
 * **The attract/scene palette drivers** — `0x4F7F4`/`0x4F83C`/`0x33874` ported
-  and registered through `attract_scene_tick`; `0x4F83C` ships **test-only** (its
-  `0xE8916`-table callers are unported) as an **explicit accepted exception**
-  (spec representation rule, Q10); the attract claim is unmoved (215).
+  (`attract_palette_advance`/`attract_palette_start`/`palette_reflow`);
+  `0x4F83C` is reached through the lightning stream's `0xE8916` `0xD100`
+  targets, registered since record §36 as `anim_code_4F83C`; the attract claim
+  is unmoved (215).
 
 **The 169-tick hold's verdict.** A **real divergence**, not the load/stall
 model: the port holds capture-830's frame byte-static for loop 902..1069 while
