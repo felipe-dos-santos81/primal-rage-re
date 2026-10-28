@@ -137,13 +137,17 @@ gap unless its next attempt is explicitly authorized.
 
 ## 3. Goals
 
-**G1 — A deterministic gate.** Drive the sequencer's tick count from the same
-modelled ISR clock as the mixer whenever there is no audio device
-(`host_audio_rate() == 0`), keep the device path wall-clock, re-measure
-`TRACE_PINS` (the `audio-render` peak/sha is expected to stay put and is
-confirmed, not re-fitted), and prove two consecutive full gates green under
-load. Add `make audio-render` to `make verify` (it holds the PCM determinism pin
-and is currently a separate command).
+**G1 — A deterministic gate.** Drive the sequencer's tick count from the
+deterministic master-loop frame counter `DS_000EF6DC` whenever there is no audio
+device (`host_audio_rate() == 0`), and keep the device path wall-clock. The
+Task 2 measurement **rejected the initially prescribed ISR tick**
+`DS_00101500`: the res.c read-stall model advances it with a named drift, which
+breaks every trace's exact sequencer comparison, while the frame counter
+matches the captures (§C2.3). Re-measure `TRACE_PINS` (the `audio-render`
+peak/sha is expected to stay put and is confirmed, not re-fitted), and prove two
+consecutive full gates green under load. Add `make audio-render` to
+`make verify` (it holds the PCM determinism pin and is currently a separate
+command).
 
 **G2 — A trustworthy capture gate.** Give `gate-check` a per-capture manifest:
 the 30 gameplay/menu captures pinned by `poll.log` sha256, frame count and
@@ -284,11 +288,14 @@ claims still stand. This is the design below.
    artifacts. Write `docs/superpowers/plans/2026-10-27-claim-coverage-derivations.md`
    §C1. Later tasks cite it.
 2. **Deterministic sequencer clock.** In `game_audio_service`, when
-   `host_audio_rate() == 0`, take the elapsed tick from `DSD(DS_00101500)` (the
-   modelled ISR tick) rather than `host_tick_count()`; keep the device path on
-   wall time. Use two deltas and a new `s_last_seq_tick` (the mixer's
-   `s_last_isr_tick` is separate and already consumed by the mixer clock).
-   Re-run the 29-trace oracle twice under load and re-pin `TRACE_PINS` only,
+   `host_audio_rate() == 0`, take the elapsed tick from `DSW(DS_000EF6DC)` (the
+   master-loop frame counter, one uniform tick per frame) rather than
+   `host_tick_count()`; keep the device path on wall time. The initially
+   prescribed ISR tick `DS_00101500` is the mixer's and includes the res.c
+   read-stall model's named drift, so it is not the sequencer clock (§C2.3).
+   Use two deltas and a new `s_last_seq_tick` (the mixer's `s_last_isr_tick` is
+   separate and already consumed by the mixer clock). Run the determinism check
+   under load and the 29-trace oracle twice, and re-pin `TRACE_PINS` only,
    each proved at ±1. **The `audio-render` peak/sha must not move** (the WAV
    blocks pace the sequencer from rendered audio, not `game_audio_service`); if
    it moves, stop. Add `make audio-render` to `verify`. Claim: the

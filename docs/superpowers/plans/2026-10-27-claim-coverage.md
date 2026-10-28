@@ -133,8 +133,9 @@ captures. No new dependency.
 
 **Files:**
 - Modify: `port/src/game/flow.c` (`game_audio_service`, `s_last_host_tick`),
-  `port/tests/test_audio.c` (the PCM pin), `tools/audio_compare.py`
-  (`TRACE_PINS`), `Makefile` (`verify`, `audio-oracle` if needed).
+  `port/tests/test_game.c` (the clock test), `port/tests/test_audio.c` (the PCM
+  pin, expected unchanged), `tools/audio_compare.py` (`TRACE_PINS`),
+  `Makefile` (`verify`, `audio-determinism`, `audio-oracle` if needed).
 - Create/modify: `docs/superpowers/plans/2026-10-27-claim-coverage-derivations.md`
   (§C2).
 
@@ -143,16 +144,20 @@ captures. No new dependency.
 - Produces: a deterministic headless sequencer clock; re-measured
   `TRACE_PINS` and `audio-render` pin; `audio-render` in `verify`.
 
-- [ ] **Step 1: Write the failing determinism case.** Add a Makefile/tools check
-  (two `make audio-one scenario=...` runs + `cmp` of the `PR_AUDIO_DUMP`
-  bytes/labels), not a `run_tests` case: a driver cannot spawn itself.
+- [ ] **Step 1: Write the failing determinism case.** Add a `make
+  audio-determinism` target (or a tools check) that runs two `make audio-one
+  scenario=...` replays into two dump roots and `cmp`s the `PR_AUDIO_DUMP`
+  bytes/labels, not a `run_tests` case: a driver cannot spawn itself.
   Expected: FAIL under load before the fix.
 - [ ] **Step 2: Select the clock.** In `game_audio_service`, use
-  `host_audio_rate() == 0 ? DSD(DS_00101500) : host_tick_count()` for the
-  sequencer's elapsed ticks (the same source the mixer already uses at
-  `flow.c:6321-6345`). Keep the device path wall-clock. Use two deltas and a
-  new `s_last_seq_tick` initialized beside `s_last_isr_tick` (`flow.c:6134`);
-  `s_last_isr_tick` is the mixer's and is consumed at 6332. Do not change
+  `host_audio_rate() == 0 ? DSW(DS_000EF6DC) : host_tick_count()` for the
+  sequencer's elapsed ticks. `DS_000EF6DC` is the master-loop frame counter
+  (`flow.c:7599`, `0x24CDB`), one uniform tick per frame; the ISR tick
+  `DS_00101500` is the mixer's and includes the res.c read-stall model's named
+  drift, so it is not the sequencer clock (§C2.3). Keep the device path
+  wall-clock. Use two deltas and a new `s_last_seq_tick` initialized to the
+  active source beside `s_last_isr_tick` (`flow.c:6134`); `s_last_isr_tick` is
+  the mixer's and is consumed at 6332. Do not change
   `GAME_AUDIO_TICKS_PER_HOST_TICK` (2, the measured 120 Hz sequencer / 60 Hz
   tick).
 - [ ] **Step 3: Re-measure, do not predict.** Run `make audio-oracle` twice.
