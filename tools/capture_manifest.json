@@ -1,0 +1,356 @@
+{
+  "version": 1,
+  "captures": [
+    {
+      "path": "data/k11-captures/gp-idle-loss",
+      "kind": "k11",
+      "poll_log_sha256": "773e264731ea83a23623c6ec6cc5547165628d8adcf96f5a7c99c1c2b88c8447",
+      "frame_count": 8173,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 9857
+    },
+    {
+      "path": "data/k11-captures/gp-u5-charsel",
+      "kind": "k11",
+      "poll_log_sha256": "138fb537cd8c364bab0ccc68fc8fdd9079de19f3b0fc789d427f6d9652a18d7e",
+      "frame_count": 1464,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2341
+    },
+    {
+      "path": "data/k11-captures/gp-u6-moves-b",
+      "kind": "k11",
+      "poll_log_sha256": "dcf242da915c41f4b4e381babdabdc30cd04ce89ed83e25f5178601e4878b2e3",
+      "frame_count": 2205,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 3307
+    },
+    {
+      "path": "data/k11-captures/gp-keys-fight",
+      "kind": "k11",
+      "poll_log_sha256": "8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae",
+      "frame_count": 1166,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 3262
+    },
+    {
+      "path": "data/k11-captures/gp-twop",
+      "kind": "k11",
+      "poll_log_sha256": "9c01a73bfb04be19f794316e80b784a86b782b65f06592f2091d1544edf2e22c",
+      "frame_count": 680,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 1565
+    },
+    {
+      "path": "data/k11-captures/gp-u8-attract-start",
+      "kind": "k11",
+      "poll_log_sha256": "d6b0cf6b210992de4e7cda211f02cbe5653e21a22d3fbec3dd02e7e30e0351fd",
+      "frame_count": 1156,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 2077
+    },
+    {
+      "path": "data/k11-captures/gp-u8-endurance",
+      "kind": "k11",
+      "poll_log_sha256": "01c9069076ce231d652dbe1d97f0a80155d5e73bef932b0254816a79ec746204",
+      "frame_count": 308,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 1233
+    },
+    {
+      "path": "data/k11-captures/gp-u8-handicap",
+      "kind": "k11",
+      "poll_log_sha256": "8f35fd3abd3a5c527e0f72984ed8ba419cadbcefa4e53b349d5a1ed7b69cdfa3",
+      "frame_count": 1081,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 2333
+    },
+    {
+      "path": "data/k11-captures/gp-u8-left-training",
+      "kind": "k11",
+      "poll_log_sha256": "90eeef83f77dab25d9ed7be30fcadf278bfd0413c068c12bd700ff183ab09917",
+      "frame_count": 1141,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 2397
+    },
+    {
+      "path": "data/k11-captures/gp-u8-right-arcade",
+      "kind": "k11",
+      "poll_log_sha256": "b72dbaa7486b651bd1acfddffe886aeb515eed3f916220d44375f0f67227906f",
+      "frame_count": 1140,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 2333
+    },
+    {
+      "path": "data/k11-captures/gp-u8-right-training",
+      "kind": "k11",
+      "poll_log_sha256": "496964928c537f3b428414e21d02f254b399af4b2f39b393d10d9855c74f1ea5",
+      "frame_count": 1167,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 2461
+    },
+    {
+      "path": "data/k11-captures/gp-u8-tug-of-war",
+      "kind": "k11",
+      "poll_log_sha256": "30cd09b8d24a51a41cc37c0ffebd433a08e5a741b248f28e8112c28ff04d1439",
+      "frame_count": 1176,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2525
+    },
+    {
+      "path": "data/k11-captures/gp-u9-win",
+      "kind": "k11",
+      "poll_log_sha256": "7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8",
+      "frame_count": 2521,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 3562
+    },
+    {
+      "path": "data/k11-captures/gp-u10-ending",
+      "kind": "k11",
+      "poll_log_sha256": "a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8deebd3feff38",
+      "frame_count": 5704,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 10013
+    },
+    {
+      "path": "data/k11-captures/gp-u12-endurance",
+      "kind": "k11",
+      "poll_log_sha256": "2edcc088d26162d0fd288c8a5caf17500ac4b7f4a974f57b6f780be0236a9014",
+      "frame_count": 772,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 1990
+    },
+    {
+      "path": "data/k11-captures/gp-u13-ending2",
+      "kind": "k11",
+      "poll_log_sha256": "e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3d12b69c6",
+      "frame_count": 5904,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 10068
+    },
+    {
+      "path": "data/k11-captures/gp-u14-win-live",
+      "kind": "k11",
+      "declared": true,
+      "reason": "U14 R1 fought win not authorized (design approval); the one attempt is preserved as gp-u14-win-live.failed (record 2026-10-26-fought-match-truth-derivations \u00a7F2)"
+    },
+    {
+      "path": "data/k11-captures/gp-u15-join",
+      "kind": "k11",
+      "poll_log_sha256": "5f7ab1d72c7893e6fd66e8db143b615e6d3b385122ae0a93b9037ad1ffe3664c",
+      "frame_count": 805,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 2217
+    },
+    {
+      "path": "data/k11-captures/gp-u16-twop2",
+      "kind": "k11",
+      "poll_log_sha256": "5d38ca1fc3a52bcd02d91df3d7f0ae94a0275f9531f8bd81ffacee5343d31513",
+      "frame_count": 8091,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 8696
+    },
+    {
+      "path": "data/k11-captures/gp-u17-device2",
+      "kind": "k11",
+      "poll_log_sha256": "5c0a3b5610535f9b28739ea7a436104aabc3e2c740c97d40400080b5c41d6d5d",
+      "frame_count": 155,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 906
+    },
+    {
+      "path": "data/k11-captures/gp-u18-talon-ending",
+      "kind": "k11",
+      "poll_log_sha256": "b3279414514aee07d2d4cddada0b63c7ec90f68d905f6509deb3e5c955d2fcf1",
+      "frame_count": 5749,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 10013
+    },
+    {
+      "path": "data/k11-captures/gp-u19-vertigo-ending",
+      "kind": "k11",
+      "poll_log_sha256": "31da347f1e637e3d384936e7b9473cfba7734f8a4216af00236e74d0c730fd69",
+      "frame_count": 6004,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 10067
+    },
+    {
+      "path": "data/k11-captures/gp-u20-chaos-ending",
+      "kind": "k11",
+      "poll_log_sha256": "73b5bb808dee603c1e5a359e2716c9654db945737a799cee30c00762699ca7cb",
+      "frame_count": 5790,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 10124
+    },
+    {
+      "path": "data/k11-captures/gp-u21-armadon-ending",
+      "kind": "k11",
+      "poll_log_sha256": "41e384a94049fc5c1c74934c802153dcdee230631d44522ef03f27935db1b42f",
+      "frame_count": 5946,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 10124
+    },
+    {
+      "path": "data/k11-captures/gp-u22-diablo-ending",
+      "kind": "k11",
+      "poll_log_sha256": "e53bef4f6f4ef23e1c6046c453236d51b54575916cebd71259a3b9b8dbbe0355",
+      "frame_count": 5811,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 10145
+    },
+    {
+      "path": "data/k11-captures/gp-u23-u16-finisher",
+      "kind": "k11",
+      "poll_log_sha256": "6684d3cbb8cfabeed190b1139fa9cc93d69944c6d2b3ef9f9f56db2e0cb34446",
+      "frame_count": 5464,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 6108
+    },
+    {
+      "path": "data/k11-captures/walk",
+      "kind": "k11",
+      "poll_log_sha256": "aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f",
+      "frame_count": 171,
+      "dro": [
+        "prage_000.dro",
+        "prage_001.dro"
+      ]
+    },
+    {
+      "path": "data/k11-captures/menuesc",
+      "kind": "k11",
+      "poll_log_sha256": "aacd32423ac3879739c2f93bf8d87b44c5fb14803b7c69ad712173f5f70f161e",
+      "frame_count": 766,
+      "dro": [
+        "prage_000.dro"
+      ]
+    },
+    {
+      "path": "data/k11-captures/save-reload",
+      "kind": "k11",
+      "poll_log_sha256": "fb9ab5aa5f833e4decd680c55358e3df25b4dda887e1837d1033e25cb19a05f5",
+      "frame_count": 162,
+      "dro": [
+        "prage_000.dro"
+      ]
+    },
+    {
+      "path": "data/k11-captures/gp-pads",
+      "kind": "k11",
+      "poll_log_sha256": "9f8860340b77eaefe12a3c480638000609882b752791d6edf33d20067609fa0c",
+      "frame_count": 446,
+      "dro": [
+        "prage_000.dro",
+        "prage_001.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2456
+    },
+    {
+      "path": "data/smk-captures/twi5",
+      "kind": "frame-dump",
+      "frame_count": 120,
+      "content_hash": "772960e36cc0e95ba904c1a516562aca6dd9724b838be6d27fa5f6d2e45caed4"
+    },
+    {
+      "path": "data/smk-captures/twg",
+      "kind": "frame-dump",
+      "frame_count": 41,
+      "content_hash": "b92d1c23615f540c0c344c8ed6cc42ba94c650640481e6929d5ba48ed0e88a34"
+    },
+    {
+      "path": "data/title-captures/title",
+      "kind": "frame-dump",
+      "frame_count": 587,
+      "content_hash": "7e00b8f431c2a02e088df6d75bfe7445493141fdf37c79e85e8f568056f8b202"
+    },
+    {
+      "path": "data/title-captures/title2",
+      "kind": "frame-dump",
+      "frame_count": 590,
+      "content_hash": "d1bf52fd0c93c020a282107a2af32405cff1e508105383befc257dc7851f753c"
+    },
+    {
+      "path": "data/title-captures/frontend",
+      "kind": "frame-dump",
+      "frame_count": 3617,
+      "content_hash": "14a3ca459301fff2e37d090230f1b00044e7bad3e40c8496e6de5b50d69c6202"
+    }
+  ]
+}

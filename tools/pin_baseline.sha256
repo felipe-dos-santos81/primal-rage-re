@@ -1,0 +1,4 @@
+# Pin-baseline tripwire. Regenerate ONLY with a measured reason:
+#   python3 tools/capture_manifest.py --update-pins --reason "..."
+# reason: Task 3 initial baseline: 26 marker-delimited pin regions (Makefile attract/frontend/demo-fight/attract2/k11/save-reload/smk/gp, audio TRACE_PINS, k11 K11_OPEN_END, gp_compare BANDS/SCAN3/OVERLAY, title_compare FRONTEND/ATTRACT2 allowances); no pin value changed from the pre-Task-3 tree
+10775638b5219dd719d40c73d071a4fc215dd902e05ce0d06b03b05d61c74abd

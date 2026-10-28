@@ -26,6 +26,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import capture_manifest as cm
 import gp_session as gs
 import k11_capture as kc
 import smk_capture as sc
@@ -552,6 +553,11 @@ def main():
     a = ap.parse_args()
     out = guard_gp(a.out)
     scn = gs.SCENARIOS[a.scenario]
+    ok, problems = cm.preflight_capture(kc.CAPTURE_ROOT, memsize=scn.get('memsize'))
+    if not ok:
+        for p in problems:
+            print('gp_capture: preflight: %s' % p)
+        sys.exit('gp_capture: preflight failed; no capture written')
     if not os.path.isfile(a.exe):
         sys.exit('gp_capture: %s missing (run make title-pin)' % a.exe)
     cmos = kc.check_cmos(a.game_dir)

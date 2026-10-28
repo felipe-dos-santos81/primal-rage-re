@@ -77,11 +77,13 @@ K11_ALLOWED_MISSING = {}
 # here. min_end is the END measured when the row was added (like the Makefile's
 # demo-fight N): without it a port that never restarted would end the window
 # at the menu and pass.
+# >>> PIN-BASELINE-BEGIN k11-open-end
 K11_OPEN_END = {
     'menuesc': (388, 'record named-gaps-b §B.12: after the MAIN MENU Esc restart the original runs on '
                      'until the capture\'s time limit (raw 4175); the port script ends 180 ticks '
                      '(k11_session END_TAIL_TICKS, a harness value) after the Esc'),
 }
+# <<< PIN-BASELINE-END k11-open-end
 REPORT_MAX = 5
 
 

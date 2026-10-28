@@ -85,6 +85,7 @@ IPX_BYTES = 64000 + 768
 # driver never dumped (one frame per f; record §K.10 item 2), and its cause stays
 # the named gap §K.12 records. A named frame the two-frame model explains now is
 # reported as a stale name; a named frame that is not the named bytes FAILS.
+# >>> PIN-BASELINE-BEGIN bands
 BANDS_ALLOWED = {
     'gp-keys-fight': (
         # Capture 835 (raw 3934): the altq-n (QUIT TO DOS?, c = 0x833) scan-out
@@ -274,6 +275,7 @@ BANDS_ALLOWED = {
         (5120, 1, 5, '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),
     ),
 }
+# <<< PIN-BASELINE-END bands
 
 # Per-scenario named THREE-frame scan-out allowances for the frames claim
 # (record §G6): the mode-8 entry's catch-up burst (the gate at 0x25643 fails for
@@ -299,6 +301,7 @@ BANDS_ALLOWED = {
 # and the old screen's whole frames are claimed by the capture frames below the
 # ratchet anyway. A named frame the two-frame model explains now is reported as
 # a stale name; a named frame that is not the named bytes FAILS.
+# >>> PIN-BASELINE-BEGIN scan3
 SCAN3_ALLOWED = {
     'gp-idle-loss': (
         # Capture 2064 (raw 5190): the round-1 mode-8 entry catch-up (§G6).
@@ -494,6 +497,7 @@ SCAN3_ALLOWED = {
         (5033, 130, 198, '9a5cd9bd7b6dc2c14642eab62211a5d64a5928dec2abb29b2002725ee333c17e'),
     ),
 }
+# <<< PIN-BASELINE-END scan3
 
 
 # Per-scenario named per-frame glyph-overlay allowances (record §G7): one
@@ -539,7 +543,9 @@ SCAN3_ALLOWED = {
 # now is reported as a stale name; a named frame that is not its named bytes
 # FAILS. A new scenario that needs a name adds it here with its own measured
 # recipe.
+# >>> PIN-BASELINE-BEGIN overlay
 OVERLAY_ALLOWED = {}
+# <<< PIN-BASELINE-END overlay
 
 
 def band_pair(c, port, top_row, band_hi):

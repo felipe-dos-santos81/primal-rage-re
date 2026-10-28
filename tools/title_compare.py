@@ -554,17 +554,20 @@ def load_port(d, n):
 # frame after the demo, so the window now holds the whole demo fight; the
 # allowed set stays (832, 833), and the exhibition set is port frames
 # 0..1381, the whole 1382-frame dump (1145 exhibited).
+# >>> PIN-BASELINE-BEGIN frontend-unexplained
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 FRONTEND_ALLOWED_UNEXPLAINED_SHA256 = {
     832: '4918d7e577ec1cfb64ff8a96981c5a2157b33919cf3e5c3bf4956198aa7959c7',
     833: 'c9436f54a95cd503ee3efab6983f64a1eb33228c5520beeaeadecb8a7a51eb07',
 }
+# <<< PIN-BASELINE-END frontend-unexplained
 
 # The attract cycle-2 region's frames allowed by name, each mapped to a capture
 # it must stay byte-identical to. Capture 2384, the `- LOADING -` frame before
 # the second demo (roar-timing Task 27, record §37: {2384: 832}), is explained
 # since the cycle-2 dump holds the loader's screens (record §45-A), so the set is
 # empty; any unexplained frame counts.
+# >>> PIN-BASELINE-BEGIN attract2-unexplained
 ATTRACT2_ALLOWED_UNEXPLAINED = {}
 
 # The attract cycle-2 region's frames allowed by name as a THREE-frame splice
@@ -593,6 +596,7 @@ ATTRACT2_ALLOWED_UNEXPLAINED = {}
 # that is not such a splice fails; a named frame the two-frame model already
 # explains is reported as a stale name.
 ATTRACT2_SPLICE3_ALLOWED = (3545,)
+# <<< PIN-BASELINE-END attract2-unexplained
 
 
 def splice3(c, frames, loaders, next_clean=None):

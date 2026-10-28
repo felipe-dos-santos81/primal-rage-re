@@ -103,6 +103,7 @@ EXPECTED_TOTAL = sum(len(v) for v in EXPECTED_FILES.values())
 # write-on-change artifact (diff). A section not in either list must anchor and
 # match. `gp-u17-device2` has no frame-keyed port script (wall-paced; record
 # §H6.9) and its `.dro` is the 248 ms boot fragment, so it is skipped by name.
+# >>> PIN-BASELINE-BEGIN trace-pins
 TRACE_PINS = {
     'gp-idle-loss': (1498, (), ()),
     'gp-idle-loss-run2': (1508, (), ()),
@@ -133,6 +134,7 @@ TRACE_PINS = {
     'gp-u8-tug-of-war': (1196, (), ()),
     'gp-u9-win': (176, (0xF1774E70, 0x20DA829D, 0x3BA4C376), ()),
 }
+# <<< PIN-BASELINE-END trace-pins
 
 # The expected per-scenario section identity/status inventory (the whole-song
 # guard, record §M4.5). Each entry is (bank hash, kind) in the port dump's

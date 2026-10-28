@@ -186,7 +186,7 @@ build: ## Configure and build the SDL3 port (CMake → build/)
 	cmake -S $(PORT_DIR) -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 
-gate-check: ## Inventory all 35 oracle captures (GATE_STRICT=0 tolerates undeclared absences)
+gate-check: ## Inventory every oracle capture and validate the manifest, the pin baseline and the verify preflight (GATE_STRICT=0 tolerates undeclared absences)
 	@present=0; missing=0; declared=""; undeclared=""; stale=""; \
 	for d in $(CAPTURE_DIRS); do \
 		if [ -d "$$d" ]; then \
@@ -200,9 +200,9 @@ gate-check: ## Inventory all 35 oracle captures (GATE_STRICT=0 tolerates undecla
 			esac; \
 		fi; \
 	done; \
-	echo "gate: captures $$present/35 present, $$missing missing (strict=$(GATE_STRICT), pins_exact=$(PR_PINS_EXACT))"; \
-	if [ $$((present + missing)) -ne 35 ]; then \
-		echo "gate: FAIL: CAPTURE_DIRS holds $$((present + missing)) paths, expected 35"; exit 1; \
+	echo "gate: captures $$present/$(words $(CAPTURE_DIRS)) present, $$missing missing (strict=$(GATE_STRICT), pins_exact=$(PR_PINS_EXACT))"; \
+	if [ $$((present + missing)) -ne $(words $(CAPTURE_DIRS)) ]; then \
+		echo "gate: FAIL: CAPTURE_DIRS holds $$((present + missing)) paths, expected $(words $(CAPTURE_DIRS))"; exit 1; \
 	fi; \
 	for d in $$declared; do echo "gate: declared gap (absent): $$d"; done; \
 	for d in $$undeclared; do echo "gate: undeclared absence: $$d"; done; \
@@ -212,6 +212,9 @@ gate-check: ## Inventory all 35 oracle captures (GATE_STRICT=0 tolerates undecla
 		echo "gate: FAIL: undeclared capture absence(s) in strict mode"; exit 1; \
 	fi; \
 	if [ -n "$$undeclared" ]; then echo "gate: partial mode tolerates the undeclared absence(s)"; fi
+	@$(PYTHON) tools/capture_manifest.py --check
+	@$(PYTHON) tools/capture_manifest.py --check-pins
+	@$(PYTHON) tools/capture_manifest.py --preflight-verify
 
 # The oracle fixtures are git-ignored, so the suite SKIPS those checks unless
 # asked. Pass oracle=1 (or use `verify`); pass nothing otherwise — the test
@@ -235,6 +238,12 @@ check: build ## Run N frames headless, writing frames/frame_*.ppm/.pal/.idx (fra
 # (PR_SMK_DUMP), then smk_compare.py checks them pixel-exact against the capture.
 # Captures are git-ignored; absent capture skips (or fails under
 # PR_ORACLE_REQUIRED=1, which smk_compare.py enforces itself).
+# >>> PIN-BASELINE-BEGIN smk
+# The pinned SMK comparison lengths, measured from the captures: twi5 holds 120
+# frame files, twg 41.
+SMK_TWI5_FRAMES = 120
+SMK_TWG_FRAMES = 41
+# <<< PIN-BASELINE-END smk
 smk-oracle: build ## Pixel-exact Smacker frame oracle (skips without data/smk-captures)
 	@echo "== smacker frame oracle (pixel-exact) =="
 	@if [ -d $(SMK_CAPTURES)/twi5 ] || [ -d $(SMK_CAPTURES)/twg ]; then \
@@ -243,8 +252,8 @@ smk-oracle: build ## Pixel-exact Smacker frame oracle (skips without data/smk-ca
 	else \
 		echo "smk-oracle: no capture at $(SMK_CAPTURES)/, frames not compared"; \
 	fi
-	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twi5 --port $(SMK_DUMP)/twi5 --frames 120
-	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twg --port $(SMK_DUMP)/twg --frames 41
+	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twi5 --port $(SMK_DUMP)/twi5 --frames $(SMK_TWI5_FRAMES)
+	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twg --port $(SMK_DUMP)/twg --frames $(SMK_TWG_FRAMES)
 
 # Title frame oracle: the PR_TITLE_DUMP driver runs game_init() and the 96-frame
 # pinned title window headless, one RGB24 frame per presented frame;
@@ -281,8 +290,10 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 # a re-pin failure). A measured count below the pin fails. Both captures also
 # measure 74 canonical non-black
 # missing-occurrence classes up to reach (proof-completion record §P10).
+# >>> PIN-BASELINE-BEGIN attract
 ATTRACT_MIN_PORT_EXH ?= 173
 ATTRACT_MAX_MISSING = 74
+# <<< PIN-BASELINE-END attract
 attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/title-captures)
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@if [ -d $(TITLE_CAPTURES)/title ]; then \
@@ -321,9 +332,11 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 # b below it FAILS the gate. The retained dump also measures START 560 and 30
 # canonical non-black missing-occurrence classes up to reach; both are pinned.
 # This is bounded-missing, not full coverage (proof-completion record §P10).
+# >>> PIN-BASELINE-BEGIN frontend
 FRONTEND_END ?= 1884
 FRONTEND_START = 560
 FRONTEND_MAX_MISSING = 30
+# <<< PIN-BASELINE-END frontend
 frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title-captures/frontend)
 	@echo "== front-end oracle (pixel-exact, states 3/4) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -391,7 +404,9 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # classifies that region against the cycle2/ dump). The tool also fails if N > window
 # end + 1, or if the window collapses with an unexplained front-end frame outside the
 # two allowed by name.
+# >>> PIN-BASELINE-BEGIN demo-fight
 DEMO_FIGHT_MIN_FIRST = 1886
+# <<< PIN-BASELINE-END demo-fight
 demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -473,8 +488,10 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # fc8e775.) The retained dump measures 126 canonical missing classes up to
 # reach, with 3545's splice3 frames credited and classes beyond reach excluded
 # (proof-completion record §P10).
+# >>> PIN-BASELINE-BEGIN attract2
 ATTRACT2_MIN_FIRST = 3617
 ATTRACT2_MAX_MISSING = 126
+# <<< PIN-BASELINE-END attract2
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -521,12 +538,14 @@ k11-capture: title-pin ## Capture the pinned original's service menu (scenario=w
 # (so 184). Raise a pin when its count grows; a measured count below the pin fails.
 # poll.log sha256 + the frame count pin each capture's identity (not every
 # pixel); the shared existential order check is enforced in k11_compare too.
+# >>> PIN-BASELINE-BEGIN k11
 K11_WALK_MIN_EXH ?= 36
 K11_MENUESC_MIN_EXH ?= 184
 K11_WALK_CAPTURE_SHA256 = aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f
 K11_WALK_CAPTURE_FRAMES = 171
 K11_MENUESC_CAPTURE_SHA256 = aacd32423ac3879739c2f93bf8d87b44c5fb14803b7c69ad712173f5f70f161e
 K11_MENUESC_CAPTURE_FRAMES = 766
+# <<< PIN-BASELINE-END k11
 k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips without its data/k11-captures/<scenario>)
 	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="
 	@if [ -d $(K11_CAPTURES)/walk ]; then \
@@ -587,10 +606,12 @@ k11-report: build ## Report-only K11 comparison of the evidence captures (idle, 
 #   ENTER_FRAME 491: boot 2's first P record with mode 0x27 after its K
 #     (f=0x1EB; boot 1's is 304) — the port dump frame the load claim judges from;
 #   FRAMES 162: boot 2's frame_*.raw count.
+# >>> PIN-BASELINE-BEGIN save-reload
 SAVE_RELOAD_CMOS_SHA256 = dad3b1f6f84bd851eee675281a7a3310dcf967d42a375b1b9919fb1a41f104f9
 SAVE_RELOAD_POLL_SHA256 = fb9ab5aa5f833e4decd680c55358e3df25b4dda887e1837d1033e25cb19a05f5
 SAVE_RELOAD_ENTER_FRAME = 491
 SAVE_RELOAD_FRAMES = 162
+# <<< PIN-BASELINE-END save-reload
 save-reload-oracle: build ## Save-reload oracle: boot 1's replay writes the captured CMOS, boot 2 loads it (skips without data/k11-captures/save-reload)
 	@echo "== save-reload oracle (the write claim, then the load claim) =="
 	@if [ -d $(K11_CAPTURES)/save-reload ]; then \
@@ -622,6 +643,7 @@ GP_REPORT_MAX ?= 5
 # (proof-completion record §P10). This is a bounded-missing claim, not full
 # coverage: unsampled states and same-count class substitutions stay unclaimed.
 # gp-u14 (absent), gp-u17 (no frame replay) and gp-pads (smoke) have no pin.
+# >>> PIN-BASELINE-BEGIN gp-max-missing
 GP_IDLE_LOSS_MAX_MISSING = 29
 GP_CHARSEL_MAX_MISSING = 4
 GP_MOVES_MAX_MISSING = 7
@@ -646,6 +668,7 @@ GP_U20_MAX_MISSING = 70
 GP_U21_MAX_MISSING = 53
 GP_U22_MAX_MISSING = 52
 GP_U23_MAX_MISSING = 9
+# <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
 
@@ -716,6 +739,7 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # the then-unregistered move callback 0x23208 (divergence 2, record §G.24), ported by U6a; U6a
 # pinned 2064 (record gameplay-u6 §U6.21); track G g6 raised it to 7559 with §G6's allowance.
 # Raise it when the frame claim improves (gp_compare prints "improved: raise N").
+# >>> PIN-BASELINE-BEGIN gp-idle-loss
 GP_IDLE_LOSS_MIN_FIRST = 7559
 # TRACE_MIN_FIRST: no traced difference over the whole replay, port against the capture:
 # gp_compare prints "0 differing through 8319 ... N = 8320 is the exact pin" (7973 frames compared,
@@ -742,6 +766,7 @@ GP_IDLE_LOSS_MIN_REACH = 6300
 # f <= 0x280 moves everything after it by 64 frames. Re-measure all three, then re-pin these.
 GP_IDLE_LOSS_CAPTURE_SHA256 = 773e264731ea83a23623c6ec6cc5547165628d8adcf96f5a7c99c1c2b88c8447
 GP_IDLE_LOSS_CAPTURE_FRAMES = 8173
+# <<< PIN-BASELINE-END gp-idle-loss
 gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skips without data/k11-captures/gp-idle-loss)
 	@echo "== gameplay oracle: gp-idle-loss (frame and trace ratchets) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-idle-loss GP_OPTIONAL=1
@@ -761,6 +786,7 @@ gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skip
 # frame is byte-identical to the capture frame before N, so N is how far the port got, not a defect.
 # The trace line reports no differing frame through the script's last f, so TRACE_MIN_FIRST is that
 # f plus one, the exact pin (one more fails as unreachable).
+# >>> PIN-BASELINE-BEGIN gp-charsel
 GP_CHARSEL_MIN_FIRST = 516
 GP_CHARSEL_TRACE_MIN_FIRST = 1513
 GP_CHARSEL_MAX_START = 100
@@ -771,6 +797,7 @@ GP_CHARSEL_CAPTURE_FRAMES = 1464
 # ends at the capture's mode-6 frame). Measured 2026-10-16 on data/k11-captures/gp-u5-charsel
 # via gp_compare --report. Raise it when gp_compare prints "improved: raise the pin".
 GP_CHARSEL_MIN_REACH = 358
+# <<< PIN-BASELINE-END gp-charsel
 gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratchets (skips without data/k11-captures/gp-u5-charsel)
 	@echo "== gameplay oracle: gp-u5-charsel (frame and trace ratchets) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-u5-charsel GP_OPTIONAL=1
@@ -812,6 +839,7 @@ gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratch
 #   MAX_START: "frames: window from capture 88 (raw 1741)".
 #   CAPTURE_SHA256/FRAMES: data/k11-captures/gp-u6-moves-b/poll.log and its frame_*.raw.gz count
 #     (U6b Task 6 re-run, re-checked on disk at Task 15).
+# >>> PIN-BASELINE-BEGIN gp-moves
 GP_MOVES_MIN_FIRST = 2139
 GP_MOVES_TRACE_MIN_FIRST = 3248
 GP_MOVES_MOVES_MIN_FIRST = 3248
@@ -824,6 +852,7 @@ GP_MOVES_CAPTURE_FRAMES = 2205
 # data/k11-captures/gp-u6-moves-b via gp_compare --report. Raise it when gp_compare prints
 # "improved: raise the pin".
 GP_MOVES_MIN_REACH = 1737
+# <<< PIN-BASELINE-END gp-moves
 gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves ratchets (skips without data/k11-captures/gp-u6-moves-b)
 	@echo "== gameplay oracle: gp-u6-moves-b (frame, trace and moves ratchets) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-u6-moves-b GP_OPTIONAL=1
@@ -851,6 +880,7 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves 
 # ratchet N 0 ok (improved: raise N)"); raise it when gp_keys prints "improved: raise N".
 # CAPTURE_SHA256: that capture's poll.log; another capture fails until it is re-measured
 # (Task 5 Step 1) and both values re-pinned.
+# >>> PIN-BASELINE-BEGIN gp-keys
 GP_KEYS_MIN_EFFECTS = 11
 GP_KEYS_CAPTURE_SHA256 = 8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae
 # The frame + trace ratchet (track G task 5, plan 2026-10-14-reverse-g-widening, record
@@ -883,6 +913,7 @@ GP_KEYS_CAPTURE_FRAMES = 1166
 # data/k11-captures/gp-keys-fight via gp_compare --report. Raise it when gp_compare prints
 # "improved: raise the pin".
 GP_KEYS_MIN_REACH = 788
+# <<< PIN-BASELINE-END gp-keys
 gp-keys-oracle: build ## In-match keys: evidence + effects ratchet and the frame ratchet on gp-keys-fight (skips without data/k11-captures/gp-keys-fight)
 	@echo "== in-match keys oracle: gp-keys-fight (evidence, effects ratchet, frames ratchet) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-keys-fight GP_OPTIONAL=1
@@ -911,6 +942,7 @@ gp-keys-oracle: build ## In-match keys: evidence + effects ratchet and the frame
 # ran, like gp-u5-charsel's 516. Capture
 # 83..611 are all explained (the START MENU, the P2 join, both cursors and confirms, the wipes, the
 # versus screen, the fight to X). Raise it only if the port's script is lengthened.
+# >>> PIN-BASELINE-BEGIN gp-twop
 GP_TWOP_MIN_FIRST = 612
 # TRACE_MIN_FIRST: no traced difference over the whole replay (gp_compare: "0 differing through
 # 1505", f = 0x134..0x5E1; 8 f without a capture snapshot are not compared). N = end + 1 = 1506 is
@@ -938,6 +970,7 @@ GP_TWOP_MIN_REACH = 463
 # END: empty = the replay runs the whole port script (to X, f=0x5E1; record §T.9); a value cuts it
 # (gp_session.py port-script --end), for a replay that stalls.
 GP_TWOP_END =
+# <<< PIN-BASELINE-END gp-twop
 gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace and moves ratchets on data/k11-captures/gp-twop (skips without it)
 	@echo "== gameplay oracle: gp-twop (two humans; frame, trace and moves ratchets; record U7) =="
 	$(PYTHON) -m unittest tools.tests.test_gp_twop
@@ -968,6 +1001,7 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 # "nearest port 824"). TRACE_MIN_FIRST: "0 differing through 2273", end + 1 = 2274, the exact pin.
 # Before P2 (U8, at bc51fd0) both stopped at the reaction 0x20 of f=0x7B7 (N 726, F 1978).
 # MAX_START: the window starts at capture frame 88 (raw 1745). Raise N/F when they improve.
+# >>> PIN-BASELINE-BEGIN gp-modes
 GP_MODES_RA_MIN_FIRST = 1072
 GP_MODES_RA_TRACE_MIN_FIRST = 2274
 GP_MODES_RA_MAX_START = 88
@@ -1071,6 +1105,7 @@ GP_MODES_AS_CAPTURE_FRAMES = 1156
 # frame (script ends at the capture's X record). Measured 2026-10-16 on
 # data/k11-captures/gp-u8-attract-start via gp_compare --report. Raise when it improves.
 GP_MODES_AS_MIN_REACH = 823
+# <<< PIN-BASELINE-END gp-modes
 GP_MODES_SCENARIOS =
 GP_MODES_SCENARIOS += RA:gp-u8-right-arcade
 GP_MODES_SCENARIOS += LT:gp-u8-left-training
@@ -1121,12 +1156,14 @@ gp-modes-one: build
 # capture frame, MIN_REACH the replay's last exhibited port frame (the report's "port 490"), the
 # capture identity the poll.log sha256 and the frame_*.raw.gz count. Raise MIN_FIRST/MIN_REACH
 # when the script is extended.
+# >>> PIN-BASELINE-BEGIN gp-u12
 GP_U12_MIN_FIRST = 732
 GP_U12_TRACE_MIN_FIRST = 1931
 GP_U12_MAX_START = 100
 GP_U12_MIN_REACH = 490
 GP_U12_CAPTURE_SHA256 = 2edcc088d26162d0fd288c8a5caf17500ac4b7f4a974f57b6f780be0236a9014
 GP_U12_CAPTURE_FRAMES = 772
+# <<< PIN-BASELINE-END gp-u12
 gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fight (skips without data/k11-captures/gp-u12-endurance)
 	@echo "== gameplay oracle: gp-u12-endurance (team pass and modes 0x30/0x31) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_modes
@@ -1244,6 +1281,7 @@ gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fi
 # resource layer in the entry's window. The loader text now lands in the replay's own frame and
 # capture 2209 is a CLEAN match, so the OVERLAY_ALLOWED name is retired (the table is empty).
 # MIN_FIRST/START/TRACE/WIN/MILESTONES and the reach (1976) are unchanged.
+# >>> PIN-BASELINE-BEGIN gp-win
 GP_WIN_MIN_FIRST = 2452
 GP_WIN_TRACE_MIN_FIRST = 3503
 GP_WIN_MAX_START = 100
@@ -1256,6 +1294,7 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # the X record). Measured 2026-10-16 on data/k11-captures/gp-u9-win via gp_compare --report.
 # Raise it when gp_compare prints "improved: raise the pin".
 GP_WIN_MIN_REACH = 1976
+# <<< PIN-BASELINE-END gp-win
 # gp-u10-ending (record §W.14; re-measured by track P batch 2, plan reverse-p2 Task 9, record §W.16,
 # once 0x2381C is ported): measured at 20e8f4a (P2 rebased onto b16922d, + its new miss set) on the
 # capture below (poll.log sha256 and its 5704 stored frames pinned together). Report lines, verbatim:
@@ -1357,6 +1396,7 @@ GP_WIN_MIN_REACH = 1976
 # music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
 # Re-measured: MAX_MISSING 65 -> 63 and MIN_REACH 4662 -> 4661; MIN_FIRST/START/TRACE/WIN are
 # exact and unchanged.
+# >>> PIN-BASELINE-BEGIN gp-ending
 GP_ENDING_MIN_FIRST = 5437
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83
@@ -1371,6 +1411,7 @@ GP_ENDING_CAPTURE_FRAMES = 5704
 # Before it: 3444 (4113's nearest port, the first unexplained).
 # Raise it when gp_compare prints "improved: raise the pin".
 GP_ENDING_MIN_REACH = 4661
+# <<< PIN-BASELINE-END gp-ending
 # The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's
 # GP_MODES_KEEP; record §W.10: 129 MB and 302 MB of /tmp).
 GP_WIN_KEEP ?=
@@ -1433,6 +1474,7 @@ gp-win-one: build
 # music resolve presents the loader in the replay's own frame; OVERLAY_ALLOWED retired).
 # Re-measured: MAX_MISSING 59 -> 57 and MIN_REACH 4952 -> 4951; MIN_FIRST/START/TRACE/WIN are
 # exact and unchanged.
+# >>> PIN-BASELINE-BEGIN gp-u13
 GP_U13_MIN_FIRST = 5904
 GP_U13_TRACE_MIN_FIRST = 10069
 GP_U13_MAX_START = 96
@@ -1441,6 +1483,7 @@ GP_U13_CAPTURE_SHA256 = e581916fa0a8e23a2ea52519aa0b358e4bc63084ce9defa0e1f733f3
 GP_U13_CAPTURE_FRAMES = 5904
 GP_U13_MILESTONES = 30
 GP_U13_WIN_MIN_FIRST = 10069
+# <<< PIN-BASELINE-END gp-u13
 gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 ending (skips without data/k11-captures/gp-u13-ending2)
 	@echo "== gameplay oracle: gp-u13-ending2 (BLIZZARD's ending under pokes) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_win
@@ -1501,6 +1544,7 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's
 # two ratchets, and the capture identity (poll.log sha256 and the frame_*.raw.gz count). Raise
 # MIN_FIRST/TRACE_MIN_FIRST/MIN_REACH/MILESTONES/WIN_MIN_FIRST when they improve.
+# >>> PIN-BASELINE-BEGIN gp-u14
 GP_U14_MIN_FIRST =
 GP_U14_TRACE_MIN_FIRST =
 GP_U14_MAX_START =
@@ -1510,6 +1554,7 @@ GP_U14_CAPTURE_SHA256 =
 GP_U14_CAPTURE_FRAMES =
 GP_U14_MILESTONES =
 GP_U14_WIN_MIN_FIRST =
+# <<< PIN-BASELINE-END gp-u14
 gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips without data/k11-captures/gp-u14-win-live)
 	@echo "== gameplay oracle: gp-u14-win-live (a match won by fought hits) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_win
@@ -2257,7 +2302,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

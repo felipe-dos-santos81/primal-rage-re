@@ -633,5 +633,23 @@ class TestPoke(unittest.TestCase):
         self.assertEqual(gc.poke_check([], gs.Schedule(())), ('pokes written 0/0, 0 raced', True))
 
 
+class TestCapturePreflight(unittest.TestCase):
+    """Task 3: gp_capture.main runs the split capture preflight before it stages
+    anything, so a host that is not ready for a capture writes no capture. The
+    preflight's own checks are in test_capture_manifest; here only the wiring
+    into gp_capture is guarded."""
+
+    def test_gp_capture_imports_the_preflight(self):
+        import capture_manifest
+        self.assertIs(gc.cm, capture_manifest)
+        self.assertIs(gc.cm.preflight_capture, capture_manifest.preflight_capture)
+
+    def test_main_calls_the_preflight(self):
+        import inspect
+        src = inspect.getsource(gc.main)
+        self.assertIn('cm.preflight_capture(', src)
+        self.assertIn('preflight failed; no capture written', src)
+
+
 if __name__ == '__main__':
     unittest.main()
