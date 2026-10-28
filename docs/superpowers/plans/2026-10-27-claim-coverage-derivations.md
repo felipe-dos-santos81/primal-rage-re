@@ -456,6 +456,27 @@ indirect calls through the data tables, which the span-writer and reaction
 censuses do see) — a richer graph would change both closures. **Task 4 owns the
 final set and rule; §C1 records only what these four mechanical rules measure.**
 
+**The earlier 43/76 reading.** The design also records an **earlier recon
+reading of 43/76** (design §2 item 2, §7.1 item 4) and states it does not
+reproduce, without defining what the two numbers count — no committed source
+gives the pair a meaning (a function count, a byte total, or a bank count), so it
+cannot be attributed to a set. Against the same closure measurement it does
+**not** reproduce either:
+
+- the transitive partition's group sizes are exactly
+  `{1, 2, 3, 4, 5, 6, 7, 12, 15, 18, 19, 20, 37, 99}` — no group has 43 or 76
+  members;
+- the `E(r) ⊆ S` readings skip both: the counts bracketing 43 are 42/20,145 B
+  and 47/19,931 B, and 76 is absent (77/25,294 B and 78/25,309 B are the
+  neighbours);
+- the direct-boundary partition's group sizes are `{308, 9, 2, 1}` — no 43 or
+  76.
+
+This record replaces it with **nothing**: the measured 37/19,261 B is the one
+reproducible closure and the 56/10,824 B reading is the one named unreproduced;
+43/76 is recorded as **unreproducible and undefined**, not as a third measured
+set.
+
 ### §C1.5 The E2 measurement (plan Step 4, first half)
 
 The committed table is byte-identical to a fresh run (`--check`'s claim), so the
@@ -679,15 +700,23 @@ executed this phase (the approval does not name U14); U14 R1 stays a named gap.
    `tools/tests/test_diff_verify.py:30829` (a tuple of dicts). `WEAKER` and
    `UNROWED` are in `tools/diff_verify.py:407` and `:417` as the plan says.
 2. **The `0x145=0x20` write's attr.** Measured `0x01` (§C1.6), so the current
-   `attr in (1, 4)` predicate already excludes it, contrary to design §2's
-   "their carrier-TL writes are not excluded". The same register's other two
-   writes (attrs `0x09`, `0x03`) are the ones it does not exclude.
+   `attr in (1, 4)` predicate already excludes it. Design §2's summary sentence
+   ("carry attrs outside `(1, 4)`, so their carrier-TL writes are not excluded")
+   is imprecise — the measured attrs straddle the rule: `0x01`/`0x04` are inside
+   and excluded, `0x09`/`0x03` are outside and compared — and the design's own
+   measured paragraph directly after it says exactly that.
 3. **The AIL closure.** 56 functions / 10,824 bytes does not reproduce under any
    of the four mechanical rules in §C1.4.4; the 37/19,261 half does, as the
    boot/movie/attract spine's set. Task 4 measures the final set and rule.
 4. **The "ten inline credits" need a case-insensitive scan.** With a
    case-sensitive one, `0x4160c`'s real lowercase column-0 header
    (`flow.c:523`) is missed and the count reads eleven.
+5. **The 43/76 reading.** The earlier recon pair (design §2 item 2, §7.1 item 4)
+   is undefined in every committed source — nothing says whether 43 and 76 count
+   functions, bytes or banks — and it does not reproduce under the closure
+   measurement (§C1.4.4): no rule tried yields a 43-member or a 76-member set.
+   It is recorded as unreproducible and undefined; no replacement number is
+   fitted.
 
 ### §C1.9 What §C1 does not claim
 
@@ -699,8 +728,9 @@ executed this phase (the approval does not name U14); U14 R1 stays a named gap.
   ticks vs the pinned 964) and run 1 also fails `gp-u20-chaos-ending`; §C1.3
   records the labels, the anchors and the two failing claims.
 - **No closure set or rule is final.** §C1.4.4's 37/19,261 reading is one rule's
-  output; the design's 56/10,824 and 258 remainder are not reproduced and are
-  not claimed.
+  output; the design's 56/10,824, its 258 remainder and its earlier 43/76 pair
+  are not reproduced and are not claimed (43/76 is also undefined in every
+  committed source).
 - **No E2 admission is measured here**; §C1.5 records the tool's current split
   and labels the design's 157/736/732 as recon for Task 5.
 - **The failed captures prove only what §C1.7 states** — the U14 one no port
