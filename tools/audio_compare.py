@@ -105,35 +105,36 @@ EXPECTED_TOTAL = sum(len(v) for v in EXPECTED_FILES.values())
 # §H6.9) and its `.dro` is the 248 ms boot fragment, so it is skipped by name.
 # >>> PIN-BASELINE-BEGIN trace-pins
 TRACE_PINS = {
-    'gp-idle-loss': (1498, (), ()),
-    'gp-idle-loss-run2': (1508, (), ()),
-    'gp-keys-fight': (1508, (), ()),
+    'gp-idle-loss': (1664, (0x19AB8B2B, 0x3BA4C376, 0x8FE546D4, 0xBF1C78E2, 0xE3533961, 0xF1774E70,), (0xE3533961,)),
+    'gp-idle-loss-run2': (1664, (0x19AB8B2B, 0x3BA4C376, 0x8FE546D4, 0xBF1C78E2, 0xE3533961, 0xF1774E70,), ()),
+    'gp-keys-fight': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
     'gp-pads': (30, (), ()),
     'gp-twop': (956, (0x20DA829D,), ()),
-    'gp-u10-ending': (176, (0xF1774E70, 0x20DA829D, 0x3BA4C376), ()),
-    'gp-u12-endurance': (1028, (), ()),
-    'gp-u13-ending2': (356, (0xF1774E70, 0xBC44EF50, 0x3BA4C376), ()),
-    'gp-u15-join': (1498, (), ()),
-    'gp-u16-twop2': (956, (0x20DA829D,), ()),
+    'gp-u10-ending': (176, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x20DA829D, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961, 0xF1774E70,), ()),
+    'gp-u12-endurance': (1436, (), (0x3D536DDE,)),
+    'gp-u13-ending2': (356, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xBC44EF50, 0xE3533961, 0xF1774E70,), ()),
+    'gp-u15-join': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
+    'gp-u16-twop2': (956, (0x20DA829D, 0x3BA4C376, 0xE3533961,), ()),
     'gp-u17-device2': (0, (), ()),
-    'gp-u18-talon-ending': (962, (0x3BA4C376,), ()),
-    'gp-u19-vertigo-ending': (296, (0xF1774E70, 0x3D536DDE, 0x3BA4C376), ()),
-    'gp-u20-chaos-ending': (416, (0xF1774E70, 0x86946EB7, 0x3BA4C376), ()),
-    'gp-u21-armadon-ending': (1198, (0x3BA4C376,), ()),
-    'gp-u22-diablo-ending': (986, (0xBF1C78E2, 0x3BA4C376), (0xFD94B4E3,)),
-    'gp-u23-u16-finisher': (30, (0x20DA829D,), (0x286ED662, 0xF1774E70)),
-    'gp-u5-charsel': (896, (0xF1774E70,), ()),
-    'gp-u6-moves': (1508, (), ()),
-    'gp-u6-moves-b': (1504, (), ()),
-    'gp-u8-attract-start': (1664, (0xF1774E70,), ()),
+    'gp-u18-talon-ending': (962, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961,), (0x87E7C2DE,)),
+    'gp-u19-vertigo-ending': (296, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3D536DDE, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961, 0xF1774E70,), ()),
+    'gp-u20-chaos-ending': (416, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x86946EB7, 0x94C63685, 0xB40FF4A6, 0xE3533961, 0xF1774E70,), (0x15B3F30E,)),
+    'gp-u21-armadon-ending': (1198, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xBC44EF50, 0xE3533961,), ()),
+    'gp-u22-diablo-ending': (990, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xBF1C78E2, 0xE3533961,), (0xB40FF4A6, 0xBF1C78E2,)),
+    'gp-u23-u16-finisher': (30, (0x1895A942, 0x20DA829D, 0x3BA4C376, 0x3EA76262, 0xE3533961,), (0x286ED662, 0xF1774E70,)),
+    'gp-u5-charsel': (896, (0x87E7C2DE, 0xF1774E70,), ()),
+    'gp-u6-moves': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
+    'gp-u6-moves-b': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
+    'gp-u8-attract-start': (1664, (0x86946EB7, 0xF1774E70,), ()),
     'gp-u8-endurance': (613, (), ()),
-    'gp-u8-handicap': (1611, (), ()),
-    'gp-u8-left-training': (1463, (), ()),
-    'gp-u8-right-arcade': (1563, (), ()),
-    'gp-u8-right-training': (1311, (), ()),
-    'gp-u8-tug-of-war': (1196, (), ()),
-    'gp-u9-win': (176, (0xF1774E70, 0x20DA829D, 0x3BA4C376), ()),
+    'gp-u8-handicap': (1664, (0xBC44EF50, 0xF1774E70,), ()),
+    'gp-u8-left-training': (1664, (0xBC44EF50, 0xF1774E70,), ()),
+    'gp-u8-right-arcade': (1664, (0xF1774E70, 0xF270182D,), ()),
+    'gp-u8-right-training': (1664, (0xBC44EF50, 0xF1774E70,), ()),
+    'gp-u8-tug-of-war': (1664, (0xBC44EF50, 0xF1774E70,), ()),
+    'gp-u9-win': (176, (0x20DA829D, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x86946EB7, 0xE3533961, 0xF1774E70,), ()),
 }
+
 # <<< PIN-BASELINE-END trace-pins
 
 # The expected per-scenario section identity/status inventory (the whole-song
@@ -146,55 +147,33 @@ TRACE_PINS = {
 #               that is an improvement and is accepted. A section missing from
 #               the port dump fails in both kinds.
 TRACE_SECTIONS = {
-    'gp-idle-loss': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-idle-loss-run2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-keys-fight': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
+    'gp-idle-loss': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x8FE546D4, 'named'), (0x19AB8B2B, 'named')),
+    'gp-idle-loss-run2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x8FE546D4, 'named'), (0x19AB8B2B, 'named')),
+    'gp-keys-fight': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named')),
     'gp-pads': ((0xFD94B4E3, 'matched'),),
-    'gp-twop': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                (0xF1774E70, 'matched'), (0x20DA829D, 'named')),
-    'gp-u10-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                      (0xF1774E70, 'named'), (0x20DA829D, 'named'),
-                      (0x3BA4C376, 'named')),
-    'gp-u12-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                         (0xF1774E70, 'matched')),
-    'gp-u13-ending2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                       (0xF1774E70, 'named'), (0xBC44EF50, 'named'),
-                       (0x3BA4C376, 'named')),
-    'gp-u15-join': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u16-twop2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                     (0xF1774E70, 'matched'), (0x20DA829D, 'named')),
-    'gp-u18-talon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                            (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched'),
-                            (0x3BA4C376, 'named')),
-    'gp-u19-vertigo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                              (0xF1774E70, 'named'), (0x3D536DDE, 'named'),
-                              (0x3BA4C376, 'named')),
-    'gp-u20-chaos-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                            (0xF1774E70, 'named'), (0x86946EB7, 'named'),
-                            (0x3BA4C376, 'named')),
-    'gp-u21-armadon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                              (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'),
-                              (0x3BA4C376, 'named')),
-    'gp-u22-diablo-ending': ((0xFD94B4E3, 'named'), (0x286ED662, 'matched'),
-                             (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'),
-                             (0x3BA4C376, 'named')),
-    'gp-u23-u16-finisher': ((0xFD94B4E3, 'matched'), (0x286ED662, 'named'),
-                            (0xF1774E70, 'named'), (0x20DA829D, 'named')),
-    'gp-u5-charsel': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                      (0xF1774E70, 'named'), (0x87E7C2DE, 'named')),
-    'gp-u6-moves': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u6-moves-b': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u8-attract-start': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                            (0xF1774E70, 'named')),
+    'gp-twop': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named')),
+    'gp-u10-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u12-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x3D536DDE, 'named')),
+    'gp-u13-ending2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u15-join': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named')),
+    'gp-u16-twop2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x42BECD5B, 'named')),
+    'gp-u18-talon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x87E7C2DE, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u19-vertigo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x3D536DDE, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x3D536DDE, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u20-chaos-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x86946EB7, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x86946EB7, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u21-armadon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u22-diablo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u23-u16-finisher': ((0xFD94B4E3, 'matched'), (0x286ED662, 'named'), (0xF1774E70, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'named'), (0x1895A942, 'named'), (0x42BECD5B, 'named')),
+    'gp-u5-charsel': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x87E7C2DE, 'named')),
+    'gp-u6-moves': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named')),
+    'gp-u6-moves-b': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named')),
+    'gp-u8-attract-start': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x86946EB7, 'named')),
     'gp-u8-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u8-handicap': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u8-left-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u8-right-arcade': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u8-right-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u8-tug-of-war': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u9-win': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'),
-                  (0xF1774E70, 'named'), (0x20DA829D, 'named'),
-                  (0x3BA4C376, 'named')),
+    'gp-u8-handicap': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
+    'gp-u8-left-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
+    'gp-u8-right-arcade': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xF270182D, 'named')),
+    'gp-u8-right-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
+    'gp-u8-tug-of-war': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
+    'gp-u9-win': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x86946EB7, 'named')),
 }
 
 # The register shadow is indexed by the full 9-bit register so the second OPL2
@@ -218,17 +197,37 @@ def is_key_on(reg, val):
     return (0xB0 <= reg <= 0xB8 or 0x1B0 <= reg <= 0x1B8) and (val & 0x20)
 
 
+# The carrier-TL register low bytes (both OPL banks): the declared carrier
+# channels 0..8, op2 +3 (sequencer.c OPL_SLOT/op2 is +3).
+CARRIER_TL = (0x43, 0x44, 0x45, 0x4B, 0x4C, 0x4D, 0x53, 0x54, 0x55)
+
+# The residual carrier-TL attrs the capture proves, per bank (record
+# claim-coverage §C3): the engine's per-channel volume residual is on MIDI
+# channels 1 and 4 in the first OPL bank (`port/spec/audio.md`), and on 9 and 3
+# in the second bank. The second-bank rows are measured in gp-u23-u16-finisher's
+# s16selmo+0x25C section: `0x145=0x20` attr 0x01 (rel 25), `0x145=0x98` attr
+# 0x04 (rel 98), `0x145=0x16` attr 0x09 (rel 326) and `0x145=0x16` attr 0x03
+# (rel 387). A first-bank carrier-TL write under any other attr is compared.
+FIRST_BANK_RESIDUAL_ATTRS = (1, 4)
+SECOND_BANK_RESIDUAL_ATTRS = (1, 4, 9, 3)
+
+
 def documented_excluded(reg, attr):
     """The port deliberately does not reproduce these against a capture.
 
-    `0xBD` unconditionally, and the carrier-TL registers on MIDI channels 1 and
-    4 only (the engine's per-channel volume residual, `port/spec/audio.md`).
+    `0xBD` unconditionally, and the carrier-TL registers on the residual MIDI
+    channels only: 1 and 4 in the first OPL bank (the engine's per-channel
+    volume residual, `port/spec/audio.md`), and 1/4/9/3 in the second bank (the
+    measured second-bank carrier-TL rows, record claim-coverage §C3). Modulator
+    TL and carrier TL under any other attribution are compared.
     """
     lo = reg & 0xFF
     if lo == 0xBD:
         return True
-    if lo in (0x43, 0x44, 0x45, 0x4B, 0x4C, 0x4D, 0x53, 0x54, 0x55):
-        return attr in (1, 4)
+    if lo in CARRIER_TL:
+        if reg >= 0x100:
+            return attr in SECOND_BANK_RESIDUAL_ATTRS
+        return attr in FIRST_BANK_RESIDUAL_ATTRS
     return False
 
 
@@ -804,12 +803,14 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
                              r.first_diff))
         elif r.status in ('unanchored-allowed', 'diff-allowed'):
             named_gaps.append('%08X' % s.bank)
-        elif r.status == 'no-claim':
-            # A one-tick section (the replay ends at the next song's start) has
-            # no claim to make; it is reported by name, and --min-ticks is what
-            # stops a trace shrinking to nothing.
+        elif r.status in ('no-claim', 'no-key-on'):
+            # A one-tick section (the replay ends at the next song's start), or
+            # a section with no key-on to anchor (the sample-queue hand-off
+            # s16snd2+0x21BFA, or a song cut before its first note): nothing to
+            # claim. Reported by name; --min-ticks is what stops a trace
+            # shrinking to nothing.
             named_gaps.append('%08X' % s.bank)
-        elif r.status in ('unanchored', 'no-key-on', 'unattributed'):
+        elif r.status in ('unanchored', 'unattributed'):
             failed.append('section %s %s (%s)'
                           % (resource_name(s.dc, index_names), r.status, r.reason))
         if verbose:
@@ -828,7 +829,7 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
                     failed.append('section %d bank %08X: expected matched, got %s'
                                   % (r.index, bank, r.status))
                 elif kind == 'named' and r.status in (
-                        'unanchored', 'diff', 'no-key-on', 'unattributed'):
+                        'unanchored', 'diff', 'unattributed'):
                     failed.append('section %d bank %08X: expected a named gap, '
                                   'got %s' % (r.index, bank, r.status))
     print('audio-compare: %s: %d compared ticks over %d section(s); %d named gap(s) %s'

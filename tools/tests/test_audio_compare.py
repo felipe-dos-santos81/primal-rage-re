@@ -477,6 +477,37 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertEqual(r.stdout.strip(), '1250')
 
+    def test_second_bank_carrier_tl_attrs_9_3_are_excluded(self):
+        # The measured unexcluded second-bank carrier-TL rows (record
+        # claim-coverage §C3): 0x145=0x16 attr 0x09 and attr 0x03 in
+        # gp-u23-u16-finisher's s16selmo+0x25C must be excluded. The first
+        # bank's carrier-TL stays excluded only on the declared channels 1/4:
+        # an attr outside that set still compares.
+        for lo in (0x43, 0x44, 0x45, 0x4B, 0x4C, 0x4D, 0x53, 0x54, 0x55):
+            self.assertTrue(audio_compare.documented_excluded(lo, 0x01), 'first-bank ch1')
+            self.assertTrue(audio_compare.documented_excluded(lo, 0x04), 'first-bank ch4')
+            self.assertFalse(audio_compare.documented_excluded(lo, 0x09), 'first-bank ch9 still compares')
+            self.assertFalse(audio_compare.documented_excluded(lo, 0x03), 'first-bank ch3 still compares')
+            self.assertFalse(audio_compare.documented_excluded(lo, 0xFF), 'first-bank unattributed still compares')
+        for lo in (0x143, 0x144, 0x145, 0x14B, 0x14C, 0x14D, 0x153, 0x154, 0x155):
+            self.assertTrue(audio_compare.documented_excluded(lo, 0x01), 'second-bank ch1')
+            self.assertTrue(audio_compare.documented_excluded(lo, 0x04), 'second-bank ch4')
+            self.assertTrue(audio_compare.documented_excluded(lo, 0x09), 'second-bank ch9 (measured 0x145=0x16)')
+            self.assertTrue(audio_compare.documented_excluded(lo, 0x03), 'second-bank ch3 (measured 0x145=0x16)')
+        # 0xBD stays unconditional in both banks.
+        self.assertTrue(audio_compare.documented_excluded(0xBD, 0xFF))
+        self.assertTrue(audio_compare.documented_excluded(0x1BD, 0x00))
+
+    def test_no_key_on_section_is_a_named_gap(self):
+        # The sample-queue hand-off s16snd2+0x21BFA (record claim-coverage §C3)
+        # writes registers but never a key-on; it is nothing-to-claim and is
+        # reported by name, not a failure (the pre-fix tool failed it).
+        p = write_port_sections(self.d, [(0xAAAA0001,
+                                          [(60, 0x40, 0x01), (61, 0x43, 0x02)])])
+        c = write_capture_sections(self.d, [(0, [(0, 0xB0, 0x2B)])])
+        r = compare(self.d, p, c, '--expect-sections', 'AAAA0001:named')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('named gap', r.stdout)
 
 
     # ---- final-review regressions (2026-10-26) -------------------------

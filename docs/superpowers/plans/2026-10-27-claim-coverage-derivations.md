@@ -1005,6 +1005,154 @@ fails shorter; restore N):
 
 ---
 
+## §C3 The audio coverage (Task 7)
+
+Task 7 changed the audio oracle's three coverage instruments: the second-bank
+carrier-TL exclusion, the `AUDIO_END` replay cut, and (measured but left
+unclaimed) the channel-rotation anchor for the `0x31` sections.
+
+### §C3.1 The second-bank carrier-TL exclusion
+
+`documented_excluded` now names the residual attrs **per bank**: the first OPL
+bank keeps `(1, 4)` (the engine per-channel volume residual on MIDI channels 1
+and 4, `port/spec/audio.md`), and the second bank adds `(9, 3)`. The second-bank
+rows are the four measured `0x145` writes in `gp-u23-u16-finisher`'s
+`s16selmo+0x25C` (§C1.6):
+
+| relative tick | register | value | attr | excluded before | excluded after |
+|---|---|---|---|---|---|
+| 25 | `0x145` | `0x20` | `0x01` | yes (`1`) | yes |
+| 98 | `0x145` | `0x98` | `0x04` | yes (`4`) | yes |
+| 326 | `0x145` | `0x16` | `0x09` | **no** | yes |
+| 387 | `0x145` | `0x16` | `0x03` | **no** | yes |
+
+The predicate is `lo in CARRIER_TL` and, for `reg >= 0x100`,
+`attr in (1, 4, 9, 3)`, else `attr in (1, 4)`. `0xBD` stays unconditional. The
+first-bank carrier-TL is unchanged — a first-bank write under any other attr
+(e.g. `0x09`/`0x03`/`0xFF`) still compares — so the change cannot over-exclude a
+first-bank write the capture compares. The measured first-bank `0x45` writes in
+the same section carry the same attrs `3`/`9`/`4` and are compared (they match,
+the u23 selmo matches the u16 capture §M4.4 item 2), which is why the predicate
+is bank-split rather than a blanket `attr in (1, 4, 9, 3)`. The test
+`test_second_bank_carrier_tl_attrs_9_3_are_excluded` asserts both halves and is
+RED on the old `attr in (1, 4)` rule.
+
+**Latent, not a pin mover.** The u23 selmo's first difference is still its
+measured capture-side tick split at relative tick 25 (§M4.4 item 2), which the
+second-bank exclusion does not touch, so no pin moves from this fix; it makes
+the predicate correct against the measured second-bank rows so a later
+tick-split resolution cannot then hit a false carrier-TL diff. The C-side
+`documented_excluded` (`port/tests/test_audio.c`) is unchanged: it feeds the
+title oracle, whose title/attract window never reaches the second bank, and its
+"both banks" form is a defensive extension of the first-bank predicate.
+
+### §C3.2 The rotation anchor (`k` derivable, left unclaimed)
+
+The `0x31`/match sections that do not anchor (gp-u5-charsel,
+gp-u8-attract-start, gp-u9-win, gp-u10-ending, gp-u13-ending2,
+gp-u19-vertigo-ending, gp-u20-chaos-ending) are the §M4.4 item 1 voice-cursor
+gap: the capture's previous song plays one more tail note, advancing the
+driver's monotonic voice-rotation cursor `S.next` past the port's, so the
+`0x31` first key-on lands on a different OPL channel. The rotation `k` **is**
+derivable from the cursor, not searched: `k = capture_cursor - port_cursor`
+(mod 18), where each cursor is the channel of the last key-on before the
+section. Measured for gp-u5-charsel: the port's `0x31` first key-on is
+`0xB5=0x36` (channel 5, cursor 4), the capture's is `0xB7=0x36` (channel 7), the
+capture's tail note is `0xB6=0x2B` (channel 6), so `k = 6 - 4 = 2`; rotating
+the port's first key-on by +2 gives `0xB7`, matching the capture. The busy-skip
+makes `k` a cursor delta, not a key-on count: the capture's one extra note
+advances the cursor from 4 to 6 because channel 5 is still sounding.
+
+**Why it is left unclaimed.** The anchor alone is not the claim: the whole
+section must compare, and the current reduction collapses write-on-change by
+seeding both sides' shadow from the **capture's** pre-anchor state. For `k = 0`
+that is correct (both sides share one hardware state); for `k != 0` the port's
+channel `c` and the capture's channel `c + k` held different values at the end
+of the previous song, so the port's own write-on-change suppression differs from
+the capture's and the two sides desynchronise (the port's rotated section shows
+a first difference at its relative tick 0). Reproducing the `0x31` sections
+would need the port's own per-channel hardware history, a rework of the
+reduction outside this task's bounded change. Per the brief ("if `k` cannot be
+derived, leave the section unclaimed rather than search it"), the `0x31`
+sections stay named gaps; the derivation above is recorded so a later task can
+pick it up. No `k` is searched and no section is claimed on a rotation.
+
+### §C3.3 The `AUDIO_END` cap
+
+The maximum `X` record over the 28 gameplay capture directories is **10089**
+(`gp-u22-diablo-ending`); the next-longest are 10069 (`gp-u20`/`gp-u21`), 10013
+(`gp-u13`), 10011 (`gp-u19`), 9958 (`gp-u18`), 9953 (`gp-u10`). `AUDIO_END`
+moves 1400 → **10090** (one above the maximum `X`), so `capture-end` returns
+each capture's own `X` (`min(cap, X)`) and the replay covers the whole captured
+window. The replay is wall-paced at the capture's 60 Hz frame rate, so the cut
+raises the per-trace replay from ~20 s to ~144 s on the ten ending/attract
+traces (a full `make audio-oracle` goes from ~3 min to ~8 min at `AUDIO_JOBS=8`;
+~16 min for the two runs the re-pin proof needs).
+
+**What the fuller cut claims and what it names.** The match sections that were
+truncated at 1400 frames now complete, so the selmo claim grows (the thirteen
+re-pins below). The cut also reaches the ending cinematics' banks for the first
+time — `s16hghsc+0x08`, `s16grave+0x1A10`/`+0x05E4`, `s16sound+0x6CA8`/
+`+0x6EC8`/`+0x8`/`+0x335E`/`+0x39F4`, `s16snd2+0x21BFA` and second occurrences
+of the arena banks — and every one is a **named gap** (the port requests the
+bank but its replay does not match the capture's music). The sample-queue
+hand-off `s16snd2+0x21BFA` has no key-on, so the compare now treats a
+`no-key-on` section as a named gap (reported by name, nothing claimed) instead
+of a failure; the boot's two unattributed OPL reset writes remain the only
+skipped sections. `TRACE_SECTIONS` grows to name every new section in the port
+dump's order; `TRACE_PINS`' two allowance lists carry the new banks.
+
+### §C3.4 The re-pins (13 moved minima, each proved at ±1)
+
+Only the traces whose selmo/match was truncated at 1400 frames move; every new
+minimum is the measured claim and each is proved by the manual `N`/`N+1`
+procedure (`--min-ticks N+1` fails with "claimed N ticks, pinned minimum N+1"):
+
+| trace | old pin | new pin |
+|---|---|---|
+| `gp-idle-loss` | 1498 | **1664** |
+| `gp-idle-loss-run2` | 1508 | **1664** |
+| `gp-keys-fight` | 1508 | **1664** |
+| `gp-u12-endurance` | 1028 | **1436** |
+| `gp-u15-join` | 1498 | **1664** |
+| `gp-u6-moves` | 1508 | **1664** |
+| `gp-u6-moves-b` | 1504 | **1664** |
+| `gp-u8-handicap` | 1611 | **1664** |
+| `gp-u8-left-training` | 1463 | **1664** |
+| `gp-u8-right-arcade` | 1563 | **1664** |
+| `gp-u8-right-training` | 1311 | **1664** |
+| `gp-u8-tug-of-war` | 1196 | **1664** |
+| `gp-u22-diablo-ending` | 986 | **990** |
+
+The other fifteen traces' minima are unchanged (`gp-u18-talon-ending` 962,
+`gp-u21-armadon-ending` 1198, and the rest). Twelve of the thirteen are the
+`AUDIO_END` cut completing a selmo/match that the 1400-frame cut had truncated;
+the thirteenth, `gp-u22-diablo-ending` 986 → 990, is a Task-2 catch-up: the
+deterministic clock (§C2) shortened the title's boundary from the §M4.4 item 5
+rel 6 to rel 4, which moves its stop burst out of the claimed window and turns
+the diff-allowed title into a 4-tick match, but §C2.5 only re-pinned the two
+traces whose totals shrank, so this growth was never recorded. The title/attract
+path and the `audio-render` PCM pin are untouched (no `port/src` change; this
+task changed only the compare tool, its tests and the Makefile).
+
+### §C3.5 The claimed and unclaimed banks (after the cut)
+
+Capture-matched (claimed) banks are unchanged: `s16title+0x36102`
+(FD94B4E3), `s16selmo+0x25C` (286ED662), `s16selmo+0x08`/`0x31` (F1774E70),
+`s16beach+0x08` (87E7C2DE) and `s16jungl+0x08` (BC44EF50). The requested-only
+banks that still do not anchor are now joined by the ending-cinematic banks the
+fuller cut reaches, all named: `s16citys+0x08` (20DA829D), `s16himal+0x08`
+(BF1C78E2), `s16caves+0x08` (86946EB7), `s16sound+0x5B88` (3BA4C376),
+`s16sound+0x3E64` (3D536DDE), `s16sound+0x6CA8` (E3533961), `s16sound+0x6EC8`
+(3EA76262), `s16snd2+0x21BFA` (42BECD5B), `s16sound+0x8` (94C63685),
+`s16grave+0x1A10` (26B142E7), `s16grave+0x05E4` (13211DEB), `s16sound+0x335E`
+(B40FF4A6), `s16hghsc+0x08` (15B3F30E), `s16sound+0x39F4` (19AB8B2B), and the
+arena-bank second occurrences (`0xF270182D`, `0x8FE546D4`, `0x1895A942`). The
+sixteen `§M1.6.7` banks the cut windows never request remain unattributed, not
+reached, so they are neither claimed nor named as section gaps.
+
+---
+
 ## §C4 The classification truth (Task 4)
 
 ### §C4.1 The measured result

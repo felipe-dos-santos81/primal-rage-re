@@ -2161,7 +2161,11 @@ audio-render: build ## Render the title FM music and the selected menu song head
 # AUDIO_DUMP is a fixed shared /tmp path like GP_DUMP; a parallel lane must
 # override it (`make ... AUDIO_DUMP=/tmp/pr_audio_dump_<lane>`).
 AUDIO_DUMP ?= /tmp/pr_audio_dump
-AUDIO_END ?= 1400
+# One above the maximum X record of the 29 gp-* captures (record claim-coverage
+# §C3): the largest X is 10089 (gp-u22-diablo-ending), so 10090 makes
+# capture-end return every capture's own X (`min(cap, X)`) and the replay cover
+# the whole captured window instead of the first 1400 frames.
+AUDIO_END ?= 10090
 AUDIO_JOBS ?= 4
 AUDIO_TRACES = gp-idle-loss gp-idle-loss-run2 gp-keys-fight gp-pads gp-twop \
 	gp-u10-ending gp-u12-endurance gp-u13-ending2 gp-u15-join gp-u16-twop2 \
