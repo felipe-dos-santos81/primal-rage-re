@@ -105,35 +105,37 @@ EXPECTED_TOTAL = sum(len(v) for v in EXPECTED_FILES.values())
 # §H6.9) and its `.dro` is the 248 ms boot fragment, so it is skipped by name.
 # >>> PIN-BASELINE-BEGIN trace-pins
 TRACE_PINS = {
-    'gp-idle-loss': (1664, (0x19AB8B2B, 0x3BA4C376, 0x8FE546D4, 0xBF1C78E2, 0xE3533961, 0xF1774E70,), (0xE3533961,)),
-    'gp-idle-loss-run2': (1664, (0x19AB8B2B, 0x3BA4C376, 0x8FE546D4, 0xBF1C78E2, 0xE3533961, 0xF1774E70,), ()),
-    'gp-keys-fight': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
+    'gp-idle-loss': (2144, (0x3BA4C376, 0xBF1C78E2, 0xE3533961,), (0x19AB8B2B, 0x8FE546D4, 0xBF1C78E2,)),
+    'gp-idle-loss-run2': (2144, (0x3BA4C376, 0xE3533961,), (0x19AB8B2B, 0x8FE546D4, 0xBF1C78E2, 0xE3533961,)),
+    'gp-keys-fight': (2144, (0xBF1C78E2,), (0xBF1C78E2,)),
     'gp-pads': (30, (), ()),
     'gp-twop': (956, (0x20DA829D,), ()),
-    'gp-u10-ending': (176, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x20DA829D, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961, 0xF1774E70,), ()),
+    'gp-u10-ending': (5679, (0x20DA829D, 0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0xB40FF4A6, 0xE3533961,)),
     'gp-u12-endurance': (1436, (), (0x3D536DDE,)),
-    'gp-u13-ending2': (356, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xBC44EF50, 0xE3533961, 0xF1774E70,), ()),
-    'gp-u15-join': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
-    'gp-u16-twop2': (956, (0x20DA829D, 0x3BA4C376, 0xE3533961,), ()),
+    'gp-u13-ending2': (6307, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0xB40FF4A6, 0xE3533961,)),
+    'gp-u15-join': (2144, (0xBF1C78E2,), ()),
+    'gp-u16-twop2': (956, (0x20DA829D, 0x3BA4C376,), (0xE3533961,)),
     'gp-u17-device2': (0, (), ()),
-    'gp-u18-talon-ending': (962, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961,), (0x87E7C2DE,)),
-    'gp-u19-vertigo-ending': (296, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3D536DDE, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961, 0xF1774E70,), ()),
-    'gp-u20-chaos-ending': (416, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x86946EB7, 0x94C63685, 0xB40FF4A6, 0xE3533961, 0xF1774E70,), (0x15B3F30E,)),
-    'gp-u21-armadon-ending': (1198, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xBC44EF50, 0xE3533961,), ()),
-    'gp-u22-diablo-ending': (990, (0x13211DEB, 0x15B3F30E, 0x19AB8B2B, 0x26B142E7, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x94C63685, 0xBF1C78E2, 0xE3533961,), (0xB40FF4A6, 0xBF1C78E2,)),
-    'gp-u23-u16-finisher': (30, (0x1895A942, 0x20DA829D, 0x3BA4C376, 0x3EA76262, 0xE3533961,), (0x286ED662, 0xF1774E70,)),
-    'gp-u5-charsel': (896, (0x87E7C2DE, 0xF1774E70,), ()),
-    'gp-u6-moves': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
-    'gp-u6-moves-b': (1664, (0xBF1C78E2, 0xF1774E70,), ()),
-    'gp-u8-attract-start': (1664, (0x86946EB7, 0xF1774E70,), ()),
+    'gp-u18-talon-ending': (3991, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0x87E7C2DE, 0x94C63685, 0xB40FF4A6, 0xE3533961,)),
+    'gp-u19-vertigo-ending': (3805, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3D536DDE, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961,)),
+    'gp-u20-chaos-ending': (4142, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0x86946EB7, 0x94C63685, 0xB40FF4A6, 0xE3533961,)),
+    'gp-u21-armadon-ending': (5161, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x94C63685, 0xB40FF4A6, 0xBC44EF50, 0xE3533961,)),
+    'gp-u22-diablo-ending': (6013, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0xB40FF4A6, 0xBF1C78E2, 0xE3533961,)),
+    'gp-u23-u16-finisher': (30, (0x20DA829D, 0x3BA4C376,), (0x1895A942, 0x286ED662, 0x3EA76262, 0xE3533961, 0xF1774E70,)),
+    'gp-u5-charsel': (1603, (), ()),
+    'gp-u6-moves': (2144, (), (0xBF1C78E2,)),
+    'gp-u6-moves-b': (2144, (0xBF1C78E2,), ()),
+    'gp-u8-attract-start': (2144, (), (0x86946EB7,)),
     'gp-u8-endurance': (613, (), ()),
-    'gp-u8-handicap': (1664, (0xBC44EF50, 0xF1774E70,), ()),
-    'gp-u8-left-training': (1664, (0xBC44EF50, 0xF1774E70,), ()),
-    'gp-u8-right-arcade': (1664, (0xF1774E70, 0xF270182D,), ()),
-    'gp-u8-right-training': (1664, (0xBC44EF50, 0xF1774E70,), ()),
-    'gp-u8-tug-of-war': (1664, (0xBC44EF50, 0xF1774E70,), ()),
-    'gp-u9-win': (176, (0x20DA829D, 0x3BA4C376, 0x3EA76262, 0x42BECD5B, 0x86946EB7, 0xE3533961, 0xF1774E70,), ()),
+    'gp-u8-handicap': (2966, (), ()),
+    'gp-u8-left-training': (2966, (), ()),
+    'gp-u8-right-arcade': (2968, (), ()),
+    'gp-u8-right-training': (2486, (), (0xF1774E70,)),
+    'gp-u8-tug-of-war': (2966, (), ()),
+    'gp-u9-win': (2831, (0x20DA829D, 0x3BA4C376,), (0x86946EB7, 0xE3533961,)),
 }
+
+
 
 # <<< PIN-BASELINE-END trace-pins
 
@@ -147,33 +149,33 @@ TRACE_PINS = {
 #               that is an improvement and is accepted. A section missing from
 #               the port dump fails in both kinds.
 TRACE_SECTIONS = {
-    'gp-idle-loss': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x8FE546D4, 'named'), (0x19AB8B2B, 'named')),
-    'gp-idle-loss-run2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x8FE546D4, 'named'), (0x19AB8B2B, 'named')),
-    'gp-keys-fight': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named')),
+    'gp-idle-loss': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x8FE546D4, 'named'), (0x19AB8B2B, 'named')),
+    'gp-idle-loss-run2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x8FE546D4, 'named'), (0x19AB8B2B, 'named')),
+    'gp-keys-fight': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named')),
     'gp-pads': ((0xFD94B4E3, 'matched'),),
     'gp-twop': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named')),
-    'gp-u10-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u10-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
     'gp-u12-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x3D536DDE, 'named')),
-    'gp-u13-ending2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u15-join': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named')),
+    'gp-u13-ending2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'matched'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u15-join': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named')),
     'gp-u16-twop2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x42BECD5B, 'named')),
-    'gp-u18-talon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x87E7C2DE, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u19-vertigo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x3D536DDE, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x3D536DDE, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u20-chaos-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x86946EB7, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x86946EB7, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u21-armadon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u22-diablo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'named'), (0x13211DEB, 'named'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u18-talon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x87E7C2DE, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u19-vertigo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x3D536DDE, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x3D536DDE, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u20-chaos-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x86946EB7, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x86946EB7, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u21-armadon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'matched'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u22-diablo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
     'gp-u23-u16-finisher': ((0xFD94B4E3, 'matched'), (0x286ED662, 'named'), (0xF1774E70, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'named'), (0x1895A942, 'named'), (0x42BECD5B, 'named')),
-    'gp-u5-charsel': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x87E7C2DE, 'named')),
-    'gp-u6-moves': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named')),
-    'gp-u6-moves-b': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBF1C78E2, 'named')),
-    'gp-u8-attract-start': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x86946EB7, 'named')),
+    'gp-u5-charsel': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched')),
+    'gp-u6-moves': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named')),
+    'gp-u6-moves-b': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named')),
+    'gp-u8-attract-start': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x86946EB7, 'named')),
     'gp-u8-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched')),
-    'gp-u8-handicap': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
-    'gp-u8-left-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
-    'gp-u8-right-arcade': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xF270182D, 'named')),
-    'gp-u8-right-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
-    'gp-u8-tug-of-war': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'named')),
-    'gp-u9-win': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'named'), (0x42BECD5B, 'named'), (0x86946EB7, 'named')),
+    'gp-u8-handicap': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched')),
+    'gp-u8-left-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched')),
+    'gp-u8-right-arcade': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xF270182D, 'matched')),
+    'gp-u8-right-training': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'named'), (0xBC44EF50, 'matched')),
+    'gp-u8-tug-of-war': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched')),
+    'gp-u9-win': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'matched'), (0x86946EB7, 'named')),
 }
 
 # The register shadow is indexed by the full 9-bit register so the second OPL2
@@ -229,6 +231,51 @@ def documented_excluded(reg, attr):
             return attr in SECOND_BANK_RESIDUAL_ATTRS
         return attr in FIRST_BANK_RESIDUAL_ATTRS
     return False
+
+
+# The OPL3 operator slot offsets within a register bank (sequencer.c OPL_SLOT:
+# channels 0-8 are 0x00/0x01/0x02/0x08/0x09/0x0a/0x10/0x11/0x12; op2 is +3).
+_OPL_SLOT = (0x00, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x10, 0x11, 0x12)
+
+
+def opl_channel(reg):
+    """The OPL channel (0-17) a register addresses, or None (0xBD / unknown)."""
+    lo = reg & 0xFF
+    bank = 1 if reg >= 0x100 else 0
+    if lo == 0xBD:
+        return None
+    for fam in (0xA0, 0xB0, 0xC0):
+        if fam <= lo <= fam + 8:
+            return bank * 9 + (lo - fam)
+    for fam in (0x20, 0x40, 0x60, 0x80, 0xE0):
+        off = lo - fam
+        if off in _OPL_SLOT:
+            return bank * 9 + _OPL_SLOT.index(off)
+        if off >= 3 and (off - 3) in _OPL_SLOT:
+            return bank * 9 + _OPL_SLOT.index(off - 3)
+    return None
+
+
+def rotate_reg(reg, k):
+    """The register with its OPL channel rotated by k (mod 18), the constant
+    channel rotation of the voice-rotation cursor (record claim-coverage §C3.2).
+    """
+    ch = opl_channel(reg)
+    if ch is None:
+        return reg
+    nc = (ch + k) % 18
+    nb = 1 if nc >= 9 else 0
+    lo = reg & 0xFF
+    for fam in (0xA0, 0xB0, 0xC0):
+        if fam <= lo <= fam + 8:
+            return fam + (nc % 9) + (0x100 if nb else 0)
+    for fam in (0x20, 0x40, 0x60, 0x80, 0xE0):
+        off = lo - fam
+        if off in _OPL_SLOT:
+            return fam + _OPL_SLOT[nc % 9] + (0x100 if nb else 0)
+        if off >= 3 and (off - 3) in _OPL_SLOT:
+            return fam + 3 + _OPL_SLOT[nc % 9] + (0x100 if nb else 0)
+    return reg
 
 
 def resource_name(handle, index_names):
@@ -325,6 +372,25 @@ def parse_port(path):
             s.bank = rec['bank']
             s.attributed = True
     return sections, s_lines
+
+
+def rotate_section(section, k):
+    """A copy of the section with every register's OPL channel rotated by k.
+
+    The voice-rotation cursor is the driver's monotonic state, so a section whose
+    capture is a constant channel rotation of the port's (the §M4.4 item-1
+    section-boundary gap) is aligned by relabeling the port's registers before
+    the reduction. Rotation preserves the key-on register family, so anchor_idx
+    and anchor_tick are unchanged; dc/bank/attributed are copied verbatim.
+    """
+    if k == 0:
+        return section
+    rotated = Section([(f, t, w, rotate_reg(reg, k), val, attr)
+                       for (f, t, w, reg, val, attr) in section.writes])
+    rotated.dc = section.dc
+    rotated.bank = section.bank
+    rotated.attributed = section.attributed
+    return rotated
 
 
 def parse_capture(path):
@@ -674,8 +740,12 @@ def compare_section(section, index, captures, allow_unanchored, allow_diff,
         res.status = 'no-claim'
         res.reason = 'the section is one tick; nothing before its boundary tick'
         return res
-    attrs = _port_attr_map(section)
     key_w = section.writes[section.anchor_idx]
+    key_ch = opl_channel(key_w[3])
+    prefix = min(ANCHOR_TICKS, last_rel)
+
+    # Step 1: the zero-rotation anchor — the section's first key-on at the same
+    # register. The common case (and every synthetic k=0 section).
     cands = []
     for ci, (path, _header, events) in enumerate(captures):
         for j, (ms, reg, val) in enumerate(events):
@@ -683,25 +753,65 @@ def compare_section(section, index, captures, allow_unanchored, allow_diff,
                 continue
             if reg == key_w[3] and val == key_w[4] and is_key_on(reg, val):
                 cands.append((ci, j, ms))
-    prefix = min(ANCHOR_TICKS, last_rel)
     for ci, j, _ms in cands:
         path, _header, events = captures[ci]
         shadow = _shadow_from(events, j)
         pw = _reduce_port(section, bytearray(shadow))
+        attrs = _port_attr_map(section)
         cw = _reduce_capture(events, j, attrs, bytearray(shadow))
         pd = _by_tick(pw)
         cd = _by_tick(cw)
         # The anchor prefix: the port's first `prefix` ticks against the
         # capture's groups at the same ticks (a candidate that cannot match
         # them is a repeated note elsewhere, not this section). The first
-        # prefix-passing candidate is the section's chronological occurrence;
-        # a declared allow-diff there stays the section's named gap (the
-        # deferred first-prefix limitation remains declared).
+        # prefix-passing candidate is the section's chronological occurrence.
         pre = align_groups([pd.get(t, []) for t in range(prefix)],
                            [cd.get(t, []) for t in range(prefix + 1)])
         if not pre.ok:
             continue
         return _evaluate_candidate(section, index, ci, j, captures, attrs,
+                                   allow_diff)
+
+    # Step 2: the rotation anchor (the §M4.4 item-1 section-boundary voice-cursor
+    # gap). The constant channel rotation k is read from the two cursors, not
+    # searched: the port's cursor is the first key-on's channel - 1 (seq_start
+    # releases every voice, so the first note lands one past the cursor), and the
+    # capture's cursor is the channel of the last key-on before the candidate
+    # (the boundary tail note). A candidate whose register is not the port's
+    # first key-on rotated by that k is rejected, so a wrongly-rotated copy of
+    # the section fails here rather than by prefix coincidence.
+    port_cursor = (key_ch - 1) % 18 if key_ch is not None else 17
+    rotated_cands = []                 # (ci, j, ms, k)
+    for ci, (path, _header, events) in enumerate(captures):
+        for j, (ms, reg, val) in enumerate(events):
+            if (ci, j) < search_from:
+                continue
+            if val != key_w[4] or not is_key_on(reg, val):
+                continue
+            cap_cursor = 17
+            for jj in range(j - 1, -1, -1):
+                if is_key_on(events[jj][1], events[jj][2]):
+                    cap_cursor = opl_channel(events[jj][1])
+                    if cap_cursor is None:
+                        cap_cursor = 17
+                    break
+            k = (cap_cursor - port_cursor) % 18
+            if reg == rotate_reg(key_w[3], k):
+                rotated_cands.append((ci, j, ms, k))
+    for ci, j, _ms, k in rotated_cands:
+        rotated = rotate_section(section, k)
+        path, _header, events = captures[ci]
+        shadow = _shadow_from(events, j)
+        pw = _reduce_port(rotated, bytearray(shadow))
+        attrs = _port_attr_map(rotated)
+        cw = _reduce_capture(events, j, attrs, bytearray(shadow))
+        pd = _by_tick(pw)
+        cd = _by_tick(cw)
+        pre = align_groups([pd.get(t, []) for t in range(prefix)],
+                           [cd.get(t, []) for t in range(prefix + 1)])
+        if not pre.ok:
+            continue
+        return _evaluate_candidate(rotated, index, ci, j, captures, attrs,
                                    allow_diff)
     if section.bank in allow_unanchored:
         res.status = 'unanchored-allowed'
@@ -711,7 +821,8 @@ def compare_section(section, index, captures, allow_unanchored, allow_diff,
         res.status = 'unanchored'
         res.reason = ('no capture key-on %#04x=%#04x with matching first %d ticks '
                       '(%d candidate%s)' % (key_w[3], key_w[4], prefix,
-                                            len(cands), '' if len(cands) == 1 else 's'))
+                                            len(cands) + len(rotated_cands),
+                                            '' if len(cands) + len(rotated_cands) == 1 else 's'))
     return res
 
 

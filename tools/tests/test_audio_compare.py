@@ -509,6 +509,62 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('named gap', r.stdout)
 
+    # The rotation anchor (record claim-coverage §C3.2): the port's section
+    # first key-on is 0xB1=0x36 (channel 1, cursor 0); the capture's tail note
+    # 0xB2=0x2B (channel 2) advances the capture's cursor, so k = 2 - 0 = 2 and
+    # the capture's section is the port's shifted +2 channels.
+    _ROT_PORT = [(0xAAAA0001,
+                  [(60, 0xB1, 0x36), (61, 0xB2, 0x23), (62, 0xB3, 0x27),
+                   (63, 0xB4, 0x2E), (64, 0xB5, 0x32), (65, 0xB6, 0x2F)])]
+    _ROT_CAP = [(0, [(0, 0xB2, 0x2B)]),
+                (100, [(0, 0xB3, 0x36), (1, 0xB4, 0x23), (2, 0xB5, 0x27),
+                        (3, 0xB6, 0x2E), (4, 0xB7, 0x32), (5, 0xB8, 0x2F)])]
+
+    def rotation_case(self, cap_sections):
+        p = write_port_sections(self.d, self._ROT_PORT)
+        c = write_capture_sections(self.d, cap_sections)
+        return compare(self.d, p, c)
+
+    def test_rotation_anchor_matches_a_rotated_section(self):
+        r = self.rotation_case(self._ROT_CAP)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('synthetic: ok', r.stdout)
+
+    def test_rotation_anchor_rejects_a_wrongly_rotated_copy(self):
+        # The capture's section is rotated one channel further (+3, channels
+        # 4..9) but its tail note is unchanged, so the derived k stays 2 and the
+        # candidate's register (0xB4) is not the port's first key-on rotated by
+        # 2 (0xB3): a searched k would accept it, the derived k rejects it.
+        rotated = [(0, [(0, 0xB2, 0x2B)]),
+                   (100, [(0, 0xB4, 0x36), (1, 0xB5, 0x23), (2, 0xB6, 0x27),
+                          (3, 0xB7, 0x2E), (4, 0xB8, 0x32), (5, 0x1B0, 0x2F)])]
+        r = self.rotation_case(rotated)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+        self.assertNotIn('synthetic: ok', r.stdout)
+
+    def test_rotation_anchor_rejects_a_shuffled_capture(self):
+        # The section's notes are reordered (0x27 and 0x23 swapped): the anchor
+        # candidate still matches but the first 4 tick groups differ.
+        shuffled = [(0, [(0, 0xB2, 0x2B)]),
+                    (100, [(0, 0xB3, 0x36), (1, 0xB5, 0x27), (2, 0xB4, 0x23),
+                           (3, 0xB6, 0x2E), (4, 0xB7, 0x32), (5, 0xB8, 0x2F)])]
+        r = self.rotation_case(shuffled)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+        self.assertNotIn('synthetic: ok', r.stdout)
+
+    def test_rotation_anchor_rejects_a_dropped_write(self):
+        # The capture's rel-4 note (0xB7=0x32) is dropped: the anchor's four-tick
+        # prefix passes, then the full comparison fails at the drop.
+        dropped = [(0, [(0, 0xB2, 0x2B)]),
+                   (100, [(0, 0xB3, 0x36), (1, 0xB4, 0x23), (2, 0xB5, 0x27),
+                          (3, 0xB6, 0x2E), (5, 0xB8, 0x2F)])]
+        r = self.rotation_case(dropped)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('synthetic: FAIL', r.stdout)
+        self.assertNotIn('synthetic: ok', r.stdout)
+
 
     # ---- final-review regressions (2026-10-26) -------------------------
 
