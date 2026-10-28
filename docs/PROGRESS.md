@@ -8,8 +8,12 @@ Each paragraph corresponds to a stretch of work, generally cross-referencing
 a derivation record (`docs/superpowers/plans/<date>-…-derivations.md`), which
 holds the underlying raw-byte evidence.
 
-**Current state (2026-10-28).** The port is complete (`python3 tools/port_progress.py`
-reads `798 1203 66` raw and `759 759 100` portable, with the class breakdown
+**Current state (2026-10-28).** The portable port is complete — `759 759 100`
+of the declared portable population — but the *proof* state is the measured
+differential/oracle figures below and the named gaps that remain (rendered
+audibility, U14's fought live win, the 5120 band, the 20 terminal differential
+rows). `python3 tools/port_progress.py` reads `798 1203 66` raw and
+`759 759 100` portable, with the class breakdown
 `ported 798 (759 portable + 39 runtime) · host-owned 41 · deferred 12 · replaced
 37 · runtime 315` — the claim-coverage classification-truth phase removed the
 `0x62003` false positive and declared the `replaced` clean-room runtime

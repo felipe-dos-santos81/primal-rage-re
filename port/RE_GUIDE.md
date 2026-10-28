@@ -218,7 +218,9 @@ true original, and ported the divergence. Two pieces:
   game_string_get(0x46), DS_00105C00)` (`CREDITS:5`) from the
   `DS_00105D60 == 0` / `DS_00105C00 != 0` branch. Proven by the oracle (green on
   the overlay-live captures, red when stubbed). Seeded inputs `DS_00105C00 = 5`,
-  `DS_00105C05 = 1`; the live credit countdown is a 4b gap. Diagnosis:
+  `DS_00105C05 = 1`; the credit countdown is ported (4b-B, `game_state_step`'s
+  coin poll) and the only 4b gap left is its coin capture (none was taken to pin
+  the live countdown). Diagnosis:
   `../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
 * **The `0x13xxx` effect list**, ported in the new `port/src/game/effects.{c,h}`:
   list primitives `0x249B0`/`0x249C0`/`0x249D0`, free-list build `0x13ADC`,
