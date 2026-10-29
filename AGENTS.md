@@ -556,7 +556,8 @@ consolidation gate).
   are (a) drop the `b0c` clause and claim "fought KOs, no pokes", or (b) move to the final — with the
   measured correction that `b0c`'s ending write is **not universal** (BLIZZARD U13 and ARMADON U21
   keep `b0c = 0`). The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
-  measured NOT-HIT set (110 addresses, §D7.5) and the declared modes; the census baseline is a
+  measured NOT-HIT set (**102** addresses, §D7.5, §D8.3; Task 3's original pin
+  was 110) and the declared modes; the census baseline is a
   separate pin (its own `tools/coverage_baseline.txt`, not the `tools/pin_baseline.sha256`
   capture-pin tripwire). One `sprite_blit_aperture` (`0x51ED8`) pool mismatch was noted (three reruns
   green, not reproduced). No row, class or universe is widened and no capture or pin changed.

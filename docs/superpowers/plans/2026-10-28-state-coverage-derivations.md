@@ -1454,30 +1454,35 @@ B6, B7, B8)" and its §G repeats "spots B2/B3/B4/B6/B7/B8", but those labels are
 replacement is the census's NOT-HIT set plus the declared modes, both owned by
 this phase:
 
-- **The census's measured NOT-HIT set** (`tools/coverage_baseline.txt`, Task 3's
-  pin): **110** portable addresses no driver entered, plus **4**
-  `UNINSTRUMENTED` (`0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`) against **645**
-  `HIT`. The NOT-HIT set (in baseline order) is:
+- **The census's measured NOT-HIT set** (`tools/coverage_baseline.txt`): **102**
+  portable addresses no driver entered, plus **4** `UNINSTRUMENTED` (`0x29D60`,
+  `0x2EA30`, `0x2EA64`, `0x500BB`) against **653** `HIT`. (Task 3's original pin
+  was `HIT 645 / NOT-HIT 110 / UNINSTRUMENTED 4`; Task 14 re-pinned it — §D8.3 —
+  after the phase's captures reached eight of the NOT-HIT addresses.) The
+  NOT-HIT set (in baseline order) is:
 
 ```text
-12BB8 12FD8 13134 1324C 13B3C 14988 14A5C 14B90 17BC8 18950 18B44 19820 19958
-1B890 1B8DC 1B908 1BE30 1BEC4 1ECC8 20860 21458 216EC 26540 266AC 271E0 27254
-278B0 2791C 27A2C 27ED8 28BD4 28C38 292D4 29638 296B8 29C20 2A148 2BD20 2BD44
-2C1C8 2C1D4 2CA48 2E0A4 2EA68 2F940 305FC 319B0 33B00 36300 37464 37B54 380C4
-38154 382C4 38434 384F8 385B0 3A8E8 3B90C 3C1C8 3D004 3E6A8 3EA24 3EE00 3F9C8
-3FF08 40608 406B4 408E8 40954 40BBC 41578 416D4 42FE0 43738 43928 44054 4505C
-45908 45B50 48AAC 48C4C 48D94 4987C 4A808 4A8A8 4AF04 4BD98 4BF18 4C60C 4C784
-4CB18 4CC0C 4CD98 4CE70 4D898 4E11C 4E27C 4E350 4E5A4 4E67C 4E99C 4EBB8 4EF8C
-4F0FC 4F6E8 4F704 4F944 4FF8F 4FFD8
+12BB8 12FD8 13134 1324C 13B3C 14988 14A5C 14B90 17BC8 18950 18B44 1B890 1B8DC
+1B908 1BE30 1BEC4 1ECC8 20860 21458 216EC 26540 266AC 271E0 27254 278B0 2791C
+27A2C 29C20 2A148 2BD20 2BD44 2C1C8 2C1D4 2CA48 2E0A4 2EA68 2F940 305FC 319B0
+33B00 36300 37464 37B54 380C4 38154 382C4 38434 384F8 385B0 3A8E8 3B90C 3C1C8
+3D004 3E6A8 3EA24 3EE00 3F9C8 3FF08 40608 406B4 408E8 40954 40BBC 41578 416D4
+42FE0 43738 43928 44054 4505C 45908 45B50 48AAC 48C4C 48D94 4987C 4A808 4A8A8
+4AF04 4BD98 4BF18 4C60C 4C784 4CB18 4CC0C 4CD98 4CE70 4D898 4E11C 4E27C 4E350
+4E5A4 4E67C 4E99C 4EBB8 4EF8C 4F0FC 4F6E8 4F704 4F944 4FF8F 4FFD8
 ```
 
   The content-bearing subset is the declared modes and their co-entered rows
-  (§D2.6): `0x4BD98`/`0x4E11C`/`0x27A2C` are the `0x21`/`0x25`/`0x0E` entries,
-  `0x28BD4`/`0x28C38` are the drawn round's `0x0A`/`0x0B` handlers (Task 7's
-  timeout draw exhibits `0x0A`/`0x0B`; `0x0B`'s KO pose stays unexhibited because
-  `gp-draw` never published, §D2.7), and the `front-end/ENDURANCE/high-score/
-  finisher/service-menu` blind spots the B-labels meant are exactly the
-  remaining NOT-HIT addresses, none of which is a regression.
+  (§D2.6): `0x4BD98`/`0x4E11C`/`0x27A2C` are the `0x21`/`0x25`/`0x0E` entries.
+  The drawn round's `0x0A`/`0x0B` handlers (`0x28BD4`/`0x28C38`) and the
+  mode-`0x32`/`0x33` team/match-end entries (`0x292D4`/`0x29638`/`0x296B8`), plus
+  the round-end debris spawner (`0x19820`/`0x19958`) and the mode-`0x0A` setter
+  (`0x27ED8`), left the NOT-HIT set in Task 14's re-pin — Task 7's
+  `gp-draw-timeout` and Task 5's `gp-u25-endurance-end` exhibit them (§D8.3);
+  `0x0B`'s KO-draw winner pose stays unexhibited (§D2.7, `gp-draw` never
+  published). The `front-end/ENDURANCE/high-score/finisher/service-menu` blind
+  spots the B-labels meant are exactly the remaining NOT-HIT addresses, none of
+  which is a regression.
 
 - **The declared modes** `0x21` (volleyball), `0x25` (mirror-ARMADON camera) and
   `0x0E` (continue screen) — §D2 — whose two-human/credit gates a poked 1P

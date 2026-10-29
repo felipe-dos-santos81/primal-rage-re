@@ -485,7 +485,8 @@ repeating its capture-first risk.
     and U14's rule mismatch recorded with the two re-scope options. **Measured**
     (record §D7): 20 open rows over 19 addresses (the `TERMINAL_CENSUS`
     terminals), 13 `WEAKER`, 8 `UNROWED`; the B2–B8 labels are replaced by the
-    census's measured NOT-HIT set (110 addresses) plus the declared modes. The
+    census's measured NOT-HIT set (**102** addresses, §D7.5/§D8.3; Task 3's
+    original pin was 110) plus the declared modes. The
     coverage baseline's provenance is a **separate pin**
     (`tools/coverage_baseline.txt`), **not** part of `tools/pin_baseline.sha256`
     (the capture-pin tripwire; record §D7.5). No code.
