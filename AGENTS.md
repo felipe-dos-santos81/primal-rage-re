@@ -519,6 +519,16 @@ consolidation gate).
   data identical and only their labels differing — 180 `W` frame labels one lower, two `W` tick
   labels 308→310 and one `S` `ticks` 2454→2456; no pin weakened); the remaining steps are green
   separately (record §F6.3).
+- **The one-human fought KO is game evidence only; U14 R1 stays declared** (live-truth record §L8).
+  `gp_twop.py check --ko --arcade --winner 1 --capture data/k11-captures/gp-u14-win-live.failed`
+  reads the failed artifact's one-human arcade round (`b1f=1`, no join): `ko f=898` (`s0_5a=78` at
+  the round result, `s0_5a=71` in the mode-6 record at `f=894`), round result `f=898` (`w3=01`), match
+  result `f=F9F` (`ad4=1`, `w3=02`), `b0c` never 1, no pokes, no `X`/`W`. The artifact failed four
+  session checks (end frame, port script, unscripted input, stopped at the end), so it is not a
+  capture: it adds no oracle, no pin and no capture path, and `GP_U14_*` stays empty. The claim is that
+  the game's own damage path KO'd a fighter in a played arcade round; it does not claim the fought win.
+  Option (b), moving the rule to the final, is rejected: its `b0c=1` appears with all seven final KOs poked
+  (§E1.3), so it does not discriminate a fought KO.
 - **The out-of-scope content modes `0x21` (volleyball), `0x25` (both-characters-4
   camera) and `0x0E` (continue screen) are declared, not captured** (state-coverage
   record `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2). `DS_00104ABC =

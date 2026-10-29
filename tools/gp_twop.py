@@ -22,6 +22,10 @@ record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
                                      whose loser's +0x5A reached 0x78 from a live value in
                                      a mode-6 entry that no poke wrote and that did not
                                      time out, and whose result names side N (default 0)
+  gp_twop.py check --ko --arcade --capture DIR
+                                      the same KO claim for a one-human arcade round
+                                      (b1f 1, no join; record §L8), the game-evidence-only
+                                      check of the U14 .failed artifact
   gp_twop.py check --trace FILE     the same over a port trace.txt (its T records
                                     are read as S records; any file whose records
                                     are T lines is a trace)
@@ -257,7 +261,7 @@ def _result_names(res, wfield, lfield, rmode, prev):
         prev is None or wv > prev[wfield])
 
 
-def ko(lines, winner=0):
+def ko(lines, winner=0, arcade=False):
     """The hand-dealt KO evidence (plan 2026-10-26-fought-match-truth §F3).
 
     Returns dict(ko, round, result, death, fail): the frames of the KO (the
@@ -282,7 +286,11 @@ def ko(lines, winner=0):
     must carry ad4 = winner and w[winner] > w[loser]. b0c is reported, not
     required: the first 0 -> 1 transition at or after the KO is the death-done
     frame (b0c is not cleared between rounds, so a stale 1 is not this KO's),
-    and a hand-dealt KO leaves the death animation to run (record §W.5)."""
+    and a hand-dealt KO leaves the death animation to run (record §W.5).
+
+    arcade replaces the two-human claim with a one-human arcade round (record
+    §L8): no record before the X record has b1f outside {0, 1} (no join), and the
+    KO's own record has b1f == 1. Nothing else changes."""
     out = dict(ko=None, round=None, result=None, death=None, fail=[])
     if winner not in (0, 1):
         out['fail'].append('side %r cannot win: the slots are 0 and 1' % (winner,))
@@ -309,7 +317,13 @@ def ko(lines, winner=0):
             out['fail'].append('poke: the W record at f=%X covers %08X, a KO/death field: the round '
                                "must be the game's own write, not a poked one" % (r['f'], hit))
             break
-    out['fail'] += two_human(lines)['fail']
+    if arcade:
+        joined = next((r for r in recs if r['b1f'] not in (0, 1)), None)
+        if joined is not None:
+            out['fail'].append('b1f=%X at f=%X: a second human joined (or the match is not an arcade '
+                               'round), so the arcade KO claim does not hold' % (joined['b1f'], joined['f']))
+    else:
+        out['fail'] += two_human(lines)['fail']
 
     entries = _entries(recs)
     ko_i, ko_r = None, None
@@ -329,6 +343,9 @@ def ko(lines, winner=0):
                                % (loser, l5a, KO_VALUE))
         return out
     out['ko'] = ko_r['f']
+    if arcade and ko_r['b1f'] != 1:
+        out['fail'].append('b1f=%X at the KO f=%X: the arcade KO is a one-human round (b1f 1)'
+                           % (ko_r['b1f'], ko_r['f']))
     mode = entries[ko_i][0]
     # The round's mode-6 entry: the KO and the mode change share the iteration
     # that deals it, so an end-of-iteration snapshot shows the result mode, not
@@ -490,11 +507,15 @@ def main():
                     help='with --finisher, allow no sampled finisher reaction while still checking end modes')
     ap.add_argument('--winner', type=int, choices=(0, 1),
                     help='with --ko, the winning side (default 0)')
+    ap.add_argument('--arcade', action='store_true',
+                    help='with --ko, a one-human arcade round (b1f 1) instead of a two-human match')
     a = ap.parse_args()
     if a.allow_missing_reaction and not a.finisher:
         ap.error('--allow-missing-reaction requires --finisher')
     if a.winner is not None and not a.ko:
         ap.error('--winner requires --ko')
+    if a.arcade and not a.ko:
+        ap.error('--arcade requires --ko')
     path = os.path.join(a.capture, 'poll.log') if a.capture else a.trace
     lines = load(path)
     name = os.path.basename(os.path.normpath(a.capture)) if a.capture else path
@@ -505,7 +526,7 @@ def main():
         return 0
     if a.ko:
         w = 0 if a.winner is None else a.winner
-        k = ko(lines, winner=w)
+        k = ko(lines, winner=w, arcade=a.arcade)
         print('gp_twop: %s: hand-dealt KO of side %d: ko f=%s; round result f=%s; match result f=%s; '
               'death-done f=%s' % (name, w, _hx(k['ko']), _hx(k['round']), _hx(k['result']),
                                    _hx(k['death'])))

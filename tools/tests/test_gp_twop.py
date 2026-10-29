@@ -446,6 +446,21 @@ class TestKO(unittest.TestCase):
         self.assertEqual(r['fail'], [])
         self.assertIsNone(r['death'])
 
+    def test_an_arcade_ko_passes_on_one_human(self):
+        # the one-human arcade round (b1f 1, never a join): _ko_log with its fight
+        # records at b1f 1 has no two-human join, so only --arcade can pass it
+        lines = [l.replace('b1f=03', 'b1f=01') for l in _ko_log()]
+        self.assertEqual(gt.ko(lines)['fail'][0], 'b1f never reaches 3 (no S record has both sides human)')
+        r = gt.ko(lines, arcade=True)
+        self.assertEqual((r['fail'], r['ko'], r['round'], r['death']), ([], 0x410, 0x420, 0x420))
+
+    def test_a_two_human_log_fails_the_arcade_check(self):
+        self.assertIn('b1f=3 at f=', ' '.join(gt.ko(_ko_log(), arcade=True)['fail']))
+
+    def test_an_arcade_ko_with_a_poke_fails(self):
+        lines = [l.replace('b1f=03', 'b1f=01') for l in _ko_log(poke=0x10789E)]
+        self.assertIn('poke', ' '.join(gt.ko(lines, arcade=True)['fail']))
+
     def test_a_ko_with_no_result_after_it_fails(self):
         # a capture that stops at the KO: the damage byte alone is not the round's
         # result, which is what names the winner
@@ -471,6 +486,11 @@ class TestKO(unittest.TestCase):
         rc, out = self._run(_ko_log(), ['--ko', '--winner', '1'])
         self.assertEqual(rc, 1)
         self.assertIn('side 0', out)
+
+    def test_cli_ko_arcade_passes_a_one_human_ko(self):
+        rc, out = self._run([l.replace('b1f=03', 'b1f=01') for l in _ko_log()], ['--ko', '--arcade'])
+        self.assertEqual(rc, 0)
+        self.assertIn('hand-dealt KO: ok', out)
 
     def test_cli_ko_is_mutually_exclusive_with_join_and_finisher(self):
         for other in ('--join', '--finisher'):

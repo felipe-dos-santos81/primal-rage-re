@@ -185,6 +185,89 @@ The deciding gate input is measured and is below the gate. The original's clear 
 the gate, read on the strict inequality. No port change follows, no pin moves, and
 no capture is taken. Whether the finisher gap R2 is closed is not decided here.
 
+## §L8 The one-human fought KO: game evidence only (Task 8)
+
+**Decision: the failed U14 artifact is game evidence for a fought KO, not a capture, and
+U14 R1 stays declared.** `gp_twop.py check --ko` required `b1f == 3` (a two-human match).
+`--arcade` replaces that clause with a one-human arcade round (`b1f` 0 or 1 before the X
+record, the KO's own record `b1f == 1`, no join). The WIN-field, no-KO-poke,
+live-to-`0x78`, no-timeout and result-naming conditions are unchanged. No oracle, pin,
+capture or port code moved.
+
+### L8.1 Predicate and tests
+
+`tools/gp_twop.py` `ko(lines, winner, arcade)` and `--arcade` (requires `--ko`).
+`tools/tests/test_gp_twop.py` (TestKO): a one-human log passes `--arcade` and fails the
+two-human claim; a two-human log fails `--arcade` (`b1f=3`); a KO poke fails `--arcade`;
+the CLI passes a one-human KO. RED first: the new tests erred (no `arcade` parameter, no
+`--arcade` flag). The `test_gp_twop` run is `Ran 54 tests ... OK` after the change.
+
+### L8.2 The read-only run on the artifact
+
+```
+$ python3 tools/gp_twop.py check --ko --arcade --winner 1 --capture data/k11-captures/gp-u14-win-live.failed
+gp_twop: gp-u14-win-live.failed: hand-dealt KO of side 1: ko f=898; round result f=898; match result f=F9F; death-done f=-
+gp_twop: gp-u14-win-live.failed: hand-dealt KO: ok
+(exit 0)
+$ python3 tools/gp_twop.py check --ko --winner 1 --capture data/k11-captures/gp-u14-win-live.failed
+gp_twop: gp-u14-win-live.failed: FAIL: b1f never reaches 3 (no S record has both sides human)
+gp_twop: gp-u14-win-live.failed: hand-dealt KO: FAIL
+(exit 1)
+```
+
+The `--winner 1` is the side that won: the KO'd fighter is side 0 (`s0_5a`).
+The S rows, read from `poll.log`:
+
+| Frame | Mode | `b1f` | `s0_5a` | `s1_5a` | `ad4` | `w2` | `w3` | `b0c` |
+|---|---|---|---|---|---|---|---|---|
+| `0x894` | 6 | 01 | `71` | `19` | `FFFFFFFF` | 00 | 00 | 00 |
+| `0x898` | 8 (round result) | 01 | **`78`** | `19` | `FFFFFFFF` | 00 | 01 | 00 |
+| `0xF9F` | 9 (match result) | 01 | `78` | `5C` | `00000001` | 00 | **02** | 00 |
+
+- `ko f=898`: the first record with `s0_5a = 0x78`, in the round result (mode 8), after
+  the live `0x71` at `0x894` (the §F3.2 shape, measured).
+- `b0c`: 0 in all 9,471 S rows, so `death-done` is `-`. A hand-dealt KO leaves the
+  death animation to run, which is why `b0c` stays 0 here.
+- No `W` record (0), no `X` record (0). `poll.log` is 9,471 S rows and no X.
+- `b1f`: 01 in 2,913 rows (modes 5 to `0x1B`, the round and the match results
+  included), 00 in the rest, never 03 (`grep -c ' b1f=03'` is 0).
+
+### L8.3 The four session failures (`session.txt`, measured)
+
+The artifact's own `session.txt` records these as `FAIL`:
+
+1. `end frame reached`: the capture did not reach its scenario's end frame.
+2. `port script v2`: the key `70` (`p1.b3`) at `f=69D` was not queued (the BIOS ring
+   was full), so the port replay of the script does not match.
+3. `unscripted input`: `0` key words, `2` pad presses, `6` pad releases, first at
+   `f=71A`, so input the harness did not inject reached the game.
+4. `stopped at the end`: the SIGTERM at `f=-`, `rc=0`, so the run did not stop on its
+   own end record.
+
+These are why it is not a capture. Its `S` rows are measured data; the claim below
+rests only on them.
+
+### L8.4 The claim
+
+**Game evidence, narrow:** the game's own damage path (`0x27FA8`'s KO value `0x78`, no
+poke) KO'd fighter 0 in a one-human arcade round, and the round and match results name
+side 1 (`w3` 1, then 2; `ad4` 1). The claim is about the KO and the result it produced.
+
+**Not claimed:** the fought win, a published capture, an oracle, a pin, a miss set,
+`b0c` (0 throughout), the death animation, the rest of the match, or any port
+behaviour beyond the KO's record. The win stays the declared gap (`GP_U14_*` empty,
+`GATE_NAMED_GAPS` keeps `gp-u14-win-live`).
+
+### L8.5 Option (b) is rejected
+
+§2.7 of the design named two options for U14's rule. Option (a) is this section. Option
+(b) moves the rule to the final, which needs `b0c = 1`. The only direct store of a
+non-zero `b0c` is `0x37FF6` in `0x37EA0` (§E1.3, the death-animation-end opcode `0x11`).
+The U10 final that does write `b0c=1` (`f=0x1602`) runs with all seven final KOs
+poked, so `b0c=1` there does not show a fought KO. Taking option (b) would move the
+claim onto a poked final, and the rule would not separate a fought KO from a poke, so
+it is rejected.
+
 ## §L9 The 0x21 volleyball declaration (Task 9)
 
 **Decision: `0x21` stays declared, not captured.** No capture, code or pin. The gate
