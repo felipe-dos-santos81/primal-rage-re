@@ -937,8 +937,17 @@ are derived from the measured series with the addresses that prove them.
 The boundary test `test_u16_reaction_motion` (registered in `test.h`) seeds
 `bios_ivt_stand_in`, runs the reaction stream's two passes, and asserts the dwell
 `0xFFFFF280` (`-3456`) then `0xFFFFEE80` (`-4480`); it fails before the fix
-(`mem[1] = 0`) and under a `mem[1] = 0xCB` mutation (`-0xD40`, `-0x1140`). The gate's `0x13FF/0x1400/0x1401`
-boundary is `test_p3_4844c`'s state-3 claim (already committed), not re-added.
+(`mem[1] = 0`) and under a `mem[1] = 0xCB` mutation (`-0xD40`, `-0x1140`). The
+plan's pre-measurement `0x13FF/0x1400/0x1401` (+`+0x42` bit 3) boundary test
+belongs to the anchor-term hypothesis, which §D3.5 excludes (the anchor `ab4`
+agrees at every frame, so the boundary never discriminates the record-motion
+class); the boundary values themselves are already covered by `test_fight.c`'s
+`rec+0x1C` checks (`0x1180`/`0x1400`/`0x1800`) and by `test_p3_4844c`'s state-3
+claim (both committed), so the class's own test is the dwell test. No other port
+code reads `mem[0..3]` (the Task 10 review's named-risk check): the reaction
+stream's x/y opcodes are the only readers, and only `bios_ivt_stand_in` writes
+`mem[1]`/`mem[3]` — the x bytes `mem[0]`/`mem[2]` stay the recorded, unfixed
+adjacent defect.
 
 Measured on the ordinary U23 replay after the fix: the port's `rec_y`/`s0_30` now
 match the original's series at every frame `0x14FC..0x1531` (the port is no longer
@@ -1198,6 +1207,13 @@ keyed (both B registers keep the key bit) and the pan is untouched, so the
 measured left channel simply plays the other channel's note. The block+1 failure
 doubles the fundamental (2^(20-(block+1)) halves the denominator), far outside
 the 1.7586 Hz tolerance.
+
+The channel-swap and `block+1` mutations are **one-time proofs**, not committed
+assertions (the repo's convention for a new assertion: mutate once, observe the
+failure, revert); their failing outputs are recorded in `task-12-report.md`. The
+committed `test_opl_pitch` asserts only the derived fundamental (§D6.2) and the
+carrier-TL ratio (§D6.4), so it does not depend on the mutation channels'
+presence.
 
 ### §D6.4 The amplitude sanity (carrier TL)
 

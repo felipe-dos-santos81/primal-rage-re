@@ -190,8 +190,11 @@ ARCADE" route (`gp-u8-right-arcade` already exhibits `b1f=2`, `w10d=1`, the
 mode-`0x2E`→`0x10`→`0x11`→`0x05`→`0x06` chain) through seven poked wins to mode
 `0x1F` with `ad4=1`, and prove the falsifiable claim that the ending content is
 side-independent by a frame cross-check against the same character's P1 ending.
-The side-1-only screens (mode `0x12`'s pset-`0x74` banner, the side-1
-scoreboard/prompts, mode `0x1E` states 7/8) become measurable in the same run.
+The side-1-only screens that the capture exhibits — mode `0x12`'s pset-`0x74`
+banner and the side-1 scoreboard/prompts — are covered as frames by the oracle's
+window; mode `0x1E` states 7/8 are **not** exhibited in this run (all 756 S
+records carry `st=0000`; T6 report §"Mode-0x1E state 7/8"), and Task 8's
+separate `gp-u27-name-entry` capture exhibits the entry screen on side 0.
 `b1f=2` keeps `DS_00104ABC` at 1, so the two-human-only modes above stay out.
 
 **G5 — The timeout/health drawn round.** A poked round with both health bytes
@@ -372,8 +375,8 @@ repeating its capture-first risk.
    confirmed (the loser's roster byte `c1` walks `04 → 06 → 01 → 03` as
    predicted), the counter that reaches 4 is **`af1` (`0x104AF1`)** — not
    `af0`, which is the other side's byte — and the stop is mode **`0x17`**
-   (not the plan's predicted `0x14`, ledger R6), before the mode-`0x33`
-   600-frame wait and the results screen. Append `af0`/`af1`
+   (not the plan's predicted `0x14`, ledger R6), after the mode-`0x33`
+   600-frame wait, at the results screen. Append `af0`/`af1`
    (`0x104AF0`/`0x104AF1`) to `SNAP_FIELDS` — they are
    **not** `w2`/`w3` (`0x104AF2`/`0x104AF3`) — and
    take a fresh capture. A `gp_endurance.py check` reads mode/`c1`/`af0`/`af1`/
@@ -384,8 +387,11 @@ repeating its capture-first risk.
    (`KO_P1`, `lands_marked(1,c)`, the seven `after_entry 0x0C`/`0x0D`), stop at
    mode `0x1F`/`0x1E`; `gp_win.py`/`tools/gp_side1.py` carry the side parameter
    (`c1`, `s0_5a`, `w2=0`/`w3=2`, `ad4=1`, `t104>>8`, `0xC0|c`), and the check
-   asserts the side-1-only rows (mode `0x12`'s pset-`0x74` banner, mode `0x1E`
-   states 7/8). **Measured** (`gp-u26-side1-ending`, ARMADON, `gp-u26-oracle`
+   asserts `b1f=2`/`ad4=1`/`c1=4`, the `0xC0|c` land marks and the 268
+   mode-`0x1F` frames byte-identical to `gp-u21`; the side-1-only screens (mode
+   `0x12`'s pset-`0x74` banner, the side-1 scoreboard/prompts) are covered as
+   frames by the oracle's window, and mode `0x1E` states 7/8 are absent.
+   **Measured** (`gp-u26-side1-ending`, ARMADON, `gp-u26-oracle`
    green; record §D5): `b1f=2`, `ad4=1`, `c1=4`, and the falsifiable
    cross-check passes — **268 mode-`0x1F` frames byte-identical to `gp-u21`**
    (ARMADON's P1 ending), proving the ending content is side-independent (the
