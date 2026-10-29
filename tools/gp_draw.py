@@ -51,7 +51,8 @@ DRAW_FIELDS = ('adc', 'ad4', 'w2', 'w3', 'b1e')
 # The timeout/health draw's fields: adc/ad4/b1e (DRAW_FIELDS' subset it reads; the arm's
 # 0x28069 test is B1E == ADC, not the level w2/w3 the KO draw needs), plus s0_5a/s1_5a and
 # mode (SNAP_FIELDS'). The clock top byte 0x1088F2 is read from the W records, not the S
-# records (flow_round_over resets it to 0x1E in the draw's own iteration, record §D7).
+# records (flow_round_over resets it to 0x1E in the draw's own iteration, report
+# task-7-report.md).
 TIMEOUT_FIELDS = ('adc', 'ad4', 'b1e')
 NO_RESULT = 0xFFFFFFFF            # DS_00104AD4 = -1: 0x27BA4's undecided match (0x25A0E)
 CLOCK_DS = 0x1088F2               # the round timer's top byte (the timeout poke writes 0)
@@ -139,11 +140,27 @@ def evidence_timeout(name, lines, out=print):
         out('gp_draw: %s: timeout: FAIL: no W record wrote 0x1088F2 = 0 (the timeout '
             'clock poke)' % name)
         return 1
-    ha = next((w for w in ws if w['addr'] == HEALTH_DS[0]), None)
-    hb = next((w for w in ws if w['addr'] == HEALTH_DS[1]), None)
-    if ha is None or hb is None or abs(int(ha['now'], 16) - int(hb['now'], 16)) > 3:
-        out('gp_draw: %s: timeout: FAIL: the +0x5A pokes (0x10780A/0x10789E) are missing '
-            'or more than 3 apart (0x280BA requires them within 3)' % name)
+    # The health pokes are the timeout trigger's own writes — the same poke step as the
+    # clock poke (keyed on its frame and step), not the earliest health writes in the log
+    # (those are round 1/2's KO pokes, 0x78, which a loose `next` would read). The arm
+    # also requires both +0x5A bytes below the KO 0x78, not merely within 3 of each other.
+    ha = next((w for w in ws if w['addr'] == HEALTH_DS[0] and w['f'] == clock['f']
+               and w['step'] == clock['step']), None)
+    hb = next((w for w in ws if w['addr'] == HEALTH_DS[1] and w['f'] == clock['f']
+               and w['step'] == clock['step']), None)
+    if ha is None or hb is None:
+        out('gp_draw: %s: timeout: FAIL: the timeout poke\'s +0x5A writes (0x10780A/'
+            '0x10789E, the clock poke\'s step) are missing' % name)
+        return 1
+    a_val = int(ha['now'], 16)
+    b_val = int(hb['now'], 16)
+    if a_val >= 0x78 or b_val >= 0x78:
+        out('gp_draw: %s: timeout: FAIL: the timeout poke\'s +0x5A writes are 0x%02X/'
+            '0x%02X, at the KO 0x78 (0x280BA needs both below it)' % (name, a_val, b_val))
+        return 1
+    if abs(a_val - b_val) > 3:
+        out('gp_draw: %s: timeout: FAIL: the timeout poke\'s +0x5A writes are 0x%02X/'
+            '0x%02X, more than 3 apart (0x280BA needs them within 3)' % (name, a_val, b_val))
         return 1
     out('gp_draw: %s: timeout: the drawn round: ad4 = 0xFFFFFFFF, b1e = adc = 3, '
         '|A - B| <= 3, clock 0x1088F2 poked 0, mode 0x0A at f=%X, mode 0x0B at f=%X ok'
