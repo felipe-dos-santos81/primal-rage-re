@@ -122,6 +122,81 @@ class TestInjector(unittest.TestCase):
         self.assertEqual(m[0x41C:0x41E], (0x20).to_bytes(2, 'little'))
 
 
+class TestPinGuard(unittest.TestCase):
+    """Task 9 (two-human KO; record 2026-10-26-fought-match-truth-derivations
+    §F4.5/§F4.7): the pin guard queues a BIOS word only while the accepted S
+    records are contiguous and the backlog is under the cap, so a missed S(c-1)
+    fails the run at once instead of a full time-limit run."""
+
+    def guard(self, frames):
+        g = gc.PinGuard()
+        for f in frames:
+            g.snap(f)
+        return g
+
+    def test_a_missed_S_predecessor_fails_fast(self):
+        # §F4.7: a word queued at the first frame after a gap (S(0x592) missed)
+        # is declined and marks the run gapped.
+        g = self.guard([0x57B, 0x593])
+        self.assertFalse(g.queue(0x593))
+        self.assertTrue(g.gapped)
+        self.assertEqual(g.gap_f, 0x593)
+        # §F4.5: a word consumed at detection frame c with S(c-1) missed (S(0x7C6))
+        # is likewise gapped.
+        g2 = self.guard([0x7C4])
+        self.assertFalse(g2.pin_ok(0x7C7))
+        self.assertTrue(g2.gapped)
+        self.assertEqual(g2.gap_f, 0x7C7)
+
+    def test_the_accepted_path_queues(self):
+        g = self.guard([0x10, 0x11])
+        self.assertTrue(g.queue(0x11))
+        self.assertEqual(g.backlog, 1)
+        self.assertFalse(g.gapped)
+        g.consume()
+        self.assertEqual(g.backlog, 0)
+
+    def test_the_backlog_cap_is_a_counted_skip(self):
+        g = self.guard([0x10, 0x11])
+        for _ in range(g.cap):
+            self.assertTrue(g.queue(0x11))
+        self.assertEqual(g.backlog, g.cap)
+        self.assertFalse(g.queue(0x11))         # over the cap: no word queued
+        self.assertEqual(g.skips, 1)
+        self.assertEqual(g.backlog, g.cap)      # the declined word did not queue
+
+    def test_the_skip_counter_is_reported(self):
+        g = self.guard([0x10, 0x11])
+        for _ in range(g.cap + 1):
+            g.queue(0x11)
+        checks = dict(gc.run_checks('_t', [], gs.Schedule(()), 0, 0, g))
+        label = 'capture pins: 1 BIOS words skipped (backlog over the %d-entry cap)' % gc.PinGuard.BACKLOG_CAP
+        self.assertIn(label, checks)
+        self.assertFalse(checks[label])
+        # without a guard (a wall scenario) the check is present and passes
+        checks0 = dict(gc.run_checks('_t', [], gs.Schedule(()), 0, 0))
+        self.assertTrue(checks0['capture pins: 0 BIOS words skipped (backlog over the %d-entry cap)'
+                               % gc.PinGuard.BACKLOG_CAP])
+
+    def test_press_consults_the_guard(self):
+        m, log = _mem(), io.StringIO()
+        ptr = 0xFE20
+        g = gc.PinGuard()
+        g.snap(0x100)
+        g.snap(0x101)
+        inj = gc.Injector(m, ptr, log, guard=g)
+        inj.press(1, 0x101, 'p1.up', 0x1F, 0x1F73, 2, 0, 10)
+        self.assertEqual(m[0x41C:0x41E], (0x20).to_bytes(2, 'little'))   # queued: tail 0x1E -> 0x20
+        m2, log2 = _mem(), io.StringIO()
+        g2 = gc.PinGuard()
+        g2.snap(0x100)
+        g2.snap(0x102)                              # S(0x101) missed
+        inj2 = gc.Injector(m2, ptr, log2, guard=g2)
+        inj2.press(1, 0x102, 'p1.up', 0x1F, 0x1F73, 2, 0, 10)
+        self.assertTrue(g2.gapped)
+        self.assertEqual(m2[0x41C:0x41E], (0x1E).to_bytes(2, 'little'))  # declined: no word queued
+
+
 class TestAccept(unittest.TestCase):
     def test_accept_needs_the_spin_across_both_reads(self):
         # Review Focus 1: v spinning, v2 the logged read, v3 a re-read after it
@@ -413,6 +488,23 @@ class TestStopAtEnd(unittest.TestCase):
         self.assertFalse(p.stop_if_due(0x10A + gc.STOP_TAIL + 1, 0.0))      # once
         self.assertEqual(len(p.proc.sent), 1)
 
+    def test_stop_on_gap_sigterms_once(self):
+        # Task 9: a missed S(c-1) marks the guard gapped, and the poller SIGTERMs
+        # once and records the gap frame instead of running on to the time limit.
+        p = self.poller(gc.STOP_TAIL)
+        p.guard.gapped, p.guard.gap_f = True, 0x7C7
+        self.assertTrue(p.stop_on_gap())
+        self.assertEqual((p.proc.sent, p.gap_f, p.reason),
+                         ([gc.signal.SIGTERM], 0x7C7, 'gap'))
+        self.assertFalse(p.stop_on_gap())                                   # once
+        self.assertEqual(len(p.proc.sent), 1)
+
+    def test_no_gap_means_no_sigterm(self):
+        p = self.poller(gc.STOP_TAIL)
+        self.assertFalse(p.stop_on_gap())                                   # not gapped
+        self.assertEqual(p.proc.sent, [])
+
+
     def test_no_tail_runs_to_the_time_limit(self):
         p = self.poller(None)
         self.assertFalse(p.stop_if_due(0x2000, 0.0))
@@ -649,6 +741,15 @@ class TestCapturePreflight(unittest.TestCase):
         src = inspect.getsource(gc.main)
         self.assertIn('cm.preflight_capture(', src)
         self.assertIn('preflight failed; no capture written', src)
+
+    def test_main_fails_fast_on_a_gap(self):
+        # Task 9: a missed S(c-1) exits before the frames are written (no capture),
+        # and the summary CHECK is fed the guard's skip counter.
+        import inspect
+        src = inspect.getsource(gc.main)
+        self.assertIn('poll.gap_f is not None', src)
+        self.assertIn('no capture written', src)
+        self.assertIn('run_checks(a.scenario, lines, poll.sched, n, len(idx), poll.guard)', src)
 
 
 if __name__ == '__main__':
