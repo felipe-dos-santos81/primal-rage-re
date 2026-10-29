@@ -943,11 +943,13 @@ belongs to the anchor-term hypothesis, which §D3.5 excludes (the anchor `ab4`
 agrees at every frame, so the boundary never discriminates the record-motion
 class); the boundary values themselves are already covered by `test_fight.c`'s
 `rec+0x1C` checks (`0x1180`/`0x1400`/`0x1800`) and by `test_p3_4844c`'s state-3
-claim (both committed), so the class's own test is the dwell test. No other port
-code reads `mem[0..3]` (the Task 10 review's named-risk check): the reaction
-stream's x/y opcodes are the only readers, and only `bios_ivt_stand_in` writes
-`mem[1]`/`mem[3]` — the x bytes `mem[0]`/`mem[2]` stay the recorded, unfixed
-adjacent defect.
+claim (both committed), so the class's own test is the dwell test. The reaction
+stream's x/y opcodes are the readers the fix serves; `render_pop_free`
+(`0x1C390`) also reads address 0 on its empty-pool sentinel path, as the raw
+does, and `render_list_insert` now restores the head to 0 there so the modeled
+IVT cannot become a list node (no capture exhausts the pool, so nothing
+observed it). Only `bios_ivt_stand_in` writes `mem[1]`/`mem[3]`; the x bytes
+`mem[0]`/`mem[2]` remain the recorded, unfixed adjacent defect.
 
 Measured on the ordinary U23 replay after the fix: the port's `rec_y`/`s0_30` now
 match the original's series at every frame `0x14FC..0x1531` (the port is no longer
