@@ -69,16 +69,74 @@ def ring_steps(old, new, start, end):
     return out
 
 
+class PinGuard:
+    """The capture-pin guard (Task 9, two-human KO; record
+    2026-10-26-fought-match-truth-derivations §F4.5/§F4.7): a BIOS word is
+    queued only while the accepted S records are contiguous — S(f) and S(f-1)
+    both accepted — so the port script can pin each word's consumption at
+    S(c-1). A missed S(c-1) (a gap at the queue point, or a word consumed with
+    no S(c-1)) marks the run gapped and fails it at once instead of a full
+    time-limit run that port_script rejects at the end; and the queued-word
+    backlog is capped below the 16-entry BIOS ring, a word the cap declines
+    counted as a skip and reported in the summary."""
+
+    BACKLOG_CAP = 14          # < 16 (and < the 15-word ring): the ring never fills
+
+    def __init__(self, cap=BACKLOG_CAP):
+        self.cap = cap
+        self.accepted = set()   # frames with an accepted S record
+        self.backlog = 0        # queued - consumed BIOS words
+        self.skips = 0          # words the backlog cap declined
+        self.gapped = False
+        self.gap_f = None       # the frame the first missed S(c-1) was seen at
+
+    def snap(self, f):
+        """An accepted S(f) (gp_capture.Poller, right after the S record)."""
+        self.accepted.add(f)
+
+    def consume(self, n=1):
+        """The game consumed `n` queued words (one per H-record head step)."""
+        self.backlog = max(0, self.backlog - n)
+
+    def queue(self, f):
+        """True to queue a BIOS word at the spin of f. The word is queued only
+        when S(f) and S(f-1) are both accepted and the backlog is under the cap;
+        a missed S(f-1) marks the run gapped (a missed S(c-1)), and a full
+        backlog is a counted skip (no word is queued)."""
+        if f not in self.accepted or (f - 1) & 0xFFFF not in self.accepted:
+            self._gap(f)
+            return False
+        if self.backlog >= self.cap:
+            self.skips += 1
+            return False
+        self.backlog += 1
+        return True
+
+    def pin_ok(self, c):
+        """True when a word consumed at detection frame c has its S(c-1) to pin
+        it; a missed S(c-1) marks the run gapped (record §F4.5)."""
+        if (c - 1) & 0xFFFF not in self.accepted:
+            self._gap(c)
+            return False
+        return True
+
+    def _gap(self, f):
+        if not self.gapped:
+            self.gapped = True
+            self.gap_f = f
+
+
 class Injector:
     """Writes key presses into the IRQ1 key-state table (bit 7 clear = down)
     and, for a key or (pad_bios) a pad, queues its BIOS word once."""
 
-    def __init__(self, mm, ptr, log, pad_bios=True, wall=False):
+    def __init__(self, mm, ptr, log, pad_bios=True, wall=False, guard=None):
         self.mm, self.ptr, self.log, self.pad_bios = mm, ptr, log, pad_bios
         self.wall = wall          # a wall-paced scenario (record §H6.9)
+        self.guard = guard        # the pin guard (None: no gate, e.g. wall scenarios)
         self.held = []            # [(release_at_f, release_at_ms|None, lin, old, name, step)]
 
-    def press(self, step, f, name, scan, word, hold, late, ms):
+    def press(self, step, f, name, scan, word, hold, late, ms, guarded=True):
         lin = self.ptr + gs.KEYTAB_OFF + scan
         old = self.mm[lin]
         self.mm[lin] = old & 0x7F
@@ -91,6 +149,8 @@ class Injector:
         deadline = ms + hold * gs.FRAME_MS if self.wall else None
         self.held.append((f + hold, deadline, lin, old, name, step))
         bios = word if (name in gs.KEYS or self.pad_bios) else None
+        if bios is not None and guarded and self.guard is not None and not self.guard.queue(f):
+            bios = None       # the guard declined (a gap or a backlog skip): no word queued
         ring = kc.bios_insert(self.mm, word) if bios is not None else None
         self.log.write('I ms=%d f=%04X step=%d press=%s scan=%02X lin=%08X old=%02X bios=%s ring=%s late=%d\n'
                        % (ms, f, step, name, scan, lin, old, '-' if bios is None else '%04X' % bios,
@@ -217,7 +277,7 @@ def publish(stage, out, ok):
     return dest
 
 
-def run_checks(name, lines, sched, n_frames, n_want):
+def run_checks(name, lines, sched, n_frames, n_want, guard=None):
     """The capture's CHECKs, [(label, ok)] (record §G.5.2, review 1)."""
     recs = [gs.parse(l) for l in lines if l.strip()]
     if gs.SCENARIOS.get(name, {}).get('wall'):
@@ -254,6 +314,7 @@ def run_checks(name, lines, sched, n_frames, n_want):
         fired += '; stopped on mode 0x%02X' % sched.stop_hit
     if sched.skip_hit is not None:
         fired += '; last skip on mode 0x%02X' % sched.skip_hit
+    skips = 0 if guard is None else guard.skips
     return [('base', any(x['kind'] == 'B' for x in recs)),
             (fired, sched.steps_ok),
             ('end frame reached', any(x['kind'] == 'X' for x in recs)),
@@ -262,7 +323,12 @@ def run_checks(name, lines, sched, n_frames, n_want):
             ('frames written %d/%d' % (n_frames, n_want), n_frames == n_want),
             ('port script v2%s' % why, script_ok),
             input_check(lines),
-            poke_check(lines, sched)]
+            poke_check(lines, sched),
+            # The guard's own skip counter (Task 9): a BIOS word the backlog cap
+            # declined is a skipped word, not a skip_on_mode skip, so it does not
+            # satisfy steps_ok and fails the run here (record §F4.5/§F4.7).
+            ('capture pins: %d BIOS words skipped (backlog over the %d-entry cap)'
+             % (skips, PinGuard.BACKLOG_CAP), skips == 0)]
 
 
 # The key bitmap bit each key-state scan sets (PAD's third column; p1.b0 and
@@ -399,11 +465,13 @@ class Poller(threading.Thread):
         self.wall = wall              # a wall-paced scenario (record §H6.9)
         self.mem_path, self.log_path, self.stop, self.pad_bios = mem_path, log_path, stop, pad_bios
         self.sched = gs.Schedule(steps, stop_mode, stop_delay, skip_on_mode)
+        self.guard = None if wall else PinGuard()   # the pin guard (record §F4.5/§F4.7)
         self.end_seen = False
 
     stop_tail = None        # frames after the end frame to SIGTERM `proc` (None: run to the time limit)
     proc = None             # the DOSBox-X Popen
     signal_f = signal_t = None
+    gap_f = None            # the frame the guard found a missed S(c-1) at (a failed run)
 
     def stop_if_due(self, f, now):
         """SIGTERM DOSBox-X once stop_tail more is logged past the scenario's end:
@@ -418,6 +486,20 @@ class Poller(threading.Thread):
             return False
         self.proc.send_signal(signal.SIGTERM)
         self.signal_f, self.signal_t = f, time.monotonic()
+        return True
+
+    def stop_on_gap(self):
+        """SIGTERM DOSBox-X once the guard has found a missed S(c-1) (a gap at the
+        queue point, or a word consumed with no S(c-1)): a starved poller fails the
+        run at once instead of a full time-limit run that port_script rejects at the
+        end (record §F4.5/§F4.7)."""
+        if self.proc is None or self.signal_f is not None or self.gap_f is not None:
+            return False
+        if self.guard is None or not self.guard.gapped:
+            return False
+        self.proc.send_signal(signal.SIGTERM)
+        self.gap_f = self.guard.gap_f
+        self.reason = 'gap'
         return True
 
     def run(self):
@@ -448,13 +530,18 @@ class Poller(threading.Thread):
                         time.sleep(0.005)
                         continue
                     log.write('B ms=%d base=%08X ptr=%08X\n' % (ms, base, ptr))
-                    inj = Injector(mm, ptr, log, self.pad_bios, self.wall)
+                    inj = Injector(mm, ptr, log, self.pad_bios, self.wall, self.guard)
                 h = kc.u16(mm, gs.BDA_HEAD)
                 if head is not None and h != head:
                     f_after = read_snap(mm, base, ptr=ptr)['f']
                     start, end = kc.u16(mm, kc.BDA_START) or 0x1E, kc.u16(mm, kc.BDA_END) or 0x3E
-                    for step_head in ring_steps(head, h, start, end):
+                    steps = ring_steps(head, h, start, end)
+                    if self.guard is not None and not self.guard.pin_ok(f_after):
+                        self.stop_on_gap()
+                    for step_head in steps:
                         log.write('H ms=%d f=%04X head=%04X\n' % (ms, f_after, step_head))
+                    if self.guard is not None:
+                        self.guard.consume(len(steps))
                 head = h
                 if (v['mode'], v['st']) != last_ms:
                     log.write('P ms=%d f=%04X mode=%04X st=%04X tick=%08X\n'
@@ -463,7 +550,7 @@ class Poller(threading.Thread):
                     last_ms = (v['mode'], v['st'])
                 for step, act in self.sched.due_boot(now) + self.sched.due_wall(now):
                     for name, scan, word, hold in gs.expand(act):
-                        inj.press(step, v['f'], name, scan, word, hold, 0, ms)
+                        inj.press(step, v['f'], name, scan, word, hold, 0, ms, guarded=False)
                 # A wall-paced step's key is released on its wall deadline even
                 # with no S record (the frame rule alone would hold it, §H6.9).
                 inj.release_due(v['f'], ms)
@@ -480,6 +567,8 @@ class Poller(threading.Thread):
                     if accept(v, v2, v3):
                         log.write(gs.format_s(ms, v2, kb, bh, bt, self.fields) + '\n')
                         f = v2['f']
+                        if self.guard is not None:
+                            self.guard.snap(f)
                         self.sched.on_mode(f, v2['mode'])
                         self.sched.on_snap(f, v2['mode'])
                         inj.release_due(f, ms)
@@ -494,6 +583,8 @@ class Poller(threading.Thread):
                             log.write('X ms=%d f=%04X step=%d end\n' % (ms, f, self.sched.i))
                             self.end_seen = True
                         last_f = f
+                if self.stop_on_gap():
+                    break
                 time.sleep(0.0003)
             log.write('E ms=%d reason=%s rc=%d\n' % (int((time.monotonic() - t0) * 1000),
                                                      getattr(self, 'reason', 'exit'), getattr(self, 'rc', -1)))
@@ -587,6 +678,13 @@ def main():
                                     else 'time-limit' if wall >= limit - 1 else 'exit')
         stop.set()
         poll.join()
+        if poll.gap_f is not None:
+            # A missed S(c-1) (record §F4.5/§F4.7): the poller was starved across a
+            # key pin. Fail now, before the frames are written — no capture, not a
+            # full time-limit run that port_script would reject at the end.
+            print('gp_capture: FAIL: a missed S(c-1) at f=%s; the run is gapped, no capture written'
+                  % '%04X' % poll.gap_f)
+            return 1
         avi_dir = os.path.join(root, 'avi')
         avis = sorted(f for f in os.listdir(avi_dir) if f.lower().endswith('.avi'))
         if not avis:
@@ -617,7 +715,7 @@ def main():
         if os.path.exists(os.path.join(stage, 'poll.log')):        # absent: no memory file
             with open(os.path.join(stage, 'poll.log')) as f:
                 lines = f.read().splitlines()
-        checks = run_checks(a.scenario, lines, poll.sched, n, len(idx))
+        checks = run_checks(a.scenario, lines, poll.sched, n, len(idx), poll.guard)
         if stop_end:
             checks.append(('stopped at the end (SIGTERM at f=%s, rc=%d)'
                            % ('-' if poll.signal_f is None else '%04X' % poll.signal_f, rc),

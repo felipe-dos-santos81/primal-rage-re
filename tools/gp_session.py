@@ -476,6 +476,38 @@ SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, memsize=64, s
     ('until_mode', 0x03, 0),                          # back in mode 3 after the high-score entry
 ))
 
+# Task 11 (drawn match 0x0A/0x0B; brief 2026-10-27-claim-coverage, record
+# task-11-draw-report.md): the KO-branch draw -- flow_round_end_check (0x27FA8) reaches
+# flow_round_over (0x27ED8) -> mode 0xA -> mode 0xB only on B1E == ADC && AD4 == 2
+# (0x28003), and 0x27BA4 (flow_match_result_set) computes AD4 = 2 only when B1E == ADC and
+# the round-win counters are level (record §W.3; flow.c 0x27BA4/0x27C48/0x27FA8/0x27ED8/
+# 0x28BD4/0x28C38). The timeout/health drawn round (0x280BA) is not this claim.
+# With ADC = 3 (best of 3, §W.1) the brief's "two KOs" are not enough: round 1 P1 win +
+# round 2 P2 win leaves the match 1-1 at B1E = 2, and 0x27BA4 computes d = ADC - B1E = 1
+# with neither counter ahead by more than d, so AD4 = -1 (the match goes to round 3). A
+# drawn match therefore needs a round 3 whose round is itself drawn: KO BOTH fighters at
+# once (0x27C48's A == B arm sets DS_00104B16 = 2 and increments neither counter), so
+# w2 == w3 == 1 at B1E == ADC == 3 and AD4 = 2. Three pokes in all (the record's "poke
+# sequence"). The pokes anchor on the k-th mode-6 entry (round 1/2/3), as U9's.
+KO_P1 = ('poke', ((0x10780A, b'\x78'),))             # P1's +0x5A (DS_0010780A): P2 wins the round
+KO_BOTH = ('poke', ((0x10780A, b'\x78'), (0x10789E, b'\x78')))   # the drawn round: A == B (0x27C48)
+# The fields the draw check (gp_draw.py) reads. adc (the best-of rounds, DS_00104ADC,
+# 0x25A14..0x25A28, §W.1) is the one WIN_EXTRA lacks; ad4/w2/w3/b1e are WIN_EXTRA's (§W.2)
+# and mode/s0_5a/s1_5a are SNAP_FIELDS'. The scenario logs WIN_EXTRA + adc.
+DRAW_EXTRA = WIN_EXTRA + (('adc', 0x104ADC, 4),)
+# Harness values, not game values: the 10-frame poke delay into each round (U9's), the
+# stop on mode 0xB (the winner pose) 60 frames in -- mode 0xA (the round-over) precedes it
+# and is recorded on the way -- and the 120 s limit (U9's 110 s + the third round). The
+# stop_delay is capture-tuning (Step 3): mode 0xA runs until both +0x54 bytes clear
+# (0x28C0E..0x28C1E), then 0xB's pose runs DS_00104AA8 = 13 frames (flow_round_over's q,
+# §48-K), so 60 frames covers the pose and its tail.
+SCENARIOS['gp-draw'] = dict(time_limit=120, extra=DRAW_EXTRA, stop_mode=0x0B, stop_delay=60,
+    steps=WIN_MENU + (
+        ('after_entry', 0x06, 1, 10, KO_P2),          # round 1: P2 KO'd, P1 wins, mode 8
+        ('after_entry', 0x06, 2, 10, KO_P1),          # round 2: P1 KO'd, P2 wins, 1-1, mode 8
+        ('after_entry', 0x06, 3, 10, KO_BOTH),        # round 3: both KO'd, the draw, mode 0xA
+    ))
+
 # Gameplay truth II U13 (plan 2026-10-20-gameplay-truth-ii.md Task 5): the ending of a
 # character other than 0. The plan's one p1.right is corrected by the raw: the cell
 # table DS_000C8882 = 00 02 03 01 06 04 05 (file 0x10F6D6, record gameplay-u5 §C5.4) is
@@ -1134,6 +1166,9 @@ class Schedule:
 # after the high-score entry (u10's until_mode), and nothing past it is compared.
 # gp-u22-diablo-ending (endgame truth Task 7) stops the same way: its end is mode 3
 # after the high-score entry (u10's until_mode), and nothing past it is compared.
+# gp-draw (claim coverage Task 11) stops too: its end is 60 frames into mode 0xB (the
+# winner pose; stop_mode/stop_delay), so mode 0xA (the round-over, which precedes it)
+# and the pose are recorded and nothing past them is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1143,7 +1178,8 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
-                         'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state'})
+                         'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
+                         'gp-draw'})
 
 
 class ScriptError(Exception):

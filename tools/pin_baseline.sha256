@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: Task 7 audio coverage: TRACE_PINS re-pinned (13 minima moved under AUDIO_END=10090; 12 complete a selmo/match the 1400-frame cut truncated, gp-u22 is a Task-2 title catch-up), TRACE_SECTIONS grown to name the ending-cinematic banks, and documented_excluded gained the second-bank (9,3) carrier-TL attrs
-5e20a97b6967d85ac14d9955435b59c0e59211b116cdc4031112fad8e940f87f
+# reason: Task 7 rotation anchor: TRACE_PINS re-pinned again (21 minima rise as the rotation anchor anchors the 0x31 and ending-cinematic sections; the reduction rework pre-rotates the section's registers by the derived k)
+069edcea8904b152b954dd4c81699399afcb7cc66fee7e452a9c990a527ae2b7
