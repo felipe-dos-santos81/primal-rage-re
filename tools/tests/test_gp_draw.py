@@ -110,5 +110,95 @@ class TestScenario(unittest.TestCase):
         self.assertEqual(by_name['ad4'], 0x104AD4)
 
 
+# A synthetic timeout/health drawn round: rounds 1 and 2 split 1-1 (b1e 1 -> 2,
+# ad4 = -1, w2 = w3 = 1), then a round-3 record carrying the timeout precondition
+# (the poked clock 0 and both +0x5A bytes at 0x30, equal), then mode 0x0A (ad4 =
+# 0xFFFFFFFF, the 1-1 match undecided; flow_round_over cleared the health to 0 and
+# reset the clock to 0x1E) and mode 0x0B. The W records are the one timeout poke:
+# 0x1088F2 = 0 and 0x10780A = 0x10789E = 0x30 (equal, within 3).
+def _timeout_log():
+    out = [_rec(0x480, 0x06, b1e=1, adc=3, ad4=NO_RESULT, w2=0, w3=0),
+           _rec(0x84E, 0x06, b1e=2, adc=3, ad4=NO_RESULT, w2=1, w3=1),
+           _rec(0xC1C, 0x06, b1e=3, adc=3, ad4=NO_RESULT, w2=1, w3=1,
+                s0_5a=0x30, s1_5a=0x30, clock=0),
+           _rec(0xD00, 0x0A, b1e=3, adc=3, ad4=NO_RESULT, w2=1, w3=1, clock=0x1E),
+           _rec(0xD20, 0x0B, b1e=3, adc=3, ad4=NO_RESULT, w2=1, w3=1, clock=0x1E)]
+    out += [gs.format_w(0, 0xC1C, 4, gd.CLOCK_DS, b'\x1E', b'\x00', 0, 0),
+            gs.format_w(0, 0xC1C, 4, gd.HEALTH_DS[0], b'\x00', b'\x30', 0, 0),
+            gs.format_w(0, 0xC1C, 4, gd.HEALTH_DS[1], b'\x00', b'\x30', 0, 0)]
+    return out
+
+
+def _check_timeout(lines):
+    out = io.StringIO()
+    rc = gd.evidence_timeout('gp-draw-timeout', lines, lambda s: out.write(s + '\n'))
+    return rc, out.getvalue()
+
+
+class TestTimeoutEvidence(unittest.TestCase):
+    def test_a_synthetic_timeout_draw_passes(self):
+        rc, text = _check_timeout(_timeout_log())
+        self.assertEqual(rc, 0)
+        self.assertIn('ad4 = 0xFFFFFFFF, b1e = adc = 3', text)
+        self.assertIn('mode 0x0A at f=D00, mode 0x0B at f=D20 ok', text)
+
+    def test_the_ko_draw_log_fails_timeout(self):
+        # the two predicates are disjoint: the KO draw's ad4 = 2 is not the timeout's -1
+        rc, text = _check_timeout(_log())
+        self.assertEqual(rc, 1)
+        self.assertIn('no S record has ad4 = 0xFFFFFFFF and mode 0x0A', text)
+
+    def test_the_timeout_log_fails_the_default_check(self):
+        # and the other direction: the timeout draw's ad4 = -1 is not the KO draw's 2
+        rc, text = _check(_timeout_log())
+        self.assertEqual(rc, 1)
+        self.assertIn('no S record has ad4 = 2', text)
+
+    def test_b1e_must_equal_adc_three(self):
+        rc, text = _check_timeout(
+            [l for l in _timeout_log() if ' f=0D00 ' not in l and ' f=0D20 ' not in l]
+            + [_rec(0xD00, 0x0A, b1e=2, adc=3, ad4=NO_RESULT, w2=1, w3=1),
+               _rec(0xD20, 0x0B, b1e=2, adc=3, ad4=NO_RESULT, w2=1, w3=1)])
+        self.assertEqual(rc, 1)
+        self.assertIn('not b1e = adc = 3', text)
+
+    def test_the_health_within_three_is_required(self):
+        rc, text = _check_timeout(
+            [l for l in _timeout_log() if ' f=0D00 ' not in l and ' f=0D20 ' not in l]
+            + [_rec(0xD00, 0x0A, b1e=3, adc=3, ad4=NO_RESULT, w2=1, w3=1, s0_5a=0x20, s1_5a=0x00),
+               _rec(0xD20, 0x0B, b1e=3, adc=3, ad4=NO_RESULT, w2=1, w3=1)])
+        self.assertEqual(rc, 1)
+        self.assertIn('|s0_5a - s1_5a| = 32 > 3', text)
+
+    def test_the_clock_poke_is_required(self):
+        rc, text = _check_timeout([l for l in _timeout_log() if 'addr=001088F2' not in l])
+        self.assertEqual(rc, 1)
+        self.assertIn('no W record wrote 0x1088F2 = 0', text)
+
+    def test_the_health_pokes_must_be_within_three(self):
+        rc, text = _check_timeout(
+            [l for l in _timeout_log() if 'addr=0010789E' not in l]
+            + [gs.format_w(0, 0xC1C, 4, gd.HEALTH_DS[1], b'\x00', b'\x34', 0, 0)])
+        self.assertEqual(rc, 1)
+        self.assertIn('more than 3 apart', text)
+
+
+class TestTimeoutScenario(unittest.TestCase):
+    def test_the_scenario_pokes_two_kos_then_the_timeout_draw(self):
+        scn = gs.SCENARIOS['gp-draw-timeout']
+        pokes = [st for st in scn['steps'] if isinstance(st[-1], tuple) and st[-1][0] == 'poke']
+        self.assertEqual(pokes, [('after_entry', 0x06, 1, 10, gs.KO_P2),
+                                 ('after_entry', 0x06, 2, 10, gs.KO_P1),
+                                 ('after_entry', 0x06, 3, 10, gs.TIMEOUT_DRAW_POKE)])
+        self.assertEqual(scn['extra'], gs.DRAW_EXTRA)
+        self.assertEqual(scn['stop_mode'], 0x0B)
+        self.assertEqual(scn['stop_delay'], 60)
+        self.assertIn('gp-draw-timeout', gs.STOP_AT_END)
+
+    def test_the_timeout_poke_sets_the_health_and_clock(self):
+        self.assertEqual(gs.TIMEOUT_DRAW_POKE[1],
+                         ((0x10780A, b'\x30'), (0x10789E, b'\x30'), (0x1088F2, b'\x00')))
+
+
 if __name__ == '__main__':
     unittest.main()

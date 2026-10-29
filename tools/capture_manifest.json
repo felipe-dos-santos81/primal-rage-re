@@ -305,6 +305,17 @@
       "last_s_frame": 9959
     },
     {
+      "path": "data/k11-captures/gp-draw-timeout",
+      "kind": "k11",
+      "poll_log_sha256": "bb3e1b8ba888e4f9aed9728f4cbe94570c5f6493c6815aec57ef7e4613674290",
+      "frame_count": 2132,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2973
+    },
+    {
       "path": "data/k11-captures/walk",
       "kind": "k11",
       "poll_log_sha256": "aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f",

@@ -78,6 +78,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u23-u16-finisher \
 	$(K11_CAPTURES)/gp-u25-endurance-end \
 	$(K11_CAPTURES)/gp-u26-side1-ending \
+	$(K11_CAPTURES)/gp-draw-timeout \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -131,7 +132,7 @@ chunk ?= 0
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
-        gp-u26-oracle \
+        gp-u26-oracle gp-draw-timeout-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -673,6 +674,7 @@ GP_U22_MAX_MISSING = 52
 GP_U23_MAX_MISSING = 9
 GP_U25_MAX_MISSING = 12
 GP_U26_MAX_MISSING = 11
+GP_DRAW_TIMEOUT_MAX_MISSING = 5
 # <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
@@ -1298,6 +1300,38 @@ gp-u26-oracle: build ## State coverage U26 oracle: the side-1 (RIGHT PLAYER ARCA
 		$(PYTHON) tools/gp_side1.py --side1 $(GP_DUMP)/gp-u26-side1-ending --p1 $(GP_DUMP)/gp-u21-armadon-ending \
 			--expect-count "$(GP_U26_MODE1F_COUNT)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u26-side1-ending $(GP_DUMP)/gp-u21-armadon-ending; exit $$rc; fi
+
+# State coverage Task 7 oracle (plan 2026-10-28-state-coverage §G5, record §D7): the
+# timeout/health drawn round (0x27FA8's arm at 0x280BA). The capture gp-draw-timeout pokes
+# two KOs (1-1) then round 3's clock 0x1088F2 = 0 and both +0x5A health bytes = 0x30 (equal,
+# below the KO 0x78), so the arm re-reads |A-B| = 0 <= 3 and calls flow_round_over -> mode
+# 0xA -> mode 0xB with AD4 = 0xFFFFFFFF (the 1-1 match is undecided; the KO draw's is 2).
+# gp_draw.py check --timeout proves the predicate (ad4=0xFFFFFFFF, b1e=adc=3, |A-B|<=3, the
+# clock poke, modes 0x0A then 0x0B) and its disjointness from the KO draw; gp_compare's
+# ratchets prove the frames, trace and moves. Skips without the capture, even under
+# PR_ORACLE_REQUIRED (spec §4.3). The claim is narrow like gp-oracle's: N and the reach are
+# the first unexplained frame's measured values; nothing past them is claimed.
+# >>> PIN-BASELINE-BEGIN gp-draw-timeout
+GP_DRAW_TIMEOUT_MIN_FIRST = 346
+GP_DRAW_TIMEOUT_TRACE_MIN_FIRST = 2915
+GP_DRAW_TIMEOUT_MOVES_MIN_FIRST = 2915
+GP_DRAW_TIMEOUT_MAX_START = 100
+GP_DRAW_TIMEOUT_MIN_REACH = 218
+GP_DRAW_TIMEOUT_CAPTURE_SHA256 = bb3e1b8ba888e4f9aed9728f4cbe94570c5f6493c6815aec57ef7e4613674290
+GP_DRAW_TIMEOUT_CAPTURE_FRAMES = 2132
+# <<< PIN-BASELINE-END gp-draw-timeout
+gp-draw-timeout-oracle: build ## State coverage Task 7 oracle: gp-draw-timeout's timeout/health drawn round (skips without data/k11-captures/gp-draw-timeout)
+	@echo "== gameplay oracle: gp-draw-timeout (the timeout/health drawn round 0x280BA; skips without its capture) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_draw
+	@if [ ! -d $(K11_CAPTURES)/gp-draw-timeout ]; then echo "gp-draw-timeout-oracle: no capture at $(K11_CAPTURES)/gp-draw-timeout (skipped)"; else \
+		$(PYTHON) tools/gp_draw.py check --timeout --capture $(K11_CAPTURES)/gp-draw-timeout && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-draw-timeout GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-draw-timeout --capture $(K11_CAPTURES)/gp-draw-timeout \
+			--port $(GP_DUMP)/gp-draw-timeout --min-first "$(GP_DRAW_TIMEOUT_MIN_FIRST)" \
+			--trace-min-first "$(GP_DRAW_TIMEOUT_TRACE_MIN_FIRST)" --moves-min-first "$(GP_DRAW_TIMEOUT_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_DRAW_TIMEOUT_MAX_START)" --min-reach "$(GP_DRAW_TIMEOUT_MIN_REACH)" --max-missing "$(GP_DRAW_TIMEOUT_MAX_MISSING)" \
+			--capture-sha256 "$(GP_DRAW_TIMEOUT_CAPTURE_SHA256)" --capture-frames "$(GP_DRAW_TIMEOUT_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-draw-timeout; exit $$rc; fi
 
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
@@ -2401,6 +2435,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u25-oracle
 	@echo "== state coverage U26: the side-1 tour and ARMADON ending (ad4=1; skips without its capture; plan 2026-10-28-state-coverage Task 6) =="
 	@$(MAKE) --no-print-directory gp-u26-oracle
+	@echo "== state coverage Task 7: the timeout/health drawn round (0x280BA; skips without its capture; record §D7) =="
+	@$(MAKE) --no-print-directory gp-draw-timeout-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u13-oracle
 	@echo "== gameplay oracle: gp-u14-win-live (a fought win; skips without its capture) =="

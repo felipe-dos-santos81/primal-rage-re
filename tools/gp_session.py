@@ -71,6 +71,12 @@ SNAP_FIELDS = (
     # c82 (slot 0's +0x82). Appended like the slot-state fields, so every older
     # poll.log's S lines lack it; only gp-u26-side1-ending asserts it.
     ('c82b', 0x1078C6, 1),
+    # State coverage Task 7 (plan 2026-10-28-state-coverage §G5, report task-7-report.md):
+    # the round timer's top byte DS_001088F2 (the dword DS_001088EF's +3 byte;
+    # flow_round_timer_step 0x4F4E8 decrements it and flow_round_over 0x27ED8
+    # sets it to 0x1E). Appended like c82b, so every older poll.log's S lines
+    # lack it; gp-draw-timeout pokes it to 0 for the timeout draw.
+    ('clock', 0x1088F2, 1),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -551,6 +557,26 @@ SCENARIOS['gp-draw'] = dict(time_limit=120, extra=DRAW_EXTRA, stop_mode=0x0B, st
         ('after_entry', 0x06, 1, 10, KO_P2),          # round 1: P2 KO'd, P1 wins, mode 8
         ('after_entry', 0x06, 2, 10, KO_P1),          # round 2: P1 KO'd, P2 wins, 1-1, mode 8
         ('after_entry', 0x06, 3, 10, KO_BOTH),        # round 3: both KO'd, the draw, mode 0xA
+    ))
+
+# State coverage Task 7 (plan 2026-10-28-state-coverage §G5, report task-7-report.md): the
+# timeout/health drawn round (0x27FA8's arm at 0x280BA). Two poked KOs (1-1:
+# round 1 KO_P2, round 2 KO_P1), then round 3's poke sets both +0x5A health bytes
+# (DS_0010780A/DS_0010789E) to 0x30 (equal, below the KO 0x78) and the clock top
+# byte 0x1088F2 to 0, so the arm re-reads |A-B| = 0 <= 3 (after 0x39FF4) and calls
+# flow_round_over -> mode 0xA -> mode 0xB. AD4 stays 0xFFFFFFFF (the 1-1 match is
+# undecided), and 0x280BA calls flow_round_over without 0x27C48, so DS_00104B16
+# keeps round 2's value and is not a draw predicate. The 0x30/0x30 health and the
+# clock 0 are harness choices (the arm needs them below 0x78 / equal / <= 0), not
+# game values. The stop is mode 0xB 60 frames in (gp-draw's, so mode 0xA is
+# recorded on the way); time_limit 120 s is gp-draw's harness value.
+TIMEOUT_DRAW_POKE = ('poke', ((0x10780A, b'\x30'), (0x10789E, b'\x30'), (0x1088F2, b'\x00')))
+SCENARIOS['gp-draw-timeout'] = dict(time_limit=120, extra=DRAW_EXTRA,
+    stop_mode=0x0B, stop_delay=60,
+    steps=WIN_MENU + (
+        ('after_entry', 0x06, 1, 10, KO_P2),          # round 1: P2 KO'd, P1 wins, mode 8
+        ('after_entry', 0x06, 2, 10, KO_P1),          # round 2: P1 KO'd, P2 wins, 1-1, mode 8
+        ('after_entry', 0x06, 3, 10, TIMEOUT_DRAW_POKE),  # round 3: clock 0 + health 0x30/0x30
     ))
 
 # Gameplay truth II U13 (plan 2026-10-20-gameplay-truth-ii.md Task 5): the ending of a
@@ -1252,6 +1278,7 @@ class Schedule:
 # gp-draw (claim coverage Task 11) stops too: its end is 60 frames into mode 0xB (the
 # winner pose; stop_mode/stop_delay), so mode 0xA (the round-over, which precedes it)
 # and the pose are recorded and nothing past them is compared.
+# gp-draw-timeout (state coverage Task 7) stops the same way: mode 0xB 60 frames in.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1262,7 +1289,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
-                         'gp-draw', 'gp-u25-endurance-end', 'gp-u26-side1-ending'})
+                         'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending'})
 
 
 class ScriptError(Exception):
