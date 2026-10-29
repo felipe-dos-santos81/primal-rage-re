@@ -80,7 +80,7 @@ class TestTables(unittest.TestCase):
         # state coverage Task 5 (record §D5): af0/af1 are the ENDURANCE loss
         # counters DS_00104AF0/AF1 (bytes), appended after the slot-state fields;
         # they are NOT WIN_EXTRA's round wins w2/w3 at DS_00104AF2/AF3.
-        # state coverage Task 6 (record §D6): c82b (slot 1's +0x82, the side-1 twin
+        # state coverage Task 6 (plan 2026-10-28-state-coverage Task 6): c82b (slot 1's +0x82, the side-1 twin
         # of WIN_EXTRA's c82) is appended after them, also in SNAP_FIELDS not WIN_EXTRA.
         self.assertEqual(gs.SNAP_FIELDS[-3:],
                          (('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1), ('c82b', 0x1078C6, 1)))
@@ -694,7 +694,7 @@ class TestEnduranceEnd(unittest.TestCase):
 
 
 class TestSide1Ending(unittest.TestCase):
-    """gp-u26-side1-ending (plan 2026-10-28-state-coverage Task 6, record §D6): the
+    """gp-u26-side1-ending (plan 2026-10-28-state-coverage Task 6): the
     side-1 tour and ending. The u8 row-1 route (p1.down, RIGHT PLAYER ARCADE, mode 0x2E)
     diverts side 1, P2 confirms cell 5 (ARMADON) with p2.start, and U10's body runs with
     KO_P1 (P1's +0x5A poked) and P2's land marks 0xC4."""

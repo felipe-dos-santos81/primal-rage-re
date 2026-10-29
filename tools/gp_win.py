@@ -271,7 +271,7 @@ MILESTONES['gp-u22-diablo-ending'] = start_char(5, 6) + (
      and r['ad4'] == NO_RESULT and lands(r) == [0x80 | r['c0']] * 7),
 ) + _MATCH1[1:] + _ending_tail(5, 'DIABLO')
 
-# State coverage Task 6 (plan 2026-10-28-state-coverage §G, record §D6): the side-1
+# State coverage Task 6 (plan 2026-10-28-state-coverage Task 6): the side-1
 # tour and ending. gp-u8-right-arcade's START MENU row-1 route (the RIGHT PLAYER ARCADE
 # setter mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character select, where P2
 # (side 1) confirms its default cell 5 (ARMADON, class 4) with p2.start. P2 then wins

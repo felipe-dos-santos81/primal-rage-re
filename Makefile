@@ -1222,17 +1222,21 @@ gp-u25-oracle: build ## State coverage U25 oracle: gp-u25-endurance-end's four-K
 			--capture-sha256 "$(GP_U25_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u25-endurance-end; exit $$rc; fi
 
-# State coverage Task 6 (plan docs/superpowers/plans/2026-10-28-state-coverage.md §G): the side-1
+# State coverage Task 6 (plan docs/superpowers/plans/2026-10-28-state-coverage.md Task 6): the side-1
 # tour and ending. gp-u8-right-arcade's START MENU row-1 route (p1.down, RIGHT PLAYER ARCADE,
 # mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character select, where P2 confirms its
 # default cell 5 (ARMADON, class 4) with p2.start; then U10's body with the KOs reversed (KO_P1
 # pokes P1's +0x5A, so P2 wins and the final's seven opponents are P1-KO'd). The ending is the
 # mode-0x1F handler 0x208F8 reading DS_0010782A[DS_00104AD4 * 0x94] = c1 = 4 (ARMADON),
-# side-independent by the 0x208F8 differential row. The cross-check is byte-identity with
-# gp-u21-armadon-ending's mode-0x1F frames (recorded in the task report): the port's replays of
-# both captures produce 268 mode-0x1F frames each, all 268 byte-identical in rendered RGB (one
-# raw .ipx index byte differs in the first frame, a state-0 reset transient that renders to the
-# same RGB), and the settled title screen is byte-identical (sha256 efb8526d..).
+# side-independent by the 0x208F8 differential row. The cross-check (tools/gp_side1.py, wired
+# into the oracle) is byte-identity of the mode-0x1F rendered RGB with gp-u21-armadon-ending's
+# replay: both replays produce 268 mode-0x1F frames (the pin below) and all 268 are byte-identical
+# in rendered RGB (concat sha256 97568493..). The first frame's raw index encoding differs in
+# 55 021 bytes (a state-0 reset transient: that frame's DAC maps all 256 entries to one colour, so
+# every differing index renders identically) and the DACs are identical -- a measured, not fitted,
+# reading, and the rendered-content claim is unaffected. gp_side1.py fails on any rendered-pixel
+# difference and on an empty/wrong count (--expect-count), so a side-independence regression or a
+# truncated mode-0x1F window fails instead of passing.
 # Measured on the 2026-10-29 capture (5,814 frames, raw 1386..14296, wall 204.5 s, memsize=64).
 # MIN_FIRST = 2358 is the first unexplained capture frame (raw 5568, f=0xDA0 mode 0x1B): the
 # versus -> REPLENISH transition's scan-out, a 3-present tear (rows 0..58 = port 1943, rows
@@ -1244,7 +1248,20 @@ gp-u25-oracle: build ## State coverage U25 oracle: gp-u25-endurance-end's four-K
 # scan-outs, not divergences); nothing past 2358 is claimed by the frame ratchet, so the
 # mode-0x1F frames (capture 5073..5375) are claimed by the cross-check and the trace/moves
 # ratchets instead. The window starts at capture 86 (raw 1749); because the frame ratchet stops
-# at 2358, the window reach is port 1943 (not the dump's end) with 11 non-black missing classes;
+# at 2358, the window reach is port 1943 (not the dump's end) with 11 non-black missing classes
+# (the unexhibited port-frame canonical classes up to reach 1943, title_compare.canonical_missing),
+# one per line, measured on the replay's 4 897-frame dump (port index, f, mode, rendered-RGB sha256):
+#   10 f=024C mode=001A 3ef11f7c110f6c54e9684717b3040ee473233975650a7ec788e3e304d540374c
+#   12 f=024C mode=001A 386be86694a89a74c5e9d524ab3ad6d992f1612db745e0cd419f8436599714ca
+#   132 f=03D5 mode=001A 4918d7e577ec1cfb64ff8a96981c5a2157b33919cf3e5c3bf4956198aa7959c7
+#   219 f=046D mode=0008 8fb7339e90ae4f1180e8000871a8605d3e7e9f58355c994591cd883db09eabe6
+#   220 f=046E mode=0008 e2e4a6d7e2e485c4f0786f892d727f6027e59436d7532fce7eac8eebdb9ae141
+#   818 f=06C5 mode=0016 d227ab6f5b21d7650b47cf8cbe76404cec6b14dcdb09f96ad9995144203ae1ba
+#   1026 f=07B5 mode=0005 3ab7c2e56603268d4276c73df923d28d87a7ea155785f4c4678cde3e3a97f470
+#   1049 f=07F3 mode=0005 02899bf8d813d5c29a93e58b563c06616fa6aa9265668558a2c16b5c49c95d4b
+#   1080 f=0830 mode=0006 557c5723ffe559a41da2f3a7985a76e7dcab185bcfbd6360b60201cf68aec8ff
+#   1091 f=083B mode=0009 f8e46ad30c40a6a8d0cf5c84760540b786c7a04f14504d0c8c6498c3c3227a23
+#   1925 f=0D93 mode=001B ed343e30f214405dd534b196735d53a863accc5662ffb50d5b9878ef57de906e
 # the post-script tail (capture 5801..5803, at/past the X record f=0x26B0) is not claimed.
 # Trace, moves and WIN fields agree through f=0x26B0 (9904), so their end pins are 9905;
 # MILESTONES 30 (all reproduced at the capture's frame).
@@ -1260,6 +1277,7 @@ GP_U26_CAPTURE_SHA256 = 19b00d8d7721c0b927f35a5c816e1adcd062b74fd56160283e5ca5d8
 GP_U26_CAPTURE_FRAMES = 5814
 GP_U26_MILESTONES = 30
 GP_U26_WIN_MIN_FIRST = 9905
+GP_U26_MODE1F_COUNT = 268
 # <<< PIN-BASELINE-END gp-u26
 gp-u26-oracle: build ## State coverage U26 oracle: the side-1 (RIGHT PLAYER ARCADE) tour and ending (skips without data/k11-captures/gp-u26-side1-ending)
 	@echo "== gameplay oracle: gp-u26-side1-ending (the side-1 tour and ARMADON ending under pokes) =="
@@ -1275,8 +1293,11 @@ gp-u26-oracle: build ## State coverage U26 oracle: the side-1 (RIGHT PLAYER ARCA
 			--capture-sha256 "$(GP_U26_CAPTURE_SHA256)" --capture-frames "$(GP_U26_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario gp-u26-side1-ending --capture $(K11_CAPTURES)/gp-u26-side1-ending \
 			--port $(GP_DUMP)/gp-u26-side1-ending --min-milestones "$(GP_U26_MILESTONES)" \
-			--win-min-first "$(GP_U26_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U26_CAPTURE_SHA256)"; \
-		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u26-side1-ending; exit $$rc; fi
+			--win-min-first "$(GP_U26_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U26_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u21-armadon-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_side1.py --side1 $(GP_DUMP)/gp-u26-side1-ending --p1 $(GP_DUMP)/gp-u21-armadon-ending \
+			--expect-count "$(GP_U26_MODE1F_COUNT)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u26-side1-ending $(GP_DUMP)/gp-u21-armadon-ending; exit $$rc; fi
 
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
@@ -2378,7 +2399,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u12-oracle
 	@echo "== state coverage U25: the ENDURANCE match end (four-KO roster walk, modes 0x32/0x33; skips without its capture; record §D5) =="
 	@$(MAKE) --no-print-directory gp-u25-oracle
-	@echo "== state coverage U26: the side-1 tour and ARMADON ending (ad4=1; skips without its capture; record §D6) =="
+	@echo "== state coverage U26: the side-1 tour and ARMADON ending (ad4=1; skips without its capture; plan 2026-10-28-state-coverage Task 6) =="
 	@$(MAKE) --no-print-directory gp-u26-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u13-oracle
@@ -2411,7 +2432,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_gp_side1 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

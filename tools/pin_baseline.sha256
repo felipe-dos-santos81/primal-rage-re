@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: state coverage Task 6: gp-u26-side1-ending oracle and pins (MIN_FIRST 2358, reach 1943, MAX_MISSING 11, TRACE/MOVES/WIN 9905)
-b03733aa84a8bc96f000164f459face0a5a2eef03fdd2aad54d110f4d232fb92
+# reason: state coverage Task 6: gp-u26-side1-ending cross-check pin GP_U26_MODE1F_COUNT=268 and the 11 itemized MAX_MISSING classes
+24bcba54a3ffbe46f0a2be7e8e6ff48b6ae51a56639deb747b9aae631bd4f76c

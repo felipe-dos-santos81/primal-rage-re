@@ -363,7 +363,7 @@ static const fnm_pair k_miss_gp_u25_endurance_end[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
-/* gp-u26-side1-ending (state coverage Task 6, record §D6), measured on its full
+/* gp-u26-side1-ending (state coverage Task 6, plan 2026-10-28-state-coverage Task 6), measured on its full
  * replay to the X record (f=0x26B0): the same two wipe hooks of §G.24, 0x29D60
  * (bare `ret`, hits=1) and 0x5D812 (runtime stub, hits=3), both from
  * frontend_mode_1b_step (the RIGHT PLAYER ARCADE divert's wipe, as

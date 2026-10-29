@@ -65,7 +65,7 @@ SNAP_FIELDS = (
     # (WIN_EXTRA). Appended like the slot-state fields, so every older
     # poll.log's S lines lack them.
     ('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1),
-    # State coverage Task 6 (plan 2026-10-28-state-coverage §G, record §D6):
+    # State coverage Task 6 (plan 2026-10-28-state-coverage Task 6):
     # slot 1's world-domination count DS_00107832 + 1*0x94 = 0x1078C6 (the
     # 0x4160C increment with r = DS_00104AD4 = 1), the side-1 twin of WIN_EXTRA's
     # c82 (slot 0's +0x82). Appended like the slot-state fields, so every older
@@ -656,7 +656,7 @@ SCENARIOS['gp-u22-diablo-ending'] = dict(
          ('poke', ((0x108106, lands_marked(0, 5)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
 
-# State coverage Task 6 (plan 2026-10-28-state-coverage §G, record §D6): the side-1
+# State coverage Task 6 (plan 2026-10-28-state-coverage Task 6): the side-1
 # tour and ending. gp-u8-right-arcade's START MENU row-1 route (p1.down, the RIGHT
 # PLAYER ARCADE setter mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character
 # select (mode 0x10), where P2 (side 1) confirms its default cell 5 (ARMADON, class 4)

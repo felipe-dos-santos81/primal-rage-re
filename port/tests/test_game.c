@@ -13743,7 +13743,7 @@ static void gp_trace_line(void)
             /* State coverage Task 5 (record §D5): the ENDURANCE loss counters
              * DS_00104AF0/DS_00104AF1 (bytes), gp_session.SNAP_FIELDS' af0/af1. */
             (unsigned)DSB(DS_00104AF0), (unsigned)DSB(DS_00104AF1),
-            /* State coverage Task 6 (record §D6): slot 1's world-domination
+            /* State coverage Task 6 (plan 2026-10-28-state-coverage Task 6): slot 1's world-domination
              * count DS_00107832 + 0x94 (the 0x4160C increment with r = 1),
              * gp_session.SNAP_FIELDS' c82b (the side-1 twin of c82). */
             (unsigned)DSB(DS_00107832 + 0x94u),

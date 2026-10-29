@@ -520,7 +520,7 @@ class TestArmadonEnding(unittest.TestCase):
 
 
 class TestSide1Ending(unittest.TestCase):
-    """gp-u26-side1-ending (state coverage Task 6; plan §G): the side-1 (P2) tour and
+    """gp-u26-side1-ending (state coverage Task 6; plan 2026-10-28-state-coverage Task 6): the side-1 (P2) tour and
     ending. P2 confirms character-select cell 5 (ARMADON, class 4) with p2.start, wins
     the match and the final (KO_P1 pokes P1's +0x5A DS_0010780A), and the mode-0x1F
     handler 0x208F8 reads the winner's char DS_0010782A[DS_00104AD4 * 0x94] = c1 = 4
