@@ -527,3 +527,121 @@ n=1`, … 144 lines), proving the dump path; the unset-tag run stays inert. The
 unit test (`test_fn_hit`) fails when the note increment is dropped and passes
 otherwise; no `PR_SEAM` was added. `diffrun` links the plain `prage_core`, so its
 bytes do not change.
+
+---
+
+## §D6 The OPL single-voice pitch test (Task 12)
+
+The offline experiment the plan's §G7(b)/Task 12 asked for: does the vendored
+Opal 2.0.3 core render one voice at the pitch its register bytes specify? The
+test is `test_opl_pitch` in `port/tests/test_audio.c` (registered after
+`test_opl` in `test.h`); it drives the core directly through
+`opl_reset`/`opl_write`/`opl_render`, no mixer, no capture, no game state.
+
+### §D6.1 The pitch derivation
+
+The core's phase accumulator is `opal.c:472-508`: `channelWriteB0` (opal.c:753)
+stores `chan->freq = (freq & 0xFF) | ((B0 & 3) << 8)` (the 10-bit fnum from the
+A0 low byte and B0 bits 1-0) and `chan->octave = (B0 >> 2) & 7` (block); then
+`operatorPhaseGenerate` computes `baseFreq = (fNum << octave) >> 1` and
+`op->phase += (baseFreq * freqMultTimes2) >> 1`. With MULT = 1,
+`freqMultTimes2 = mulTimes2[1] = 2` (opal.c:46/1452), so the per-sample
+increment is `(fnum << block) >> 1`. One sine cycle is 1024 phase steps and
+`phaseOut = phase >> 9` (opal.c:501), so a cycle is `2^19` phase-accumulator
+units; samples per cycle = `2^19 / ((fnum << block) >> 1)` = `2^20 / (fnum *
+2^block)`, and therefore
+
+```
+f = fnum * 49716 / 2^(20 - block)         (MIXER_OPL_RATE = 49716 = OPAL_OPL3_SAMPLE_RATE)
+```
+
+**Choice.** Target A4 = 440 Hz. `block = 4`, `fnum = 580`:
+`f = 580 * 49716 / 65536 = 439.9915 Hz` (the ideal 440 Hz needs fnum 580.011, so
+580 rounds it down by 0.0085 Hz). The fnum is a 10-bit integer, so its
+**quantization step** is one fnum step = `49716 / 2^(20 - block)` =
+`49716 / 65536 = 0.7586 Hz`.
+
+**Window and tolerance.** One second at the native rate is `N = 49716` frames, so
+a rising-zero-crossing count resolves the fundamental to `49716 / N = 1 Hz`. The
+tolerance is the measurement resolution plus the fnum quantization (both
+derived, not fitted):
+
+```
+tolerance = 49716 / N + 49716 / 2^(20 - block) = 1 + 0.7586 = 1.7586 Hz
+```
+
+### §D6.2 The measurement
+
+The measured voice is channel 0, left-panned (`0xC0 = 0x10`), a muted modulator
+(TL 63) and a sounding carrier (TL 0), algorithm 0 (no feedback), MULT 1, sine
+— a pure carrier sine at f0. A second channel (right-panned `0xC0 = 0x20`,
+fnum 288 block 6 = 873.914 Hz) exists only so the channel-swap mutation is a
+pure pitch change. OPL3 mode (`0x105 = 0x01`) is enabled so the C0 output-enable
+bits pan the two channels apart.
+
+```
+$ ./build/run_tests | grep 'OPL pitch'
+OPL pitch: fnum=580 block=4 f=439.9915 Hz, N=49716, quantization=0.7586 Hz,
+tolerance=1.7586 Hz; measured 439 rising zero crossings = 439.0000 Hz
+```
+
+`|439.0000 - 439.9915| = 0.9915 <= 1.7586`: the core renders the voice at the
+derived pitch. The count is 439, not 440, because the phase starts at 0 (the
+key-on reset) and the rising crossing at the start of the first cycle is not
+counted; both 439 and 440 (and 441) fall inside the tolerance, so the assertion
+is not boundary-fragile.
+
+### §D6.3 The pitch mutations (both fail, then restore)
+
+The test is mutation-proved two ways, each applied temporarily and reverted:
+
+| mutation | edit | measured | verdict |
+|---|---|---|---|
+| channel swap | channel 0 takes `fnum2/block2`, channel 1 takes `fnum/block` (pan kept) | 873 rising crossings = 873.00 Hz | FAIL (433 Hz off) |
+| block+1 | channel 0 block 4 → 5 | 879 rising crossings = 879.00 Hz | FAIL (one octave up) |
+| (restored) | — | 439 crossings = 439.00 Hz | pass |
+
+The channel-swap failure is a *pitch* failure, not a key-off: both channels stay
+keyed (both B registers keep the key bit) and the pan is untouched, so the
+measured left channel simply plays the other channel's note. The block+1 failure
+doubles the fundamental (2^(20-(block+1)) halves the denominator), far outside
+the 1.7586 Hz tolerance.
+
+### §D6.4 The amplitude sanity (carrier TL)
+
+The carrier TL field (register `0x43`) sets `outputLevel = (val & 0x3F) << 2`
+(opal.c:1465) in 0.1875 dB units (opal.h:98), i.e. 0.75 dB per TL step. It adds
+into `egOut` (opal.c:298), which feeds the exponential as
+`operatorExpCalc(out + (envelope << 3))` (opal.c:292); `operatorExpCalc`
+(opal.c:162) shifts `expTable[level & 0xFF]` by `level >> 8`, halving per 256
+argument units. A +8 TL step therefore shifts the argument by `8 * 32 = 256` and
+scales the amplitude by `2^(-8/8) = 0.5`; the RMS moves by the same factor
+(mean square by `0.5^2 = 0.25`).
+
+```
+$ ./build/run_tests | grep 'OPL amplitude'
+OPL amplitude: carrier TL 0 mean-square=8297402.98, TL 8 mean-square=2074930.29,
+ratio=0.2501 (derived RMS factor 0.5 -> mean-square 0.25)
+```
+
+Measured mean-square ratio **0.2501** (RMS ratio 0.5001) against the derived
+0.25 — exact to the exp ROM's integer-shift rounding. The amplitude assertion
+fails under a no-op TL mutation (both renders at TL 0 → ratio 1.0000), so it is
+not vacuous.
+
+### §D6.5 What this claims, and the named limits
+
+- **Claimed: the fundamental pitch** of one voice, derived from the register
+  bytes and measured over a deterministic 1 s render. Not timbre: the test does
+  not verify the FM harmonic content or the waveform shape beyond its zero
+  crossings.
+- **The dual-OPL2/OPL3 topology fork stays open.** The test keys a single 2-op
+  voice in OPL3 mode (0x105 = 1, only so the C0 output-enable bits pan the two
+  mutation channels apart); it says nothing about whether the game's
+  dual-OPL2 register stream (§D1.5.3) is one OPL3 or two OPL2 chips, and does
+  not decide that fork.
+- **Opal's YMF262 accuracy is unmeasured.** The vendored core's synthesis
+  arithmetic is upstream's; this test confirms the phase-accumulator pitch law
+  only, not bit-accuracy against a real YMF262.
+- **The mixer stays invented** (mixer.h:4-9); the test bypasses it and drives
+  `opl_render` directly.

@@ -59,6 +59,7 @@ extern int g_failures;
     X(test_host)        \
     X(test_flow)        \
     X(test_opl)         \
+    X(test_opl_pitch)   \
     X(test_pitch)       \
     X(test_samples)     \
     X(test_mixer)       \
