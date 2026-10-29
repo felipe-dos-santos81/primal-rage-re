@@ -537,7 +537,11 @@ consolidation gate).
   open `0x21`/`0x25` (no poke writes `b1f`/`DS_00104ABC`), so none is built. The census rows
   `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the trample `0x4B470` is
   `HIT`); `0x0B` (the drawn winner pose) stays unexhibited (claim-coverage Task 11's `gp-draw`
-  did not publish).
+  did not publish). The `0x21` chain is re-derived in live-truth §L9 and stays declared: `b1d` is a
+  mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; 1 in 7
+  on the two-human pick, `flow.c:1350`), the entry's `+0x1F` count resets on spawn and landing
+  (`fight.c:1482`, `4942`), no capture's poll.log records that count, and state-coverage §9 forbids a
+  poked 1P exhibit.
 - **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
   counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;
   14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none);

@@ -144,7 +144,9 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   state-coverage design §9 forbids a poked 1P scenario; reversing that is an
   operator decision, not this phase's call.
 - **Decision:** keep `0x21` declared with the measured blockers; if the
-  operator reverses §9, a later poked exhibit is the route.
+  operator reverses §9, a later poked exhibit is the route. The citations
+  (`fight.c`, `flow.c` lines) and the evidence for each blocker are in the record's
+  §L9 (`docs/superpowers/plans/2026-10-29-live-truth-derivations.md`).
 
 ### 2.7 U14 R1 — the fought win stays open; the KO report closes the rule gap
 

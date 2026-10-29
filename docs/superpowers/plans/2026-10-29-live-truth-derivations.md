@@ -183,3 +183,84 @@ is not a measurement. `t9-r5` is the measurement.
 The deciding gate input is measured and is below the gate. The original's clear is
 the gate, read on the strict inequality. No port change follows, no pin moves, and
 no capture is taken. Whether the finisher gap R2 is closed is not decided here.
+
+## §L9 The 0x21 volleyball declaration (Task 9)
+
+**Decision: `0x21` stays declared, not captured.** No capture, code or pin. The gate
+chain is re-derived from the bytes below and each blocker is cited to where it is
+measured or read. The census rows stay `NOT-HIT`: `0x4BD98` (baseline l.696) and the
+mode handler `0x26540` (l.240).
+
+### L9.1 The store and its gates (`fight_4bd98`, `0x4BD98`)
+
+`port/src/game/fight.c:2940-2977`:
+
+- `fight.c:2943` `DS_00104AD8 > 0` returns (`0x4BDA7`).
+- `fight.c:2944` `DS_00104ABC < 2` returns (`0x4BDB4`). `DS_00104ABC = (b1f == 3) + 1`
+  is written at `flow.c:1632` (`flow_player_join`, `0x28DCF`) and `flow.c:2416` (the
+  round-end case-3 arm, `0x25EB2`), so the gate is a two-human match only.
+- `fight.c:2945` `fight_13134() != 0` returns (`0x4BDC1`). `fight.c:2921-2934`: both
+  fighters' x beyond `±0x3300` on the same side.
+- Store body, `fight.c:2946-2976`: `DS_00108864 = entry`; `entry+0x1E = 6`;
+  `DS_001088C1 = 1`; the mode word `DS_00104B00 = 0x21` (`fight.c:2949`, `0x4BDE7`);
+  `DS_001088C5 = 1`; the `0x1E` timer `DS_001088AA` (`fight.c:2951`, `0x4BDF4`); the
+  two actor spawns `0xBAB88` (`fight.c:2968`) and `0xBAB9C` (`fight.c:2971`) at the
+  fighters' midpoint, both `+0x36 = 0x1A4` (`fight.c:2976`).
+
+### L9.2 The caller tail (`fight_4b470`, `0x4B470`)
+
+`fight.c:3080-3091`, the eighth-hit tail, returns unless every gate passes:
+`3080` `DS_00104B1D` 2 or 3 (`0x4B547`); `3081` `DS_00104AFC != 0` (`0x4B559`, the
+**stage word must be 0**); `3082` `DS_001088C1 != 0`; `3083`
+`(DS_001088EF >> 24) <= 1`; `3084` `entry+0x1F <= 7` (`0x4B579`); `3085`
+`DS_001088C5 != 0`; `3086` `DS_00108864 != 0`. Then `3090` `fight_4bd98(entry)`
+(`0x4B590`) and `3091` `fight_4cb18` (`0x4B59E`).
+
+`+0x1F` is the entry's hit count. The `0x4B69C` prelude (`fight.c:3101-3117`) tests
+`+0x1C` bit 7 (`3103`), lets the hit through `fight_4b788` (`3110`), and increments
+`+0x1F` at `fight.c:3113` (`0x4B716`).
+
+### L9.3 The blockers
+
+**(a) `b1d` is a mode byte, not a player count.** Arcade is `b1d = 0`; Endurance is
+`b1d = 3` (`docs/superpowers/plans/2026-10-01-gameplay-u8-derivations.md` l.197,
+l.248). The caller gate `fight.c:3080` excludes 2 and 3, so `0x21` needs an arcade
+(`b1d` 0 or 1) match. The arcade rows (`b1d = 0`) are the ones that poll for a second
+player (gameplay-u8 l.258-259).
+
+**(b) The stage is 1 in 7.** The gate at `fight.c:3081` needs `DS_00104AFC == 0`. On
+the `DS_00104B17 == 0` path of `flow_stage_pick` (`flow.c:1343-1350`), `b1f == 3`
+picks the stage as `rng_next(7u)` (`flow.c:1350`, `0x2587C`), so the stage word is
+0 with probability 1/7 per pick. I did not trace which of the four callers of
+`0x25848` runs at an arcade match's setup, so the 1-in-7 is per pick on that path.
+
+**(c) The trample counter resets on landing.** `+0x1F` is zeroed when an entry spawns
+(`fight.c:1482`, `0x49622`) and when a tumbling entry lands in the case-6 arm
+(`fight.c:4942`, `0x49FAF`). The re-hit needs `+0x1C` bit 7, which that arm sets only
+while `+0x36 < 0` (`fight.c:4912-4913`). So eight hits must land on one entry during
+its fall; a landing ends the count. Two other writers also increment `+0x1F`
+(`fight.c:3455`, `0x4D81C`; `fight.c:4320`, `0x4C6DE`). This record does not trace
+whether they reach the `0x4B590` tail.
+
+**(d) No capture measures a count of two or more.** The `poll.log` S rows carry the
+mode, the pad, the state words and the `S` fields the reader uses, but no effects-entry
+field, so the per-entry `+0x1F` is not measured in any capture. The census is the
+measured fact: `0x4BD98` is `NOT-HIT` (baseline l.696), so no run passed the chain to
+the store. The trample `0x4B69C` is `HIT` (l.692).
+
+**(e) The two-human gate.** `DS_00104ABC >= 2` needs `b1f == 3`, which only a joined
+second player sets (`flow.c:1632`, `2416`). A 1P scenario cannot open it, and no poke
+writes `b1f` or `DS_00104ABC` (AGENTS.md, the `0x21`/`0x25` paragraph).
+
+**(f) A poke is forbidden here.** A poke could set `+0x1F = 8`, but the state-coverage
+design §9 bullet "The two-human-only gates cannot be poked open" says "Do not build
+one; declare the modes with their gates". That is the stop rule this phase keeps.
+
+### L9.4 The decision
+
+- `0x21` stays declared with these citations. No new claim; the census rows stay
+  `NOT-HIT`.
+- A later poked exhibit needs an explicit operator reversal of state-coverage design §9.
+- A real two-human chain needs a measured sequence this phase does not have: eight
+  hits on one airborne entry, the stage word 0, `b1d` 0 or 1, `b1f == 3`,
+  `DS_00104AD8 <= 0` and `fight_13134` false.
