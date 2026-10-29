@@ -84,8 +84,8 @@ void render_list_init(void)
 /* 0x1C390 — record §50-D. Pops the free-list head: returns it and advances the
  * head to its next. The raw dereferences the new head unconditionally, so an
  * exhausted pool reads address 0 and writes that to the head; the port does the
- * same, before render_list_insert's guard turns the rest of the insert into a
- * no-op. Equivalent while mem[0..3] is zero. */
+ * same, and render_list_insert restores the head to 0 on the empty path so the
+ * sentinel (the modeled IVT in mem[0..3]) cannot become a list node. */
 u32 render_pop_free(void)
 {
     PR_HIT(0x1C390u);
@@ -97,7 +97,10 @@ u32 render_pop_free(void)
 int render_list_insert(u32 pset_off)
 {
     u32 node = render_pop_free();               /* 0x1C390 (its head write already ran) */
-    if (node == 0) return 0;                    /* PORT: pool exhausted guard */
+    if (node == 0) {                            /* PORT: pool exhausted guard */
+        DSD(RENDER_FREE_HEAD) = 0;              /* undo the raw's read of address 0 (the modeled IVT) */
+        return 0;
+    }
     DSD(node + 4) = pset_off;
     render_splice((u32 *)(mem + RENDER_LIST_HEAD), node);
     render_count++;

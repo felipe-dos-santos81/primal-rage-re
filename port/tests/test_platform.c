@@ -2650,6 +2650,24 @@ static void check_list_order(void)
     CHECK_EQ_INT(render_list_count(), 580);
 }
 
+/* The modeled IVT (mem[0..3], seeded by bios_ivt_stand_in) is a non-zero dword,
+ * so render_pop_free's raw read of address 0 on an exhausted pool writes a
+ * non-zero sentinel to the free-list head (DS_0010275C). render_list_insert
+ * must restore the head to 0 there, or the next insert would follow the
+ * sentinel out of mem[]. Seed the sentinel and the empty head, and prove the
+ * insert fails cleanly and leaves the head 0. */
+static void check_render_drain_restores_head(void)
+{
+    u32 head = DSD(DS_0010275C);
+    u32 z0   = DSD(0);
+    DSD(0) = 0xDEADBEEFu;
+    DSD(DS_0010275C) = 0;
+    CHECK_EQ_INT(render_list_insert(0x1234u), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010275C), 0);
+    DSD(0) = z0;
+    DSD(DS_0010275C) = head;
+}
+
 static void check_proj_rounding(void)
 {
     /* 0x14328's projection: seed +0x800, then for a negative sum add a further
@@ -3095,6 +3113,7 @@ static void check_scroll_track(void)
 int test_render(void)
 {
     check_list_order();
+    check_render_drain_restores_head();
     check_proj_rounding();
     check_offscreen_skip();
     check_layer_modes();
