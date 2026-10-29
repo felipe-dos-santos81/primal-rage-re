@@ -185,6 +185,111 @@ The deciding gate input is measured and is below the gate. The original's clear 
 the gate, read on the strict inequality. No port change follows, no pin moves, and
 no capture is taken. Whether the finisher gap R2 is closed is not decided here.
 
+## §L7 The name-entry gated oracle (Task 7)
+
+**Decision: `gp-u27-name-entry` is now a gated oracle in `make verify`.** No capture or
+port code changed, and the existing `k_miss_gp_u27_name_entry`/`k_gp_sets` row was already
+sufficient (the replay reports the same four rows, `distinct=4 dropped=0`). The capture is
+`data/k11-captures/gp-u27-name-entry`: 9,417 S records, 5,885 frames, poll.log sha256
+`5e2c5824ee009d814c1929663110c22b24d658e4b0ea0c440a4b3327eeb79d04`. The fresh replay dumps
+4,991 frames and stops in mode 3 at `f=0x24B9`.
+
+### L7.1 Capture and port path checks
+
+`tools/gp_u27.py check` reads these measured S records (the name dword is little-endian
+memory order, so `0x20444241` is the bytes `41 42 44 20`, or `"ABD "`):
+
+| Claim | Measured records |
+|---|---|
+| mode-`0x1E` sub-states | `b25 00@0x217E -> 04@0x217F -> 05@0x2183 -> 06@0x22CE -> 07@0x23FC -> 0A@0x23FD` |
+| three letter counts | `ncnt 1@0x2193, 2@0x21B0, 3@0x21CE` |
+| three letters and finaliser | first `name=00000041@0x220D`, `00004241@0x2226`, `00444241@0x2240`, `20444241@0x2243` |
+| score | `sc0=005217A0` on every checked row |
+| return | `mode=3`, `b25=0`, final name and score at `f=0x24B9` |
+
+The `06` and `07` rows are mode-`0x1E` re-entry samples, not the first writes of those
+`b25` values (those writes occur during mode `0x15`). The checker therefore pins the exact
+records rather than inventing a global first-transition rule. `path` compares only the six
+`b25` values at the same capture frames; the port trace does not carry `ncnt`, `cell0` or
+`name`. On the real capture/replay both commands exit 0: all capture rows pass and all
+`6/6` port sub-states reproduce. `tools/tests/test_gp_u27.py` runs six tests covering the
+sub-state sequence, all three count/name stages, the padded finaliser, and capture/path
+failure cases. It erred on the missing module before implementation and passes after it.
+
+### L7.2 Capture 334 allowance
+
+Without an allowance the first unexplained content frame is capture **334 (raw 2837)**, the
+round-1 mode-8 entry's three-present scan-out. On the 4,991-frame dump:
+
+- rows 0..2 equal port **219** (`f=0x47C`), the only holder before the pair;
+- rows 3..62 equal port **221** (`f=0x47E`);
+- rows 63..199 equal port **222** (`f=0x47F`);
+- `(221,222)` is the dump's unique adjacent-pair bind, and port 220 (`f=0x47D`) is
+  unexhibited.
+
+The measured top-row sha256 is
+**`f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b`**.
+The recon's `3f1839ec...` prefix was wrong; the measurement wins.
+`SCAN3_ALLOWED['gp-u27-name-entry'] = ((334,3,63,f1839ec...),)` is the resulting recipe.
+The new unit test pins that tuple and fails a one-byte middle-frame mutation. A second,
+real-dump proof changed one byte at index `3*320+17` of a hard-linked scratch copy's
+`frame_00221.ipx`: the comparator returned 1, reported `no unique adjacent port pair`, and
+moved the first unexplained frame back to 334. The original dump was not modified.
+
+### L7.3 Measured pins and finaliser coverage
+
+All values were re-measured on the fresh replay; the recon values were otherwise correct.
+With capture 334 allowed by name, the comparator reports 3,438 clean, 2,320 splice, eight
+transition, one scan3-allowed and one unexplained frame, with 23 all-black frames and zero
+order failures.
+
+| Pin | Measured value | Evidence |
+|---|---:|---|
+| `GP_U27_MIN_FIRST` | **5871** | first unexplained capture 5871 (raw 13662), the post-script tail |
+| `GP_U27_MAX_START` | **81** | window starts at capture 81 (raw 1746) |
+| `GP_U27_MIN_REACH` | **4990** | highest exhibited port index, the 4,991-frame dump's last frame |
+| `GP_U27_MAX_MISSING` | **38** | 38 canonical non-black missing classes through port 4990 |
+| `GP_U27_TRACE_MIN_FIRST` | **9402** | 0 differing through 9401 (`f=0x24B9`) |
+| `GP_U27_MOVES_MIN_FIRST` | **9402** | 0 differing through 9401 |
+| `GP_U27_CAPTURE_FRAMES` | **5885** | stored capture frames |
+| `GP_U27_CAPTURE_SHA256` | **`5e2c5824...b79d04`** | full value above |
+
+The frame window includes mode `0x1E` and the finaliser. The recon's **258** byte-identical
+frames reproduce with a more precise split: in the name-entry/finaliser scene, **155
+mode-`0x1E` port occurrences plus 103 finaliser mode-`0x15` occurrences = 258 distinct port
+frames** each have a byte-identical capture frame (and there are 258 such capture frames).
+The whole capture 5311..5616 scene has 303 content-bearing frames, all explained (255
+classified clean and 48 splice), plus three all-black frames. The remaining byte-identical
+port occurrences are not claimed: the oracle keeps the usual narrow existential/splice and
+bounded-missing claims, not full port-frame order or coverage.
+
+### L7.4 Failing-direction proofs
+
+Each real-comparator run below used the same fresh dump and returned **1**; the logs are in
+the git-ignored Task 7 ledger directory. No pin was weakened or left changed.
+
+| Mutation | Measured failure |
+|---|---|
+| `MIN_FIRST 5871 -> 5872` | `first unexplained 5871 < ratchet N 5872` |
+| `MAX_START 81 -> 80` | `window starts at capture 81 ... > pinned start 80` |
+| `MIN_REACH 4990 -> 4991` | `window reach port 4990 < pinned reach 4991` |
+| `MAX_MISSING 38 -> 37` | `38 missing class(es) > pinned 37` |
+| `TRACE_MIN_FIRST 9402 -> 9403` | `N 9403 > end 9402: N is unreachable` |
+| `MOVES_MIN_FIRST 9402 -> 9403` | `N 9403 > end 9402: N is unreachable` |
+| capture SHA's last hex digit `4 -> 5` | capture identity mismatch; re-capture invalidates the pins |
+| `CAPTURE_FRAMES 5885 -> 5884` | capture identity mismatch (5,885 actual frames) |
+| one bound byte of real port 221 | capture 334 loses its unique pair and is unexplained |
+
+A Makefile-level `GP_U27_MIN_FIRST=5872` run also failed with
+`first unexplained 5871 < ratchet N 5872`; restoring the file's measured 5871 and rerunning
+`make gp-u27-oracle GP_WIN_KEEP=1` exited 0 with every pin exact, the evidence and path
+checks green, and the existing miss set unchanged. The Python run
+`python3 -m unittest tools.tests.test_gp_compare tools.tests.test_gp_u27` is
+`Ran 97 tests ... OK`. The manifest now reads **38 present checked, 1 declared skipped**;
+the declared absence remains U14. The measured pin-baseline reason is
+`live truth Task 7: measured gp-u27 name-entry pins and capture-334 scan-out`, digest
+`74896d14dc0075f38d7ea4e8a201f8db9eb41fc89394d5b75b590ce27c560308`.
+
 ## §L8 The one-human fought KO: game evidence only (Task 8)
 
 **Decision: the failed U14 artifact is game evidence for a fought KO, not a capture, and

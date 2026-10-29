@@ -78,6 +78,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u23-u16-finisher \
 	$(K11_CAPTURES)/gp-u25-endurance-end \
 	$(K11_CAPTURES)/gp-u26-side1-ending \
+	$(K11_CAPTURES)/gp-u27-name-entry \
 	$(K11_CAPTURES)/gp-draw-timeout \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
@@ -132,7 +133,7 @@ chunk ?= 0
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
-        gp-u26-oracle gp-draw-timeout-oracle \
+        gp-u26-oracle gp-u27-oracle gp-draw-timeout-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -674,6 +675,7 @@ GP_U22_MAX_MISSING = 52
 GP_U23_MAX_MISSING = 9
 GP_U25_MAX_MISSING = 12
 GP_U26_MAX_MISSING = 11
+GP_U27_MAX_MISSING = 38
 GP_DRAW_TIMEOUT_MAX_MISSING = 5
 # <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
@@ -1300,6 +1302,40 @@ gp-u26-oracle: build ## State coverage U26 oracle: the side-1 (RIGHT PLAYER ARCA
 		$(PYTHON) tools/gp_side1.py --side1 $(GP_DUMP)/gp-u26-side1-ending --p1 $(GP_DUMP)/gp-u21-armadon-ending \
 			--expect-count "$(GP_U26_MODE1F_COUNT)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u26-side1-ending $(GP_DUMP)/gp-u21-armadon-ending; exit $$rc; fi
+
+# Live truth Task 7 (record 2026-10-29-live-truth-derivations.md §L7): the high-score
+# name-entry path. gp_u27.py's capture check pins mode 0x1E's six sub-state records, the
+# three letter counts and name-byte stages, the finaliser's space-padded "ABD ", the score
+# and the return to mode 3; its path check reproduces the six b25 values (the port trace has
+# no ncnt/cell0/name fields). Capture 334 is the mode-8 entry's byte-bound three-present
+# scan-out in SCAN3_ALLOWED. The frame window covers the entry and finaliser before the
+# post-script tail's first unexplained frame 5871; the 4991-frame replay reaches port 4990,
+# with 38 canonical missing classes. Trace and moves agree through f=0x24B9 (9401), the
+# replay's stop mode 3. An absent capture skips; a present capture with changed pins fails.
+# >>> PIN-BASELINE-BEGIN gp-u27
+GP_U27_MIN_FIRST = 5871
+GP_U27_TRACE_MIN_FIRST = 9402
+GP_U27_MOVES_MIN_FIRST = 9402
+GP_U27_MAX_START = 81
+GP_U27_MIN_REACH = 4990
+GP_U27_CAPTURE_SHA256 = 5e2c5824ee009d814c1929663110c22b24d658e4b0ea0c440a4b3327eeb79d04
+GP_U27_CAPTURE_FRAMES = 5885
+# <<< PIN-BASELINE-END gp-u27
+gp-u27-oracle: build ## Live truth U27 oracle: the high-score name-entry letters and finaliser (skips without data/k11-captures/gp-u27-name-entry)
+	@echo "== gameplay oracle: gp-u27-name-entry (the name-entry letters and finaliser) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_u27
+	@if [ ! -d $(K11_CAPTURES)/gp-u27-name-entry ]; then echo "gp-u27-oracle: no capture at $(K11_CAPTURES)/gp-u27-name-entry (skipped)"; else \
+		$(PYTHON) tools/gp_u27.py check --scenario gp-u27-name-entry --capture $(K11_CAPTURES)/gp-u27-name-entry \
+			--capture-sha256 "$(GP_U27_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u27-name-entry GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u27-name-entry --capture $(K11_CAPTURES)/gp-u27-name-entry \
+		--port $(GP_DUMP)/gp-u27-name-entry --min-first "$(GP_U27_MIN_FIRST)" \
+		--trace-min-first "$(GP_U27_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U27_MOVES_MIN_FIRST)" \
+		--max-start "$(GP_U27_MAX_START)" --min-reach "$(GP_U27_MIN_REACH)" --max-missing "$(GP_U27_MAX_MISSING)" \
+		--capture-sha256 "$(GP_U27_CAPTURE_SHA256)" --capture-frames "$(GP_U27_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_u27.py path --scenario gp-u27-name-entry --capture $(K11_CAPTURES)/gp-u27-name-entry \
+			--port $(GP_DUMP)/gp-u27-name-entry --capture-sha256 "$(GP_U27_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u27-name-entry; exit $$rc; fi
 
 # State coverage Task 7 oracle (plan 2026-10-28-state-coverage §G5, record §D7): the
 # timeout/health drawn round (0x27FA8's arm at 0x280BA). The capture gp-draw-timeout pokes
@@ -2438,6 +2474,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u25-oracle
 	@echo "== state coverage U26: the side-1 tour and ARMADON ending (ad4=1; skips without its capture; plan 2026-10-28-state-coverage Task 6) =="
 	@$(MAKE) --no-print-directory gp-u26-oracle
+	@echo "== live truth U27: the high-score name-entry letters and finaliser (skips without its capture; record §L7) =="
+	@$(MAKE) --no-print-directory gp-u27-oracle
 	@echo "== state coverage Task 7: the timeout/health drawn round (0x280BA; skips without its capture; record §D7) =="
 	@$(MAKE) --no-print-directory gp-draw-timeout-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="

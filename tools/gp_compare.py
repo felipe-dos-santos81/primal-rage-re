@@ -496,6 +496,14 @@ SCAN3_ALLOWED = {
         # 5034 clean at 4302.
         (5033, 130, 198, '9a5cd9bd7b6dc2c14642eab62211a5d64a5928dec2abb29b2002725ee333c17e'),
     ),
+    'gp-u27-name-entry': (
+        # Live truth Task 7 (record §L7): capture 334 (raw 2837), the round-1
+        # mode-8 entry's three-present scan-out. Rows 0..2 are port 219's alone
+        # before the bind (f=0x47C), rows 3..62 are port 221's (f=0x47E) and
+        # rows 63..199 are port 222's (f=0x47F); (221, 222) is the 4991-frame
+        # dump's unique adjacent-pair bind. Port 220 (f=0x47D) is unexhibited.
+        (334, 3, 63, 'f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b'),
+    ),
 }
 # <<< PIN-BASELINE-END scan3
 

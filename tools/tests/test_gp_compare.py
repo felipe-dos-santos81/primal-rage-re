@@ -1152,6 +1152,31 @@ class Scan3Allowance(Dirs):
                 self.assertEqual((rc, first), (1, 1), out)
                 self.assertTrue(any('FAIL: allowed capture 1' in l and why in l for l in out), out)
 
+    def test_u27_recipe_rejects_one_mutated_bound_byte(self):
+        # Live truth Task 7: U27's capture 334 (raw 2837) binds top rows 0..2
+        # to port 219, middle rows 3..62 to port 221 and bottom rows 63..199
+        # to port 222, with (221, 222) the unique adjacent pair. Pin the measured
+        # tuple, then prove the same three-segment shape fails when one byte of
+        # its middle-bound port frame changes.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u27-name-entry'],
+                         ((334, 3, 63,
+                           'f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b'),))
+        R = tc.ROW
+        c = rgb(1)[:3 * R] + rgb(2)[3 * R:63 * R] + rgb(3)[63 * R:]
+        entry = (1, 3, 63, hashlib.sha256(rgb(1)[:3 * R]).hexdigest())
+        self.write([1, 2, 3], [rgb(1), c, rgb(2), rgb(3)])
+        self.assertEqual(self.run_scan3(s3=(entry,))[:2], (0, None))
+        path = os.path.join(self.port, 'frame_00001.ipx')
+        with open(path, 'rb') as f:
+            mutated = bytearray(f.read())
+        mutated[3 * 320 + 17] ^= 1
+        with open(path, 'wb') as f:
+            f.write(mutated)
+        rc, first, out = self.run_scan3(s3=(entry,))
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in line and
+                            'no unique adjacent port pair' in line for line in out), out)
+
     def test_the_table_names_the_measured_scanouts(self):
         # the pinned recipes of record §G6: gp-idle-loss 2064 (ports 1666/1669/
         # 1670), gp-u9-win 346 (218/221, vacuous middle), gp-u10-ending 331

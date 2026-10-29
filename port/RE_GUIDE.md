@@ -382,9 +382,10 @@ true original, and ported the divergence. Two pieces:
   stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
   `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to
   `gp-u21`**), the timeout draw (`gp-draw-timeout`, `clock=0` from the `W`
-  record, `b16` not asserted) and the name-entry exhibit (`gp-u27-name-entry`,
-  sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — an
-  exhibit, not a gated oracle). The U16 fix (§D3): the reaction's record-motion
+  record, `b16` not asserted) and the name-entry path (`gp-u27-name-entry`,
+  sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — now the
+  gated `gp-u27-oracle` in `make verify`; live truth Task 7, record §L7). The
+  U16 fix (§D3): the reaction's record-motion
   gap is a null table base (the stream reads the IVT at linear 0), fixed by
   `bios_ivt_stand_in()` seeding `mem[1] = 0xCA`/`mem[3] = 0xF0`; only
   `GP_U23_TRACE_MIN_FIRST`/`GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 →

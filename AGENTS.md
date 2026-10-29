@@ -46,6 +46,7 @@ make gp-u22-oracle         # endgame truth U22: DIABLO's ending (character 5, ce
 make gp-u23-oracle         # endgame truth U23: the U16 finisher reaction under the labelled poked-damage fallback on gp-u23-u16-finisher (gp_twop.py check --finisher without --allow-missing-reaction); in make verify; skips without the capture
 make gp-u25-oracle         # state coverage U25: gp-u25-endurance-end's four-KO roster walk and match end (modes 0x32/0x33; record §D5); in make verify; skips without the capture
 make gp-u26-oracle         # state coverage U26: gp-u26-side1-ending's side-1 tour and ARMADON ending (ad4=1; record §D5); in make verify; skips without the capture
+make gp-u27-oracle         # live truth U27: gp-u27-name-entry's letters and finaliser (record §L7); in make verify; skips without the capture
 make gp-draw-timeout-oracle # state coverage Task 7: gp-draw-timeout's timeout/health drawn round (record §D7); in make verify; skips without the capture
 make coverage              # the PR_COVERAGE function census (build-cov + every driver with PR_HIT_TAG, then tools/coverage_census.py; NOT in make verify — it re-runs the drivers); COV_REASON="…" re-pins tools/coverage_baseline.txt
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
@@ -592,9 +593,9 @@ consolidation gate).
   (`gp-u25-endurance-end`, `af1` `0 → 4`, stop mode `0x17`, 1,360 frames), the
   side-1 tour (`gp-u26-side1-ending`, `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F`
   frames byte-identical to `gp-u21`**), the timeout draw (`gp-draw-timeout`,
-  `clock=0` from the `W` record, `b16` not asserted) and the name-entry exhibit
+  `clock=0` from the `W` record, `b16` not asserted) and the name-entry path
   (`gp-u27-name-entry`, sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three
-  letters, "ABD" — an exhibit, not a gated oracle). **The U16 fix** (record
+  letters, "ABD" — promoted to a gated oracle by live truth Task 7, record §L7). **The U16 fix** (record
   §D3): the reaction's record-motion gap is a null table base — the stream
   reads the IVT at linear 0 — fixed by `bios_ivt_stand_in()` seeding
   `mem[1] = 0xCA`/`mem[3] = 0xF0`; only `GP_U23_TRACE_MIN_FIRST` and
@@ -603,9 +604,11 @@ consolidation gate).
   so the diagnostic's 14 bytes read `0xFF` and the band stays a declared gap.
   **The OPL pitch test** (§D6) renders 439.9915 Hz (measured 439.0000 Hz)
   within the 1.7586 Hz derived tolerance. The two-human KO stays
-  game-evidence-only, and `gp-u27-name-entry` is an exhibit, not a gated
-  oracle (its replay has the pinned miss set `k_miss_gp_u27_name_entry`, but
-  there is no `gp-u27-oracle` and it is not in `make verify`).
+  game-evidence-only. `gp-u27-name-entry` is now pinned by `gp-u27-oracle`
+  (in `make verify`; live truth Task 7, record §L7): the capture checker pins
+  the sub-states, three letters, finaliser and score, the path checker compares
+  the six `b25` records, and the replay keeps the pinned miss set
+  `k_miss_gp_u27_name_entry`.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`

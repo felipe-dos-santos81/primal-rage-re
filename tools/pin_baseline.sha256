@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: state coverage: merge Tasks 6, 7 and 9 pins (gp-u26 cross-check, gp-draw-timeout, U16 trace fields)
-eed6eff69cedef33d57c590862ad3c4a3a0fd1ce1ec59a6d32f844cbca2f3579
+# reason: live truth Task 7: measured gp-u27 name-entry pins and capture-334 scan-out
+74896d14dc0075f38d7ea4e8a201f8db9eb41fc89394d5b75b590ce27c560308
