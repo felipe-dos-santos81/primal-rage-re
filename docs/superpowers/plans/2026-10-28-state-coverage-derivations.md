@@ -530,6 +530,183 @@ bytes do not change.
 
 ---
 
+## §D2 The out-of-scope modes declared (Task 4)
+
+The three content-bearing never-presented modes that this phase **declares,
+not captures** (design §3 G2, §7.2 Step 4): the volleyball easter egg `0x21`,
+the both-characters-4 camera sequence `0x25`, and the continue/toll screen
+`0x0E`. No capture, no pin, no code change: this is the measured gate
+derivation and the declared reason each is out of scope. The census's measured
+NOT-HIT rows (Task 3's `tools/coverage_baseline.txt`, pinned, not touched here)
+already hold the three entry handlers, so the declaration moves no baseline
+line.
+
+### §D2.1 The `DS_00104ABC` derivation (why `0x21`/`0x25` are two-human-only)
+
+`DS_00104ABC = (DS_00104B1F == 3) + 1`, written at exactly two sites (the raw
+`setne al; inc eax`), so `DS_00104ABC` is `2` **iff** `DS_00104B1F == 3`:
+
+| site | address | store |
+|---|---|---|
+| `flow_player_join` | `0x28DA4` | `DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;` at `flow.c:1632` (`0x28DCF..0x28DE7`) |
+| the mode-5/0xC round-end case-3 arm | (update-table entry 6) | the same store at `flow.c:2416` (`0x25EB2..0x25EC5`) |
+
+`DS_00104B1F` is the join bitmask (bits `1`/`2` = side 0/1 joined), so `3` =
+both players joined = a two-human match. Every in-match gate below that reads
+`DS_00104ABC >= 2` therefore requires `b1f == 3`; a 1P or `b1f == 2` scenario
+cannot open it however much damage is poked (design §9's stop rule; the port
+never stores `DS_00104ABC` anywhere else — §D2.5).
+
+**Plan-vs-raw line correction.** The plan/brief cites `flow.c:1621`/`2405`; the
+measured stores are `flow.c:1632` and `flow.c:2416`. `flow.c:1616` (in the
+`flow_player_join` header comment) and `flow.c:2405` (a `break;`) are the lines
+the brief's numbers point at; the store instructions themselves are at 1632 and
+2416.
+
+### §D2.2 Mode `0x21` — the volleyball easter egg (entry `0x4BD98`)
+
+The mode store is `fight_4bd98` (`0x4BD98`), called once, from `fight_4b470`
+(`0x4B470`)'s eighth-hit tail (`fight.c:3090`, `0x4B590`). Two gate layers:
+
+**Caller (`fight_4b470`, `fight.c:3080-3086`) — the eighth worshipper trample:**
+
+| gate | condition | address | file:line |
+|---|---|---|---|
+| `DS_00104B1D` not 2/3 | `== 3u || == 2u` returns | `0x4B547`/`0x4B54C` | `fight.c:3080` |
+| `DS_00104AFC == 0` | `!= 0u` returns | `0x4B559` | `fight.c:3081` |
+| `DS_001088C1 == 0` | `!= 0u` returns | `0x4B562` | `fight.c:3082` |
+| `(DS_001088EF >> 24) > 1` | `<= 1` returns | `0x4B56F` | `fight.c:3083` |
+| the caller's `+0x1F > 7` | `(u32)DSB(entry + 0x1Fu) <= 7u` returns | `0x4B579` | `fight.c:3084` |
+| `DS_001088C5 == 0` | `!= 0u` returns | `0x4B582` | `fight.c:3085` |
+| `DS_00108864 == 0` | `!= 0u` returns | `0x4B58C` | `fight.c:3086` |
+
+`+0x1F` is the effects entry's hit counter, so `+0x1F > 7` is the **eighth**
+worshipper trample of that one entry (record §42-C; the trample `0x4B470`
+itself is `HIT` in the baseline — the demo reaches it — but its mode-`0x21`
+tail is not).
+
+**Callee (`fight_4bd98`, `fight.c:2943-2945`) — the mode-`0x21` store:**
+
+| gate | condition | address | file:line |
+|---|---|---|---|
+| `DS_00104AD8 <= 0` | `(s32)DSD(DS_00104AD8) > 0` returns | `0x4BDA7` | `fight.c:2943` |
+| `DS_00104ABC >= 2` | `DSD(DS_00104ABC) < 2u` returns | `0x4BDB4` | `fight.c:2944` |
+| `fight_13134` false | `fight_13134() != 0` returns | `0x4BDC1` | `fight.c:2945` |
+
+`fight_13134` (`0x13134`, `fight.c:2921`) is 1 when **both** fighter records' x
+(`+0x18` of `DS_001077B0`'s and `DS_00107844`'s record) are below `-0x3300`, or
+both above `0x3300` — i.e. the two fighters are far off-screen in the same
+direction. The gate passes only when they are not.
+
+On a pass the store body runs (`fight.c:2946-2977`): `DS_00108864 = entry`
+(type 6), `DS_001088C1 = 1` and `DS_001088C5 = 1`, the **mode word
+`DS_00104B00 = 0x21`** (`fight.c:2949`, `0x4BDE7`), the **`0x1E` timer
+`DSW(DS_001088AA) = 0x1Eu`** (`fight.c:2951`, `0x4BDF4`), and the **two actor
+spawns** `0xBAB88` (`fight.c:2968`) / `0xBAB9C` (`fight.c:2971`) at the
+fighters' midpoint, both with `+0x36 = 0x1A4`.
+
+### §D2.3 Mode `0x25` — the both-characters-4 camera sequence (entry `0x4E11C`)
+
+The mode store is `fight_mode25_enter` (`0x4E11C`), called once, from
+`game_mode_04_step` (`0x26254`, `flow.c:3231`, `0x263EA`). Two gate layers:
+
+**Caller (`game_mode_04_step`, `flow.c:3228-3230`):**
+
+| gate | condition | address | file:line |
+|---|---|---|---|
+| `DS_001078FA == 2` | `== 2u` (re-read after `0x27FA8`) | `0x263BA` | `flow.c:3228` |
+| `DS_00108892 >= 6` | `(u32)DSW(DS_00108892) >= 6u` | `0x263D0` | `flow.c:3229` |
+| slot 0's `+0x53 == 0` | `DSB(DS_00107803) == 0u` | `0x263DE` | `flow.c:3230` |
+
+(`DS_00107803` = `0x1077B0 + 0x53`, slot 0's `+0x53`.)
+
+**Callee (`fight_mode25_enter`, `fight.c:5584-5597`):**
+
+| gate | condition | address | file:line |
+|---|---|---|---|
+| `DS_00104B1D` not 2/3 | `b1d == 3u || b1d == 2u` → decrement, return | `0x4E127..0x4E12F` | `fight.c:5584` |
+| camera within `±0x3300` | `cx < -0x3300 || cx > 0x3300` (`cx = (s32)DSD(DS_000F0AF0)`) | `0x4E13D..0x4E151` | `fight.c:5588-5589` |
+| `DS_00104AD8 <= 0` | `(s32)DSD(DS_00104AD8) > 0` | `0x4E153`/`0x4E15A` | `fight.c:5590` |
+| `DS_00104ABC >= 2` | `DSD(DS_00104ABC) < 2u` | `0x4E15C`/`0x4E163` | `fight.c:5591` |
+| both characters 4 | `DSB(DS_0010782A) != 4u` (slot 0 `+0x7A`); `DSB(DS_001078BE) != 4u` (slot 1 `+0x7A`) | `0x4E165..0x4E170`; `0x4E172..0x4E17D` | `fight.c:5592`; `fight.c:5593` |
+| `DS_001088C4 == 0` | `DSB(DS_001088C4) != 0u` | `0x4E17F..0x4E187` | `fight.c:5594` |
+
+Character `4` is ARMADON (record §E4's `start_char(4, …)`), so the gate is a
+**mirror-ARMADON** match; the camera (`DS_000F0AF0`) must be within the
+`±0x3300` band. The brief's `0x25` list names the six it does; the raw also
+gates on `DS_00104B1D` not 2/3 and `DS_001088C4 == 0`, recorded here as the
+complete gate. The mode's own frame step is `game_mode_25_step` (`0x266AC`,
+`flow.c:5901`), also `NOT-HIT`.
+
+### §D2.4 Mode `0x0E` — the continue/toll screen (handler `0x27A2C`)
+
+Entry `flow_continue_open` (`0x278B0`, `flow.c:1789`) opens the screen from
+`flow_arena_ko_check` (`0x272DC`, `flow.c:1810`) when the winner's slot `+0x5A
+>= 0x78` — a lost match. The handler `game_mode_0e_step` (`0x27A2C`,
+`flow.c:1978`) runs:
+
+| piece | description | address | file:line |
+|---|---|---|---|
+| the continue poll | `flow_continue_poll` (`0x42F60`, `flow.c:1898`): 0 with no credit (`config_credit_ready == 0`, `flow.c:1901` `0x2C060`) or the side's start mask `0x9ACBC[side]` not newly pressed in `DS_001088E4`; else spend a credit and set `DS_00105C04 = 1` | `0x42F60` | `flow.c:1898` |
+| the countdown byte `DS_00108110` | starts **`0xF` (15)** at `flow_continue_open` (`flow.c:1793`, `0x278C2`); decremented on the frame word `DS_000EF6DC & 0x3F == 0` (every 64 master ticks) or a forced tick; the forced-tick arm **resets it to `0xA`** (`flow.c:1990`, `0x27A88`) and clears `DS_00105C04`; below 0 (signed) → `0x29B74` darken, mode `0x15` | `0x278C2`, `0x27A88`, `0x27ACD..0x27ADF` | `flow.c:1793`, `flow.c:1990`, `flow.c:2000-2003` |
+| the credit | `config_credit_ready` (`0x2C060`, `config.c:622`): with a credit the "PRESS START" blink `0x2C0F4`, else the "INSERT 1 COIN" blink `0x2C1D4` | `0x27B5E`/`0x27B83` | `flow.c:2017`/`flow.c:2021` |
+
+**Plan-vs-raw correction — the countdown does not start at `0x0A`.** The
+brief's Step 1 says "starts `0x0A`". The raw initialises `DS_00108110 = 0xF`
+(15) when the screen opens (`flow.c:1793`), and `0x0A` is only the
+forced-tick **reset** value after a credit-spent start press (`flow.c:1990`).
+(The challenge screen `0x42CB4` also resets it to `0xA` at `flow.c:3677`, but
+that is mode `0x13`, not `0x0E`.) The 15 is drawn on entry (`flow.c:1797`), so
+the continue countdown is 15→0, not 10→0.
+
+### §D2.5 Why each is out of scope (and why no poked 1P scenario)
+
+- **`0x21` and `0x25` are two-human-only.** Both store the mode only through
+  `DS_00104ABC >= 2`, and `DS_00104ABC = (b1f == 3) + 1` (§D2.1), so both need
+  a two-human match. `0x21` additionally needs **eight tramples of one specific
+  effects entry** (`+0x1F > 7`, §D2.2) and `0x25` a **mirror-ARMADON** match
+  whose camera sits within `±0x3300` (§D2.3). **A poked 1P scenario cannot open
+  either gate** — no damage poke writes `DS_00104B1F` or `DS_00104ABC`, and the
+  port's only `DS_00104ABC` stores are the two join sites above. This phase
+  does not build one; the modes stay declared.
+- **`0x0E` needs a lost match plus a credit.** The screen opens only on a KO
+  (`flow_arena_ko_check`'s `+0x5A >= 0x78`), and its continue poll needs a
+  credit ready and a start press; the phase takes no toll-screen scenario.
+
+### §D2.6 The census rows (Task 3's baseline, cited, not moved)
+
+| mode | entry/handler | census row | related NOT-HIT rows (co-entered, not the entry) |
+|---|---|---|---|
+| `0x21` | `0x4BD98` `fight_4bd98` | `tools/coverage_baseline.txt` `0x4BD98 NOT-HIT` (line 696) | `0x13134` (l.31, `fight_13134`), `0x26540` (l.240, `game_mode_21_step`), `0x4CB18` (l.700), `0x4BF18` (l.697), `0x4C60C` (l.698) |
+| `0x25` | `0x4E11C` `fight_mode25_enter` | `…` `0x4E11C NOT-HIT` (line 714) | `0x266AC` (l.241, `game_mode_25_step`), `0x4E350`, `0x4E27C`, `0x4E67C`, `0x4EF8C`, `0x38154`, `0x384F8` |
+| `0x0E` | `0x27A2C` `game_mode_0e_step` | `…` `0x27A2C NOT-HIT` (line 255) | `0x278B0` (l.253, `flow_continue_open`), `0x2791C` (l.254, `flow_continue_take`), `0x2C1D4` (l.323), `0x2C1C8` (l.322) |
+
+The trample `0x4B470` is `HIT` (line 690) — the demo reaches it — which is why
+`0x4BD98`'s own `NOT-HIT` is meaningful, not an unreached-caller artifact. Task
+5's `0x296B8`/`0x29638` (`NOT-HIT`, lines 275/274) are mode `0x32`/`0x33`,
+that task's rows, not this task's. The baseline is Task 3's pin; this
+declaration adds no line, moves none, and reclassifies none.
+
+### §D2.7 The `0x0B` correction (the drawn winner pose)
+
+The plan's Task 4 Step 3 says to note that `0x0B` (the drawn winner pose) is
+covered by claim-coverage Task 11's `gp-draw` *if that capture published*. It
+did **not**: there is no `data/k11-captures/gp-draw` directory, no `gp-draw`
+entry in the Makefile's `CAPTURE_DIRS`, no oracle and no miss set (measured
+2026-10-29). The drawn-winner-pose content (`0x0B`) therefore **remains
+unexhibited**, and this task does not claim otherwise. A timeout-draw capture
+is Task 7's job (§G5, a poked timeout draw, not the KO draw); it will exhibit
+`0x0A`/`0x0B` when it publishes.
+
+### §D2.8 What §D2 does not claim
+
+The three modes' *content* is not reproduced: no capture, no pin, no oracle
+(design §8 "Will not claim"). §D2 records the gates and the out-of-scope
+reason only, and leaves the three modes in the never-presented set
+(§D1.3's `0B 0E 21 25`).
+
+---
+
 ## §D6 The OPL single-voice pitch test (Task 12)
 
 The offline experiment the plan's §G7(b)/Task 12 asked for: does the vendored

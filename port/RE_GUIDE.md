@@ -338,3 +338,14 @@ true original, and ported the divergence. Two pieces:
   `0x663D4`; `0x2D62C` is the counter, not the ISR). AIL's own dispatch from
   `0x6627E` to the registered callback `0x1BDF4` is not traced byte by byte
   (record `2026-10-23-endgame-truth-derivations.md` §E1.6).
+- The out-of-scope content modes are declared, not captured (state-coverage
+  record `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md`
+  §D2): `0x21` (the volleyball easter egg, entered at `0x4BD98` after the
+  eighth worshipper trample `+0x1F > 7`) and `0x25` (the both-characters-4
+  mirror-ARMADON camera sequence, entered at `0x4E11C`) both read
+  `DS_00104ABC >= 2`, and `DS_00104ABC = (DS_00104B1F == 3) + 1`
+  (`flow.c:1632`/`2416`), so they are two-human-only; `0x0E` (the continue
+  screen `0x27A2C`) needs a lost match plus a credit. A poked 1P scenario
+  cannot open `0x21`/`0x25`. Their census rows (`0x4BD98`/`0x4E11C`/`0x27A2C`)
+  are `NOT-HIT`, and `0x0B` (the drawn winner pose) stays unexhibited
+  (claim-coverage Task 11's `gp-draw` did not publish).

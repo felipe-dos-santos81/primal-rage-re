@@ -512,6 +512,25 @@ consolidation gate).
   data identical and only their labels differing — 180 `W` frame labels one lower, two `W` tick
   labels 308→310 and one `S` `ticks` 2454→2456; no pin weakened); the remaining steps are green
   separately (record §F6.3).
+- **The out-of-scope content modes `0x21` (volleyball), `0x25` (both-characters-4
+  camera) and `0x0E` (continue screen) are declared, not captured** (state-coverage
+  record `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2). `DS_00104ABC =
+  (DS_00104B1F == 3) + 1` — written at `flow.c:1632` (`flow_player_join`) and `flow.c:2416`
+  (the round-end case-3 arm) — so `DS_00104ABC >= 2` iff `b1f == 3` (a two-human match), and both
+  in-match entries read it: `0x21` stores the mode at `0x4BD98` behind `fight_4b470`'s eighth-hit
+  tail (`+0x1F > 7` = eight worshipper tramples of one effects entry, `fight.c:3084`;
+  `DS_00104B1D` not 2/3, `DS_00104AFC`/`DS_001088C1`/`DS_001088C5`/`DS_00108864` clear,
+  `(DS_001088EF >> 24) > 1`, then `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`, `fight_13134` false,
+  the two `0xBAB88`/`0xBAB9C` actor spawns and the `0x1E` timer `DS_001088AA`), and `0x25` at
+  `0x4E11C` behind `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's `+0x53 == 0`,
+  `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
+  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. `0x0E` opens on a KO and runs the
+  countdown `DS_00108110` (starts `0xF`, reset to `0xA` on a forced tick, decremented every 64
+  master ticks or on a press) and the `config_credit_ready` credit. A poked 1P scenario cannot
+  open `0x21`/`0x25` (no poke writes `b1f`/`DS_00104ABC`), so none is built. The census rows
+  `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the trample `0x4B470` is
+  `HIT`); `0x0B` (the drawn winner pose) stays unexhibited (claim-coverage Task 11's `gp-draw`
+  did not publish).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
