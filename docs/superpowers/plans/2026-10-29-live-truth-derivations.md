@@ -146,20 +146,21 @@ no pin.
 `python3 tools/gp_u16_state.py read --capture data/k11-captures/gp-u24-u16-state-t9-r5`
 (run today; `session.txt`: `pad_bios=0`, 11 of 11 checks `ok`):
 
-- set: `f=1531 s0_54=0x2 s0_30=0xEAE s0_42=0x8000`
-- exit: `f=1532 s0_54=0x0 s0_30=0x1180 s0_42=0x8000`
-- gate input `y(1531) = 0x0EAE`, below `0x1400`
+- set: `f=0x1531 s0_54=0x2 s0_30=0xEAE s0_42=0x8000`
+- exit: `f=0x1532 s0_54=0x0 s0_30=0x1180 s0_42=0x8000`
+- gate input `y(0x1531) = 0x0EAE`, below `0x1400`
 
 ### L4.2 The gate and the strict reading
 
 - The raw gate is `0x48599 cmp edx,[eax+0x30]` then `0x4859C jle 0x48601`, with
-  `edx` the high word of the dword at `0xBD882 + 2*char` (`0x1400` for character 2,
-  the design's TALON identification). `jle` returns when the threshold is `<=` the
+  `edx` the high word of the dword at `0xBD882 + 2*char`. The run's character is
+  measured: `c0=02` on the `f=0x1531` row (`t9-r5` line 5658), and the table at
+  `0xBD884 + 2*2` reads `0x1400`. `jle` returns when the threshold is `<=` the
   latched y, so the clear is **`y < 0x1400`, strictly**: equality does not clear.
-- The gate reads the previous iteration's latched y, so the clear at `f=1532` reads
-  `y(1531)`.
-- The claim-coverage plan's `y <= 0x1400` boundary is corrected to `<`
-  (claim-coverage §C5.2). The port's gate, `port/src/game/fighter.c:16326-16327`, is
+- The gate reads the previous iteration's latched y, so the clear at `f=0x1532` reads
+  `y(0x1531)`.
+- The claim-coverage plan's `y <= 0x1400` wording is the plan's old reading, superseded
+  by this strict one (claim-coverage §C5.2; the plan is not edited). The port's gate, `port/src/game/fighter.c:16326-16327`, is
   already strict.
 
 ### L4.3 The pre-fix value and the class
@@ -175,7 +176,7 @@ re-run that replay.
 ### L4.4 The `.failed` artifact
 
 `data/k11-captures/gp-u24-u16-state.failed` has no `s0_54=2` set record and no row
-at `f=1532`, so its set frame is not measured and its `0x1180` exit is inferred. It
+at `f=0x1532`, so its set frame is not measured and its `0x1180` exit is inferred. It
 is not a measurement. `t9-r5` is the measurement.
 
 ### L4.5 Verdict
@@ -205,7 +206,7 @@ mode handler `0x26540` (l.240).
   `DS_001088C1 = 1`; the mode word `DS_00104B00 = 0x21` (`fight.c:2949`, `0x4BDE7`);
   `DS_001088C5 = 1`; the `0x1E` timer `DS_001088AA` (`fight.c:2951`, `0x4BDF4`); the
   two actor spawns `0xBAB88` (`fight.c:2968`) and `0xBAB9C` (`fight.c:2971`) at the
-  fighters' midpoint, both `+0x36 = 0x1A4` (`fight.c:2976`).
+  fighters' midpoint, both `+0x36 = 0x1A4` (`fight.c:2976-2977`).
 
 ### L9.2 The caller tail (`fight_4b470`, `0x4B470`)
 
@@ -217,7 +218,7 @@ mode handler `0x26540` (l.240).
 (`0x4B590`) and `3091` `fight_4cb18` (`0x4B59E`).
 
 `+0x1F` is the entry's hit count. The `0x4B69C` prelude (`fight.c:3101-3117`) tests
-`+0x1C` bit 7 (`3103`), lets the hit through `fight_4b788` (`3110`), and increments
+`+0x1C` bit 7 (`3104`), lets the hit through `fight_4b788` (`3111`), and increments
 `+0x1F` at `fight.c:3113` (`0x4B716`).
 
 ### L9.3 The blockers
@@ -242,9 +243,10 @@ its fall; a landing ends the count. Two other writers also increment `+0x1F`
 (`fight.c:3455`, `0x4D81C`; `fight.c:4320`, `0x4C6DE`). This record does not trace
 whether they reach the `0x4B590` tail.
 
-**(d) No capture measures a count of two or more.** The `poll.log` S rows carry the
-mode, the pad, the state words and the `S` fields the reader uses, but no effects-entry
-field, so the per-entry `+0x1F` is not measured in any capture. The census is the
+**(d) No capture measures a count of two or more.** Every `poll.log` S row carries
+`ent=`, which is entry 1's pointer (`DS_0010741C`, `tools/gp_session.py:44`), not a
+per-entry count. No field records any entry's `+0x1F`, so the count is not measured in
+any capture. The census is the
 measured fact: `0x4BD98` is `NOT-HIT` (baseline l.696), so no run passed the chain to
 the store. The trample `0x4B69C` is `HIT` (l.692).
 
@@ -252,9 +254,9 @@ the store. The trample `0x4B69C` is `HIT` (l.692).
 second player sets (`flow.c:1632`, `2416`). A 1P scenario cannot open it, and no poke
 writes `b1f` or `DS_00104ABC` (AGENTS.md, the `0x21`/`0x25` paragraph).
 
-**(f) A poke is forbidden here.** A poke could set `+0x1F = 8`, but the state-coverage
-design §9 bullet "The two-human-only gates cannot be poked open" says "Do not build
-one; declare the modes with their gates". That is the stop rule this phase keeps.
+**(f) A poke is not the route.** A poke could set `+0x1F = 8`. The state-coverage
+design §9 bullet "The two-human-only gates cannot be poked open" states the stop rule:
+"Do not build one; declare the modes with their gates". This phase keeps that rule.
 
 ### L9.4 The decision
 

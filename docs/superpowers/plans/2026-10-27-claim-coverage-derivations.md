@@ -1354,16 +1354,19 @@ disassembled with capstone):
 
 - The clear is **y < 0x1400, strictly**. At `y == 0x1400` the `jle` is taken and
   nothing clears. The claim-coverage plan's Step 4 reads "`y(0x1532) <= 0x1400`, the
-  original exits"; that boundary is wrong and is corrected here to `<`.
+  original exits"; that is the plan's old wording, superseded by this strict reading
+  (`<`). The plan is not edited.
 - The port states the same gate: `port/src/game/fighter.c:16326-16327`
   (`if (threshold <= y) return;`), which is strict.
-- The threshold is the word `0x1400` at `0xBD884 + 2*char`, the entry for character
-  2 (`0x1400` for character 2: `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`
-  near line 15802; `docs/superpowers/specs/2026-10-25-fought-match-truth-design.md`
-  line 358, "`0xBD884[2] = 0x1400` (TALON)"). The poll.log S rows carry no character
-  field, so the character is identified by the design, not measured here.
+- The threshold is the word at `0xBD884 + 2*char`, and the character is measured:
+  the poll.log S row at `f=0x1531` (`t9-r5` line 5658) carries `c0=02`, which
+  `tools/gp_session.py:49` maps to `0x10782A`, slot 0's `+0x7A` character byte.
+  Reading the binary's table at `0xBD884 + 2*c` (file offset `+0x46E54`, the words are
+  values, not addresses) gives `0x1600` for character 0, `0x1400` for 1, `0x1400` for
+  2, `0x1600` for 3 and `0x1800` for 4. So `0x1400` is the binary's value for
+  character 2, the character the run measured.
 - `[rec+0x30]` is the latched y. The gate in iteration *n* reads the latch written
-  by iteration *n−1*: the clear at `f=1532` reads `y(1531) = 0x0EAE`.
+  by iteration *n−1*: the clear at `f=0x1532` reads `y(0x1531) = 0x0EAE`.
 
 ### §C5.3 The pre-fix port value and the record-motion class
 
@@ -1382,16 +1385,16 @@ disassembled with capstone):
 
 ### §C5.4 The `.failed` artifact is not a measurement
 
-`data/k11-captures/gp-u24-u16-state.failed` (§C1.7) has poll.log rows at `f=1531`
-(`s0_54=00`) and `f=1533` (`s0_54=00`) and **no row at `f=1532`**. It has no
+`data/k11-captures/gp-u24-u16-state.failed` (§C1.7) has poll.log rows at `f=0x1531`
+(`s0_54=00`) and `f=0x1533` (`s0_54=00`) and **no row at `f=0x1532`**. It has no
 `s0_54=2` set record, so its set frame is not measured, and its `0x1180` exit
 reading is inferred (§F5.6). The `t9-r5` diagnostic is the measurement: it has the
-set row at `f=1531`. The `.failed` artifact stays unpublished and pins nothing.
+set row at `f=0x1531`. The `.failed` artifact stays unpublished and pins nothing.
 
 ### §C5.5 Verdict
 
-- **Measured:** `y(1531) = 0x0EAE < 0x1400`, so the original clears `s0_54` at the
-  next iteration (`f=1532`), and the exit reading `s0_30 = 0x1180` is measured, not
+- **Measured:** `y(0x1531) = 0x0EAE < 0x1400`, so the original clears `s0_54` at the
+  next iteration (`f=0x1532`), and the exit reading `s0_30 = 0x1180` is measured, not
   inferred.
 - **Strict:** the clear is `y < 0x1400`; equality does not clear (§C5.2).
 - **No port change.** The port's gate is already strict (`fighter.c:16326-16327`), and
@@ -1401,8 +1404,8 @@ set row at `f=1531`. The `.failed` artifact stays unpublished and pins nothing.
 
 ### §C5.6 Limits
 
-- One diagnostic run (`t9-r5`). The threshold's character is identified by the
-  design (§C5.2), not by a poll.log field.
+- One diagnostic run (`t9-r5`). The threshold's character is the measured `c0=02`
+  (§C5.2).
 - Frame labels are the run's own. The §D3.4 table is a different run and is compared
   at its aligned `0x1531`; the two runs' frame labels are not aligned by construction.
 - The raw displacement `0x3D882` is pre-fixup; the runtime address is `0xBD882` (the

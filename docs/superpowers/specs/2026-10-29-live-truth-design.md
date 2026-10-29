@@ -87,7 +87,8 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   only when `y < 0x1400`; equality does not clear. The clear belongs to the
   previous iteration's latched y, not the exit frame's.
 - Therefore R2 is not a capture task. The claim-coverage record's §C5 is
-  missing and `AGENTS.md` still says the gate input is unmeasured. The task
+  missing, and before this task `AGENTS.md` said the gate input was unmeasured (it is
+  now measured). The task
   writes the measured value and the strict-inequality correction; no port
   change and no pin.
 
