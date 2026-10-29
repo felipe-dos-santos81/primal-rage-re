@@ -195,6 +195,11 @@ static int run_check(const char *game_dir, int frames)
     u32 audio0 = game_audio_ticks();
     u32 host0 = host_tick_count();
     fn_misslog_arm(1);                 /* record gameplay-u0 §U0.1 */
+#ifdef PR_COVERAGE
+    const char *hit_tag = getenv("PR_HIT_TAG");
+    int hit = hit_tag != NULL && hit_tag[0] != '\0';
+    if (hit) fn_hit_arm(1);
+#endif
     game_init();                       /* init chain once; runs the audio init */
     for (int i = 1; i <= frames; i++) {
         game_loop_step();                /* frame i: one loop iteration */
@@ -292,7 +297,13 @@ static int run_check(const char *game_dir, int frames)
     game_shutdown();                   /* 0x1BE30 teardown */
     fn_misslog_report("check");
     fail += write_misslog("frames/fn_miss.txt");
+#ifdef PR_COVERAGE
+    if (hit) fail += fn_hit_report_file(hit_tag, "prageport: --check");
+#endif
     fn_misslog_arm(0);
+#ifdef PR_COVERAGE
+    if (hit) fn_hit_arm(0);
+#endif
     return fail > 255 ? 255 : fail;
 }
 

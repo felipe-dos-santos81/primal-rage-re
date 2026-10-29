@@ -1423,5 +1423,94 @@ class OverlayAllowance(Dirs):
         self.assertEqual(gc.OVERLAY_ALLOWED, {})
 
 
+class ApertureDecision(unittest.TestCase):
+    # State coverage Task 11 (plan §G7(a)): the 5120 band diagnostic's decision.
+    # A synthetic DAC (0x32->black, 0x2E->100000, 0x4D->00000c, 0x33->00001c,
+    # 0x00->black, 0x51->the control colour, everything else grey) and the band's
+    # measured port/capture colours at the 14 offsets (13 band + 1 control, in
+    # gs.BAND_APERTURE order) drive gc.decide_aperture. The four outcomes are the
+    # design's PASS-A / PASS-B / FAIL ("both contradicted") plus INCONCLUSIVE for
+    # a read that is not a measurement of the video memory at all (the DOSBox-X
+    # memory file's unmapped 0xA0000 region returns a uniform byte). The 13 band
+    # offsets must be exactly the measured set (8 index-0x32, 1 0x2E, 4 0x4D), so
+    # the order in BAND_APERTURE is validated against them here too.
+    PX_32 = {(1, 23), (1, 24), (1, 295), (1, 296), (2, 22), (2, 297), (3, 21), (3, 298)}
+    PX_2E = {(3, 74)}
+    PX_4D = {(4, 27), (4, 28), (4, 291), (4, 292)}
+    CTRL = len(gs.BAND_APERTURE) - 1
+    BAND = list(range(len(gs.BAND_APERTURE) - 1))
+
+    def setUp(self):
+        dac = bytearray(256 * 3)
+        for i in range(256):                       # grey: an unmapped index is neither colour
+            dac[3 * i:3 * i + 3] = bytes((i, i, i))
+        for i, c in ((0x32, b'\x00\x00\x00'), (0x2E, b'\x10\x00\x00'),
+                     (0x4D, b'\x00\x00\x0c'), (0x33, b'\x00\x00\x1c'),
+                     (0x00, b'\x00\x00\x00'), (0x51, b'\x12\x34\x56')):
+            dac[3 * i:3 * i + 3] = c
+        self.dac = bytes(dac)
+        port_idx, capture = [], []
+        for off in gs.BAND_APERTURE:
+            if off in self.PX_32:
+                port_idx.append(0x32); capture.append(b'\x00\x00\x1c')
+            elif off in self.PX_2E:
+                port_idx.append(0x2E); capture.append(b'\x00\x00\x00')
+            elif off in self.PX_4D:
+                port_idx.append(0x4D); capture.append(b'\x00\x00\x00')
+            else:                                  # the control: port == capture
+                port_idx.append(0x51); capture.append(b'\x12\x34\x56')
+        self.port_rgb = [self.dac[3 * i:3 * i + 3] for i in port_idx]
+        self.capture_rgb = capture
+
+    def decide(self, ap_idx):
+        return gc.decide_aperture(ap_idx, self.dac, self.port_rgb,
+                                  self.capture_rgb, self.CTRL)
+
+    def test_the_13_band_offsets_are_the_measured_set(self):
+        self.assertEqual(set(gs.BAND_APERTURE[:13]), self.PX_32 | self.PX_2E | self.PX_4D)
+        self.assertEqual(gs.BAND_APERTURE[self.CTRL], (1, 100))
+
+    def test_pass_a_the_aperture_holds_the_ports_indices(self):
+        ap = [0x32 if o in self.PX_32 else 0x2E if o in self.PX_2E else 0x4D
+              for o in gs.BAND_APERTURE[:13]] + [0x51]
+        self.assertEqual(self.decide(ap), 'PASS-A')
+
+    def test_pass_b_the_aperture_holds_the_captures_colours(self):
+        ap = [0x33 if o in self.PX_32 else 0x00 for o in gs.BAND_APERTURE[:13]] + [0x51]
+        self.assertEqual(self.decide(ap), 'PASS-B')
+
+    def test_fail_a_valid_read_that_matches_neither_side(self):
+        # A non-uniform read whose control agrees but whose one mutated 0x4D
+        # pixel (grey 0x55) matches neither the port nor the capture: both
+        # contradicted, the design's FAIL.
+        ap = [0x32 if o in self.PX_32 else 0x2E if o in self.PX_2E else 0x4D
+              for o in gs.BAND_APERTURE[:13]] + [0x51]
+        ap[9] = 0x55                              # one 0x4D pixel -> grey
+        self.assertEqual(self.decide(ap), 'FAIL')
+
+    def test_inconclusive_the_control_disagrees_the_read_is_not_video_memory(self):
+        # The probe's measured result: every aperture byte is 0xFF (the DOSBox-X
+        # memory file holds MemBase, not vgamem). In this DAC DAC[0xFF] is grey,
+        # not the control's 0x51 colour, so the read is rejected on the control:
+        # not a measurement of the aperture, INCONCLUSIVE, not "both contradicted".
+        self.assertEqual(self.decide([0xFF] * 14), 'INCONCLUSIVE')
+
+    def test_inconclusive_the_control_gates_a_band_that_matches_the_port(self):
+        # The 13 band offsets match the port's indices, but the control is
+        # garbage (0x77 -> grey): the read is not video memory, so INCONCLUSIVE,
+        # not PASS-A. This is what makes the control check load-bearing.
+        ap = [0x32 if o in self.PX_32 else 0x2E if o in self.PX_2E else 0x4D
+              for o in gs.BAND_APERTURE[:13]] + [0x77]
+        self.assertEqual(self.decide(ap), 'INCONCLUSIVE')
+
+    def test_inconclusive_a_uniform_read_is_not_video_memory(self):
+        # The measured run's actual shape: the read is a single uniform byte whose
+        # DAC colour coincidentally equals the control's (0x51 here; 0xFF -> black
+        # in the capture's DAC). The control check passes, but the band's 13
+        # pixels have >= 2 distinct colours on both sides, so a uniform read
+        # cannot be a measurement of them: INCONCLUSIVE, never FAIL.
+        self.assertEqual(self.decide([0x51] * 14), 'INCONCLUSIVE')
+
+
 if __name__ == '__main__':
     unittest.main()

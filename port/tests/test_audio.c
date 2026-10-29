@@ -101,6 +101,135 @@ int test_opl(void)
     return g_failures - before;
 }
 
+/* ---- test_opl_pitch (Task 12: the OPL single-voice pitch test) ---- */
+
+/* One second at the core's native rate: exactly MIXER_OPL_RATE frames, so a
+ * rising-zero-crossing count over the window has a frequency bin width of
+ * MIXER_OPL_RATE / N = 1 Hz. */
+#define PITCH_N ((int)MIXER_OPL_RATE)
+static s16 pitch_buf[2 * PITCH_N];
+
+/* The measured voice is channel 0, left-panned; channel 1 (right-panned) carries
+ * a different note so the channel-swap mutation is a pure pitch change.
+ *
+ * The YMF262 phase accumulator (opal.c:500/508) advances op->phase by
+ * (fnum << block) >> 1 each sample (freqMultTimes2 == 2 for MULT == 1), so one
+ * full 1024-step sine takes 2^20 / (fnum * 2^block) samples and the fundamental
+ * is
+ *
+ *     f = fnum * MIXER_OPL_RATE / 2^(20 - block).
+ *
+ * block 4, fnum 580  ->  f = 580 * 49716 / 65536 = 439.99 Hz (A4 = 440 Hz);
+ * the fnum is a 10-bit integer, so its quantization step is one fnum step,
+ * MIXER_OPL_RATE / 2^(20 - block) = 0.7586 Hz. */
+#define PITCH_FNUM   580
+#define PITCH_BLOCK  4
+/* channel 1: block 6, fnum 288 -> 873.91 Hz, a clearly different note. */
+#define PITCH_FNUM2  288
+#define PITCH_BLOCK2 6
+
+/* Writes one 2-op melodic channel (ch 0..2): algorithm 0 with no feedback, a
+ * muted modulator (TL 63) and a sounding carrier (TL `car_tl`), both operators a
+ * fast attack, no decay, full sustain, MULT 1, sine. `pan` is the C0 output
+ * enable (0x10 left, 0x20 right) that separates the two channels across the
+ * stereo pair; `fnum`/`block` name the note and the key-on bit is ORed into B.
+ * The operator register offsets hold for channels 0..2 (chSlot[c] == c). */
+static void pitch_channel(int ch, u16 fnum, int block, u8 pan, u8 car_tl)
+{
+    opl_write((u16)(0x20 + ch), 0x01);   /* modulator: MULT 1 */
+    opl_write((u16)(0x40 + ch), 0x3F);   /* modulator: TL 63 (muted) */
+    opl_write((u16)(0x60 + ch), 0xF0);   /* modulator: AR 15, DR 0 */
+    opl_write((u16)(0x80 + ch), 0x00);   /* modulator: SL 0, RR 0 */
+    opl_write((u16)(0xE0 + ch), 0x00);   /* modulator: sine */
+    opl_write((u16)(0x23 + ch), 0x01);   /* carrier: MULT 1 */
+    opl_write((u16)(0x43 + ch), car_tl); /* carrier: TL */
+    opl_write((u16)(0x63 + ch), 0xF0);   /* carrier: AR 15, DR 0 */
+    opl_write((u16)(0x83 + ch), 0x00);   /* carrier: SL 0, RR 0 */
+    opl_write((u16)(0xE3 + ch), 0x00);   /* carrier: sine */
+    opl_write((u16)(0xC0 + ch), pan);    /* algorithm 0 + output enable */
+    opl_write((u16)(0xA0 + ch), (u8)(fnum & 0xFF));
+    opl_write((u16)(0xB0 + ch),
+              (u8)((block << 2) | ((fnum >> 8) & 3) | 0x20));
+}
+
+/* Rising zero crossings on the interleaved stereo output's left channel. */
+static int pitch_zero_crossings(const s16 *out, int n)
+{
+    int count = 0;
+    for (int i = 1; i < n; i++)
+        if (out[2 * (i - 1)] < 0 && out[2 * i] >= 0)
+            count++;
+    return count;
+}
+
+/* Mean square (RMS squared) of the left channel (the measured voice's pan). The
+ * RMS ratio is its square root, so asserting on the mean square is the same
+ * claim without needing libm. */
+static double pitch_mean_sq_left(const s16 *out, int n)
+{
+    double sum = 0.0;
+    for (int i = 0; i < n; i++)
+        sum += (double)out[2 * i] * (double)out[2 * i];
+    return sum / (double)n;
+}
+
+int test_opl_pitch(void)
+{
+    int before = g_failures;
+
+    double f0 = (double)PITCH_FNUM * (double)MIXER_OPL_RATE /
+                (double)(1u << (20 - PITCH_BLOCK));
+    /* The fnum quantization: one fnum step is MIXER_OPL_RATE / 2^(20-block) Hz. */
+    double quant = (double)MIXER_OPL_RATE / (double)(1u << (20 - PITCH_BLOCK));
+    /* The zero-crossing count resolves the fundamental to MIXER_OPL_RATE / N Hz;
+     * the tolerance is that resolution plus the fnum quantization. */
+    double tol = (double)MIXER_OPL_RATE / (double)PITCH_N + quant;
+
+    /* One note, one second: channel 0 (left) at f0, channel 1 (right) elsewhere. */
+    opl_reset();
+    opl_write(0x105, 0x01);   /* OPL3 NEW mode: C0 panning separates the channels */
+    pitch_channel(0, PITCH_FNUM, PITCH_BLOCK, 0x10, 0x00);
+    pitch_channel(1, PITCH_FNUM2, PITCH_BLOCK2, 0x20, 0x00);
+    opl_render(pitch_buf, PITCH_N);
+
+    int crossings = pitch_zero_crossings(pitch_buf, PITCH_N);
+    double measured = (double)crossings * (double)MIXER_OPL_RATE / (double)PITCH_N;
+    printf("OPL pitch: fnum=%u block=%d f=%.4f Hz, N=%d, quantization=%.4f Hz, "
+           "tolerance=%.4f Hz; measured %d rising zero crossings = %.4f Hz\n",
+           PITCH_FNUM, PITCH_BLOCK, f0, PITCH_N, quant, tol, crossings, measured);
+    CHECK(measured <= f0 + tol && measured >= f0 - tol,
+          "the rendered fundamental equals fnum * 49716 / 2^(20-block)");
+
+    /* Amplitude sanity: the carrier TL field (register 0x43) attenuates in
+     * 0.75 dB steps (outputLevel = (val & 0x3F) << 2, opal.c:1465, in
+     * 0.1875 dB units, opal.h:98), so +8 steps shift the exponential argument by
+     * 8 * 32 = 256 and the exp ROM halves per 256 units (opal.c:162): the
+     * amplitude factor is 2^(-8/8) = 0.5, and RMS moves by the same factor.
+     * Verified on the mean square (RMS^2), whose derived factor is 0.5^2 = 0.25;
+     * the +/-0.03 band absorbs the exp ROM's integer shift rounding and the
+     * attack transient. */
+    opl_reset();
+    opl_write(0x105, 0x01);
+    pitch_channel(0, PITCH_FNUM, PITCH_BLOCK, 0x10, 0x00);
+    opl_render(pitch_buf, PITCH_N);
+    double ms0 = pitch_mean_sq_left(pitch_buf, PITCH_N);
+
+    opl_reset();
+    opl_write(0x105, 0x01);
+    pitch_channel(0, PITCH_FNUM, PITCH_BLOCK, 0x10, 0x08);   /* carrier TL +8 */
+    opl_render(pitch_buf, PITCH_N);
+    double ms8 = pitch_mean_sq_left(pitch_buf, PITCH_N);
+
+    double ratio = ms8 / ms0;
+    printf("OPL amplitude: carrier TL 0 mean-square=%.2f, TL 8 mean-square=%.2f, "
+           "ratio=%.4f (derived RMS factor 0.5 -> mean-square 0.25)\n",
+           ms0, ms8, ratio);
+    CHECK(ratio > 0.22 && ratio < 0.28,
+          "carrier TL +8 moves the mean square by the derived factor 0.25");
+
+    return g_failures - before;
+}
+
 /* ---- test_pitch.c ---- */
 
 int test_pitch(void)

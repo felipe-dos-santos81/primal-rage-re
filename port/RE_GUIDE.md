@@ -322,14 +322,21 @@ true original, and ported the divergence. Two pieces:
   §E9). The game-set `b0c` is U10's (`GP_ENDING_WIN_MIN_FIRST=9954`), not a
   gap; only the fought no-poke win is open (§E1.3).
 - The differential audit (proof-completion phase, record
-  `2026-10-24-proof-completion-derivations.md` §P5–§P8): `make diff-verify`
+  `2026-10-24-proof-completion-derivations.md` §P5–§P8; the state-coverage
+  proof-debt declaration §D7): `make diff-verify`
   reads `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named
-  gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on
+  gaps; 825/845 rows with callees closed (188 have none); 809/845 closed on
   full rows; 8 ported functions with no row`. The **20 open rows** are declared
   terminals (15 AIL thunks, `sound_buffers_alloc`, `input_sampler`, and the
   three runtime-flush rows `config_file_load`/`config_file_save`/
-  `menu_fatal_error`), **15 rows are `WEAKER`**, and **8 portable functions are
-  `UNROWED`** (45 `FN_` ported-unrowed: 8 portable + 37 runtime). The
+  `menu_fatal_error`), **13 rows are `WEAKER`**, and **8 portable functions are
+  `UNROWED`** (45 `FN_` ported-unrowed: 8 portable + 37 runtime); the three
+  lists are the harness's `TERMINAL_CENSUS`/`WEAKER_CENSUS`/`UNROWED_CENSUS`
+  tables (`tools/tests/test_diff_verify.py`). The span census is 417 slots / 392
+  distinct / 385 writer slots (384 reachable + dead `0x57E3C`) plus the
+  out-of-table `0x5D110` (`0x81110[128] == 0x81310[0]`, the 386th target,
+  reachable), and the E2 triage has 388 `span-writer` rows plus the supplement
+  `0x5D004` (`0x81110[127]`). The
   counter and its clauses are in `AGENTS.md`, the phase record in
   `docs/PROGRESS.md`; `make diff-verify` prints it.
 - Host and product work: audio audibility (no device-recording oracle), CI and
@@ -338,3 +345,50 @@ true original, and ported the divergence. Two pieces:
   `0x663D4`; `0x2D62C` is the counter, not the ISR). AIL's own dispatch from
   `0x6627E` to the registered callback `0x1BDF4` is not traced byte by byte
   (record `2026-10-23-endgame-truth-derivations.md` §E1.6).
+- The out-of-scope content modes are declared, not captured (state-coverage
+  record `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md`
+  §D2): `0x21` (the volleyball easter egg, entered at `0x4BD98` after the
+  eighth worshipper trample `+0x1F > 7`) and `0x25` (the both-characters-4
+  mirror-ARMADON camera sequence, entered at `0x4E11C`) both read
+  `DS_00104ABC >= 2`, and `DS_00104ABC = (DS_00104B1F == 3) + 1`
+  (`flow.c:1632`/`2416`), so they are two-human-only; `0x0E` (the continue
+  screen `0x27A2C`) needs a lost match plus a credit. A poked 1P scenario
+  cannot open `0x21`/`0x25`. Their census rows (`0x4BD98`/`0x4E11C`/`0x27A2C`)
+  are `NOT-HIT`, and `0x0B` (the drawn winner pose) stays unexhibited
+  (claim-coverage Task 11's `gp-draw` did not publish).
+- The proof-debt declaration (state-coverage §D7) declares what stays open:
+  **U17** (the `gp-u17-device2` wall-paced walk has no tick-keyed replay — its
+  screens are already covered by the K11 captures, record §H6.9) and **U14**
+  (the fought live win) are declared, neither run; U14's `live_death` rule
+  anchors on the match-1 round-2 KO but `b0c`'s only setter (`0x37FF6` in
+  `0x37EA0`) runs on the ending path, so the two re-scope options are (a) drop
+  the `b0c` clause ("fought KOs, no pokes") or (b) move to the final — with the
+  measured correction that `b0c`'s ending write is **not universal** (BLIZZARD
+  U13 and ARMADON U21 keep `b0c = 0`). The claim-coverage design's undefined
+  **B2–B8 labels** are replaced by the census's measured NOT-HIT set (110
+  addresses, §D7.5) and the declared modes; the census baseline is a separate
+  pin (its own `tools/coverage_baseline.txt`, not `tools/pin_baseline.sha256`).
+- The state-coverage phase is implemented and gated (spec
+  `../docs/superpowers/specs/2026-10-28-state-coverage-design.md`, record
+  `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
+  two full gates plus `make audio-render`, green 2026-10-29). The census
+  (`make coverage`, outside `verify`) reads **HIT 653 / NOT-HIT 102 /
+  UNINSTRUMENTED 4** (the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`) —
+  Task 14 re-pinned it from the Task 3 baseline's `HIT 645 / NOT-HIT 110`
+  (R17/§D8.3): the eight `improved:` addresses are `gp-u25-endurance-end`'s
+  `0x292D4`/`0x29638`/`0x296B8` and `gp-draw-timeout`'s
+  `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`.
+  The exhibits: ENDURANCE's team end (`gp-u25-endurance-end`, `af1` `0 → 4`,
+  stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
+  `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to
+  `gp-u21`**), the timeout draw (`gp-draw-timeout`, `clock=0` from the `W`
+  record, `b16` not asserted) and the name-entry exhibit (`gp-u27-name-entry`,
+  sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — an
+  exhibit, not a gated oracle). The U16 fix (§D3): the reaction's record-motion
+  gap is a null table base (the stream reads the IVT at linear 0), fixed by
+  `bios_ivt_stand_in()` seeding `mem[1] = 0xCA`/`mem[3] = 0xF0`; only
+  `GP_U23_TRACE_MIN_FIRST`/`GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 →
+  6050`). The 5120 band is **INCONCLUSIVE** (§D4): the DOSBox-X memory file
+  excludes the VGA aperture, so the diagnostic's 14 bytes read `0xFF` and the
+  band stays a declared gap. The OPL pitch test (§D6) renders 439.9915 Hz
+  (measured 439.0000 Hz) within the 1.7586 Hz derived tolerance.

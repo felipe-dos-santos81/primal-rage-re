@@ -49,9 +49,9 @@ game-over/high-score flows. The measured claims:
   **26/26 code-shape classes** are proved. E2 reads **736 candidates** (732 by
   U0's rule), 388 span-writer.
 - **Pixel and timing oracles.** The Smacker logo, title, attract (cycle 2),
-  front end, demo fight, K11 service menu and 24 gameplay replays are compared
-  against the original's captured frames. The gate inventory is **35 explicit
-  capture paths**, **34/35 present** with only the declared U14 gap. These are
+  front end, demo fight, K11 service menu and the gameplay replays are compared
+  against the original's captured frames. The gate inventory is **38 explicit
+  capture paths**, **37/38 present** with only the declared U14 gap. These are
   **bounded-missing claims, not complete coverage**: an unsampled state or a
   same-count class substitution remains outside them.
 - **Audio.** The register-stream oracle compares the port's OPL register writes
@@ -66,11 +66,20 @@ game-over/high-score flows. The measured claims:
   hits**: U23's moves ratchet records the port's `r0=0x27` where the capture
   reaches `0x33`.
 
-Named gaps: the U14 fought live win (R1), the U16 live finisher, the 5120
-band's unisolated cause, rendered audibility, and the bounded-missing limits.
-The fought-match truth phase measured the harness and two game-side results
-(U14's one authorized live win lost, the two-human KO as game evidence only,
-the U16 case-3 exit) **without adding a claim**. The running detail and every
+Named gaps: the U14 fought live win (R1), the 5120 band's unisolated cause
+(INCONCLUSIVE — the DOSBox-X memory file excludes the VGA aperture), rendered
+audibility, the 20 terminal differential rows (19 addresses) with 13 `WEAKER`
+and 8 `UNROWED`, the declared two-human-only modes `0x21`/`0x25` and the
+continue screen `0x0E`, the 4 `UNINSTRUMENTED` census addresses (`0x29D60`,
+`0x2EA30`, `0x2EA64`, `0x500BB`), the unexhibited `0x0B` drawn winner pose,
+U14's `live_death` rule mismatch, the host/product items (SDL pad hot-plug, CI,
+packaging, save-path docs), and the bounded-missing limits. The
+state-coverage phase (2026-10-28) added the measured function census, the
+ENDURANCE team end, the side-1 tour, the timeout draw, the U16 reaction fix and
+the OPL pitch test; `gp-u27-name-entry` is an exhibit, not a gated oracle. The
+fought-match truth phase measured the harness and two game-side results (U14's
+one authorized live win lost, the two-human KO as game evidence only, the U16
+case-3 exit) **without adding a claim**. The running detail and every
 gap's evidence are in [`docs/PROGRESS.md`](docs/PROGRESS.md); the frame loop and
 pixel path are in `port/spec/game_flow.md`.
 
@@ -154,8 +163,8 @@ make verify            # the gate (sets PR_ORACLE_REQUIRED=1)
 restart driver, the pixel/ratchet oracles, the register-stream audio oracle and
 `audio-render`, the differential harness, the E2 triage, the tool unit tests
 (including the docs-claim guard) and `symbols.h` idempotence. `make gate-check`
-inventories the **35 explicit capture paths** first; the full checkout is
-**34/35** with only the declared U14 gap. `GATE_STRICT=1` (the default) fails an
+inventories the **38 explicit capture paths** first; the full checkout is
+**37/38** with only the declared U14 gap. `GATE_STRICT=1` (the default) fails an
 undeclared absence; `GATE_STRICT=0` tolerates missing captures so their skips
 can run. `PR_PINS_EXACT` is strict by default, so an improvement requires a
 re-pin.

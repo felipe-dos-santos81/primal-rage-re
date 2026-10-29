@@ -13708,6 +13708,8 @@ static void gp_trace_line(void)
             "r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X "
             "dev1=%04X dev2=%04X "
             "s0_30=%08X s0_42=%04X s1_30=%08X s1_42=%04X "
+            "af0=%02X af1=%02X c82b=%02X clock=%02X "
+            "ab4=%08X rec_y=%08X anchor=%08X s0_57=%02X rec8=%08X rec34=%04X rec36=%04X rec44=%04X "
             "lat=%08X spz=%02X mpz=%02X "
             "afc=%04X ad4=%08X w2=%02X w3=%02X b1e=%02X b21=%02X b14=%02X b0c=%02X t104=%04X "
             "m106=%08X m10a=%08X sc0=%08X c82=%02X\n",
@@ -13739,6 +13741,24 @@ static void gp_trace_line(void)
             (unsigned)DSW(DS_001077B0 + 0x42u),
             (unsigned)DSD(DS_001077B0 + 0xC4u),
             (unsigned)DSW(DS_001077B0 + 0xD6u),
+            /* State coverage Task 5 (record §D5): the ENDURANCE loss counters
+             * DS_00104AF0/DS_00104AF1 (bytes), gp_session.SNAP_FIELDS' af0/af1. */
+            (unsigned)DSB(DS_00104AF0), (unsigned)DSB(DS_00104AF1),
+            /* State coverage Task 6 (plan 2026-10-28-state-coverage Task 6): slot 1's world-domination
+             * count DS_00107832 + 0x94 (the 0x4160C increment with r = 1),
+             * gp_session.SNAP_FIELDS' c82b (the side-1 twin of c82). */
+            (unsigned)DSB(DS_00107832 + 0x94u),
+            /* State coverage Task 7 (report task-7-report.md): the round timer's top byte
+             * DS_001088F2 (gp_session.SNAP_FIELDS' clock). */
+            (unsigned)DSB(DS_001088F2),
+            /* State coverage Task 9: the U16 latch's two addends and the slot
+             * record's stream/motion state; rec* follows [DS_001077B0]. */
+            (unsigned)DSD(DS_00100AB4), (unsigned)DSD(DSD(DS_001077B0) + 0x1Cu),
+            (unsigned)DSD(DS_00100AF0), (unsigned)DSB(DS_001077B0 + 0x57u),
+            (unsigned)DSD(DSD(DS_001077B0) + 0x08u),
+            (unsigned)DSW(DSD(DS_001077B0) + 0x34u),
+            (unsigned)DSW(DSD(DS_001077B0) + 0x36u),
+            (unsigned)DSW(DSD(DS_001077B0) + 0x44u),
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */

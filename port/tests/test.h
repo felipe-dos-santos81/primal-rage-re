@@ -32,6 +32,7 @@ extern int g_failures;
 #define TEST_CASES(X)   \
     X(test_mem)         \
     X(test_fn_misslog)  \
+    X(test_fn_hit)      \
     X(test_fn_register_repeats) \
     X(test_call_seam)   \
     X(test_le)          \
@@ -58,6 +59,7 @@ extern int g_failures;
     X(test_host)        \
     X(test_flow)        \
     X(test_opl)         \
+    X(test_opl_pitch)   \
     X(test_pitch)       \
     X(test_samples)     \
     X(test_mixer)       \
@@ -137,6 +139,7 @@ extern int g_failures;
     X(test_p7_4b03c) \
     X(test_p8_3a820) \
     X(test_p8_29cfc) \
+    X(test_u16_reaction_motion) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_inlined_functions) \

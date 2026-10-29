@@ -239,6 +239,7 @@ u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
  * (0x13B85 reads [source_rec]); there is no handle register. */
 u32 effects_spawn_scroll(u32 source_rec, s32 offset, u32 count, u32 flag)
 {
+    PR_HIT(0x13B3Cu);
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
     const u32 *resolved = (const u32 *)res_resolve(DSD(source_rec));

@@ -38,6 +38,7 @@
  * the raw's BX/EDI (the saved DS_000FD0F2/F4) live in `bx`/`edi`. */
 u32 name_filter_word(u32 eax, u32 edx)
 {
+    PR_HIT(0x13F68u);
     u16 bx = DSW(NE_FILTER_SCRATCH);                       /* 0x13F6C */
     u32 edi = DSD(NE_FILTER_START);                        /* 0x13F73 */
     u8 cl, ch;

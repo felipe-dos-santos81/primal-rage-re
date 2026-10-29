@@ -44,6 +44,10 @@ make gp-u20-oracle         # endgame truth U20: CHAOS's ending (character 6, cel
 make gp-u21-oracle         # endgame truth U21: ARMADON's ending (character 4, cell 5); as gp-u18-oracle
 make gp-u22-oracle         # endgame truth U22: DIABLO's ending (character 5, cell 6); as gp-u18-oracle
 make gp-u23-oracle         # endgame truth U23: the U16 finisher reaction under the labelled poked-damage fallback on gp-u23-u16-finisher (gp_twop.py check --finisher without --allow-missing-reaction); in make verify; skips without the capture
+make gp-u25-oracle         # state coverage U25: gp-u25-endurance-end's four-KO roster walk and match end (modes 0x32/0x33; record §D5); in make verify; skips without the capture
+make gp-u26-oracle         # state coverage U26: gp-u26-side1-ending's side-1 tour and ARMADON ending (ad4=1; record §D5); in make verify; skips without the capture
+make gp-draw-timeout-oracle # state coverage Task 7: gp-draw-timeout's timeout/health drawn round (record §D7); in make verify; skips without the capture
+make coverage              # the PR_COVERAGE function census (build-cov + every driver with PR_HIT_TAG, then tools/coverage_census.py; NOT in make verify — it re-runs the drivers); COV_REASON="…" re-pins tools/coverage_baseline.txt
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -401,7 +405,8 @@ consolidation gate).
   (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
   is 19,887 (59.998 Hz), and `0x2D62C` is the counter the AIL callback `0x1BDF4` calls — the
   installer stays host-owned. Named gaps left by the phase: U14 R1, the 5120 band (a byte-pinned
-  13-pixel allowance whose cause is unisolated), the differential frontier, and the poked-win
+  13-pixel allowance whose cause is INCONCLUSIVE — the state-coverage §D4 aperture read is invalid,
+  the DOSBox-X memory file excluding the VGA aperture), the differential frontier, and the poked-win
   status above.
 - **The input sampler and its readers are ported; the game logic has no joystick path.** `0x2D2F0`
   (`input_joystick_device`) is `xor eax,eax; ret` (raw `31 c0 c3`; it has its own differential
@@ -512,6 +517,79 @@ consolidation gate).
   data identical and only their labels differing — 180 `W` frame labels one lower, two `W` tick
   labels 308→310 and one `S` `ticks` 2454→2456; no pin weakened); the remaining steps are green
   separately (record §F6.3).
+- **The out-of-scope content modes `0x21` (volleyball), `0x25` (both-characters-4
+  camera) and `0x0E` (continue screen) are declared, not captured** (state-coverage
+  record `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2). `DS_00104ABC =
+  (DS_00104B1F == 3) + 1` — written at `flow.c:1632` (`flow_player_join`) and `flow.c:2416`
+  (the round-end case-3 arm) — so `DS_00104ABC >= 2` iff `b1f == 3` (a two-human match), and both
+  in-match entries read it: `0x21` stores the mode at `0x4BD98` behind `fight_4b470`'s eighth-hit
+  tail (`+0x1F > 7` = eight worshipper tramples of one effects entry, `fight.c:3084`;
+  `DS_00104B1D` not 2/3, `DS_00104AFC`/`DS_001088C1`/`DS_001088C5`/`DS_00108864` clear,
+  `(DS_001088EF >> 24) > 1`, then `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`, `fight_13134` false,
+  the two `0xBAB88`/`0xBAB9C` actor spawns and the `0x1E` timer `DS_001088AA`), and `0x25` at
+  `0x4E11C` behind `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's `+0x53 == 0`,
+  `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
+  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. `0x0E` opens on a KO and runs the
+  countdown `DS_00108110` (starts `0xF`, reset to `0xA` on a forced tick, decremented every 64
+  master ticks or on a press) and the `config_credit_ready` credit. A poked 1P scenario cannot
+  open `0x21`/`0x25` (no poke writes `b1f`/`DS_00104ABC`), so none is built. The census rows
+  `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the trample `0x4B470` is
+  `HIT`); `0x0B` (the drawn winner pose) stays unexhibited (claim-coverage Task 11's `gp-draw`
+  did not publish).
+- **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
+  counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;
+  14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none);
+  809/845 closed on full rows; 8 ported functions with no row`. **20 open rows over 19 distinct
+  addresses** (`TERMINAL_CENSUS`: 15 AIL runtime thunks, `sound_buffers_alloc` `0x1D0BC`,
+  `input_sampler` `0x1BBAC`, and the three runtime exit-flush rows `config_file_load`/`config_file_save`/
+  `menu_fatal_error` on the unrowed `0x6C4CF`; `attract_config_volumes_unscaled` and
+  `attract_config_volumes` are two specs at `0x2C8F0`), **13 rows are `WEAKER`**, and **8 portable
+  functions are `UNROWED`** — the three lists are the harness's `TERMINAL_CENSUS`/`WEAKER_CENSUS`/
+  `UNROWED_CENSUS` tables in `tools/tests/test_diff_verify.py`, keyed to the counter by their tests.
+  The span census is **417 slots / 392 distinct / 385 writer slots (384 reachable + dead `0x57E3C`)
+  plus the out-of-table `0x5D110`** (`0x81110[128] == 0x81310[0]`, the 386th target, reachable), and
+  the E2 triage has **388 `span-writer` rows plus the supplement `0x5D004`** (`0x81110[127]`, the one
+  writer slot `>= RUNTIME_BASE`, named in the supplement). **U17** (the wall-paced walk, no
+  tick-keyed replay; its screens already covered by the K11 captures) and **U14** (the fought live
+  win) are declared, neither run; U14's `live_death` rule anchors on the match-1 round-2 KO but
+  `b0c`'s only setter (`0x37FF6` in `0x37EA0`) runs on the ending path, and the two re-scope options
+  are (a) drop the `b0c` clause and claim "fought KOs, no pokes", or (b) move to the final — with the
+  measured correction that `b0c`'s ending write is **not universal** (BLIZZARD U13 and ARMADON U21
+  keep `b0c = 0`). The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
+  measured NOT-HIT set (**102** addresses, §D7.5, §D8.3; Task 3's original pin
+  was 110) and the declared modes; the census baseline is a
+  separate pin (its own `tools/coverage_baseline.txt`, not the `tools/pin_baseline.sha256`
+  capture-pin tripwire). One `sprite_blit_aperture` (`0x51ED8`) pool mismatch was noted (three reruns
+  green, not reproduced). No row, class or universe is widened and no capture or pin changed.
+- **The state coverage phase is implemented and gated** (spec
+  `docs/superpowers/specs/2026-10-28-state-coverage-design.md`, record
+  `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
+  two full `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs
+  plus `make audio-render`, green 2026-10-29). **The census** (`make coverage`,
+  outside `verify`) reads **HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4** (sums to
+  759; the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`, pinned in
+  `tools/coverage_baseline.txt`; Task 14 re-pinned it from the Task 3 baseline's
+  `HIT 645 / NOT-HIT 110` — R17/§D8.3 — the eight `improved:` addresses measured
+  as `gp-u25-endurance-end`'s `0x292D4`/`0x29638`/`0x296B8` and
+  `gp-draw-timeout`'s `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`).
+  **The exhibits:** ENDURANCE's team end
+  (`gp-u25-endurance-end`, `af1` `0 → 4`, stop mode `0x17`, 1,360 frames), the
+  side-1 tour (`gp-u26-side1-ending`, `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F`
+  frames byte-identical to `gp-u21`**), the timeout draw (`gp-draw-timeout`,
+  `clock=0` from the `W` record, `b16` not asserted) and the name-entry exhibit
+  (`gp-u27-name-entry`, sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three
+  letters, "ABD" — an exhibit, not a gated oracle). **The U16 fix** (record
+  §D3): the reaction's record-motion gap is a null table base — the stream
+  reads the IVT at linear 0 — fixed by `bios_ivt_stand_in()` seeding
+  `mem[1] = 0xCA`/`mem[3] = 0xF0`; only `GP_U23_TRACE_MIN_FIRST` and
+  `GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 → 6050`). **The 5120 band**
+  is **INCONCLUSIVE** (§D4): the DOSBox-X memory file excludes the VGA aperture,
+  so the diagnostic's 14 bytes read `0xFF` and the band stays a declared gap.
+  **The OPL pitch test** (§D6) renders 439.9915 Hz (measured 439.0000 Hz)
+  within the 1.7586 Hz derived tolerance. The two-human KO stays
+  game-evidence-only, and `gp-u27-name-entry` is an exhibit, not a gated
+  oracle (its replay has the pinned miss set `k_miss_gp_u27_name_entry`, but
+  there is no `gp-u27-oracle` and it is not in `make verify`).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
@@ -530,15 +608,20 @@ consolidation gate).
   (`f=0x1EB`) and every later dumped frame, the five storage ranges (the `config` image, the kind-0
   counters and the three high-score tables, §J3.3) boot 2's `poll.log` holds at the pin;
   `data/game/C` is proven untouched (the capture's own `CHECK staging`). Two more named
-  gaps (record §S.10 and §S.8's PLAUSIBLE items): the slot-13..35 bookkeeping low
+  gaps (record §S.10 and §S.8's PLAUSIBLE items, declared terminal by
+  state-coverage §D7.3): the slot-13..35 bookkeeping low
   bytes are wrong at boot (the port's `config_storage_touch` stops the encode at
   the first store outside the image, so the low-byte record is written nowhere,
   where the original exits; the raw defect that makes the slot step past the
-  image is §S.10), and the PLAUSIBLE items stay open — whether the original can
-  itself save a slot byte of 13+ (the runtime's exit-routine walk `0x6C4CF` is
-  not traced), the two "nothing else stores it" absolute-operand scans, which
-  statistics screens a capture compares, and the 39 `config_field_get` consumers
-  a checksum-valid save feeds, none audited for an index leaving `mem[]`.
+  image is §S.10), and the four PLAUSIBLE items are now declared — (a) the
+  original cannot itself save a slot byte of 13+ (the exit chain is save-free:
+  `0x2EA68` is `mov eax,1; jmp 0x62003`, and `0x6C4CF`'s closure reaches only
+  runtime call targets, so no boot loads slot 13..35); (c) the two "nothing else
+  stores it" absolute-operand scans (the byte `0x2D490`; `0x105DA4`/`0x105DA5`)
+  are already implicitly covered by the rows' whole-memory comparison (the
+  explicit watch is optional and not taken); (d) the statistics screens are
+  already enforced (the save-reload boot-2 comparison's five ranges); (e) the 39
+  `config_field_get` consumers are bounded and audited.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
   adjacent port frames rather than a 1:1 match. (60.05 Hz is the capture model's
@@ -591,7 +674,7 @@ consolidation gate).
    The 2026-10-24 proof-completion phase (record
    `docs/superpowers/plans/2026-10-24-proof-completion-derivations.md` §P5-§P8) re-pinned the
    counter at **`1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845
-   rows with callees closed (188 have none); 807/845 closed on full rows; 8 ported functions with no
+   rows with callees closed (188 have none); 809/845 closed on full rows; 8 ported functions with no
    row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37
    runtime; the scan-visible subset is 42 = 5 + 37)`** — +2 functions and +10 mutants (the two
    ported card-step rows, §P5); the rows that close are Task 5's twelve (§P6, one full sprintf row and
@@ -601,17 +684,20 @@ consolidation gate).
    `config_file_load`, `config_file_save` and `menu_fatal_error` (all on the unrowed `0x6C4CF`
    flush; `config_file_save` reopened by the short-write case). The 20 rows are 19 distinct
    addresses — `attract_config_volumes_unscaled` and `attract_config_volumes` are two specs at
-   `0x2C8F0`. `WEAKER` grew 12 → **15** (`0x249F0`, `0x1D0BC` and `0x51ED8` join the 12, §P6.3/
-   §P7.4) and `UNROWED` stays **8**: `diff-verify` prints 0 named gaps, not 8. The phase's second
+   `0x2C8F0`. `WEAKER` reads **13** (the proof-completion phase's 15 minus `0x51ED8` and `0x1BE30`,
+   which claim-coverage Task 6 closed, record §C1.10) and `UNROWED` stays **8**: `diff-verify` prints
+   0 named gaps, not 8. The phase's second
    proof is the **span-writer census** (§P2-§P4): 417 slots, 392 distinct targets (six renderers, one
    bare `ret`, 385 writer slots) plus the reachable out-of-table `0x81110[128] = 0x81310[0] =
    0x5D110`, for **386 distinct writer targets, 385 reachable** (384 reachable slots + `0x5D110`) and
    one dead (`0x57E3C`); the minimal fixture proves **26/26 code-shape classes** and the exhaustive
    fixture **385/386 distinct targets**, including both-edges clipping (`0x5D580`/`0x582F4`) and the
-   clipped 14/15 word tails. E2 triages 227 of the writers and leaves 158 to the census (231 span rows
-   minus four renderers); `0x24B54` is live, `0x24B08` dead.
+   clipped 14/15 word tails. E2 triages **388 `span-writer` rows** (the 384 writer-slot targets plus
+   the four renderers `0x5215C`/`0x57F80`/`0x57FFB`/`0x58CBD`), the one writer slot without a row being
+   the residual `0x5D004` (`0x81110[127]`), named in the supplement because it is `>= RUNTIME_BASE`
+   (claim-coverage §C1.5.1); `0x24B54` is live, `0x24B08` dead.
    The two new clauses count the explicit frozensets `tools/diff_verify.py`
-   keeps: `WEAKER` (15 — the rowed functions whose row is not full: a code poke, a reachable block left out,
+   keeps: `WEAKER` (13 — the rowed functions whose row is not full: a code poke, a reachable block left out,
    a declared terminal difference, or a declared byte difference; §P6.3/§P7.4) and `UNROWED` (8 — the ported functions with no differential row at
    all, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
    g4 (`game_loop`'s recorded RNG stub, `@rng`). The counter's unrowed clause no longer prints only
@@ -636,16 +722,18 @@ consolidation gate).
    the rule would have closed them on a row that can exist (716→774, +58). The 2026-10-22 plan gave
    all four E2-class entries rows (`0x28D68`, `0x3E484`, `0x29D04`, `0x3E4C4`), so no open row
    blocks on a port-code implementation now. The
-   counter does not tell a full row from a weaker one: **15** of the portable rowed functions have a row
+   counter does not tell a full row from a weaker one: **13** of the portable rowed functions have a row
    that runs the original under code pokes, leaves reachable blocks out, declares a terminal
    difference, or declares a byte difference on some or all of its cases (which then compare nothing
-   on the port's side, §G1's skip): the twelve the 2026-10-22 plan named (`0x2CADC`, `game_loop`,
-   `0x1AFE8`, `0x1B084`, `0x1BE30`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
-   `0x1B544`, `0x2EA30`), plus the three the phase added — `0x249F0` (its `0x24A9C` restart arm
-   unexercised after the longjmp became scan-only, §P6.3), `0x1D0BC` (its `0x1D10E`/`0x1D183`
-   buffer-failure arms unhit, §P7.4) and `0x51ED8` (the aperture row's declared renderer node-scratch
-   `+0x14`/`+0x38` byte difference, §P7.4; the counter had counted it full). The one-line reason for
-   each of the 15 is the record's §P8.3 table. A closed row may rest on a weaker callee row
+   on the port's side, §G1's skip): the eleven the 2026-10-22 plan named that remain (`0x2CADC`, `game_loop`,
+   `0x1AFE8`, `0x1B084`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
+   `0x1B544`, `0x2EA30`), plus the two the phase added — `0x249F0` (its `0x24A9C` restart arm
+   unexercised after the longjmp became scan-only, §P6.3) and `0x1D0BC` (its `0x1D10E`/`0x1D183`
+   buffer-failure arms unhit, §P7.4). `0x1BE30` (of the twelve) and `0x51ED8` (the aperture row's
+   declared renderer node-scratch `+0x14`/`+0x38` byte difference, §P7.4; the counter had counted it
+   full) left `WEAKER` when claim-coverage Task 6 closed them (record §C1.10). The one-line reason for
+   each of the 13 is the `WEAKER_CENSUS` table in `tools/tests/test_diff_verify.py` (the record's
+   §P8.3 table predates the two closures). A closed row may rest on a weaker callee row
    (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
    The still-open rows are measured, not asserted: after the closure rule **20 of the 845 rows stay
    open**, and every one is a declared terminal with a per-row reason (`TERMINAL_CENSUS`, record

@@ -580,6 +580,48 @@ def band_explain(c, port, entry):
     return P, None
 
 
+def decide_aperture(ap_indices, dac, port_rgb, capture_rgb, control):
+    """State coverage Task 11 (plan §G7(a), record §D4): classify the 5120 band's
+    aperture read. The threshold is the named outcomes, not a tolerance.
+
+    ap_indices: the 14 aperture index bytes (one per offset in gs.BAND_APERTURE:
+      13 band offsets then the control), read from the capture's S record.
+    dac: the 768-byte DAC at the band's frame (index i -> the RGB triple
+      dac[3*i:3*i+3]).
+    port_rgb / capture_rgb: 14 RGB triples each, the port's / capture's pixel at
+      the same offsets (parallel to ap_indices).
+    control: the index of the control offset in the three sequences.
+
+    The design's three outcomes (record §D4):
+    PASS-A: every band offset's aperture RGB equals the port's -- the differing
+      pixels are not in the video memory, so the capture's 13 pixels are a
+      capture-pipeline artifact.
+    PASS-B: every band offset's aperture RGB equals the capture's -- the
+      aperture holds the difference, so the port's writer for those pixels is
+      the divergence.
+    FAIL: the read is a valid measurement of the video memory but the 13 band
+      offsets match neither side -- both contradicted, so the band stays a named
+      gap.
+    INCONCLUSIVE (a fourth outcome, outside the design's three): the read is not
+      a measurement of the video memory at all -- the control's aperture RGB
+      disagrees with the (agreed) colour, or the read is a single uniform byte
+      where the band's 13 pixels have at least two distinct colours on both
+      sides. The band stays a named gap because the read is invalid, not because
+      it contradicts PASS-A and PASS-B.
+    """
+    ap_rgb = [dac[3 * i:3 * i + 3] for i in ap_indices]
+    band = [k for k in range(len(ap_indices)) if k != control]
+    if ap_rgb[control] != capture_rgb[control]:
+        return 'INCONCLUSIVE'  # the control disagrees: not a video-memory read
+    if all(ap_rgb[k] == capture_rgb[k] for k in band):
+        return 'PASS-B'        # the aperture holds the capture's colours
+    if all(ap_rgb[k] == port_rgb[k] for k in band):
+        return 'PASS-A'        # the differing pixels are not in the video memory
+    if all(i == ap_indices[0] for i in ap_indices):
+        return 'INCONCLUSIVE'  # a uniform read cannot be the 2+-colour band
+    return 'FAIL'              # a valid read that matches neither side
+
+
 def scan3_bind(c, port, r1, r2):
     """The unique adjacent port pair (B, B+1) with c's rows [r1, r2) == port[B]'s
     and c's rows [r2, FRAME_H) == port[B+1]'s; None if there is not exactly one.

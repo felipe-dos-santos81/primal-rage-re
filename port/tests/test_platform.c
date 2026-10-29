@@ -353,6 +353,46 @@ static const fnm_pair k_miss_gp_u22_diablo_ending[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u25-endurance-end (state coverage Task 5, record §D5), measured on its
+ * full replay to the X record (f=0x9AA): the same two wipe hooks of §G.24,
+ * 0x29D60 (bare `ret`) and 0x5D812 (runtime stub), both from
+ * frontend_mode_1b_step, hits=1 each; the global actor_spawn/set_dead 0x5D812
+ * rows are the fight's (as gp-u12-endurance's, record gameplay-truth-ii §J4). */
+static const fnm_pair k_miss_gp_u25_endurance_end[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-u26-side1-ending (state coverage Task 6, plan 2026-10-28-state-coverage Task 6), measured on its full
+ * replay to the X record (f=0x26B0): the same two wipe hooks of §G.24, 0x29D60
+ * (bare `ret`, hits=1) and 0x5D812 (runtime stub, hits=3), both from
+ * frontend_mode_1b_step (the RIGHT PLAYER ARCADE divert's wipe, as
+ * gp-u8-right-arcade's). */
+static const fnm_pair k_miss_gp_u26_side1_ending[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-u27-name-entry (state coverage Task 8, report task-8-report.md), measured on its full
+ * replay to the X record: the same two wipe hooks of §G.24, 0x29D60 (bare
+ * `ret`, hits=1) and 0x5D812 (runtime stub, hits=3), both from
+ * frontend_mode_1b_step (the letter-driven high-score entry's wipe, as
+ * gp-u10-ending's). */
+static const fnm_pair k_miss_gp_u27_name_entry[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-draw-timeout (state coverage Task 7, report task-7-report.md), measured on its full
+ * replay to the X record (f=0xB62): the same two wipe hooks of §G.24, 0x29D60
+ * (bare `ret`, hits=1) and 0x5D812 (runtime stub, hits=1), both from
+ * frontend_mode_1b_step; the global actor_spawn/set_dead 0x5D812 rows are the
+ * fight's (as gp-u9-win's, record gameplay-u9-u10 §W.12). */
+static const fnm_pair k_miss_gp_draw_timeout[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -417,6 +457,10 @@ static const gp_set k_gp_sets[] = {
     { "gp-u20-chaos-ending", 0, k_miss_gp_u20_chaos_ending, FNM_N(k_miss_gp_u20_chaos_ending) },
     { "gp-u21-armadon-ending", 0, k_miss_gp_u21_armadon_ending, FNM_N(k_miss_gp_u21_armadon_ending) },
     { "gp-u22-diablo-ending", 0, k_miss_gp_u22_diablo_ending, FNM_N(k_miss_gp_u22_diablo_ending) },
+    { "gp-u25-endurance-end", 0, k_miss_gp_u25_endurance_end, FNM_N(k_miss_gp_u25_endurance_end) },
+    { "gp-u26-side1-ending", 0, k_miss_gp_u26_side1_ending, FNM_N(k_miss_gp_u26_side1_ending) },
+    { "gp-u27-name-entry", 0, k_miss_gp_u27_name_entry, FNM_N(k_miss_gp_u27_name_entry) },
+    { "gp-draw-timeout", 0, k_miss_gp_draw_timeout, FNM_N(k_miss_gp_draw_timeout) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a
@@ -556,6 +600,90 @@ int test_fn_misslog(void)
         fclose(f);
         CHECK_EQ_INT(n, (int)(sizeof k_miss_known / sizeof k_miss_known[0]));
     }
+    return g_failures - before;
+}
+
+/* ---- the coverage hit counter (mem.h PR_HIT; record state-coverage §D1.9) - */
+
+/* Runs fn_hit_report(tag) with stdout redirected to a fresh temp file, restores
+ * stdout, and returns the file's bytes as a NUL-terminated static buffer (a
+ * distinctive "(capture failed…)" sentinel when the redirect itself fails, so
+ * an empty-report assertion cannot pass on a broken capture). */
+static const char *fn_hit_capture(const char *tag)
+{
+    static char buf[4096];
+    char path[] = "/tmp/pr_hit_XXXXXX";
+    int fd = mkstemp(path);
+    if (fd < 0) { snprintf(buf, sizeof buf, "(capture failed: mkstemp)"); return buf; }
+    int saved = dup(1);
+    if (saved < 0) { close(fd); snprintf(buf, sizeof buf, "(capture failed: dup)"); return buf; }
+    fflush(stdout);
+    dup2(fd, 1);
+    fn_hit_report(tag);
+    fflush(stdout);
+    lseek(fd, 0, SEEK_SET);
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    if (n < 0) n = 0;
+    buf[n] = '\0';
+    dup2(saved, 1);
+    close(saved);
+    close(fd);
+    unlink(path);
+    return buf;
+}
+
+int test_fn_hit(void)
+{
+    int before = g_failures;
+    const u32 a = 0x03F10000u;
+
+    /* Unarmed: a note is inert, and the report writes nothing. */
+    fn_hit_arm(0);
+    fn_hit_clear();
+    fn_hit_note(a);
+    CHECK(strcmp(fn_hit_capture("t"), "") == 0, "an unarmed report writes nothing");
+
+    /* Armed: one address, one hit, reported as `fn-hit <tag> 0xADDR n=1`. */
+    fn_hit_arm(1);
+    fn_hit_note(a);
+    {
+        char want[64];
+        snprintf(want, sizeof want, "fn-hit t 0x%05X n=1\n", (unsigned)a);
+        CHECK(strcmp(fn_hit_capture("t"), want) == 0, "one address reports n=1");
+    }
+
+    /* Clear empties the table without disarming it. */
+    fn_hit_clear();
+    CHECK(strcmp(fn_hit_capture("t"), "") == 0, "a cleared counter reports empty");
+
+    /* Two notes of the same address count two. */
+    fn_hit_note(a);
+    fn_hit_note(a);
+    {
+        char want[64];
+        snprintf(want, sizeof want, "fn-hit t 0x%05X n=2\n", (unsigned)a);
+        CHECK(strcmp(fn_hit_capture("t"), want) == 0, "the same address twice reports n=2");
+    }
+
+    /* A direct call of the real fn_resolve (the parenthesised form, bypassing
+     * the fn_resolve macro's fn_resolve_from route) must note a hit for the
+     * found address. The note is compiled only under PR_COVERAGE, so the n=1
+     * assertion is too; the pre-fix placement noted only in fn_resolve_from, so
+     * a direct fn_resolve never counted, and a direct fn_hit_note cannot catch
+     * it. */
+    fn_hit_clear();
+    fn_register(0x03F10001u, fn_probe);
+    CHECK((fn_resolve)(0x03F10001u) == fn_probe, "the probe resolves directly");
+#ifdef PR_COVERAGE
+    {
+        char want[64];
+        snprintf(want, sizeof want, "fn-hit t 0x%05X n=1\n", 0x03F10001u);
+        CHECK(strcmp(fn_hit_capture("t"), want) == 0,
+              "a direct fn_resolve notes one hit");
+    }
+#endif
+
+    fn_hit_arm(0);
     return g_failures - before;
 }
 
@@ -2522,6 +2650,24 @@ static void check_list_order(void)
     CHECK_EQ_INT(render_list_count(), 580);
 }
 
+/* The modeled IVT (mem[0..3], seeded by bios_ivt_stand_in) is a non-zero dword,
+ * so render_pop_free's raw read of address 0 on an exhausted pool writes a
+ * non-zero sentinel to the free-list head (DS_0010275C). render_list_insert
+ * must restore the head to 0 there, or the next insert would follow the
+ * sentinel out of mem[]. Seed the sentinel and the empty head, and prove the
+ * insert fails cleanly and leaves the head 0. */
+static void check_render_drain_restores_head(void)
+{
+    u32 head = DSD(DS_0010275C);
+    u32 z0   = DSD(0);
+    DSD(0) = 0xDEADBEEFu;
+    DSD(DS_0010275C) = 0;
+    CHECK_EQ_INT(render_list_insert(0x1234u), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010275C), 0);
+    DSD(0) = z0;
+    DSD(DS_0010275C) = head;
+}
+
 static void check_proj_rounding(void)
 {
     /* 0x14328's projection: seed +0x800, then for a negative sum add a further
@@ -2967,6 +3113,7 @@ static void check_scroll_track(void)
 int test_render(void)
 {
     check_list_order();
+    check_render_drain_restores_head();
     check_proj_rounding();
     check_offscreen_skip();
     check_layer_modes();

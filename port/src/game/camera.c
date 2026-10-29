@@ -55,6 +55,7 @@
  * word[0xE6DD0]. Exported because 0x33F08 selects from the same table. */
 u32 camera_char_const(u32 ch)
 {
+    PR_HIT(0x17EECu);
     switch (ch) {
     case 1:  return DSW(DS_000E39D0);
     case 2:  return DSW(DS_000ECBD8);
@@ -88,6 +89,7 @@ static u32 camera_res_off(const void *p)
  * tail-jumps 0x1B544; a failed resolve returns the 0 sentinel. */
 u32 camera_resolve_sprite(u32 side, u32 index)
 {
+    PR_HIT(0x16308u);
     u32 handle = DSD(DS_000A8B30
                      + (camera_char_const(DSB(DS_0010782A + side * 0x94u))
                         + index) * 4u);
@@ -105,6 +107,7 @@ u32 camera_resolve_sprite(u32 side, u32 index)
  * unordered compare (a NaN operand) sets as well, so that returns 1 too. */
 int camera_frame_last(u32 side)
 {
+    PR_HIT(0x164C0u);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     double a = (double)*(const float *)(mem + rec + 0x24u)
                + (double)*(const float *)(mem + CAMERA_NEG_ONE);
@@ -119,6 +122,7 @@ int camera_frame_last(u32 side)
  * self record (out[5]) and slot (out[3]). */
 int camera_sprite_code(u32 side)
 {
+    PR_HIT(0x16734u);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                    /* 0x33A10 */
     u32 rec = ctx[5];                               /* 0x16741 */
@@ -381,6 +385,7 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
  * by DS_000F0AFF), within a 0x1800 dead zone. */
 void camera_mode_track_player(void)
 {
+    PR_HIT(0x12DF0u);
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 rec = DSD(DS_001077A8 + (u32)DSB(DS_000F0AFF) * 4u);
     s32 diff = (s32)DSD(rec + 0x34u) - cam;
@@ -395,6 +400,7 @@ void camera_mode_track_player(void)
 /* 0x12CD4 — record 2026-10-13-reverse-i §I.3 */
 void camera_y_step(s32 target)
 {
+    PR_HIT(0x12CD4u);
     u32 cam = DSD(DS_000F0AEC);                         /* 0x12CD7 */
     s32 diff = (s32)((u32)target - cam);                /* 0x12CDF sub */
     s32 mag = diff < 0 ? (s32)(0u - (u32)diff) : diff;  /* 0x12CE7 neg: 0x80000000 stays negative */
@@ -456,6 +462,7 @@ void camera_step_seed(void)
  * by it and reset the step to 0x400. */
 void camera_x_commit(s32 arg)
 {
+    PR_HIT(0x12C7Cu);
     s32 old = (s32)DSD(DS_000F0AF0);
     s32 step = (s32)DSW(DS_000F0AFC);
     s32 diff = (s32)((u32)arg - (u32)old);                  /* 0x12C88 `sub` */
@@ -476,6 +483,7 @@ void camera_x_commit(s32 arg)
  * record itself stops at the split distance. */
 void camera_mode_track_pair(void)
 {
+    PR_HIT(0x12E3Cu);
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 a = ((s32)DSD(DS_001077E4) >= (s32)DSD(DS_00107878)) ? 1u : 0u;
     u32 b = 1u - a;
@@ -543,6 +551,7 @@ void camera_mode_track_pair(void)
  * settle to mode 4 (gated on DS_001078FE). */
 void camera_mode_center_two(void)
 {
+    PR_HIT(0x13290u);
     s32 cam = (s32)DSD(DS_000F0AF0);
     s32 p0 = (s32)DSD(DSD(DS_001077B0) + 0x18u);
     s32 p1 = (s32)DSD(DSD(DS_00107844) + 0x18u);
@@ -566,6 +575,7 @@ void camera_mode_center_two(void)
  * NOT gated on DS_001078FE. */
 void camera_mode_center_one(void)
 {
+    PR_HIT(0x1333Cu);
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 idx = DSB(CAMERA_SLOT_INDEX3);
     s32 px = (s32)DSD(DSD(DS_001077B0 + idx * 0x94u) + 0x18u);
@@ -686,6 +696,7 @@ static s32 camera_project_axis(s32 x, u32 k)
  * EBX = ESP), so the intersection is computed in place. */
 int camera_rect_clip(int *out, const int *a, const int *b)
 {
+    PR_HIT(0x14080u);
     out[0] = (a[0] > b[0]) ? a[0] : b[0];
     out[1] = (a[1] > b[1]) ? a[1] : b[1];
     out[2] = (a[2] < b[2]) ? a[2] : b[2];
@@ -880,6 +891,7 @@ u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
  * raw's EAX, `rows` the EDX, dst the EBX, value the CL. */
 void camera_bitplane_pixel(u32 bit, u32 rows, u32 dst, u8 value)
 {
+    PR_HIT(0x15F48u);
     if ((s32)bit < 0 || (s32)bit > (s32)(rows * 8u) || bit == 0u) return;
     u32 byte_idx = (u32)((s32)bit / 8);
     u32 bit_idx = (u32)((s32)bit % 8);
@@ -893,6 +905,7 @@ void camera_bitplane_pixel(u32 bit, u32 rows, u32 dst, u8 value)
  * byte count and must equal the raw's stack arg (arg5). */
 int camera_bitplane_shift(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 {
+    PR_HIT(0x15FD4u);
     if ((s32)bit < 0 || (s32)bit > (s32)(rows * 8u)) return 0;
     if ((s32)rows < 1 || (s32)arg5 < 1 || arg5 != rows) return 0;
 
@@ -986,6 +999,7 @@ int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
  * x out when 0x1A570's AL is 0 (the actor's bit 15 set). */
 void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
 {
+    PR_HIT(0x15B90u);
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 base = camera_char_const(ch) + index;
     *out_a = DSB(0x000D5100u + base * 2u);

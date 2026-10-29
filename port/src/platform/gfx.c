@@ -23,6 +23,7 @@ u8 gfx_dac[256][3];
  * clears gfx_dac instead of resetting a DAC. */
 void palette_list_init(void)
 {
+    PR_HIT(0x336C0u);
     mem_fill(DS_00107618, 0, 0x180u);   /* 0x336CF: the ownership table */
     DSD(DS_00107798) = DS_00107498;
     for (u32 i = 0; i < 0x180; i += 0x10) DSD(DS_0010749C + i) = 0xFFFFFFFFu;
@@ -57,6 +58,7 @@ void palette_list_init(void)
  * acquire. */
 void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
 {
+    PR_HIT(0x33734u);
     u32 head = DSD(DS_00107798);
     /* PORT: an uninitialized head reads 0 and a stale one can sit outside the
      * record region; recover to the base exactly as gfx_flush_palette does, so
@@ -86,6 +88,7 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
  * guard. */
 void palette_record_flagged(u32 ptr, u32 first, u32 count)
 {
+    PR_HIT(0x33714u);
     palette_record(ptr, first, count, 1u);
 }
 
@@ -244,6 +247,7 @@ void gfx_screen_reset(u32 ticks)
  * by 0xFA00, which no caller reads (0x5211E reloads it, 0x52156 returns). */
 void gfx_fill_screen(u32 addr, u32 value)
 {
+    PR_HIT(0x51F72u);
     u32 eax = addr;
     for (u32 cl = 0xC8u; cl != 0u; cl--) {             /* 0x51F73, 0x520FC */
         for (u32 k = 0; k < 0x140u; k += 4u)           /* 0x51F78..0x520F1 */

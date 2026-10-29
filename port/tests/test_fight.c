@@ -48112,3 +48112,42 @@ static void p8_check_3a820(void)
 }
 
 int test_p8_3a820(void)         { return u6b_run(p8_check_3a820); }
+
+/* State coverage Task 10 (record 2026-10-28-state-coverage-derivations §D3.4/
+ * §D3.5): the reaction animation 0xED850 reads its x/y motion table at linear
+ * address 0 (the DOS IVT's INT 0 vector) because actors_anim_begin sets
+ * rec+0x0C = 0 and the stream's first 0xFF20/0xFF21 opcodes do a mode-0x6000
+ * table lookup before any base is loaded. The y-opcode's operand is
+ * (s8)DSB(rec+0x52*2 + 1), i.e. mem[1] (y[0] = -54) then mem[3] (y[1] = -16);
+ * bios_ivt_stand_in seeds those two bytes. The dwell is rec_y = -3456 then
+ * -4480 (the original's series; the gate's 0x13FF/0x1400/0x1401 boundary is
+ * test_p3_4844c's state-3 claim). */
+static void check_u16_reaction_motion(void)
+{
+    u32 rec = FIGHT_RECS;
+    u32 stream = FIGHT_RECS + 0x180u;
+    u16 *s = (u16 *)(mem + stream);
+
+    bios_ivt_stand_in();
+    CHECK_EQ_INT((int)DSB(1), 0xCA);        /* y[0] = -54 */
+    CHECK_EQ_INT((int)DSB(3), 0xF0);        /* y[1] = -16 */
+
+    mem_fill(FIGHT_RECS, 0, 0x200);
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    s[0] = 0xFF20; s[1] = 0x0040; s[2] = 0x0000; s[3] = 0x1000;   /* x-opcode */
+    s[4] = 0xFF21; s[5] = 0x0040; s[6] = 0x0000; s[7] = 0x2000;   /* y-opcode */
+    s[8] = 0x0D00;                          /* the walk stops here */
+
+    /* the first x/y pass (rec+0x52 = 0): y[0] = -54 -> rec_y = -3456 */
+    actors_anim_begin(rec, stream, 0x40400000u);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), (int)0xFFFFF280u);
+
+    /* the second pass (rec+0x52 = 1): y[1] = -16 -> rec_y = -4480 */
+    DSB(rec + 0x52u) = 1;
+    DSD(rec + 8u) = stream + 8u;
+    spawn_anim_opcode(rec, 0u, 0u);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), (int)0xFFFFEE80u);
+}
+
+int test_u16_reaction_motion(void) { return u6b_run(check_u16_reaction_motion); }

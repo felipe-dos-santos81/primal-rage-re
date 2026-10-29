@@ -64,6 +64,7 @@ void input_repeat_set(u32 mask, u32 first, u32 next)
 /* 0x2D2F0. `xor eax,eax; ret`. */
 u32 input_joystick_device(u32 selector)
 {
+    PR_HIT(0x2D2F0u);
     (void)selector;
     return 0u;
 }
@@ -71,6 +72,7 @@ u32 input_joystick_device(u32 selector)
 /* 0x50161. Level/latch bit selector. */
 u32 input_select_bits(u32 mask)
 {
+    PR_HIT(0x50161u);
     u32 level = DSD(DS_000E1C34);
     if (mask != 0u) {
         u32 latch = DSD(DS_000E1C38);

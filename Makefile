@@ -76,6 +76,9 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u21-armadon-ending \
 	$(K11_CAPTURES)/gp-u22-diablo-ending \
 	$(K11_CAPTURES)/gp-u23-u16-finisher \
+	$(K11_CAPTURES)/gp-u25-endurance-end \
+	$(K11_CAPTURES)/gp-u26-side1-ending \
+	$(K11_CAPTURES)/gp-draw-timeout \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -119,7 +122,7 @@ verify_frames ?= 820
 gra ?= S16TITLE.GRA
 chunk ?= 0
 
-.PHONY: help deps build gate-check test verify check run clean audio-render \
+.PHONY: help deps build gate-check test verify check run clean coverage audio-render \
         smk-oracle title-pin title-capture title-oracle attract-oracle \
         audio-one audio-oracle audio-determinism \
         frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
@@ -128,7 +131,8 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
-        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle \
+        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
+        gp-u26-oracle gp-draw-timeout-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -668,6 +672,9 @@ GP_U20_MAX_MISSING = 70
 GP_U21_MAX_MISSING = 53
 GP_U22_MAX_MISSING = 52
 GP_U23_MAX_MISSING = 9
+GP_U25_MAX_MISSING = 12
+GP_U26_MAX_MISSING = 11
+GP_DRAW_TIMEOUT_MAX_MISSING = 5
 # <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
@@ -1176,6 +1183,155 @@ gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fi
 		--min-reach "$(GP_U12_MIN_REACH)" --max-missing "$(GP_U12_MAX_MISSING)" \
 		--capture-sha256 "$(GP_U12_CAPTURE_SHA256)" --capture-frames "$(GP_U12_CAPTURE_FRAMES)"; \
 	fi
+
+# State coverage Task 5 (plan docs/superpowers/plans/2026-10-28-state-coverage.md §G3, record §D5):
+# gp-u25-endurance-end, the ENDURANCE match end. gp-u12-endurance's team pass and fight,
+# continued with four poked KOs of P2 (side 1) and the mode-0x33 600-frame wait into the
+# results screen (mode 0x17, the hook 0x25AE8). The loser is side 1, so the counter that
+# reaches 4 is af1 (DS_00104AF1), not af0; c1 walks side 1's roster 04 -> 06 -> 01 -> 03.
+# memsize=64 is the §W.13 harness value (the original OOMs at 16 MB on the fourth KO cycle).
+# Measured on data/k11-captures/gp-u25-endurance-end (an absent capture skips the target).
+# MIN_FIRST = 598 is the first unexplained capture frame (nearest port 440, rows 4..83), the
+# enforced compare's stop; MAX_START = 92 the window's first capture frame; MIN_REACH = 437 the
+# highest port frame a classified capture frame exhibits before 598; MAX_MISSING = 12 the
+# canonical non-black missing classes up to that reach. TRACE_MIN_FIRST/MOVES_MIN_FIRST = 2415
+# (0 differing through 2414, the replay's end f=0x96E), the MILESTONES ratchet 7 (gp_endurance's
+# seven rows all reproduced at the capture's frame). Raise MIN_FIRST/MIN_REACH when they improve.
+# >>> PIN-BASELINE-BEGIN gp-u25
+GP_U25_MIN_FIRST = 598
+GP_U25_TRACE_MIN_FIRST = 2415
+GP_U25_MOVES_MIN_FIRST = 2415
+GP_U25_MAX_START = 92
+GP_U25_MIN_REACH = 437
+GP_U25_CAPTURE_SHA256 = 21fc6a739e22a71b659f746fd1d7ed6bcdca66d8348556283785b70e52808062
+GP_U25_CAPTURE_FRAMES = 1360
+GP_U25_MILESTONES = 7
+# <<< PIN-BASELINE-END gp-u25
+gp-u25-oracle: build ## State coverage U25 oracle: gp-u25-endurance-end's four-KO roster walk and match end (skips without data/k11-captures/gp-u25-endurance-end)
+	@echo "== gameplay oracle: gp-u25-endurance-end (the ENDURANCE match end; modes 0x32/0x33) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_endurance
+	@if [ ! -d $(K11_CAPTURES)/gp-u25-endurance-end ]; then echo "gp-u25-oracle: no capture at $(K11_CAPTURES)/gp-u25-endurance-end (skipped)"; else \
+		$(PYTHON) tools/gp_endurance.py check --scenario gp-u25-endurance-end --capture $(K11_CAPTURES)/gp-u25-endurance-end \
+			--capture-sha256 "$(GP_U25_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u25-endurance-end GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u25-endurance-end --capture $(K11_CAPTURES)/gp-u25-endurance-end \
+		--port $(GP_DUMP)/gp-u25-endurance-end --min-first "$(GP_U25_MIN_FIRST)" \
+		--trace-min-first "$(GP_U25_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U25_MOVES_MIN_FIRST)" \
+		--max-start "$(GP_U25_MAX_START)" --min-reach "$(GP_U25_MIN_REACH)" --max-missing "$(GP_U25_MAX_MISSING)" \
+		--capture-sha256 "$(GP_U25_CAPTURE_SHA256)" --capture-frames "$(GP_U25_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_endurance.py path --scenario gp-u25-endurance-end --capture $(K11_CAPTURES)/gp-u25-endurance-end \
+			--port $(GP_DUMP)/gp-u25-endurance-end --min-milestones "$(GP_U25_MILESTONES)" \
+			--capture-sha256 "$(GP_U25_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u25-endurance-end; exit $$rc; fi
+
+# State coverage Task 6 (plan docs/superpowers/plans/2026-10-28-state-coverage.md Task 6): the side-1
+# tour and ending. gp-u8-right-arcade's START MENU row-1 route (p1.down, RIGHT PLAYER ARCADE,
+# mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character select, where P2 confirms its
+# default cell 5 (ARMADON, class 4) with p2.start; then U10's body with the KOs reversed (KO_P1
+# pokes P1's +0x5A, so P2 wins and the final's seven opponents are P1-KO'd). The ending is the
+# mode-0x1F handler 0x208F8 reading DS_0010782A[DS_00104AD4 * 0x94] = c1 = 4 (ARMADON),
+# side-independent by the 0x208F8 differential row. The cross-check (tools/gp_side1.py, wired
+# into the oracle) is byte-identity of the mode-0x1F rendered RGB with gp-u21-armadon-ending's
+# replay: both replays produce 268 mode-0x1F frames (the pin below) and all 268 are byte-identical
+# in rendered RGB (concat sha256 97568493..). The first frame's raw index encoding differs in
+# 55 021 bytes (a state-0 reset transient: that frame's DAC maps all 256 entries to one colour, so
+# every differing index renders identically) and the DACs are identical -- a measured, not fitted,
+# reading, and the rendered-content claim is unaffected. gp_side1.py fails on any rendered-pixel
+# difference and on an empty/wrong count (--expect-count), so a side-independence regression or a
+# truncated mode-0x1F window fails instead of passing.
+# Measured on the 2026-10-29 capture (5,814 frames, raw 1386..14296, wall 204.5 s, memsize=64).
+# MIN_FIRST = 2358 is the first unexplained capture frame (raw 5568, f=0xDA0 mode 0x1B): the
+# versus -> REPLENISH transition's scan-out, a 3-present tear (rows 0..58 = port 1943, rows
+# 59..190 a 1944/1945 splice, rows 191..199 = 1944) that no BANDS/SCAN3 recipe expresses (its
+# band is clean 1944/1945 content, and its SCAN3 pair is non-unique because the mode-0x23 screen
+# is static); capture 4135 (raw 7660, f=0x147F mode 0x0C, the final's entry) is the same class
+# (a double tear: rows 7..19 = port 3444..3446, row 193 = port 3447, the rest 3448). Both are
+# recorded as named gaps in the task report (every pixel is a port frame within +-4, so they are
+# scan-outs, not divergences); nothing past 2358 is claimed by the frame ratchet, so the
+# mode-0x1F frames (capture 5073..5375) are claimed by the cross-check and the trace/moves
+# ratchets instead. The window starts at capture 86 (raw 1749); because the frame ratchet stops
+# at 2358, the window reach is port 1943 (not the dump's end) with 11 non-black missing classes
+# (the unexhibited port-frame canonical classes up to reach 1943, title_compare.canonical_missing),
+# one per line, measured on the replay's 4 897-frame dump (port index, f, mode, rendered-RGB sha256):
+#   10 f=024C mode=001A 3ef11f7c110f6c54e9684717b3040ee473233975650a7ec788e3e304d540374c
+#   12 f=024C mode=001A 386be86694a89a74c5e9d524ab3ad6d992f1612db745e0cd419f8436599714ca
+#   132 f=03D5 mode=001A 4918d7e577ec1cfb64ff8a96981c5a2157b33919cf3e5c3bf4956198aa7959c7
+#   219 f=046D mode=0008 8fb7339e90ae4f1180e8000871a8605d3e7e9f58355c994591cd883db09eabe6
+#   220 f=046E mode=0008 e2e4a6d7e2e485c4f0786f892d727f6027e59436d7532fce7eac8eebdb9ae141
+#   818 f=06C5 mode=0016 d227ab6f5b21d7650b47cf8cbe76404cec6b14dcdb09f96ad9995144203ae1ba
+#   1026 f=07B5 mode=0005 3ab7c2e56603268d4276c73df923d28d87a7ea155785f4c4678cde3e3a97f470
+#   1049 f=07F3 mode=0005 02899bf8d813d5c29a93e58b563c06616fa6aa9265668558a2c16b5c49c95d4b
+#   1080 f=0830 mode=0006 557c5723ffe559a41da2f3a7985a76e7dcab185bcfbd6360b60201cf68aec8ff
+#   1091 f=083B mode=0009 f8e46ad30c40a6a8d0cf5c84760540b786c7a04f14504d0c8c6498c3c3227a23
+#   1925 f=0D93 mode=001B ed343e30f214405dd534b196735d53a863accc5662ffb50d5b9878ef57de906e
+# the post-script tail (capture 5801..5803, at/past the X record f=0x26B0) is not claimed.
+# Trace, moves and WIN fields agree through f=0x26B0 (9904), so their end pins are 9905;
+# MILESTONES 30 (all reproduced at the capture's frame).
+# An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
+# capture with empty/changed pins fails. Raise each pin when it improves.
+# >>> PIN-BASELINE-BEGIN gp-u26
+GP_U26_MIN_FIRST = 2358
+GP_U26_TRACE_MIN_FIRST = 9905
+GP_U26_MOVES_MIN_FIRST = 9905
+GP_U26_MAX_START = 86
+GP_U26_MIN_REACH = 1943
+GP_U26_CAPTURE_SHA256 = 19b00d8d7721c0b927f35a5c816e1adcd062b74fd56160283e5ca5d87f9bddea
+GP_U26_CAPTURE_FRAMES = 5814
+GP_U26_MILESTONES = 30
+GP_U26_WIN_MIN_FIRST = 9905
+GP_U26_MODE1F_COUNT = 268
+# <<< PIN-BASELINE-END gp-u26
+gp-u26-oracle: build ## State coverage U26 oracle: the side-1 (RIGHT PLAYER ARCADE) tour and ending (skips without data/k11-captures/gp-u26-side1-ending)
+	@echo "== gameplay oracle: gp-u26-side1-ending (the side-1 tour and ARMADON ending under pokes) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u26-side1-ending ]; then echo "gp-u26-oracle: no capture at $(K11_CAPTURES)/gp-u26-side1-ending (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u26-side1-ending --capture $(K11_CAPTURES)/gp-u26-side1-ending \
+			--capture-sha256 "$(GP_U26_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u26-side1-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u26-side1-ending --capture $(K11_CAPTURES)/gp-u26-side1-ending \
+			--port $(GP_DUMP)/gp-u26-side1-ending --min-first "$(GP_U26_MIN_FIRST)" \
+			--trace-min-first "$(GP_U26_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U26_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_U26_MAX_START)" --min-reach "$(GP_U26_MIN_REACH)" --max-missing "$(GP_U26_MAX_MISSING)" \
+			--capture-sha256 "$(GP_U26_CAPTURE_SHA256)" --capture-frames "$(GP_U26_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u26-side1-ending --capture $(K11_CAPTURES)/gp-u26-side1-ending \
+			--port $(GP_DUMP)/gp-u26-side1-ending --min-milestones "$(GP_U26_MILESTONES)" \
+			--win-min-first "$(GP_U26_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U26_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u21-armadon-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_side1.py --side1 $(GP_DUMP)/gp-u26-side1-ending --p1 $(GP_DUMP)/gp-u21-armadon-ending \
+			--expect-count "$(GP_U26_MODE1F_COUNT)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u26-side1-ending $(GP_DUMP)/gp-u21-armadon-ending; exit $$rc; fi
+
+# State coverage Task 7 oracle (plan 2026-10-28-state-coverage §G5, record §D7): the
+# timeout/health drawn round (0x27FA8's arm at 0x280BA). The capture gp-draw-timeout pokes
+# two KOs (1-1) then round 3's clock 0x1088F2 = 0 and both +0x5A health bytes = 0x30 (equal,
+# below the KO 0x78), so the arm re-reads |A-B| = 0 <= 3 and calls flow_round_over -> mode
+# 0xA -> mode 0xB with AD4 = 0xFFFFFFFF (the 1-1 match is undecided; the KO draw's is 2).
+# gp_draw.py check --timeout proves the predicate (ad4=0xFFFFFFFF, b1e=adc=3, |A-B|<=3, the
+# clock poke, modes 0x0A then 0x0B) and its disjointness from the KO draw; gp_compare's
+# ratchets prove the frames, trace and moves. Skips without the capture, even under
+# PR_ORACLE_REQUIRED (spec §4.3). The claim is narrow like gp-oracle's: N and the reach are
+# the first unexplained frame's measured values; nothing past them is claimed.
+# >>> PIN-BASELINE-BEGIN gp-draw-timeout
+GP_DRAW_TIMEOUT_MIN_FIRST = 346
+GP_DRAW_TIMEOUT_TRACE_MIN_FIRST = 2915
+GP_DRAW_TIMEOUT_MOVES_MIN_FIRST = 2915
+GP_DRAW_TIMEOUT_MAX_START = 100
+GP_DRAW_TIMEOUT_MIN_REACH = 218
+GP_DRAW_TIMEOUT_CAPTURE_SHA256 = bb3e1b8ba888e4f9aed9728f4cbe94570c5f6493c6815aec57ef7e4613674290
+GP_DRAW_TIMEOUT_CAPTURE_FRAMES = 2132
+# <<< PIN-BASELINE-END gp-draw-timeout
+gp-draw-timeout-oracle: build ## State coverage Task 7 oracle: gp-draw-timeout's timeout/health drawn round (skips without data/k11-captures/gp-draw-timeout)
+	@echo "== gameplay oracle: gp-draw-timeout (the timeout/health drawn round 0x280BA; skips without its capture) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_draw
+	@if [ ! -d $(K11_CAPTURES)/gp-draw-timeout ]; then echo "gp-draw-timeout-oracle: no capture at $(K11_CAPTURES)/gp-draw-timeout (skipped)"; else \
+		$(PYTHON) tools/gp_draw.py check --timeout --capture $(K11_CAPTURES)/gp-draw-timeout && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-draw-timeout GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-draw-timeout --capture $(K11_CAPTURES)/gp-draw-timeout \
+			--port $(GP_DUMP)/gp-draw-timeout --min-first "$(GP_DRAW_TIMEOUT_MIN_FIRST)" \
+			--trace-min-first "$(GP_DRAW_TIMEOUT_TRACE_MIN_FIRST)" --moves-min-first "$(GP_DRAW_TIMEOUT_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_DRAW_TIMEOUT_MAX_START)" --min-reach "$(GP_DRAW_TIMEOUT_MIN_REACH)" --max-missing "$(GP_DRAW_TIMEOUT_MAX_MISSING)" \
+			--capture-sha256 "$(GP_DRAW_TIMEOUT_CAPTURE_SHA256)" --capture-frames "$(GP_DRAW_TIMEOUT_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-draw-timeout; exit $$rc; fi
 
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
@@ -1699,20 +1855,23 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 #   MIN_FIRST 4095: the report's first unexplained capture frame (raw 6783, nearest port 3442,
 #     rows 0..2, 510 px). It is not a loader overlay or a scan-out (the loader's 166-px six-row
 #     strip is capture 5461, after the pin), so no allowance is added; the tail is not claimed.
-#   TRACE_MIN_FIRST 5449: the first differing trace f, in rng (capture 75B49A54, port BA99085D);
-#     first tick difference f=147 is reported apart (host-timed).
-#   MOVES_MIN_FIRST 5467: the first differing move frame, f=0x155B in r0 (capture 0x33, the applied
-#     TALON finisher reaction, port 0x27). The capture-side reaction claim is gp_twop's; this pin
-#     says only that the move fields agree below 5467, so the port's reaction divergence is named
-#     and not claimed.
+#   TRACE_MIN_FIRST 6050: the state-coverage Task 10 fix (the reaction's record-motion
+#     y now matches the original), so the trace fields agree through the replay's end
+#     (0 differing through 6049); the exact pin is the end + 1 (record §D3.7). It was
+#     5449, the first differing trace f in rng, before the fix.
+#   MOVES_MIN_FIRST 6050: the same fix makes r0 reach 0x33 (f=0x155B), so the move
+#     fields agree through the replay's end; the exact pin is the end + 1. It was 5467,
+#     the first differing move frame (f=0x155B in r0: capture 0x33, port 0x27) before
+#     the fix. The capture-side reaction claim is gp_twop's; this pin says only that
+#     the move fields agree below 6050.
 #   MAX_START 106: the report's window start (raw 1749).
 #   MIN_REACH 3439: the highest port frame exhibited before the first unexplained capture frame.
 #   CAPTURE_SHA256 / CAPTURE_FRAMES: this capture's poll.log sha256 and its 5464 frame_*.raw.gz.
 # Raising a ratchet by one, lowering MAX_START by one, or changing the sha must fail; a
 # re-capture invalidates every pin (record §G.24).
 GP_U23_MIN_FIRST = 4095
-GP_U23_TRACE_MIN_FIRST = 5449
-GP_U23_MOVES_MIN_FIRST = 5467
+GP_U23_TRACE_MIN_FIRST = 6050
+GP_U23_MOVES_MIN_FIRST = 6050
 GP_U23_MAX_START = 106
 GP_U23_MIN_REACH = 3439
 GP_U23_CAPTURE_SHA256 = 6684d3cbb8cfabeed190b1139fa9cc93d69944c6d2b3ef9f9f56db2e0cb34446
@@ -2275,6 +2434,12 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-modes-oracle
 	@echo "== gameplay oracle: gp-u12-endurance (the team pass and fight; skips without its capture; record §J4) =="
 	@$(MAKE) --no-print-directory gp-u12-oracle
+	@echo "== state coverage U25: the ENDURANCE match end (four-KO roster walk, modes 0x32/0x33; skips without its capture; record §D5) =="
+	@$(MAKE) --no-print-directory gp-u25-oracle
+	@echo "== state coverage U26: the side-1 tour and ARMADON ending (ad4=1; skips without its capture; plan 2026-10-28-state-coverage Task 6) =="
+	@$(MAKE) --no-print-directory gp-u26-oracle
+	@echo "== state coverage Task 7: the timeout/health drawn round (0x280BA; skips without its capture; record §D7) =="
+	@$(MAKE) --no-print-directory gp-draw-timeout-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u13-oracle
 	@echo "== gameplay oracle: gp-u14-win-live (a fought win; skips without its capture) =="
@@ -2306,7 +2471,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_check_docs_claims
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_gp_side1 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
@@ -2327,6 +2492,80 @@ clean: ## Remove build outputs and locally generated oracles (keeps the SDD ledg
 	rm -f $(PORT_DIR)/tests/ghidra_data.bin
 	rm -rf frames/
 	@echo "Cleanup complete. (.superpowers/ deliberately kept — it holds the plan ledger.)"
+
+# The coverage census (plan 2026-10-28-state-coverage Task 3): a PR_COVERAGE
+# build, every driver run with PR_HIT_TAG into coverage/, then
+# tools/coverage_census.py. The gp scenarios are CAPTURE_DIRS's gp-* entries
+# minus the two excluded by name (gp-pads is a smoke scenario, gp-u17-device2
+# has no replay); an absent capture (gp-u14-win-live) is reported and excluded,
+# never a NOT-HIT. The other non-CAPTURE_DIRS directories under data/k11-captures
+# (gp-harness-smoke, gp-idle-loss-run2, gp-u6-moves, .failed*, de, diags, idle)
+# are never globbed in the first place. `make coverage COV_REASON="..."` re-pins
+# the baseline instead of checking it. Not in verify: it re-runs the drivers.
+COV_BUILD_DIR = build-cov
+COV_HITS_DIR = coverage
+GP_COV_SCENARIOS = $(filter-out gp-pads gp-u17-device2,$(notdir $(filter $(K11_CAPTURES)/gp-%,$(CAPTURE_DIRS))))
+COV_TAGS = check attract title frontend restart walk menuesc save-reload $(GP_COV_SCENARIOS)
+COV_REASON ?=
+ifeq ($(strip $(COV_REASON)),)
+COV_CENSUS = --check
+else
+COV_CENSUS = --update-baseline --reason "$(COV_REASON)"
+endif
+
+coverage: ## Run every driver under PR_COVERAGE and the coverage census (COV_REASON="..." re-pins the baseline)
+	@cmake -S $(PORT_DIR) -B $(COV_BUILD_DIR) -DPR_COVERAGE=ON
+	@cmake --build $(COV_BUILD_DIR)
+	@rm -rf $(COV_HITS_DIR); mkdir -p $(COV_HITS_DIR)
+	@echo "== coverage: attract driver =="
+	@rm -rf $(ATTRACT_DUMP); PR_ATTRACT_DUMP=$(ATTRACT_DUMP) PR_HIT_TAG=attract PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED attract driver"; exit 1; }
+	@echo "== coverage: title driver =="
+	@rm -rf $(TITLE_DUMP); PR_TITLE_DUMP=$(TITLE_DUMP) PR_HIT_TAG=title PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED title driver"; exit 1; }
+	@echo "== coverage: frontend driver =="
+	@rm -rf $(FRONTEND_DUMP); PR_FRONTEND_DUMP=$(FRONTEND_DUMP) PR_HIT_TAG=frontend PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED frontend driver"; exit 1; }
+	@echo "== coverage: restart driver =="
+	@PR_RESTART=1 PR_HIT_TAG=restart PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED restart driver"; exit 1; }
+	@echo "== coverage: --check $(verify_frames) =="
+	@PR_HIT_TAG=check ./$(COV_BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames) \
+		|| { echo "coverage: FAILED check"; exit 1; }
+	@echo "== coverage: k11 walk =="
+	@if [ -d $(K11_CAPTURES)/walk ]; then \
+		rm -rf $(K11_DUMP)/walk; mkdir -p $(K11_DUMP); \
+		$(PYTHON) tools/k11_session.py port-script --scenario walk --capture $(K11_CAPTURES)/walk --out $(K11_DUMP)/walk.script && \
+		PR_K11_DUMP=$(K11_DUMP)/walk PR_K11_SCRIPT=$(K11_DUMP)/walk.script PR_HIT_TAG=walk PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED k11 walk"; exit 1; }; \
+	else echo "coverage: no capture at $(K11_CAPTURES)/walk (missing)"; fi
+	@echo "== coverage: k11 menuesc =="
+	@if [ -d $(K11_CAPTURES)/menuesc ]; then \
+		rm -rf $(K11_DUMP)/menuesc; mkdir -p $(K11_DUMP); \
+		$(PYTHON) tools/k11_session.py port-script --scenario menuesc --capture $(K11_CAPTURES)/menuesc --out $(K11_DUMP)/menuesc.script && \
+		PR_K11_DUMP=$(K11_DUMP)/menuesc PR_K11_SCRIPT=$(K11_DUMP)/menuesc.script PR_HIT_TAG=menuesc PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED k11 menuesc"; exit 1; }; \
+	else echo "coverage: no capture at $(K11_CAPTURES)/menuesc (missing)"; fi
+	@echo "== coverage: k11 save-reload (boot 1) =="
+	@if [ -d $(K11_CAPTURES)/save-reload ]; then \
+		rm -rf $(K11_DUMP)/save-reload; mkdir -p $(K11_DUMP)/save-reload/boot1-scratch; \
+		rm -f $(K11_DUMP)/save-reload/boot1-scratch/cmos; \
+		$(PYTHON) tools/k11_session.py port-script --scenario save-reload --boot 1 --capture $(K11_CAPTURES)/save-reload/boot1 --out $(K11_DUMP)/save-reload/boot1.script && \
+		PR_K11_DUMP=$(K11_DUMP)/save-reload/boot1 PR_K11_SCRIPT=$(K11_DUMP)/save-reload/boot1.script \
+			PR_K11_SAVE=$(K11_DUMP)/save-reload/boot1-scratch/cmos PR_HIT_TAG=save-reload PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED k11 save-reload"; exit 1; }; \
+	else echo "coverage: no capture at $(K11_CAPTURES)/save-reload (missing)"; fi
+	@echo "== coverage: gp scenarios =="
+	@for s in $(GP_COV_SCENARIOS); do \
+		if [ -d $(K11_CAPTURES)/$$s ]; then \
+			rm -rf $(GP_DUMP)/$$s; mkdir -p $(GP_DUMP); \
+			$(PYTHON) tools/gp_session.py port-script --scenario $$s --capture $(K11_CAPTURES)/$$s --out $(GP_DUMP)/$$s.script && \
+			PR_GP_DUMP=$(GP_DUMP)/$$s PR_GP_SCRIPT=$(GP_DUMP)/$$s.script PR_HIT_TAG=$$s PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+			|| { echo "coverage: FAILED gp scenario $$s"; exit 1; }; \
+		else echo "coverage: no capture at $(K11_CAPTURES)/$$s (missing)"; fi; \
+	done
+	@echo "== coverage: census =="
+	@$(PYTHON) tools/coverage_census.py --tags "$(COV_TAGS)" $(COV_CENSUS)
 
 # ── RE · static inspection ───────────────────────────────────────────────────
 

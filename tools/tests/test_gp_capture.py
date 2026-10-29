@@ -31,6 +31,28 @@ class TestSnapshot(unittest.TestCase):
         v = gc.read_snap(m, BASE)
         self.assertEqual((v['f'], v['rng']), (0x1234, 0xDEADBEEF))
 
+    def test_the_aperture_fields_are_read_at_the_literal_offset(self):
+        # State coverage Task 11: the VGA aperture is at physical 0xA0000
+        # (identity-mapped by DOS/4GW), not base + ds - DATA_BASE_VA (the data
+        # object is relocated to BASE). Seed the literal byte and a decoy at the
+        # base-relative address; read_snap must return the literal one.
+        m = _mem()
+        for k, (r, x) in enumerate(gs.BAND_APERTURE):
+            name, ds, _sz = gs.APERTURE_FIELDS[k]
+            m[ds] = 0x40 + k                       # literal physical 0xA0000 + off
+            decoy = BASE + ds - gs.DATA_BASE_VA    # the base-relative (wrong) offset
+            m[decoy] = 0x80 + k
+        v = gc.read_snap(m, BASE, fields=gs.APERTURE_FIELDS)
+        for k in range(len(gs.BAND_APERTURE)):
+            self.assertEqual(v[gs.APERTURE_FIELDS[k][0]], 0x40 + k)
+        # and the S record the poller writes carries them (SNAP_FIELDS + the extra)
+        vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+        vals.update(v)
+        rec = gs.parse(gs.format_s(1, vals, 0, 0x1E, 0x1E,
+                                   fields=gs.SNAP_FIELDS + gs.APERTURE_FIELDS))
+        for k in range(len(gs.BAND_APERTURE)):
+            self.assertEqual(rec[gs.APERTURE_FIELDS[k][0]], 0x40 + k)
+
     def test_the_device_words_are_read_through_the_block_pointer(self):
         # record §H6: dev1/dev2 are [DS_00101514] + 0x2D4/0x2D6, so read_snap needs the
         # block pointer; without it there is no address to read and the value is 0
@@ -594,11 +616,17 @@ class TestMemsize(unittest.TestCase):
     only (record §W.13): gp-u13-ending2, gp-u18-talon-ending, gp-u19-vertigo-ending,
     gp-u20-chaos-ending, gp-u21-armadon-ending and gp-u22-diablo-ending share
     gp-u10-ending's final and its seven poked KOs, and every other scenario's argv is
-    the one its capture was taken with."""
+    the one its capture was taken with. gp-u25-endurance-end (state coverage Task 5)
+    and gp-u26-side1-ending (Task 6) also set memsize=64: both reproduce the poked-KO /
+    ending path that ran out of memory at 16 MB in the original (the §W.13 OOM), so
+    they carry the same harness value. gp-u27-name-entry (Task 8) clones gp-u10-ending
+    and so carries the same value."""
     MEM = ['-set', 'dosbox memsize=64']
     POKED_FINAL = ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
                    'gp-u19-vertigo-ending', 'gp-u20-chaos-ending',
-                   'gp-u21-armadon-ending', 'gp-u22-diablo-ending')
+                   'gp-u21-armadon-ending', 'gp-u22-diablo-ending',
+                   'gp-u25-endurance-end', 'gp-u26-side1-ending', 'gp-u13-band',
+                   'gp-u27-name-entry')
 
     def cmd(self, name, root='/r'):         # as gp_capture.main builds it
         scn = gs.SCENARIOS[name]

@@ -7,12 +7,19 @@ import gp_session as gs
 import gp_win as gw
 
 FIELDS = gs.SNAP_FIELDS + gs.WIN_EXTRA
+# c82b (slot 1's world-domination count, 0x1078C6) is SNAP_FIELDS' side-1 twin of
+# WIN_EXTRA's c82, so the side-1 log shares FIELDS.
+FIELDS_S1 = FIELDS
 
 
 def _rec(kind, f, mode, kw):
-    vals = {n: 0 for n, _, _ in FIELDS}
+    return _rec_fields(kind, f, mode, kw, FIELDS)
+
+
+def _rec_fields(kind, f, mode, kw, fields):
+    vals = {n: 0 for n, _, _ in fields}
     vals.update(f=f, mode=mode, t508=1, t50c=2, **kw)
-    s = gs.format_s(0, vals, 0, 0x1E, 0x1E, FIELDS)
+    s = gs.format_s(0, vals, 0, 0x1E, 0x1E, fields)
     return s if kind == 'S' else 'T ' + s[len('S ms=0 '):].rsplit(' kb=', 1)[0]
 
 
@@ -90,6 +97,64 @@ def _u10(stale_k=None, order_swap=False, held=7, c82=1, ending_c0=0):
 
 def _pokes(d):
     return [gs.format_w(0, f, 9, 0x104B0C, b'\x00', b'\x01', 0, 0) for f in d]
+
+
+ALL7_C4 = _marks(l0=0xC4, l1=0xC4, l2=0xC4, l3=0xC4, l4=0xC4, l5=0xC4, l6=0xC4)
+
+
+def _log_s1(path, kind='S', drop=lambda f: False, change=None):
+    """_log over the side-1 fields (FIELDS_S1: c82b appended)."""
+    out = []
+    for f0, f1, mode, kw in path:
+        for f in range(f0, f1 + 1):
+            if drop(f):
+                continue
+            k = dict(kw)
+            if change:
+                k = change(f, mode, k)
+            out.append(_rec_fields(kind, f, mode, k, FIELDS_S1))
+    return out
+
+
+def _u10_side1(stale_k=None, order_swap=False, held=7, c82b=1, ending_c1=4, ad4=1):
+    """The side-1 ending path (gp-u26-side1-ending) as (n frames, mode, fields)
+    segments, numbered on from f = 0x100: _u10's shape with the winner's side
+    swapped — P2 wins, so s0_5a is KO'd, w2/w3 are swapped, ad4 = 1, the land
+    marks are 0xC4 (ARMADON's, side 1), the seventh-land tally is t104's high
+    byte (DS_00108104[1]) and the world-domination count is c82b (slot 1's +0x82).
+    Returns [(f0, f1, mode, kw)] and the first f of every mode-0xD entry."""
+    segs = [(0x41, 0x03, {}), (0x152, 0x27, {}), (0x63, 0x10, {}),
+            (0x20, 0x06, dict(c1=4, b1e=1, afc=5)),
+            (0x20, 0x08, dict(c1=4, b1e=1, afc=5, s0_5a=0x78, w2=0, w3=1,
+                              ad4=gw.NO_RESULT, **ALL7_C4)),
+            (0x20, 0x06, dict(b1e=2, afc=5, w3=1, ad4=gw.NO_RESULT, **ALL7_C4)),
+            (0x20, 0x09, dict(b1e=2, afc=5, s0_5a=0x78, w3=2, ad4=1, **ALL7_C4)),
+            (0x20, 0x17, dict(afc=5, w3=2, **ALL7_C4)),
+            (0x10, 0x12, dict(c1=4, afc=5, w3=2, **ALL7_C4))]
+    if order_swap:
+        segs += [(0x10, 0x12, dict(afc=5, w3=2, c82b=1, t104=0)),
+                 (0x10, 0x12, dict(afc=5, w3=2, c82b=1, t104=held << 8))]
+    else:
+        segs += [(0x10, 0x12, dict(afc=5, w3=2, t104=held << 8, **ALL7_C4)),
+                 (0x10, 0x12, dict(afc=5, w3=2, t104=held << 8, c82b=c82b))]
+    segs += [(0x10, 0x23, dict(afc=5)), (0x10, 0x22, dict(afc=5)), (0x10, 0x24, dict(afc=7)),
+             (0x10, 0x0C, dict(afc=7, b14=1, b21=0))]
+    for k in range(1, 8):
+        segs.append((0x10, 0x0D, dict(afc=7, b14=1, s0_5a=0x78,
+                                      b21=stale_k if k == stale_k else k - 1)))
+        if k < 7:
+            segs.append((0x10, 0x0C, dict(afc=7, b14=1, b21=k)))
+    segs += [(0x10, 0x0F, dict(afc=7, b21=7)), (0x10, 0x15, {}),
+             (0x10, 0x1F, dict(c1=ending_c1, ad4=ad4)), (0x10, 0x15, {}),
+             (0x10, 0x1F, dict(c1=ending_c1, ad4=ad4)),
+             (0x10, 0x15, {}), (0x10, 0x1E, {}), (0x10, 0x03, {})]
+    out, f, d = [], 0x100, []
+    for n, mode, kw in segs:
+        if mode == 0x0D:
+            d.append(f + 5)
+        out.append((f, f + n - 1, mode, dict(kw)))
+        f += n
+    return out, d
 
 
 class TestU10(unittest.TestCase):
@@ -454,6 +519,102 @@ class TestArmadonEnding(unittest.TestCase):
         self.assertTrue(seventh[0][3](dict(t104=7, m106=0, m10a=0)))
 
 
+class TestSide1Ending(unittest.TestCase):
+    """gp-u26-side1-ending (state coverage Task 6; plan 2026-10-28-state-coverage Task 6): the side-1 (P2) tour and
+    ending. P2 confirms character-select cell 5 (ARMADON, class 4) with p2.start, wins
+    the match and the final (KO_P1 pokes P1's +0x5A DS_0010780A), and the mode-0x1F
+    handler 0x208F8 reads the winner's char DS_0010782A[DS_00104AD4 * 0x94] = c1 = 4
+    (side-independent). The land marks are P2's 0x80 | 1 << 6 | 4 = 0xC4; the
+    seventh-land tally is DS_00108104[1] (t104's high byte); the world-domination
+    count is slot 1's +0x82 (c82b)."""
+
+    def test_the_side1_ending_rows_are_armadons(self):
+        rows = gw.MILESTONES['gp-u26-side1-ending']
+        self.assertEqual(len(rows), 30)
+        self.assertEqual([r[:3] for r in rows[:2]], [r[:3] for r in gw.start_char_side1(4, 5)])
+        self.assertEqual([(r[1], r[2]) for r in rows[:2]], [(0x10, 1), (0x06, 1)])
+        self.assertIn('character 4', rows[1][0])
+        self.assertIn('cursor 5', rows[1][0])
+        self.assertTrue(rows[1][3](dict(c1=4, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c1=3, b1e=1)))
+        self.assertFalse(rows[1][3](dict(c1=4, b1e=2)))
+        ending = [r for r in rows if (r[1], r[2]) == (0x1F, 1)]
+        self.assertEqual(len(ending), 1)
+        label, _, _, pred = ending[0]
+        self.assertTrue(label.startswith("ARMADON's ending"), label)
+        self.assertIn('c1=4', label)
+        self.assertNotIn('MEDITATION', label)    # the title is a 0xA80E4 fact, not the label
+        self.assertTrue(pred(dict(ad4=1, c1=4)))
+        self.assertFalse(pred(dict(ad4=0, c1=4)))     # P1 won (ad4=0), not P2
+        self.assertFalse(pred(dict(ad4=1, c1=3)))
+
+    def test_the_round_1_row_expects_side1_land_marks(self):
+        rows = gw.MILESTONES['gp-u26-side1-ending']
+        round1 = [r for r in rows if (r[1], r[2]) == (0x08, 1)]
+        self.assertEqual(len(round1), 1)
+        self.assertTrue(round1[0][3](dict(c1=4, s0_5a=0x78, w2=0, w3=1, ad4=gw.NO_RESULT,
+                                          **ALL7_C4)))
+        self.assertFalse(round1[0][3](dict(c1=4, s0_5a=0x78, w2=0, w3=1, ad4=gw.NO_RESULT,
+                                            **_marks(l0=0x84, l1=0x84, l2=0x84, l3=0x84,
+                                                     l4=0x84, l5=0x84, l6=0x84))))
+
+    def test_the_seventh_land_row_reads_side1s_tally(self):
+        rows = gw.MILESTONES['gp-u26-side1-ending']
+        seventh = [r for r in rows if (r[1], r[2]) == (0x12, 1)
+                   and r[0].startswith('0x41C28 state 3')]
+        self.assertEqual(len(seventh), 1)
+        self.assertTrue(seventh[0][3](dict(t104=0x0700)))    # side 1's byte is the high byte
+        self.assertFalse(seventh[0][3](dict(t104=0x0007)))   # side 0's tally, not side 1's
+        self.assertTrue(seventh[0][3](dict(t104=0x0700, m106=0, m10a=0)))
+
+    def test_the_world_domination_row_reads_slot1s_count(self):
+        rows = gw.MILESTONES['gp-u26-side1-ending']
+        wd = [r for r in rows if r[0].startswith('WORLD DOMINATION')]
+        self.assertEqual(len(wd), 1)
+        self.assertTrue(wd[0][3](dict(c82b=1, m106=0, m10a=0)))
+        self.assertFalse(wd[0][3](dict(c82b=0, m106=0, m10a=0)))
+
+    def test_the_final_opponents_are_p1_koed(self):
+        rows = gw.MILESTONES['gp-u26-side1-ending']
+        kos = [r for r in rows if r[1] == 0x0D and r[0].startswith('final opponent')]
+        self.assertEqual(len(kos), 7)
+        for i, r in enumerate(kos, 1):
+            self.assertTrue(r[3](dict(s0_5a=0x78, b21=i - 1, b0c=0)), i)
+            self.assertFalse(r[3](dict(s0_5a=0, b21=i - 1, b0c=0)), i)
+
+    def test_a_side1_log_passes_and_ad4_0_fails(self):
+        path, d = _u10_side1()
+        out = io.StringIO()
+        rc = gw.evidence('gp-u26-side1-ending', _log_s1(path) + _pokes(d),
+                         lambda s: out.write(s + '\n'))
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertIn('30/30 milestones ok', out.getvalue())
+        # the same log with ad4 = 0 (P1 won) fails the mode-0x1F row
+        bad, _ = _u10_side1(ad4=0)
+        out = io.StringIO()
+        self.assertEqual(gw.evidence('gp-u26-side1-ending', _log_s1(bad) + _pokes(d),
+                                     lambda s: out.write(s + '\n')), 1)
+        self.assertIn("FAIL: ARMADON's ending", out.getvalue())
+
+    def test_a_side1_log_reproduces_against_itself(self):
+        path, d = _u10_side1()
+        n, rows = gw.reproduced('gp-u26-side1-ending',
+                                _log_s1(path, drop=lambda f: f % 3 == 0), _log_s1(path, 'T'))
+        self.assertEqual((n, len(rows)), (30, 30))
+
+    def test_the_p1_ending_checks_still_pass(self):
+        # Task 6's side-1 additions must not move the P1 ending milestones:
+        # gp-u18-talon-ending (TALON) and gp-u21-armadon-ending (ARMADON) keep 30 rows
+        # each and their mode-0x1F rows stay side 0 (ad4=0, c0=char).
+        for name, char in (('gp-u18-talon-ending', 2), ('gp-u21-armadon-ending', 4)):
+            rows = gw.MILESTONES[name]
+            self.assertEqual(len(rows), 30, name)
+            ending = [r for r in rows if (r[1], r[2]) == (0x1F, 1)]
+            self.assertEqual(len(ending), 1, name)
+            self.assertTrue(ending[0][3](dict(ad4=0, c0=char)), name)
+            self.assertFalse(ending[0][3](dict(ad4=1, c0=char)), name)
+
+
 class TestDiabloEnding(unittest.TestCase):
     """gp-u22-diablo-ending (endgame truth Task 7; record §E1.1/§E7): DIABLO is
     character 5, character-select cell 6, title id 0xE3 (DIABLO'S HELL). The mode-0x1F
@@ -534,13 +695,14 @@ class TestPath(unittest.TestCase):
                          ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live',
                           'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                           'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
-                          'gp-u22-diablo-ending', 'gp-u9-win'])
+                          'gp-u22-diablo-ending', 'gp-u26-side1-ending', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():
             for label, mode, k, pred in rows:
                 self.assertTrue(0 < mode < 0x40 and k >= 1, (name, label))
         for name in ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
                      'gp-u19-vertigo-ending', 'gp-u20-chaos-ending',
-                     'gp-u21-armadon-ending', 'gp-u22-diablo-ending'):
+                     'gp-u21-armadon-ending', 'gp-u22-diablo-ending',
+                     'gp-u26-side1-ending'):
             rows = [(m, k) for _, m, k, _ in gw.MILESTONES[name]]
             self.assertEqual(len(rows), 30)
             self.assertEqual(rows.count((0x0D, 7)), 1)

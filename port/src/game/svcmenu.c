@@ -408,6 +408,7 @@ u32 svc_play_sample(u32 i)
  * col 0, row -1 (the cursor DS_00105F34, which moves past the number). */
 void text_number_cont(s32 value, s32 width, u32 pad, u32 mode)
 {
+    PR_HIT(0x2F464u);
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
      * which only a pad above 3 could observe. */
     u8 buf[0x14] = {0};
@@ -721,6 +722,7 @@ void svc_stick_draw(s32 col, s32 row, u32 bits)
  * (nine blanks) and releases it in mode 0x4000. */
 void svc_buttons_clear(s32 col, s32 row)
 {
+    PR_HIT(0x319B0u);
     for (u32 i = 0u; i < 4u; i++) {                         /* 0x319D5..0x319E0, 0x31A44..0x31A5B */
         switch (i) {
         case 0u:                                            /* [0x319A0] = 0x319E7 */
@@ -748,6 +750,7 @@ void svc_buttons_clear(s32 col, s32 row)
  * first-key buffer is uninitialised stack. */
 void svc_buttons_draw(u32 side, u32 rec, s32 col, s32 row)
 {
+    PR_HIT(0x31A78u);
     const u32 name = SVC_NAME_TMP;
     DSD(name) = 0u; DSD(name + 4u) = 0u;
     u32 p = rec + (side == 0u ? 0xAu : 0x1Cu);              /* 0x31A7E..0x31A8A */

@@ -2770,6 +2770,7 @@ void actor_pset_point(u32 rec)
  * dispatch reaches. Exposed for its unit test. */
 void actor_mode1_pset(u32 rec)
 {
+    PR_HIT(0x2BE5Cu);
     u32 pset = actor_pset(rec);
     DSD(rec + 0x1c) = (DSD(DS_000F0AEC) + 0x3bc0u - DSD(pset + 8))
                     - (u32)((s32)DSD(rec + 0x30) >> 16);
@@ -3174,6 +3175,7 @@ static void actor_type_19928(u32 rec)
  * row's binding. */
 void debris_spawn(void)
 {
+    PR_HIT(0x19958u);
     u32 r, x, desc;
     u16 w8, w0, mode;
     s16 i, count;
@@ -3352,6 +3354,7 @@ void actor_type_0a19_list_init(void)
  * {next; prev} dwords are written. 0x48D94 calls it at 0x48DBF. */
 void actor_type_2d_list_init(void)
 {
+    PR_HIT(0x48C4Cu);
     DSD(DS_0010836C) = DS_00108368;                     /* 0x48C5E */
     DSD(DS_00108368) = DS_00108368;                     /* 0x48C64 */
     DSD(DS_001082E4) = DS_001082E0;                     /* 0x48C6A */
@@ -4087,6 +4090,7 @@ void text_blit_glyph(u32 ch, s32 *col, s32 *row)
  * list (0x1C470) when the string is non-empty. */
 void text_blit_string(const u8 *s, s32 x, s32 y)
 {
+    PR_HIT(0x1C65Cu);
     s32 col = (x * 0xf3d + 0x800) / 0x1000;           /* 0x1C66A-0x1C680 */
     s32 row = (y * 0xd56 + 0x800) / 0x1000;           /* 0x1C683-0x1C69C */
     if (*s == 0) return;                              /* 0x1C6A3-0x1C6AA */
@@ -4166,6 +4170,7 @@ void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode)
  * continuation lines (0x42029/0x42044, record §48-Z). */
 void text_cursor_next_line(const u8 *s, u32 mode)
 {
+    PR_HIT(0x2F41Cu);
     text_cursor_set(0, -1, s, mode);                        /* 0x2F429 0x2F198 */
 }
 

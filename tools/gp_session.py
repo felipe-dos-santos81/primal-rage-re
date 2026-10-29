@@ -59,11 +59,40 @@ SNAP_FIELDS = (
     # Appended, so every older poll.log's S lines lack them.
     ('s0_30', 0x1077E0, 4), ('s0_42', 0x1077F2, 2),
     ('s1_30', 0x107874, 4), ('s1_42', 0x107886, 2),
+    # State coverage Task 5 (plan 2026-10-28-state-coverage §G3, record §D5):
+    # the ENDURANCE loss counters DS_00104AF0/DS_00104AF1 (bytes, written by
+    # game_mode_32_step 0x296B8), NOT the round wins w2/w3 at DS_00104AF2/AF3
+    # (WIN_EXTRA). Appended like the slot-state fields, so every older
+    # poll.log's S lines lack them.
+    ('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1),
+    # State coverage Task 6 (plan 2026-10-28-state-coverage Task 6):
+    # slot 1's world-domination count DS_00107832 + 1*0x94 = 0x1078C6 (the
+    # 0x4160C increment with r = DS_00104AD4 = 1), the side-1 twin of WIN_EXTRA's
+    # c82 (slot 0's +0x82). Appended like the slot-state fields, so every older
+    # poll.log's S lines lack it; only gp-u26-side1-ending asserts it.
+    ('c82b', 0x1078C6, 1),
+    # State coverage Task 7 (plan 2026-10-28-state-coverage §G5, report task-7-report.md):
+    # the round timer's top byte DS_001088F2 (the dword DS_001088EF's +3 byte;
+    # flow_round_timer_step 0x4F4E8 decrements it and flow_round_over 0x27ED8
+    # sets it to 0x1E). Appended like c82b, so every older poll.log's S lines
+    # lack it; gp-draw-timeout pokes it to 0 for the timeout draw.
+    ('clock', 0x1088F2, 1),
+    # State coverage Task 9 (plan 2026-10-28-state-coverage Task 9): the U16
+    # reaction latch's anchor term and index, its slot state, and the animation
+    # record's stream cursor and vertical-motion components. The rec* offsets
+    # are behind slot 0's record pointer [DS_001077B0], not fixed DS addresses.
+    ('ab4', 0x100AB4, 4), ('rec_y', 0x1C, 4), ('anchor', 0x100AF0, 4),
+    ('s0_57', 0x107807, 1), ('rec8', 0x08, 4), ('rec34', 0x34, 2),
+    ('rec36', 0x36, 2), ('rec44', 0x44, 2),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
 # is [DS_00101514] + the field's offset.
 POINTER_FIELDS = frozenset(('dev1', 'dev2'))
+# State coverage Task 9: these fields are [DS_001077B0] + their record offset.
+# This is a second pointer class, independent of the key-config block above.
+SLOT_RECORD_PTR_DS = 0x1077B0
+SLOT_RECORD_FIELDS = frozenset(('rec_y', 'rec8', 'rec34', 'rec36', 'rec44'))
 DEV_FIELDS = ('dev1', 'dev2')                   # the device-word claim's fields
 TRACE_FIELDS = ('mode', 'st', 'raw', 'pad', 'e0', 'e2', 'rng', 'cred', 's0_5a', 's1_5a')
 MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (record gameplay-u6 §U6.11)
@@ -71,6 +100,29 @@ MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (
 # fields (the +0x30 dword and +0x42 word, x two sides). The port trace reads
 # slot 1 as base + 0x94 + its offset, i.e. the single DS offsets 0xC4/0xD6.
 SLOT_STATE_FIELDS = ('s0_30', 's0_42', 's1_30', 's1_42')
+
+# State coverage Task 11 (plan §G7(a), record §D4): the 5120 band's 14 diagnostic
+# reads. The VGA aperture (mode 13h) is at linear 0xA0000, where the byte at
+# 0xA0000 + 320*row + x is that pixel's index. DOS/4GW identity-maps linear
+# 0xA0000 to the physical VGA aperture, and the DOSBox-X memory file is a
+# physical dump, so the byte's FILE offset is 0xA0000 + 320*row + x -- a literal
+# offset, NOT the base-relative DS convention `base + ds - DATA_BASE_VA` (the
+# data object is relocated to `base`, find_base's value, and its 0xA0000 linear
+# hole is a different file offset). The 13 band offsets are the measured 8/1/4
+# split (record §D1.5.2), the control (row 1, x=100) is a pixel where the port
+# and the capture agree, so it tests whether the read returns video memory at all.
+BAND_APERTURE_BASE = 0xA0000
+BAND_APERTURE = (
+    (1, 23), (1, 24), (1, 295), (1, 296),   # 4 of the 8 index-0x32 pixels (capture 00001c)
+    (2, 22), (2, 297),                       # 2 more
+    (3, 21), (3, 74), (3, 298),              # (3,21)/(3,298) 0x32; (3,74) the 0x2E pixel
+    (4, 27), (4, 28), (4, 291), (4, 292),    # the 4 index-0x4D pixels (capture black)
+    (1, 100),                                # the control: port == capture here
+)
+APERTURE_FIELDS = tuple(
+    ('ap%02d' % k, BAND_APERTURE_BASE + r * 320 + x, 1)
+    for k, (r, x) in enumerate(BAND_APERTURE))
+APERTURE_FIELD_NAMES = frozenset(n for n, _, _ in APERTURE_FIELDS)
 
 # BIOS keys: (scan, the BIOS word a press queues; record named-gaps-a §A.9).
 KEYS = {'enter': (0x1C, 0x1C0D), 'esc': (0x01, 0x011B)}
@@ -107,6 +159,14 @@ PAD = {
 # M (0x32) and N (0x31) are also P1's up, b3 and b2 in the default binding.
 KEYS.update({'space': (0x39, 0x3920), 'y': (0x15, 0x1579), 'n': (0x31, 0x316E),
              'alt-q': (0x10, 0x1000), 'alt-s': (0x1F, 0x1F00), 'alt-m': (0x32, 0x3200)})
+# State coverage Task 8 (plan 2026-10-28-state-coverage Task 8): the name-entry
+# letters. A/B/D are the standard set-1 make words (scan << 8 | ascii, lowercase
+# as U11's y/n), the same form game_key_loop (0x24C5C) passes to nameentry_key
+# (0x20860 -> 0x1F458, record §53-A). Their scans (0x1E/0x30/0x20) are NOT P1's
+# pad keys (S/X/Z/C/U/I/N/M = 0x1F/0x2D/0x2C/0x2E/0x16/0x17/0x31/0x32), so the
+# key-state-table write each `key` step makes does not set a pad bit and move the
+# name-entry cursor through ne_pad (nameentry_step's 0x1F4DF..0x1F7D0 arms).
+KEYS.update({'a': (0x1E, 0x1E61), 'b': (0x30, 0x3062), 'd': (0x20, 0x2064)})
 
 _DEC = ('ms', 'rc', 'step', 'late', 'ring', 'len', 'race')
 _TEXT = ('reason', 'press', 'release', 'was', 'now')
@@ -419,6 +479,39 @@ KO_P2 = ('poke', ((0x10789E, b'\x78'),))
 DEATH_DONE = ('poke', ((0x104B0C, b'\x01'),))
 
 
+# State coverage Task 5 (plan 2026-10-28-state-coverage §G3, record §D5): the
+# ENDURANCE match end. gp-u12-endurance's path (the team pass and the modes
+# 0x30/0x31 fight) continued with four poked KOs of P2 (side 1): KO_P2 (poke
+# side 1's +0x5A DS_0010789E to the KO value 0x78) keyed after_entry 0x31 k,
+# then DEATH_DONE (poke DS_00104B0C = 1, skipping the KO'd fighter's death
+# animation) keyed after_entry 0x32 k. flow_round_over_check (0x29970, the
+# mode-0x31 tail) sets mode 0x32 and DS_00104B09 = the KO'd side once its
+# +0x5A reaches 0x78; game_mode_32_step (0x296B8) then advances the loser's
+# loss counter DS_00104AF0[s] and replaces its fighter with the next roster
+# byte DS_00108134[s*4 + count] (mode 0x31), or, at count 4, ends the match
+# (mode 0x33, the 0x258 = 600-frame wait) and mode 0x17's results screen (the
+# hook 0x25AE8 = game_hook_25ae8, game_mode_33_step 0x29638). The loser is
+# side 1 (P2), so the counter is af1 (DS_00104AF1), not af0, and c1 walks side
+# 1's roster [4,6,1,3] -> 04,06,01,03 (predicted from ENDURANCE_PICKS' P2
+# picks, cells 5,4,3,2 = classes 4,6,1,3; the capture measures it). The stop
+# is until_mode 0x17 (the results screen), NOT the plan's predicted 0x14: the
+# raw enters mode 0x14 only from the high-score-entry flow (0x1F18C/0x1F42E),
+# never from mode 0x33. time_limit 90 s and memsize 64 are harness values: the
+# end is predicted near f ~0x990 (gp-u12's X at f=0x78A plus the four KO
+# cycles, the 600-frame wait and the results screen's first frames), and the
+# original runs out of memory at the default 16 MB on the fourth KO cycle
+# (f=0x710, "Primal Rage is out of memory."), exactly the §W.13 poked-final
+# symptom, so memsize=64 is carried over from gp-u10-ending.
+ENDURANCE_KOS = tuple(st for k in range(1, 5) for st in (
+    ('after_entry', 0x31, k, 10, KO_P2),
+    ('after_entry', 0x32, k, 10, DEATH_DONE),
+))
+SCENARIOS['gp-u25-endurance-end'] = dict(time_limit=90, memsize=64, steps=(
+    SCENARIOS['gp-u8-endurance']['steps'][:-1] + ENDURANCE_PICKS + ENDURANCE_KOS + (
+        ('until_mode', 0x17, 0),                       # the results screen (mode 0x17, entry 2)
+    )))
+
+
 def lands_marked(side, char):
     """The seven land marks DS_00108106..0x10810C as 0x286BC writes a won land:
     0x80 | side << 6 | the winner's character (record §W.4)."""
@@ -508,6 +601,26 @@ SCENARIOS['gp-draw'] = dict(time_limit=120, extra=DRAW_EXTRA, stop_mode=0x0B, st
         ('after_entry', 0x06, 3, 10, KO_BOTH),        # round 3: both KO'd, the draw, mode 0xA
     ))
 
+# State coverage Task 7 (plan 2026-10-28-state-coverage §G5, report task-7-report.md): the
+# timeout/health drawn round (0x27FA8's arm at 0x280BA). Two poked KOs (1-1:
+# round 1 KO_P2, round 2 KO_P1), then round 3's poke sets both +0x5A health bytes
+# (DS_0010780A/DS_0010789E) to 0x30 (equal, below the KO 0x78) and the clock top
+# byte 0x1088F2 to 0, so the arm re-reads |A-B| = 0 <= 3 (after 0x39FF4) and calls
+# flow_round_over -> mode 0xA -> mode 0xB. AD4 stays 0xFFFFFFFF (the 1-1 match is
+# undecided), and 0x280BA calls flow_round_over without 0x27C48, so DS_00104B16
+# keeps round 2's value and is not a draw predicate. The 0x30/0x30 health and the
+# clock 0 are harness choices (the arm needs them below 0x78 / equal / <= 0), not
+# game values. The stop is mode 0xB 60 frames in (gp-draw's, so mode 0xA is
+# recorded on the way); time_limit 120 s is gp-draw's harness value.
+TIMEOUT_DRAW_POKE = ('poke', ((0x10780A, b'\x30'), (0x10789E, b'\x30'), (0x1088F2, b'\x00')))
+SCENARIOS['gp-draw-timeout'] = dict(time_limit=120, extra=DRAW_EXTRA,
+    stop_mode=0x0B, stop_delay=60,
+    steps=WIN_MENU + (
+        ('after_entry', 0x06, 1, 10, KO_P2),          # round 1: P2 KO'd, P1 wins, mode 8
+        ('after_entry', 0x06, 2, 10, KO_P1),          # round 2: P1 KO'd, P2 wins, 1-1, mode 8
+        ('after_entry', 0x06, 3, 10, TIMEOUT_DRAW_POKE),  # round 3: clock 0 + health 0x30/0x30
+    ))
+
 # Gameplay truth II U13 (plan 2026-10-20-gameplay-truth-ii.md Task 5): the ending of a
 # character other than 0. The plan's one p1.right is corrected by the raw: the cell
 # table DS_000C8882 = 00 02 03 01 06 04 05 (file 0x10F6D6, record gameplay-u5 §C5.4) is
@@ -535,6 +648,15 @@ SCENARIOS['gp-u13-ending2'] = dict(
         ('after_entry', 0x06, 1, 10,
          ('poke', ((0x108106, lands_marked(0, 1)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
+
+# State coverage Task 11 (plan §G7(a), record §D4): the 5120 band diagnostic.
+# gp-u13-ending2's script unchanged (the band's frame is the same S record at
+# f=0x1826), plus the 14-byte aperture read (APERTURE_FIELDS) on every S record.
+# time_limit 240, memsize 64 and WIN_EXTRA are U13's; no pin and no oracle hang
+# off this capture (a failure is preserved as .failed.N).
+SCENARIOS['gp-u13-band'] = dict(
+    time_limit=240, extra=WIN_EXTRA + APERTURE_FIELDS, memsize=64,
+    steps=SCENARIOS['gp-u13-ending2']['steps'])
 
 # Endgame truth Task 3 (record §E1.1): TALON's ending, character 2 on character-select
 # cell 1 (ending_menu(1): one p1.right from cell 0, then the confirm). The land marks are
@@ -610,6 +732,78 @@ SCENARIOS['gp-u22-diablo-ending'] = dict(
         ('after_entry', 0x06, 1, 10,
          ('poke', ((0x108106, lands_marked(0, 5)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
+
+# State coverage Task 6 (plan 2026-10-28-state-coverage Task 6): the side-1
+# tour and ending. gp-u8-right-arcade's START MENU row-1 route (p1.down, the RIGHT
+# PLAYER ARCADE setter mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character
+# select (mode 0x10), where P2 (side 1) confirms its default cell 5 (ARMADON, class 4)
+# with p2.start (0x43CAD's side-1 arm: e2 bit 0, 0x43CC1/0x43D60). No p2.right: cell 5
+# is P2's start cursor (0xC8881 = 05), so ARMADON needs no edge (measured correction to
+# the plan's "p2.right/p2.start"). Then U10's body with the KOs reversed: KO_P1 pokes
+# P1's +0x5A (DS_0010780A) so P2 wins every round and the seven final opponents (the
+# arena loser is side 0 = DS_00104B12, 0x272DC); the land marks are P2's 0xC0|4 = 0xC4
+# (lands_marked(1, 4)). The DEATH_DONE poke (b0c, a global byte) is unchanged. The ending
+# is the mode-0x1F handler 0x208F8 reading DS_0010782A[DS_00104AD4 * 0x94] =
+# DS_001078BE = c1 = 4 (ARMADON), side-independent by the 0x208F8 differential row; the
+# cross-check is byte-identity with gp-u21-armadon-ending's mode-0x1F frames. The c82b
+# field is slot 1's +0x82 (DS_00107832 + 1*0x94 = 0x1078C6), the side-1 twin of
+# WIN_EXTRA's c82, appended to SNAP_FIELDS (so the port's PR_GP_DUMP trace carries it
+# too and gp_win.py path can reproduce the WORLD DOMINATION milestone). memsize=64 (the
+# §W.13 harness value) and time_limit 240 (U18's harness value, whose capture took ~205 s)
+# are carried from the other endings.
+SIDE1_MENU = (
+    ('boot', ENTER_WAIT, ('key', 'enter')),           # mode 3 -> 0x27
+    ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU, cursor on row 0
+    ('after', 60, ('pad', ('p1.down',), 4)),          # row 1: RIGHT PLAYER ARCADE (0x2E)
+    ('after', 60, ('key', 'enter')),                  # run row 1's setter -> divert side 1
+    ('after_mode', 0x10, 60, ('pad', ('p2.start',), 6)),   # P2 confirms cell 5 (ARMADON)
+)
+SCENARIOS['gp-u26-side1-ending'] = dict(
+    time_limit=240, extra=WIN_EXTRA, memsize=64,
+    steps=SIDE1_MENU + (
+        ('after_entry', 0x06, 1, 10,
+         ('poke', ((0x108106, lands_marked(1, 4)), (0x10780A, b'\x78')))),
+        ('after_entry', 0x06, 2, 10, KO_P1),
+    ) + tuple(st for k in range(1, 8) for st in (
+        ('after_entry', 0x0C, k, 10, KO_P1),
+        ('after_entry', 0x0D, k, 10, DEATH_DONE),
+    )) + (
+        ('until_mode', 0x03, 0),
+    ))
+
+# State coverage Task 8 (plan 2026-10-28-state-coverage Task 8, report
+# task-8-report.md): the name-entry letters. gp-u10-ending's path (P1 SAURON
+# wins, so side 0 is the human and its entry is mode-0x1E state 5) with letter
+# keys injected at mode 0x1E so the entry screen is driven -- three letters then
+# Enter (END) -- rather than displayed to its 0x2EE-frame timeout. The letters
+# are A/B/D (NAME_ENTRY_KEYS above): their scans are not P1's pad keys, so a
+# letter's key-state write does not move the cursor. NAME_ENTRY_EXTRA are the S
+# fields that observe it: ncnt (NE_NAME_COUNT DS_0010431C, nameentry_step
+# 0x1F458 increments it per letter), cell0 (letter cell 0's +0x12 animation
+# state, DS_00104114 + 0x12) and name (the committed name buffer DS_00104343,
+# written by each cell's state-8 commit and filtered by nameentry_finish
+# 0x20710). The 20-frame wait into mode 0x1E, the 30-frame letter gaps and the
+# 90-frame Enter gap are harness values (mode 0x1E enters at f=0x217E and state
+# 5 arms at f=0x2183 in gp-u10-ending). time_limit 240, WIN_EXTRA and memsize 64
+# are U10's; no pin and no oracle hang off this capture (a failure is preserved
+# as .failed.N), so it is not in CAPTURE_DIRS.
+NAME_ENTRY_EXTRA = (('ncnt', 0x10431C, 1), ('cell0', 0x104126, 1), ('name', 0x104343, 4))
+NAME_ENTRY_KEYS = ('a', 'b', 'd')
+SCENARIOS['gp-u27-name-entry'] = dict(
+    time_limit=240, extra=WIN_EXTRA + NAME_ENTRY_EXTRA, memsize=64,
+    steps=WIN_MENU + (
+        ('after_entry', 0x06, 1, 10,
+         ('poke', ((0x108106, lands_marked(0, 0)), (0x10789E, b'\x78')))),
+        ('after_entry', 0x06, 2, 10, KO_P2),
+    ) + tuple(st for k in range(1, 8) for st in (
+        ('after_entry', 0x0C, k, 10, KO_P2),
+        ('after_entry', 0x0D, k, 10, DEATH_DONE),
+    )) + (
+        ('after_mode', 0x1E, 20, ('key', NAME_ENTRY_KEYS[0])),
+    ) + tuple(('after', 30, ('key', n)) for n in NAME_ENTRY_KEYS[1:]) + (
+        ('after', 90, ('key', 'enter')),
+        ('until_mode', 0x03, 0),
+    ))
 
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec §W5): a match
 # won by fought hits, so the win path's pokes are not needed. The menu path is gp-idle-loss's
@@ -1169,6 +1363,9 @@ class Schedule:
 # gp-draw (claim coverage Task 11) stops too: its end is 60 frames into mode 0xB (the
 # winner pose; stop_mode/stop_delay), so mode 0xA (the round-over, which precedes it)
 # and the pose are recorded and nothing past them is compared.
+# gp-draw-timeout (state coverage Task 7) stops the same way: mode 0xB 60 frames in.
+# gp-u27-name-entry (state coverage Task 8) stops too: its end is mode 3 after the
+# letter-driven high-score entry (u10's until_mode), and nothing past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1179,7 +1376,8 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
-                         'gp-draw'})
+                         'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
+                         'gp-u13-band', 'gp-u27-name-entry'})
 
 
 class ScriptError(Exception):

@@ -8,9 +8,27 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
 
+# PORT: the coverage census instrument (record state-coverage §D1.9). When ON,
+# prageport and run_tests link a PR_COVERAGE-compiled core whose seam macros and
+# per-function PR_HIT lines record hits; diffrun always links the plain core,
+# whose bytes must not change.
+option(PR_COVERAGE "Instrument the port's per-function coverage hit counter" OFF)
+
 find_package(SDL3 REQUIRED CONFIG)
 
-add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c src/platform/sprite.c src/platform/render.c src/platform/gfx.c src/platform/input.c src/platform/audio/opl/opal.c src/platform/audio/opl/opl.c src/platform/audio/samples.c src/platform/audio/patches.c src/platform/audio/pitch.c src/platform/audio/sequencer.c src/platform/audio/mixer.c src/platform/audio/ail.c src/platform/smacker.c src/host.c src/game/flow.c src/game/movie.c src/game/rng.c src/game/actors.c src/game/effects.c src/game/camera.c src/game/fighter.c src/game/fight.c src/game/config.c src/game/nameentry.c src/game/menu.c src/game/attract.c src/game/svcmenu.c)
+set(PRAGE_CORE_SOURCES
+  src/mem.c src/platform/res.c src/platform/gra.c src/platform/sprite.c
+  src/platform/render.c src/platform/gfx.c src/platform/input.c
+  src/platform/audio/opl/opal.c src/platform/audio/opl/opl.c
+  src/platform/audio/samples.c src/platform/audio/patches.c
+  src/platform/audio/pitch.c src/platform/audio/sequencer.c
+  src/platform/audio/mixer.c src/platform/audio/ail.c
+  src/platform/smacker.c src/host.c src/game/flow.c src/game/movie.c
+  src/game/rng.c src/game/actors.c src/game/effects.c src/game/camera.c
+  src/game/fighter.c src/game/fight.c src/game/config.c src/game/nameentry.c
+  src/game/menu.c src/game/attract.c src/game/svcmenu.c)
+
+add_library(prage_core STATIC ${PRAGE_CORE_SOURCES})
 target_include_directories(prage_core PUBLIC src)
 # Task 12 reversal: Task 6 made prage_core drop SDL3::SDL3 PUBLIC so run_tests
 # (which had no SDL code) need not link SDL. host.c now lives in the library and
@@ -19,8 +37,24 @@ target_include_directories(prage_core PUBLIC src)
 # host.c/main.c only, which is the binding constraint, not the link.
 target_link_libraries(prage_core PRIVATE SDL3::SDL3)
 
+# The coverage-instrumented core: the same sources compiled with PR_COVERAGE,
+# so the seam macros and per-function PR_HIT lines record hits. prageport and
+# run_tests link it when the option is ON; diffrun always links prage_core.
+if(PR_COVERAGE)
+  add_library(prage_core_cov STATIC ${PRAGE_CORE_SOURCES})
+  target_compile_definitions(prage_core_cov PRIVATE PR_COVERAGE)
+  target_include_directories(prage_core_cov PUBLIC src)
+  target_link_libraries(prage_core_cov PRIVATE SDL3::SDL3)
+  set(PRAGE_APP_CORE prage_core_cov)
+else()
+  set(PRAGE_APP_CORE prage_core)
+endif()
+
 add_executable(prageport src/main.c)
-target_link_libraries(prageport PRIVATE prage_core)
+if(PR_COVERAGE)
+  target_compile_definitions(prageport PRIVATE PR_COVERAGE)
+endif()
+target_link_libraries(prageport PRIVATE ${PRAGE_APP_CORE})
 
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h
@@ -34,6 +68,9 @@ add_custom_command(
   COMMENT "generating symbols.h")
 add_custom_target(symbols DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h)
 add_dependencies(prage_core symbols)
+if(PR_COVERAGE)
+  add_dependencies(prage_core_cov symbols)
+endif()
 
 enable_testing()
 # The registry lives in tests/test.h (TEST_CASES/TEST_DRIVERS); CONFIGURE_DEPENDS
@@ -41,7 +78,10 @@ enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.c)
 add_executable(run_tests tests/run_tests.c ${TEST_SOURCES})
 target_include_directories(run_tests PRIVATE src tests)
-target_link_libraries(run_tests PRIVATE prage_core)
+if(PR_COVERAGE)
+  target_compile_definitions(run_tests PRIVATE PR_COVERAGE)
+endif()
+target_link_libraries(run_tests PRIVATE ${PRAGE_APP_CORE})
 add_test(NAME unit COMMAND run_tests WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")
 
 # The port side of the differential harness (tools/diff_verify.py, spec

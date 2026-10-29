@@ -56,6 +56,12 @@ _ENDING_LABEL = ("%s's ending (mode 0x1F, 0x208F8): the winner's character "
                  "DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x2091A) is character c0=%d")
 
 
+# The side-1 form (state coverage Task 6): the winner is side 1, so the slot is c1
+# (DS_001078BE), the same 0x208F8 load indexed by DS_00104AD4 = 1.
+_ENDING_LABEL_SIDE1 = ("%s's ending (mode 0x1F, 0x208F8): the winner's character "
+                       "DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x2091A) is character c1=%d")
+
+
 # One row per milestone: (label, mode, k, predicate). The frame of a row is the first record
 # of the k-th entry into `mode` whose predicate holds. Raw sources: record §W.3-§W.6.
 _START = (
@@ -86,6 +92,31 @@ _MATCH1 = (
     ('the conquered-lands screen (mode 0x12, 0x4142C), the won land marked by 0x286BC '
      '(0x80 | side 0 | character)', 0x12, 1, lambda r: land(r, r['afc']) == 0x80 | r['c0']),
 )
+
+
+def _final_opponents(ko_field):
+    """The seven final opponents' KO/replaced rows: the KO row checks the KO'd
+    arena side's +0x5A byte `ko_field` == 0x78 (s1_5a for a P1 win, s0_5a for a
+    P2 win), the replaced row checks b21 == k."""
+    return tuple(row for k in range(1, 8) for row in (
+        ('final opponent %d KO\'d -> mode 0xD (0x272DC)' % k, 0x0D, k,
+         _all(**{ko_field: 0x78}, b21=k - 1, b0c=0)),
+        ('final opponent %d replaced (0x274FC, count %d)' % (k, k), 0x0C, k + 1, _all(b21=k)),
+    )[:2 if k < 7 else 1])
+
+
+# The side-1 match rows (state coverage Task 6): P2 (side 1) is the winner, so
+# s0_5a is KO'd, w2/w3 are swapped and the round-2 result is ad4 = 1; the won land
+# is marked 0x80 | side 1 | character = 0xC0 | c1 (0x286BC).
+_MATCH1_SIDE1 = (
+    ('round 1 KO: 0x27C48 counts P2, 0x27BA4 leaves the match open, 0x27FA8 -> mode 8',
+     0x08, 1, _all(s0_5a=0x78, w2=0, w3=1, ad4=NO_RESULT)),
+    ('round 2 (mode 6, round index 2)', 0x06, 2, _all(b1e=2, w3=1)),
+    ('round 2 KO: P2 wins the match (0x27BA4 result 1) -> mode 9', 0x09, 1,
+     _all(s0_5a=0x78, w3=2, ad4=1)),
+    ('the conquered-lands screen (mode 0x12, 0x4142C), the won land marked by 0x286BC '
+     '(0x80 | side 1 | character)', 0x12, 1, lambda r: land(r, r['afc']) == 0xC0 | r['c1']),
+)
 MILESTONES = {
     'gp-u9-win': _START + _MATCH1 + (
         ('0x41C28 state 3 counts one land for P1', 0x12, 1, lambda r: r['t104'] & 0xFF == 1),
@@ -105,10 +136,7 @@ MILESTONES = {
         ('mode 0x24 (0x26F58)', 0x24, 1, None),
         ('the final: mode 0xC, stage 7, flag DS_00104B14 (0x26F58, 0x25C88)', 0x0C, 1,
          _all(afc=7, b14=1, b21=0)),
-    ) + tuple(row for k in range(1, 8) for row in (
-        ('final opponent %d KO\'d -> mode 0xD (0x272DC)' % k, 0x0D, k, _all(s1_5a=0x78, b21=k - 1, b0c=0)),
-        ('final opponent %d replaced (0x274FC, count %d)' % (k, k), 0x0C, k + 1, _all(b21=k)),
-    )[:2 if k < 7 else 1]) + (
+    ) + _final_opponents('s1_5a') + (
         ('YOU ARE MASTER OF THE NEW URTH: mode 0xF, count 7 (0x274FC)', 0x0F, 1, _all(b21=7)),
         (_ENDING_LABEL % ('SAURON', 0), 0x1F, 1, _all(ad4=0, c0=0)),
         ('the ending, second part (mode 0x1F, state 3)', 0x1F, 2, None),
@@ -125,6 +153,39 @@ def _ending_tail(c0, name):
     first = next(i for i, r in enumerate(rows) if r[0].startswith('0x41C28 state 3'))
     return tuple((_ENDING_LABEL % (name, c0), 0x1F, 1, _all(ad4=0, c0=c0))
                  if (r[1], r[2]) == (0x1F, 1) else r for r in rows[first:])
+
+
+def start_char_side1(char, cell):
+    """The character-select and round-1 rows for a side-1 (P2) winner of character
+    `char` confirmed on character-select `cell`: the same 0xC8882 map as start_char,
+    but the side-1 confirm (0x43CAD's side-1 arm) and the round-1 predicate read c1."""
+    return (
+        ('character select (mode 0x10)', 0x10, 1, None),
+        ('round 1: P2 is character %d (cursor %d confirmed, 0x43CAD)' % (char, cell),
+         0x06, 1, _all(c1=char, b1e=1)),
+    )
+
+
+def _ending_tail_side1(c, name):
+    """MILESTONES['gp-u10-ending']'s rows from the seventh land on, with the side-1
+    winner's rows: the seventh-land tally is DS_00108104[1] (t104's high byte), the
+    world-domination count is slot 1's +0x82 (c82b), the final opponents are P1-KO'd
+    (s0_5a), and the mode-0x1F row's predicate and label are ad4=1, c1=c."""
+    rows = MILESTONES['gp-u10-ending']
+    first = next(i for i, r in enumerate(rows) if r[0].startswith('0x41C28 state 3'))
+    out = []
+    for r in rows[first:]:
+        if r[0].startswith('0x41C28 state 3'):
+            out.append((r[0], 0x12, 1, lambda r: (r['t104'] >> 8) & 0xFF == 7))
+        elif r[0].startswith('WORLD DOMINATION'):
+            out.append((r[0], 0x12, 1, lambda r: r['c82b'] == 1 and lands(r) == [0] * 7))
+        elif r[1] == 0x0D and r[0].startswith('final opponent'):
+            out.append((r[0], 0x0D, r[2], _all(s0_5a=0x78, b21=r[2] - 1, b0c=0)))
+        elif (r[1], r[2]) == (0x1F, 1):
+            out.append((_ENDING_LABEL_SIDE1 % (name, c), 0x1F, 1, _all(ad4=1, c1=c)))
+        else:
+            out.append(r)
+    return tuple(out)
 
 
 # The second ending (gameplay truth II U13): P1 is character 1 (BLIZZARD), cell 3 of the
@@ -209,6 +270,23 @@ MILESTONES['gp-u22-diablo-ending'] = start_char(5, 6) + (
      lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['w3'] == 0
      and r['ad4'] == NO_RESULT and lands(r) == [0x80 | r['c0']] * 7),
 ) + _MATCH1[1:] + _ending_tail(5, 'DIABLO')
+
+# State coverage Task 6 (plan 2026-10-28-state-coverage Task 6): the side-1
+# tour and ending. gp-u8-right-arcade's START MENU row-1 route (the RIGHT PLAYER ARCADE
+# setter mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character select, where P2
+# (side 1) confirms its default cell 5 (ARMADON, class 4) with p2.start. P2 then wins
+# the match and the seven-opponent final (KO_P1 pokes P1's +0x5A, so the loser is side 0
+# = DS_00104B12 and s0_5a is the KO'd byte), and the mode-0x1F handler 0x208F8 reads the
+# winner's char DS_0010782A[DS_00104AD4 * 0x94] = c1 = 4 (side-independent by the 0x208F8
+# differential row; the cross-check is byte-identity with gp-u21-armadon-ending's
+# mode-0x1F frames). The land marks are P2's 0x80 | 1 << 6 | 4 = 0xC4, the seventh-land
+# tally is DS_00108104[1] (t104's high byte) and the world-domination count is slot 1's
+# +0x82 (c82b, SNAP_FIELDS' side-1 twin of WIN_EXTRA's c82).
+MILESTONES['gp-u26-side1-ending'] = start_char_side1(4, 5) + (
+    ('round 1 KO with the seven lands poked P2\'s', 0x08, 1,
+     lambda r: r['s0_5a'] == 0x78 and r['w2'] == 0 and r['w3'] == 1
+     and r['ad4'] == NO_RESULT and lands(r) == [0xC0 | r['c1']] * 7),
+) + _MATCH1_SIDE1[1:] + _ending_tail_side1(4, 'ARMADON')
 
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec W5): a match won
 # by fought hits (gp_session's gp-u14-win-live, no pokes). The rows are the shared start and
