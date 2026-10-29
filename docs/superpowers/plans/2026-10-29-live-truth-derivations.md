@@ -92,8 +92,12 @@ only). `gp-twop-ko` exists only as `gp-twop-ko.failed`.
 
 ### L1.4 Recon corrections
 
-These are the corrections the phase starts from. Each is re-measured by the
-task that consumes it; none is a pin.
+These are the corrections the phase starts from. Re-measured in this phase's
+Task 1: the baseline commands of L1.1 and the U16 set/exit rows of item 1
+(`poll.log` lines 5658-5659 of `gp-u24-u16-state-t9-r5`, read in the correction
+pass, not in the first Task 1 run). Carried from the design's §2.3-§2.7 and not
+re-measured here: the `0x25` bowling string, the `0x0E` side rule, and the U14
+`b0c` rule (items 2-4); Tasks 4, 6, 8 and 9 re-measure them. None is a pin.
 
 1. **U16 R2 is measured.** The set record the earlier `.failed` artifact missed
    is in `data/k11-captures/gp-u24-u16-state-t9-r5`. It reads
@@ -121,5 +125,10 @@ task that consumes it; none is a pin.
 ### L1.5 Ledger
 
 The phase ledger is `.superpowers/sdd/2026-10-29-live-truth/progress.md`
-(git-ignored). Its preflight table, rulings R1-R8 and task list were written
-before this task and are kept; Task 1's result is appended there.
+(git-ignored). Its preflight table and task list were written before this task
+and are kept; Task 1's result is appended there. Rulings: R1-R5 are the brief's
+rulings (`task-1-brief.md`; R1 distinct draw claims, R2 the two-human KO is the
+game's own damage path, R3 U16 R2 is a record task, R4 `0x21` stays declared,
+R5 U14's fought win stays open). R6-R8 are the orchestrator's ledger rulings
+(capture serialization, measured pins win, optional-task stop rules). The plan
+lists only R1-R5; R6-R8 live in the git-ignored ledger.
