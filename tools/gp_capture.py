@@ -54,6 +54,12 @@ def read_snap(mm, base, fields=gs.SNAP_FIELDS, ptr=None):
             o = rec + ds
             out[name] = int.from_bytes(mm[o:o + size], 'little')
             continue
+        if name in gs.APERTURE_FIELD_NAMES:
+            # State coverage Task 11: the VGA aperture's file offset is the literal
+            # physical 0xA0000 + off (identity-mapped), not base-relative like a DS
+            # field (the data object is relocated to `base`).
+            out[name] = mm[ds]
+            continue
         o = base + ds - gs.DATA_BASE_VA
         out[name] = int.from_bytes(mm[o:o + size], 'little')
     return out

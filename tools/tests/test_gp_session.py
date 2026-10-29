@@ -208,6 +208,21 @@ class TestTables(unittest.TestCase):
         self.assertLess(gs.U17_HOLD * gs.FRAME_MS, 12 * gs.FRAME_MS)
         self.assertGreaterEqual(gs.U17_HOLD * gs.FRAME_MS, 3 * gs.FRAME_MS)
 
+    def test_the_gp_u13_band_scenario_clones_u13_and_adds_the_aperture_read(self):
+        # State coverage Task 11: gp-u13-band is gp-u13-ending2's script with the
+        # 14 aperture fields appended to WIN_EXTRA; nothing else changes, so the
+        # S record at f=0x1826 (the band's frame) is reached by the same path.
+        sc = gs.SCENARIOS['gp-u13-band']
+        u13 = gs.SCENARIOS['gp-u13-ending2']
+        self.assertEqual(sc['steps'], u13['steps'])
+        self.assertEqual(sc['time_limit'], u13['time_limit'])
+        self.assertEqual(sc['memsize'], 64)
+        self.assertEqual(sc['extra'], u13['extra'] + gs.APERTURE_FIELDS)
+        self.assertIn('gp-u13-band', gs.STOP_AT_END)
+        self.assertEqual(len(gs.BAND_APERTURE), 14)
+        self.assertEqual(len(gs.APERTURE_FIELDS), 14)
+        self.assertEqual(gs.BAND_APERTURE[-1], (1, 100))
+
     def test_the_port_t_line_writes_every_snap_field_in_order(self):
         # port/tests/test_game.c gp_trace_line: the capture's S names and order (spec §4.2).
         # plan gameplay-u11 Re-baseline (merge order): the T line is SNAP_FIELDS then

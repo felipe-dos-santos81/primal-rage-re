@@ -953,6 +953,113 @@ no row), and `port_progress.py` stays `798 1203 66` / `759 759 100`.
 
 ---
 
+## §D4 The 5120 aperture read (Task 11)
+
+The experiment the plan's §G7(a)/Task 11 asked for: read the 13 band offsets
+plus one control at every S record of a fresh diagnostic capture and decide
+whether the 5120 band's 13 differing pixels are a capture-pipeline artifact
+(PASS-A), a port divergence with a nameable writer (PASS-B), or both
+contradicted (FAIL: the band stays a named gap). The answer is **INCONCLUSIVE**,
+a fourth outcome outside the design's three: the diagnostic read is invalid —
+the DOSBox-X memory file does not hold the VGA aperture at all — so the 14
+bytes are not a measurement of the aperture and neither support PASS-A/PASS-B
+nor contradict them. The band stays a named gap for that reason.
+
+### §D4.1 The diagnostic scenario and the read
+
+- `SCENARIOS['gp-u13-band']` (`tools/gp_session.py`) is `gp-u13-ending2`'s
+  steps/timelimit/memsize unchanged, with `extra = WIN_EXTRA + APERTURE_FIELDS`.
+  It is in `STOP_AT_END` like U13.
+- `BAND_APERTURE` (14 offsets, 13 band + the control `(1,100)`) is the brief's
+  measured x list: `(1,23) (1,24) (1,295) (1,296) (2,22) (2,297) (3,21) (3,74)
+  (3,298) (4,27) (4,28) (4,291) (4,292)`, control `(1,100)`. The 13 are exactly
+  §D1.5.2's 8 index-`0x32` + 1 `0x2E` + 4 `0x4D` set.
+- Each byte is read at **file offset** `0xA0000 + 320*row + x`, a literal
+  offset, not `base + ds - DATA_BASE_VA`. The VGA aperture is at linear
+  `0xA0000` (mode 13h, one byte per pixel index); DOS/4GW identity-maps linear
+  `0xA0000` to the physical VGA aperture, and the DOSBox-X memory file is a
+  physical dump, so the aperture's file offset is its linear address. The data
+  object is instead relocated to `base = 0x266000` (`find_base`; the `B` record
+  reads `base=00266000`, and `RAGE.S16` sits at file offset `0x26602d` alone),
+  so a `base + ds - DATA_BASE_VA` read of `0xA0000` would land on the data
+  object's shadowed `0xA0000` hole, not the aperture. `read_snap` gained the
+  `APERTURE_FIELD_NAMES` branch for this literal read (`tools/gp_capture.py`),
+  and `tools/tests/test_gp_capture.py::test_the_aperture_fields_are_read_at_the_literal_offset`
+  pins it with a decoy at the base-relative address.
+
+### §D4.2 The capture
+
+```
+$ make gp-capture scenario=gp-u13-band    # EXIT:0, wall 206.5 s, load 0.93 (uptime 11:50:12)
+```
+
+`data/k11-captures/gp-u13-band`: 5,870 frames (raw 1384..14412), every CHECK ok
+(steps 23/23, end reached, port script v2, no unscripted input, pokes 17/17
+unraced, stopped at f=2755), `memsize=64`, `exe` sha
+`8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d`. The published
+`gp-u13-ending2` directory and its pins are untouched.
+
+### §D4.3 The f=0x1826 record and the 14 bytes
+
+The S record at `f=1826` (`mode=0015`, the fade; `frames.txt` maps `04316
+f=1826 mode=0015`, confirming §D1.5.2's correction) reads, for all 14 offsets:
+
+```
+band (1,23)..(3,298) ap=FF   (8 offsets, port index 0x32, capture 00001c)
+band (3,74)         ap=FF   (port index 0x2E -> 100000, capture black)
+band (4,27)..(4,292) ap=FF  (4 offsets, port index 0x4D -> 00000c, capture black)
+control (1,100)     ap=FF   (port index 0x65 -> 000000, capture 000000)
+```
+
+i.e. **all 14 bytes are `0xFF`**. This is not a single-frame read: across all
+10,020 S records (140,280 reads) every aperture byte is `0xFF` (0 non-`0xFF`
+reads), from the boot (`f=5`, mode 3) to the ending (`f=0x1827`, mode 0x15).
+
+The comparison sides (unchanged from §D1.5.2, read from the existing
+`gp-u13-ending2` replay dump and capture): the port frame at `f=1826`
+(`frame_04316.ipx`) holds indices `0x32`×8 / `0x2E`×1 / `0x4D`×4 and control
+`0x65`, with DAC `0x32->000000`, `0x2E->100000`, `0x4D->00000c`, `0x65->000000`
+and `0xFF->000000`; capture 5120 holds `00001c`×8 and black×5, control black.
+
+### §D4.4 The decision and what it means
+
+`tools/gp_band.py` applies `gp_compare.decide_aperture` (the tested
+PASS-A/PASS-B/FAIL/INCONCLUSIVE rule) to those three sides and returns
+**INCONCLUSIVE**. The aperture read maps, through the frame's DAC, to a single
+colour (`0xFF -> 000000`, black) at every offset; that cannot be PASS-A (the
+port's 13 band colours are black+`100000`+`00000c`, 8/1/4) or PASS-B (the
+capture's are `00001c`+black, 8/5). But it is not FAIL either: FAIL is the
+design's "both contradicted", a *valid* read whose 13 pixels match neither side,
+whereas this read is a single uniform byte (`0xFF` ×14) — the band's 13 pixels
+have at least two distinct colours on both sides, so a uniform read cannot be a
+measurement of them. The control pixel is not the discriminator here
+(`DAC[0xFF]` happens to equal the control's agreed black, so the control check
+passes and the uniform-byte check is what rejects the read).
+
+The cause is the memory file, not the game: DOSBox-X's `dosbox memory file`
+maps the guest's main RAM (`MemBase == memory_file_base`), exactly `memsize`
+bytes (the capture's `guest.mem` is 67,108,864 = 64 MB). The VGA aperture is a
+separate emulated region (`vgamem`), and DOS/4GW routes the game's `0xA0000`
+writes to it, not to `MemBase`, so `MemBase[0xA0000..0xAFFFF]` is never written
+and stays `0xFF` (measured pre-capture on a 30 s boot: the region is 65,536/65,536
+`0xFF` bytes while the data object at `0x266000` already holds `SB16.DIG` etc.).
+The poller therefore cannot read the real aperture through the memory-file map —
+the "unmeasured surface" of design §1.4 is, on this host, unmeasurable by that
+map, so the read is not a measurement of the aperture.
+
+**Outcome and limits.** The band stays a named gap because the read is invalid,
+not because the aperture contradicts either hypothesis; no pin moves and the
+band's bounds (`(5120, 1, 5, 56b900b1…)`) are unchanged, and no writer is named.
+The experiment rules out the memory-file read as a way to distinguish a
+capture-pipeline artifact from a port divergence; deciding the 13 pixels' cause
+would need a read of `vgamem` itself (DOSBox-X's debugger or a capture-side
+hook), which is out of scope here. `make diff-verify` and `port_progress.py`
+are unchanged (`1033/1033` … `825/845` … `809/845`; `798 1203 66` / `759 759
+100`); the new scenario is not in `CAPTURE_DIRS`, the capture manifest or the
+audio traces (it is a diagnostic, like `gp-u24-u16-state`).
+
+---
+
 ## §D6 The OPL single-voice pitch test (Task 12)
 
 The offline experiment the plan's §G7(b)/Task 12 asked for: does the vendored

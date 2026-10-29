@@ -101,6 +101,29 @@ MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (
 # slot 1 as base + 0x94 + its offset, i.e. the single DS offsets 0xC4/0xD6.
 SLOT_STATE_FIELDS = ('s0_30', 's0_42', 's1_30', 's1_42')
 
+# State coverage Task 11 (plan §G7(a), record §D4): the 5120 band's 14 diagnostic
+# reads. The VGA aperture (mode 13h) is at linear 0xA0000, where the byte at
+# 0xA0000 + 320*row + x is that pixel's index. DOS/4GW identity-maps linear
+# 0xA0000 to the physical VGA aperture, and the DOSBox-X memory file is a
+# physical dump, so the byte's FILE offset is 0xA0000 + 320*row + x -- a literal
+# offset, NOT the base-relative DS convention `base + ds - DATA_BASE_VA` (the
+# data object is relocated to `base`, find_base's value, and its 0xA0000 linear
+# hole is a different file offset). The 13 band offsets are the measured 8/1/4
+# split (record §D1.5.2), the control (row 1, x=100) is a pixel where the port
+# and the capture agree, so it tests whether the read returns video memory at all.
+BAND_APERTURE_BASE = 0xA0000
+BAND_APERTURE = (
+    (1, 23), (1, 24), (1, 295), (1, 296),   # 4 of the 8 index-0x32 pixels (capture 00001c)
+    (2, 22), (2, 297),                       # 2 more
+    (3, 21), (3, 74), (3, 298),              # (3,21)/(3,298) 0x32; (3,74) the 0x2E pixel
+    (4, 27), (4, 28), (4, 291), (4, 292),    # the 4 index-0x4D pixels (capture black)
+    (1, 100),                                # the control: port == capture here
+)
+APERTURE_FIELDS = tuple(
+    ('ap%02d' % k, BAND_APERTURE_BASE + r * 320 + x, 1)
+    for k, (r, x) in enumerate(BAND_APERTURE))
+APERTURE_FIELD_NAMES = frozenset(n for n, _, _ in APERTURE_FIELDS)
+
 # BIOS keys: (scan, the BIOS word a press queues; record named-gaps-a §A.9).
 KEYS = {'enter': (0x1C, 0x1C0D), 'esc': (0x01, 0x011B)}
 # The service menu's Down arrow: scan 0x50, the word the K11 walk's own `down`
@@ -617,6 +640,15 @@ SCENARIOS['gp-u13-ending2'] = dict(
         ('after_entry', 0x06, 1, 10,
          ('poke', ((0x108106, lands_marked(0, 1)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
+
+# State coverage Task 11 (plan §G7(a), record §D4): the 5120 band diagnostic.
+# gp-u13-ending2's script unchanged (the band's frame is the same S record at
+# f=0x1826), plus the 14-byte aperture read (APERTURE_FIELDS) on every S record.
+# time_limit 240, memsize 64 and WIN_EXTRA are U13's; no pin and no oracle hang
+# off this capture (a failure is preserved as .failed.N).
+SCENARIOS['gp-u13-band'] = dict(
+    time_limit=240, extra=WIN_EXTRA + APERTURE_FIELDS, memsize=64,
+    steps=SCENARIOS['gp-u13-ending2']['steps'])
 
 # Endgame truth Task 3 (record §E1.1): TALON's ending, character 2 on character-select
 # cell 1 (ending_menu(1): one p1.right from cell 0, then the confirm). The land marks are
@@ -1300,7 +1332,8 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
-                         'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending'})
+                         'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
+                         'gp-u13-band'})
 
 
 class ScriptError(Exception):
