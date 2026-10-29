@@ -683,8 +683,9 @@ the continue countdown is 15→0, not 10→0.
 
 The trample `0x4B470` is `HIT` (line 690) — the demo reaches it — which is why
 `0x4BD98`'s own `NOT-HIT` is meaningful, not an unreached-caller artifact. Task
-5's `0x296B8`/`0x29638` (`NOT-HIT`, lines 275/274) are mode `0x32`/`0x33`,
-that task's rows, not this task's. The baseline is Task 3's pin; this
+5's `0x296B8`/`0x29638` are mode `0x32`/`0x33`, that task's rows, not this
+task's. The baseline here is Task 3's historical pin (their lines were 275/274
+then; both are `HIT` after Task 14's re-pin, §D8.3); this
 declaration adds no line, moves none, and reclassifies none.
 
 ### §D2.7 The `0x0B` correction (the drawn winner pose)
@@ -695,8 +696,10 @@ did **not**: there is no `data/k11-captures/gp-draw` directory, no `gp-draw`
 entry in the Makefile's `CAPTURE_DIRS`, no oracle and no miss set (measured
 2026-10-29). The drawn-winner-pose content (`0x0B`) therefore **remains
 unexhibited**, and this task does not claim otherwise. A timeout-draw capture
-is Task 7's job (§G5, a poked timeout draw, not the KO draw); it will exhibit
-`0x0A`/`0x0B` when it publishes.
+is Task 7's job (§G5, a poked timeout draw, not the KO draw); it has since
+published as `gp-draw-timeout` (Task 7, §D5.3) and exhibits `0x0A`/`0x0B` — the
+*timeout* draw, distinct from the KO draw's `0x0B` winner pose, which stays
+unexhibited.
 
 ### §D2.8 What §D2 does not claim
 
@@ -1489,12 +1492,12 @@ this phase:
   scenario cannot open, so they stay declared, not captured.
 
 **The census baseline's provenance — a separate pin, not the pin-baseline
-tripwire.** `tools/coverage_baseline.txt` is a pin: its header records the
-measured provenance (`measured 2026-10-29, make coverage runs 1 and 2`, the
-portable HIT union sha256 `e93d7415f1…`, `HIT 645 / NOT-HIT 110 /
-UNINSTRUMENTED 4` — re-pinned by Task 14 §D8.3 to `HIT 653 / NOT-HIT 102 /
-UNINSTRUMENTED 4`, reason in the header), and `coverage_census.py --check` fails
-on a new NOT-HIT. It
+tripwire.** `tools/coverage_baseline.txt` is a pin: its file carries a single
+`# reason: <reason>` line (the writer emits only that), which now holds the Task
+14 re-pin reason; the full measured provenance (Task 3's original `HIT 645 /
+NOT-HIT 110 / UNINSTRUMENTED 4` with the union sha256 `e93d7415f1…`, re-pinned by
+Task 14 §D8.3 to `HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4`) is in §D8.1/§D8.3,
+not in the header. `coverage_census.py --check` fails on a new NOT-HIT. It
 is **not** part of `tools/pin_baseline.sha256`: that file is the
 capture/oracle pin-region tripwire over the marker-delimited regions of
 `Makefile`, `tools/audio_compare.py`, `tools/k11_compare.py`,
@@ -1613,7 +1616,10 @@ gp_compare: gp-draw-timeout: frames: first unexplained 346, ratchet N 346 ok
 
 `make audio-render` runs standalone twice after the gates; both are byte-identical
 (the determinism pin; the claim is the port's own deterministic non-silence, not
-audibility — record §M5):
+audibility — record §M5). The two gate logs (`/tmp/opencode/task14-gate1.log`,
+`/tmp/opencode/task14-gate2.log`) each contain the identical selmo peak/sha line
+(the gate's own `audio-render` step), and the standalone runs printed the same
+line (recorded in `task-14-report.md`, not a log):
 
 ```text
 $ make audio-render   # run 1 and run 2, identical
