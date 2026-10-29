@@ -65,6 +65,12 @@ SNAP_FIELDS = (
     # (WIN_EXTRA). Appended like the slot-state fields, so every older
     # poll.log's S lines lack them.
     ('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1),
+    # State coverage Task 6 (plan 2026-10-28-state-coverage §G, record §D6):
+    # slot 1's world-domination count DS_00107832 + 1*0x94 = 0x1078C6 (the
+    # 0x4160C increment with r = DS_00104AD4 = 1), the side-1 twin of WIN_EXTRA's
+    # c82 (slot 0's +0x82). Appended like the slot-state fields, so every older
+    # poll.log's S lines lack it; only gp-u26-side1-ending asserts it.
+    ('c82b', 0x1078C6, 1),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -650,6 +656,44 @@ SCENARIOS['gp-u22-diablo-ending'] = dict(
          ('poke', ((0x108106, lands_marked(0, 5)), (0x10789E, b'\x78')))),
     ) + SCENARIOS['gp-u10-ending']['steps'][len(WIN_MENU) + 1:])
 
+# State coverage Task 6 (plan 2026-10-28-state-coverage §G, record §D6): the side-1
+# tour and ending. gp-u8-right-arcade's START MENU row-1 route (p1.down, the RIGHT
+# PLAYER ARCADE setter mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character
+# select (mode 0x10), where P2 (side 1) confirms its default cell 5 (ARMADON, class 4)
+# with p2.start (0x43CAD's side-1 arm: e2 bit 0, 0x43CC1/0x43D60). No p2.right: cell 5
+# is P2's start cursor (0xC8881 = 05), so ARMADON needs no edge (measured correction to
+# the plan's "p2.right/p2.start"). Then U10's body with the KOs reversed: KO_P1 pokes
+# P1's +0x5A (DS_0010780A) so P2 wins every round and the seven final opponents (the
+# arena loser is side 0 = DS_00104B12, 0x272DC); the land marks are P2's 0xC0|4 = 0xC4
+# (lands_marked(1, 4)). The DEATH_DONE poke (b0c, a global byte) is unchanged. The ending
+# is the mode-0x1F handler 0x208F8 reading DS_0010782A[DS_00104AD4 * 0x94] =
+# DS_001078BE = c1 = 4 (ARMADON), side-independent by the 0x208F8 differential row; the
+# cross-check is byte-identity with gp-u21-armadon-ending's mode-0x1F frames. The c82b
+# field is slot 1's +0x82 (DS_00107832 + 1*0x94 = 0x1078C6), the side-1 twin of
+# WIN_EXTRA's c82, appended to SNAP_FIELDS (so the port's PR_GP_DUMP trace carries it
+# too and gp_win.py path can reproduce the WORLD DOMINATION milestone). memsize=64 (the
+# §W.13 harness value) and time_limit 240 (U18's harness value, whose capture took ~205 s)
+# are carried from the other endings.
+SIDE1_MENU = (
+    ('boot', ENTER_WAIT, ('key', 'enter')),           # mode 3 -> 0x27
+    ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU, cursor on row 0
+    ('after', 60, ('pad', ('p1.down',), 4)),          # row 1: RIGHT PLAYER ARCADE (0x2E)
+    ('after', 60, ('key', 'enter')),                  # run row 1's setter -> divert side 1
+    ('after_mode', 0x10, 60, ('pad', ('p2.start',), 6)),   # P2 confirms cell 5 (ARMADON)
+)
+SCENARIOS['gp-u26-side1-ending'] = dict(
+    time_limit=240, extra=WIN_EXTRA, memsize=64,
+    steps=SIDE1_MENU + (
+        ('after_entry', 0x06, 1, 10,
+         ('poke', ((0x108106, lands_marked(1, 4)), (0x10780A, b'\x78')))),
+        ('after_entry', 0x06, 2, 10, KO_P1),
+    ) + tuple(st for k in range(1, 8) for st in (
+        ('after_entry', 0x0C, k, 10, KO_P1),
+        ('after_entry', 0x0D, k, 10, DEATH_DONE),
+    )) + (
+        ('until_mode', 0x03, 0),
+    ))
+
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec §W5): a match
 # won by fought hits, so the win path's pokes are not needed. The menu path is gp-idle-loss's
 # with WIN_MENU's immediate confirm of character 0 (SAURON); the two rounds are punched.
@@ -1218,7 +1262,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
-                         'gp-draw', 'gp-u25-endurance-end'})
+                         'gp-draw', 'gp-u25-endurance-end', 'gp-u26-side1-ending'})
 
 
 class ScriptError(Exception):

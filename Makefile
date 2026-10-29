@@ -77,6 +77,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u22-diablo-ending \
 	$(K11_CAPTURES)/gp-u23-u16-finisher \
 	$(K11_CAPTURES)/gp-u25-endurance-end \
+	$(K11_CAPTURES)/gp-u26-side1-ending \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -130,6 +131,7 @@ chunk ?= 0
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
+        gp-u26-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -670,6 +672,7 @@ GP_U21_MAX_MISSING = 53
 GP_U22_MAX_MISSING = 52
 GP_U23_MAX_MISSING = 9
 GP_U25_MAX_MISSING = 12
+GP_U26_MAX_MISSING = 11
 # <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
@@ -1218,6 +1221,62 @@ gp-u25-oracle: build ## State coverage U25 oracle: gp-u25-endurance-end's four-K
 			--port $(GP_DUMP)/gp-u25-endurance-end --min-milestones "$(GP_U25_MILESTONES)" \
 			--capture-sha256 "$(GP_U25_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u25-endurance-end; exit $$rc; fi
+
+# State coverage Task 6 (plan docs/superpowers/plans/2026-10-28-state-coverage.md §G): the side-1
+# tour and ending. gp-u8-right-arcade's START MENU row-1 route (p1.down, RIGHT PLAYER ARCADE,
+# mode 0x2E -> game_coin_divert(2) -> b1f=2) into the character select, where P2 confirms its
+# default cell 5 (ARMADON, class 4) with p2.start; then U10's body with the KOs reversed (KO_P1
+# pokes P1's +0x5A, so P2 wins and the final's seven opponents are P1-KO'd). The ending is the
+# mode-0x1F handler 0x208F8 reading DS_0010782A[DS_00104AD4 * 0x94] = c1 = 4 (ARMADON),
+# side-independent by the 0x208F8 differential row. The cross-check is byte-identity with
+# gp-u21-armadon-ending's mode-0x1F frames (recorded in the task report): the port's replays of
+# both captures produce 268 mode-0x1F frames each, all 268 byte-identical in rendered RGB (one
+# raw .ipx index byte differs in the first frame, a state-0 reset transient that renders to the
+# same RGB), and the settled title screen is byte-identical (sha256 efb8526d..).
+# Measured on the 2026-10-29 capture (5,814 frames, raw 1386..14296, wall 204.5 s, memsize=64).
+# MIN_FIRST = 2358 is the first unexplained capture frame (raw 5568, f=0xDA0 mode 0x1B): the
+# versus -> REPLENISH transition's scan-out, a 3-present tear (rows 0..58 = port 1943, rows
+# 59..190 a 1944/1945 splice, rows 191..199 = 1944) that no BANDS/SCAN3 recipe expresses (its
+# band is clean 1944/1945 content, and its SCAN3 pair is non-unique because the mode-0x23 screen
+# is static); capture 4135 (raw 7660, f=0x147F mode 0x0C, the final's entry) is the same class
+# (a double tear: rows 7..19 = port 3444..3446, row 193 = port 3447, the rest 3448). Both are
+# recorded as named gaps in the task report (every pixel is a port frame within +-4, so they are
+# scan-outs, not divergences); nothing past 2358 is claimed by the frame ratchet, so the
+# mode-0x1F frames (capture 5073..5375) are claimed by the cross-check and the trace/moves
+# ratchets instead. The window starts at capture 86 (raw 1749); because the frame ratchet stops
+# at 2358, the window reach is port 1943 (not the dump's end) with 11 non-black missing classes;
+# the post-script tail (capture 5801..5803, at/past the X record f=0x26B0) is not claimed.
+# Trace, moves and WIN fields agree through f=0x26B0 (9904), so their end pins are 9905;
+# MILESTONES 30 (all reproduced at the capture's frame).
+# An absent capture skips (gp-replay's GP_OPTIONAL=1, gp_win.py's no-poll.log skip); a present
+# capture with empty/changed pins fails. Raise each pin when it improves.
+# >>> PIN-BASELINE-BEGIN gp-u26
+GP_U26_MIN_FIRST = 2358
+GP_U26_TRACE_MIN_FIRST = 9905
+GP_U26_MOVES_MIN_FIRST = 9905
+GP_U26_MAX_START = 86
+GP_U26_MIN_REACH = 1943
+GP_U26_CAPTURE_SHA256 = 19b00d8d7721c0b927f35a5c816e1adcd062b74fd56160283e5ca5d87f9bddea
+GP_U26_CAPTURE_FRAMES = 5814
+GP_U26_MILESTONES = 30
+GP_U26_WIN_MIN_FIRST = 9905
+# <<< PIN-BASELINE-END gp-u26
+gp-u26-oracle: build ## State coverage U26 oracle: the side-1 (RIGHT PLAYER ARCADE) tour and ending (skips without data/k11-captures/gp-u26-side1-ending)
+	@echo "== gameplay oracle: gp-u26-side1-ending (the side-1 tour and ARMADON ending under pokes) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win
+	@if [ ! -d $(K11_CAPTURES)/gp-u26-side1-ending ]; then echo "gp-u26-oracle: no capture at $(K11_CAPTURES)/gp-u26-side1-ending (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u26-side1-ending --capture $(K11_CAPTURES)/gp-u26-side1-ending \
+			--capture-sha256 "$(GP_U26_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u26-side1-ending GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u26-side1-ending --capture $(K11_CAPTURES)/gp-u26-side1-ending \
+			--port $(GP_DUMP)/gp-u26-side1-ending --min-first "$(GP_U26_MIN_FIRST)" \
+			--trace-min-first "$(GP_U26_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U26_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_U26_MAX_START)" --min-reach "$(GP_U26_MIN_REACH)" --max-missing "$(GP_U26_MAX_MISSING)" \
+			--capture-sha256 "$(GP_U26_CAPTURE_SHA256)" --capture-frames "$(GP_U26_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u26-side1-ending --capture $(K11_CAPTURES)/gp-u26-side1-ending \
+			--port $(GP_DUMP)/gp-u26-side1-ending --min-milestones "$(GP_U26_MILESTONES)" \
+			--win-min-first "$(GP_U26_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U26_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u26-side1-ending; exit $$rc; fi
 
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
@@ -2319,6 +2378,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u12-oracle
 	@echo "== state coverage U25: the ENDURANCE match end (four-KO roster walk, modes 0x32/0x33; skips without its capture; record §D5) =="
 	@$(MAKE) --no-print-directory gp-u25-oracle
+	@echo "== state coverage U26: the side-1 tour and ARMADON ending (ad4=1; skips without its capture; record §D6) =="
+	@$(MAKE) --no-print-directory gp-u26-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u13-oracle
 	@echo "== gameplay oracle: gp-u14-win-live (a fought win; skips without its capture) =="

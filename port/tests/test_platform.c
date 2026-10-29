@@ -363,6 +363,16 @@ static const fnm_pair k_miss_gp_u25_endurance_end[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u26-side1-ending (state coverage Task 6, record §D6), measured on its full
+ * replay to the X record (f=0x26B0): the same two wipe hooks of §G.24, 0x29D60
+ * (bare `ret`, hits=1) and 0x5D812 (runtime stub, hits=3), both from
+ * frontend_mode_1b_step (the RIGHT PLAYER ARCADE divert's wipe, as
+ * gp-u8-right-arcade's). */
+static const fnm_pair k_miss_gp_u26_side1_ending[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -428,6 +438,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u21-armadon-ending", 0, k_miss_gp_u21_armadon_ending, FNM_N(k_miss_gp_u21_armadon_ending) },
     { "gp-u22-diablo-ending", 0, k_miss_gp_u22_diablo_ending, FNM_N(k_miss_gp_u22_diablo_ending) },
     { "gp-u25-endurance-end", 0, k_miss_gp_u25_endurance_end, FNM_N(k_miss_gp_u25_endurance_end) },
+    { "gp-u26-side1-ending", 0, k_miss_gp_u26_side1_ending, FNM_N(k_miss_gp_u26_side1_ending) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a
