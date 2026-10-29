@@ -132,3 +132,54 @@ game's own damage path, R3 U16 R2 is a record task, R4 `0x21` stays declared,
 R5 U14's fought win stays open). R6-R8 are the orchestrator's ledger rulings
 (capture serialization, measured pins win, optional-task stop rules). The plan
 lists only R1-R5; R6-R8 live in the git-ignored ledger.
+
+## §L4 U16 R2: the measured gate operand (Task 4)
+
+The measurement, its strict reading and the verdict. The full evidence (the
+reader output, the raw bytes, the §D3.4 comparison and the `.failed` artifact's
+rows) is in `docs/superpowers/plans/2026-10-27-claim-coverage-derivations.md`
+§C5; this section records the phase's reading of it. No capture, no port change,
+no pin.
+
+### L4.1 Measured rows
+
+`python3 tools/gp_u16_state.py read --capture data/k11-captures/gp-u24-u16-state-t9-r5`
+(run today; `session.txt`: `pad_bios=0`, 11 of 11 checks `ok`):
+
+- set: `f=1531 s0_54=0x2 s0_30=0xEAE s0_42=0x8000`
+- exit: `f=1532 s0_54=0x0 s0_30=0x1180 s0_42=0x8000`
+- gate input `y(1531) = 0x0EAE`, below `0x1400`
+
+### L4.2 The gate and the strict reading
+
+- The raw gate is `0x48599 cmp edx,[eax+0x30]` then `0x4859C jle 0x48601`, with
+  `edx` the high word of the dword at `0xBD882 + 2*char` (`0x1400` for character 2,
+  the design's TALON identification). `jle` returns when the threshold is `<=` the
+  latched y, so the clear is **`y < 0x1400`, strictly**: equality does not clear.
+- The gate reads the previous iteration's latched y, so the clear at `f=1532` reads
+  `y(1531)`.
+- The claim-coverage plan's `y <= 0x1400` boundary is corrected to `<`
+  (claim-coverage §C5.2). The port's gate, `port/src/game/fighter.c:16326-16327`, is
+  already strict.
+
+### L4.3 The pre-fix value and the class
+
+The state-coverage record's aligned `0x1531` row (§D3.4) gives the original's
+`0x0EAE` and the pre-fix port's `0x202E`. The difference is `0x1180`, the record-motion
+offset the table reports on every row from `0x152C`. The pre-fix port's `0x202E` is
+above the threshold, so its gate did not clear. The IVT stand-in fix
+(`bios_ivt_stand_in()`, `port/src/game/flow.c:6996-7000`; state-coverage §D3.7)
+removed that class, and the U23 replay's exit moved to `0x1533`. This phase did not
+re-run that replay.
+
+### L4.4 The `.failed` artifact
+
+`data/k11-captures/gp-u24-u16-state.failed` has no `s0_54=2` set record and no row
+at `f=1532`, so its set frame is not measured and its `0x1180` exit is inferred. It
+is not a measurement. `t9-r5` is the measurement.
+
+### L4.5 Verdict
+
+The deciding gate input is measured and is below the gate. The original's clear is
+the gate, read on the strict inequality. No port change follows, no pin moves, and
+no capture is taken. Whether the finisher gap R2 is closed is not decided here.

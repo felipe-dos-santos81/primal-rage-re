@@ -502,8 +502,10 @@ consolidation gate).
   `GP_TWOP_KO_*` pin, no miss set and no gate entry. **U16 R2 stays open:** the recovery measured
   the `0x4844C` case-3 exit at the old marker's exit frame, `f=0x1533` (inferred: the `s0_54=2`
   set record is missing), as `s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400`
-  gate, against the port's set `0x202E` at `0x1532` and exit `0x1180` at `0x155C`; the missed
-  set record leaves the deciding gate input `y(0x1532)` unmeasured. No fix, no
+  gate, against the port's set `0x202E` at `0x1532` and exit `0x1180` at `0x155C`. The deciding
+  gate input is now measured by the `t9-r5` diagnostic (set `f=0x1531`, `y = 0x0EAE < 0x1400`; the
+  clear is strict, `y < 0x1400`; claim-coverage §C5, live-truth §L4), and the `.failed` artifact is
+  not that measurement. No fix, no
   oracle/miss set, no third capture. `gp-harness-smoke`, `gp-twop-ko`, `gp-u14-win-live.failed`,
   `gp-u24-u16-state` and its two failed runs are
   not in `CAPTURE_DIRS` and their `.dro` files are not in `tools/audio_compare.py`'s 29-trace

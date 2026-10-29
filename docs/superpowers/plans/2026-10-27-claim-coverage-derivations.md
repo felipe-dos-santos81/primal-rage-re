@@ -1308,3 +1308,102 @@ The differential counter is unchanged (`make diff-verify` reads the §C1.2 strin
 byte-identically): the six new headers are all rowed, so `ported_unrowed`'s
 scan-portable 5 / declared 8 / runtime 37 figures do not move, and each is a
 portable porting target (`class_of` is None), so the closure rule is untouched.
+
+## §C5 The U16 R2 gate operand (live-truth Task 4)
+
+The measured set and exit rows of U16 R2, the strict-inequality reading of the
+gate, and the verdict. No capture, no port change, no pin. The plan that
+recorded the gap is `docs/superpowers/plans/2026-10-27-claim-coverage.md` Task 10;
+the phase record is `docs/superpowers/plans/2026-10-29-live-truth-derivations.md` §L4.
+
+### §C5.1 The measured rows
+
+Re-run of the reader on the published diagnostic
+`data/k11-captures/gp-u24-u16-state-t9-r5` (`python3 tools/gp_u16_state.py read --capture
+data/k11-captures/gp-u24-u16-state-t9-r5`; frame labels are hex):
+
+```text
+gp_u16_state: gp-u24-u16-state: poll.log
+  mode 9 entry: f=1485
+  set frame: f=1531
+  set state: f=1531 s0_54=0x2 s0_30=0xEAE s0_42=0x8000
+  exit frame: f=1532
+  exit state: f=1532 s0_54=0x0 s0_30=0x1180 s0_42=0x8000
+  gate input y(1531): present: s0_30=0xEAE (below 0x1400)
+  last S before the marker: f=1530 s0_54=0x0 s0_30=0x9C0 s0_42=0x8000
+  first S after the exit: f=1533 s0_54=0x0 s0_30=0x1180 s0_42=0x8000
+```
+
+The run's `session.txt` reads `cmos=zero pad_bios=0`, and its 11 checks are all
+`ok`: base; steps (75/75, stopped on mode 0x12); end frame; mode 0x27 after the
+Enter; snapshots kb == raw; frames written 5563/5563; port script v2; no
+unscripted input; pokes written 1/1; capture pins; stopped at the end.
+
+### §C5.2 The gate and the strict reading
+
+The raw bytes of the code object (`data/game/C/PRAGE.EXE`, file offset `VA + 0x52E54`,
+disassembled with capstone):
+
+```text
+0x4858B  mov  edx, dword ptr [eax*2 + 0x3d882]  ; raw displacement; runtime 0xBD882 (fixups applied)
+0x48596  sar  edx, 0x10                         ; the high word: 0xBD884 + 2*char
+0x48599  cmp  edx, dword ptr [eax + 0x30]       ; threshold vs the reaction record's latched y (+0x30)
+0x4859C  jle  0x48601                           ; threshold <= y: return, no clear
+0x4859E  mov  byte ptr [eax + 0x54], 0          ; fall-through: the clear of s0_54
+```
+
+- The clear is **y < 0x1400, strictly**. At `y == 0x1400` the `jle` is taken and
+  nothing clears. The claim-coverage plan's Step 4 reads "`y(0x1532) <= 0x1400`, the
+  original exits"; that boundary is wrong and is corrected here to `<`.
+- The port states the same gate: `port/src/game/fighter.c:16326-16327`
+  (`if (threshold <= y) return;`), which is strict.
+- The threshold is the word `0x1400` at `0xBD884 + 2*char`, the entry for character
+  2 (`0x1400` for character 2: `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`
+  near line 15802; `docs/superpowers/specs/2026-10-25-fought-match-truth-design.md`
+  line 358, "`0xBD884[2] = 0x1400` (TALON)"). The poll.log S rows carry no character
+  field, so the character is identified by the design, not measured here.
+- `[rec+0x30]` is the latched y. The gate in iteration *n* reads the latch written
+  by iteration *n−1*: the clear at `f=1532` reads `y(1531) = 0x0EAE`.
+
+### §C5.3 The pre-fix port value and the record-motion class
+
+- The same aligned `0x1531` row is tabulated in the state-coverage record
+  (`docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D3.4): the
+  original's `rec_y`/`s0_30` is `0x0EAE` and the pre-fix port's is `0x202E`.
+  `0x202E − 0x0EAE = 0x1180`, the same `+0x1180` the table reports on every row from
+  `0x152C` (§D3.4, "P minus O is `+0x1180`").
+- Before the fix the port's latch was `0x202E ≥ 0x1400`, so the port's gate held and
+  did not clear at the frame where the original clears. The class is **record motion**
+  (`rec+0x1C`, §D3.5), not the anchor term and not the `0x186D0` call order.
+- Its cause was the reaction stream reading the IVT at linear 0. `bios_ivt_stand_in()`
+  (`port/src/game/flow.c:6996-7000`, called at `flow.c:7025`) seeds `mem[1] = 0xCA` and
+  `mem[3] = 0xF0` (§D3.7). After that fix the U23 replay's `s0_54` clears at `0x1533`,
+  the capture's exit frame (§D3.7). This record does not re-run that replay.
+
+### §C5.4 The `.failed` artifact is not a measurement
+
+`data/k11-captures/gp-u24-u16-state.failed` (§C1.7) has poll.log rows at `f=1531`
+(`s0_54=00`) and `f=1533` (`s0_54=00`) and **no row at `f=1532`**. It has no
+`s0_54=2` set record, so its set frame is not measured, and its `0x1180` exit
+reading is inferred (§F5.6). The `t9-r5` diagnostic is the measurement: it has the
+set row at `f=1531`. The `.failed` artifact stays unpublished and pins nothing.
+
+### §C5.5 Verdict
+
+- **Measured:** `y(1531) = 0x0EAE < 0x1400`, so the original clears `s0_54` at the
+  next iteration (`f=1532`), and the exit reading `s0_30 = 0x1180` is measured, not
+  inferred.
+- **Strict:** the clear is `y < 0x1400`; equality does not clear (§C5.2).
+- **No port change.** The port's gate is already strict (`fighter.c:16326-16327`), and
+  the pre-fix divergence is the record-motion class that the IVT stand-in fix already
+  removed (§C5.3). Whether the U16 finisher gap R2 is closed is not decided here.
+- **No pin, no capture.** The `GP_U23_*` pins and every other pin are untouched.
+
+### §C5.6 Limits
+
+- One diagnostic run (`t9-r5`). The threshold's character is identified by the
+  design (§C5.2), not by a poll.log field.
+- Frame labels are the run's own. The §D3.4 table is a different run and is compared
+  at its aligned `0x1531`; the two runs' frame labels are not aligned by construction.
+- The raw displacement `0x3D882` is pre-fixup; the runtime address is `0xBD882` (the
+  AGENTS.md address model).
