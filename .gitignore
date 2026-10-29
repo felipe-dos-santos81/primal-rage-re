@@ -1,10 +1,12 @@
 # Build output
 build/
+build-cov/
 *.o
 *.a
 
 # Generated frames, extracted art and dumps
 frames/
+coverage/
 extracted/
 *.mem
 *.ppm

@@ -119,7 +119,7 @@ verify_frames ?= 820
 gra ?= S16TITLE.GRA
 chunk ?= 0
 
-.PHONY: help deps build gate-check test verify check run clean audio-render \
+.PHONY: help deps build gate-check test verify check run clean coverage audio-render \
         smk-oracle title-pin title-capture title-oracle attract-oracle \
         audio-one audio-oracle audio-determinism \
         frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
@@ -2306,7 +2306,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_check_docs_claims
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
@@ -2327,6 +2327,80 @@ clean: ## Remove build outputs and locally generated oracles (keeps the SDD ledg
 	rm -f $(PORT_DIR)/tests/ghidra_data.bin
 	rm -rf frames/
 	@echo "Cleanup complete. (.superpowers/ deliberately kept — it holds the plan ledger.)"
+
+# The coverage census (plan 2026-10-28-state-coverage Task 3): a PR_COVERAGE
+# build, every driver run with PR_HIT_TAG into coverage/, then
+# tools/coverage_census.py. The gp scenarios are CAPTURE_DIRS's gp-* entries
+# minus the two excluded by name (gp-pads is a smoke scenario, gp-u17-device2
+# has no replay); an absent capture (gp-u14-win-live) is reported and excluded,
+# never a NOT-HIT. The other non-CAPTURE_DIRS directories under data/k11-captures
+# (gp-harness-smoke, gp-idle-loss-run2, gp-u6-moves, .failed*, de, diags, idle)
+# are never globbed in the first place. `make coverage COV_REASON="..."` re-pins
+# the baseline instead of checking it. Not in verify: it re-runs the drivers.
+COV_BUILD_DIR = build-cov
+COV_HITS_DIR = coverage
+GP_COV_SCENARIOS = $(filter-out gp-pads gp-u17-device2,$(notdir $(filter $(K11_CAPTURES)/gp-%,$(CAPTURE_DIRS))))
+COV_TAGS = check attract title frontend restart walk menuesc save-reload $(GP_COV_SCENARIOS)
+COV_REASON ?=
+ifeq ($(strip $(COV_REASON)),)
+COV_CENSUS = --check
+else
+COV_CENSUS = --update-baseline --reason "$(COV_REASON)"
+endif
+
+coverage: ## Run every driver under PR_COVERAGE and the coverage census (COV_REASON="..." re-pins the baseline)
+	@cmake -S $(PORT_DIR) -B $(COV_BUILD_DIR) -DPR_COVERAGE=ON
+	@cmake --build $(COV_BUILD_DIR)
+	@rm -rf $(COV_HITS_DIR); mkdir -p $(COV_HITS_DIR)
+	@echo "== coverage: attract driver =="
+	@rm -rf $(ATTRACT_DUMP); PR_ATTRACT_DUMP=$(ATTRACT_DUMP) PR_HIT_TAG=attract PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED attract driver"; exit 1; }
+	@echo "== coverage: title driver =="
+	@rm -rf $(TITLE_DUMP); PR_TITLE_DUMP=$(TITLE_DUMP) PR_HIT_TAG=title PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED title driver"; exit 1; }
+	@echo "== coverage: frontend driver =="
+	@rm -rf $(FRONTEND_DUMP); PR_FRONTEND_DUMP=$(FRONTEND_DUMP) PR_HIT_TAG=frontend PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED frontend driver"; exit 1; }
+	@echo "== coverage: restart driver =="
+	@PR_RESTART=1 PR_HIT_TAG=restart PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED restart driver"; exit 1; }
+	@echo "== coverage: --check $(verify_frames) =="
+	@PR_HIT_TAG=check ./$(COV_BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames) \
+		|| { echo "coverage: FAILED check"; exit 1; }
+	@echo "== coverage: k11 walk =="
+	@if [ -d $(K11_CAPTURES)/walk ]; then \
+		rm -rf $(K11_DUMP)/walk; mkdir -p $(K11_DUMP); \
+		$(PYTHON) tools/k11_session.py port-script --scenario walk --capture $(K11_CAPTURES)/walk --out $(K11_DUMP)/walk.script && \
+		PR_K11_DUMP=$(K11_DUMP)/walk PR_K11_SCRIPT=$(K11_DUMP)/walk.script PR_HIT_TAG=walk PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED k11 walk"; exit 1; }; \
+	else echo "coverage: no capture at $(K11_CAPTURES)/walk (missing)"; fi
+	@echo "== coverage: k11 menuesc =="
+	@if [ -d $(K11_CAPTURES)/menuesc ]; then \
+		rm -rf $(K11_DUMP)/menuesc; mkdir -p $(K11_DUMP); \
+		$(PYTHON) tools/k11_session.py port-script --scenario menuesc --capture $(K11_CAPTURES)/menuesc --out $(K11_DUMP)/menuesc.script && \
+		PR_K11_DUMP=$(K11_DUMP)/menuesc PR_K11_SCRIPT=$(K11_DUMP)/menuesc.script PR_HIT_TAG=menuesc PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED k11 menuesc"; exit 1; }; \
+	else echo "coverage: no capture at $(K11_CAPTURES)/menuesc (missing)"; fi
+	@echo "== coverage: k11 save-reload (boot 1) =="
+	@if [ -d $(K11_CAPTURES)/save-reload ]; then \
+		rm -rf $(K11_DUMP)/save-reload; mkdir -p $(K11_DUMP)/save-reload/boot1-scratch; \
+		rm -f $(K11_DUMP)/save-reload/boot1-scratch/cmos; \
+		$(PYTHON) tools/k11_session.py port-script --scenario save-reload --boot 1 --capture $(K11_CAPTURES)/save-reload/boot1 --out $(K11_DUMP)/save-reload/boot1.script && \
+		PR_K11_DUMP=$(K11_DUMP)/save-reload/boot1 PR_K11_SCRIPT=$(K11_DUMP)/save-reload/boot1.script \
+			PR_K11_SAVE=$(K11_DUMP)/save-reload/boot1-scratch/cmos PR_HIT_TAG=save-reload PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+		|| { echo "coverage: FAILED k11 save-reload"; exit 1; }; \
+	else echo "coverage: no capture at $(K11_CAPTURES)/save-reload (missing)"; fi
+	@echo "== coverage: gp scenarios =="
+	@for s in $(GP_COV_SCENARIOS); do \
+		if [ -d $(K11_CAPTURES)/$$s ]; then \
+			rm -rf $(GP_DUMP)/$$s; mkdir -p $(GP_DUMP); \
+			$(PYTHON) tools/gp_session.py port-script --scenario $$s --capture $(K11_CAPTURES)/$$s --out $(GP_DUMP)/$$s.script && \
+			PR_GP_DUMP=$(GP_DUMP)/$$s PR_GP_SCRIPT=$(GP_DUMP)/$$s.script PR_HIT_TAG=$$s PR_GAME_DIR=$(GAME_DIR) ./$(COV_BUILD_DIR)/run_tests \
+			|| { echo "coverage: FAILED gp scenario $$s"; exit 1; }; \
+		else echo "coverage: no capture at $(K11_CAPTURES)/$$s (missing)"; fi; \
+	done
+	@echo "== coverage: census =="
+	@$(PYTHON) tools/coverage_census.py --tags "$(COV_TAGS)" $(COV_CENSUS)
 
 # ── RE · static inspection ───────────────────────────────────────────────────
 
