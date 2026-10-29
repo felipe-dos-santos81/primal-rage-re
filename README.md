@@ -22,104 +22,57 @@ harness writes only its own capture directories under `data/` and must leave
 
 ## Status
 
-`PRAGE.EXE` (~1350 functions) and its `S16*.GRA` graphics set are fully
-decompiled (`docs/FORMATS.md`, `port/decomp/`). The SDL3 port reimplements the
-engine in C over a flat `mem[]` at the original addresses (`port/PORTING.md`)
-and covers the whole game — boot, title, attract cycles, front end, service
-menu, character select, one- and two-player matches, the win path, all seven
-character endings, the game-over/high-score flows. Two claims back that:
+`PRAGE.EXE` and its `S16*.GRA` graphics set are fully decompiled
+(`docs/FORMATS.md`, `port/decomp/`). The SDL3 port reimplements the engine in C
+over a flat `mem[]` at the original addresses (`port/PORTING.md`) and covers the
+whole game: boot, title, attract cycles, front end, service menu, character
+select, one- and two-player matches, the win path, all seven endings, and the
+game-over/high-score flows. The measured claims:
 
-- **Porting — 66% raw, 100% portable.** 798 of Ghidra's 1203 indexed
-  functions have a ported, header-commented counterpart in `port/src/` (see
-  `AGENTS.md` for how that figure is computed). The 405 that are not are not
-  porting targets: 53 are classified host-owned or deferred (41 + 12;
-  `tools/port_classification.txt`, each with its evidence), 37 are the replaced
-  clean-room runtime replacement layer (the boot/movie/attract spine's runtime
-  closure, all at or above `0x5D000`), and 315 are WATCOM libc / DOS/4GW runtime code (at or
-  above `0x5D000`, served by the host libc; the AIL runtime set within it is
-  named unreproducible). Excluding them, **100%** (759 of
-  759) of the portable functions are ported. The last 12 were the input sampler
-  and its keyboard/game-port readers (the host input truth phase); the 16 before
-  them the storage layer (settings, high scores and audit counters kept in a save
-  file) and the run clock that times them (track S).
-- **Verification — differential.** `make diff-verify` runs the original's own
-  bytes in unicorn against the port's C functions from the same image,
-  comparing every changed byte, the return register, the ordered calls (with
-  the memory changed so far at each) and the block coverage. Its `functions
-  VERIFIED` label counts **1033/1033 functions** — 1033 specs over 907
-  distinct original entries (905 before Task 4's two card-step rows, §P5);
-  **14993/14993 mutants are detected** and there are **0 named gaps**. Of the
-  845 rows with callees, **825 are closed** (188 callee-less rows are counted
-  apart) and **807 are closed on full rows**. The **20 open rows** are declared
-  terminals (19 distinct addresses; the two volume specs share `0x2C8F0`):
-  15 AIL thunks, `sound_buffers_alloc`, `input_sampler`, `config_file_load`,
-  `config_file_save` and `menu_fatal_error`. **15 entries are `WEAKER`**, now
-  including `0x51ED8` (declared renderer node-scratch difference), `0x249F0`
-  and `0x1D0BC`; **8 portable functions are `UNROWED`**, not "8 named gaps".
-  The wider measurement is 45 `FN_` ported-unrowed (8 portable + 37 runtime;
-  scan-visible subset 42 = 5 + 37). The terminal, weaker and unrowed reasons
-  are censused in `AGENTS.md` and the proof-completion record. The differential
-  rows have found 172 raw-over-port corrections (track D; 174 program-wide
-  including track N's two).
-- **Verification — span writers.** The independent census has **417 slots and
-  392 distinct targets**: six renderers, one bare `ret`, and 385 writer slots.
-  Adding the reachable out-of-table `0x81110[128] = 0x81310[0] = 0x5D110` gives
-  **386 distinct writer targets**, of which **385 are reachable** (384 reachable
-  slots plus `0x5D110`) and one, `0x57E3C`, is dead. There are 27 code-shape
-  classes, 26 reachable: the minimal fixture proves **26/26 classes**, and the
-  exhaustive fixture proves **385/386 distinct targets (all 385 reachable
-  targets)**, including both-edges clipping at `0x5D580`/`0x582F4` and the
-  clipped 14/15 word tails. E2 triages 227 of the writers and leaves 158 to this
-  separate census (231 E2 span rows minus four renderers); `0x24B54` is live
-  and `0x24B08` is dead. The E2 table and its 579/575 gate are unchanged.
+- **Porting — 66% raw, 100% portable.** 798 of Ghidra's 1203 indexed functions
+  have a ported, header-commented counterpart (798 = 759 portable + 39
+  runtime-region). The 405 not ported are 53 classified host-owned/deferred
+  (41 + 12; `tools/port_classification.txt`), 37 replaced clean-room runtime
+  (the boot/movie/attract spine) and 315 WATCOM libc / DOS/4GW / AIL runtime
+  functions served by the host. Excluding the non-targets, **759/759 portable**
+  functions are ported (`tools/port_progress.py`).
+- **Differential.** `make diff-verify` runs the original's bytes in unicorn
+  against the port's C functions from the same image, comparing every changed
+  byte, the return register, the ordered calls and the block coverage:
+  **1033/1033 functions VERIFIED**, **14993/14993 mutants detected**, **0 named
+  gaps**. Of the 845 rows with callees, **825 are closed** and **809 are closed
+  on full rows** (188 callee-less rows counted apart); **20 declared terminal
+  rows** (19 addresses), **13 `WEAKER`**, **8 `UNROWED`** (45 `FN_`
+  ported-unrowed = 8 portable + 37 runtime).
+- **Span writers.** The independent census has **417 slots and 392 distinct
+  targets** (386 writer targets, 385 reachable); **385/386 targets** and
+  **26/26 code-shape classes** are proved. E2 reads **736 candidates** (732 by
+  U0's rule), 388 span-writer.
+- **Pixel and timing oracles.** The Smacker logo, title, attract (cycle 2),
+  front end, demo fight, K11 service menu and 24 gameplay replays are compared
+  against the original's captured frames. The gate inventory is **35 explicit
+  capture paths**, **34/35 present** with only the declared U14 gap. These are
+  **bounded-missing claims, not complete coverage**: an unsampled state or a
+  same-count class substitution remains outside them.
+- **Audio.** The register-stream oracle compares the port's OPL register writes
+  tolerance-free against **29 `.dro` traces across 28 capture directories**
+  (gp-pads holds two; the wall-paced device-2 walk skips by name), and
+  `audio-render` pins the rendered WAV. **Rendered audibility remains a named
+  gap** (no device-recording oracle).
+- **Endgame.** All seven endings are pinned — SAURON and BLIZZARD by the earlier
+  U10/U13 captures, TALON, VERTIGO, CHAOS, ARMADON and DIABLO by `gp-u18`…
+  `gp-u22` — and the U16 finisher reaction by `gp-u23`, all under poked win
+  paths. The claim is the **ending content and finisher reaction, not the KO by
+  hits**: U23's moves ratchet records the port's `r0=0x27` where the capture
+  reaches `0x33`.
 
-Byte-exact oracles gate the rendering and timing: the Smacker logo, title,
-attract, front end and demo fight, the service menu, and every captured
-gameplay scenario are compared against the original's own captured frames.
-All 24 gameplay replays pass the occurrence-aware content-order check with
-**0 order failures**, and every one has a measured exact `--max-missing` pin.
-K11 pins capture identity by `poll.log` hash plus frame count (walk 171,
-menuesc 766) and order; the bounded-missing pins are front-end 30, attract 74
-and attract cycle 2 126. These are **bounded-missing claims, not complete
-coverage**: an unsampled state or a same-count class substitution remains
-outside them.
-
-The endgame is captured end to end: all seven character endings are pinned —
-SAURON and BLIZZARD by the earlier U10/U13 captures, TALON, VERTIGO, CHAOS,
-ARMADON and DIABLO by the endgame truth phase (`gp-u18-oracle`…`gp-u22-oracle`)
-— all seven under poked win paths, and the U16 finisher reaction by
-`gp-u23-oracle` (under a labelled poked-damage fallback). Each capture has its
-own oracle in `make verify`, and the claim is the ending content and the
-finisher reaction, not the KO by hits (U23's moves ratchet records the port's
-`r0=0x27` where the capture reaches `0x33`; endgame truth record §E2). Named
-gaps remain the U14 fought live win (R1), the U16 live finisher without that
-fallback, the per-hit death streams the clean traces cannot see, the 5120
-band's unisolated cause, rendered-audio audibility (no device-recording
-oracle), and the bounded-missing limits above. The fought-match truth phase
-(2026-10-26) measured the harness and two game-side results without adding a
-claim: U14's one authorized fought win lost again (P1 KO'd in both rounds; the
-failed capture is preserved and all nine `GP_U14_*` pins stay empty, so R1
-remains a named gap), the two-human hand-dealt KO was measured twice
-(`gp_twop.py check --ko`, `f=B9A` then `f=B91`, no pokes) but neither capture
-could be replayed (both failed the port-script pin under host starvation, so
-there is no published capture, oracle or pins — a game-evidence-only named
-gap), and U16's case-3 exit state was measured at the old marker's exit frame
-(inferred: the `s0_54=2` set record is missing) (`s0_30=0x1180`, below the
-gate) while the set-frame gate input `y(0x1532)` was missed, so R2 stays a
-named gap. The phase added no oracle and did not change the 35-path gate
-count; its full gate was stopped only by the register-stream audio oracle's
-host-load frame-alignment nondeterminism (a standalone U18 run passed and
-failed on consecutive runs; no pin was weakened), while the remaining steps
-are green. U13's post-script tail is
-claimed and the INT 8 tick vector is documented. The in-match and menu music
-now plays: the game-side song request/resolve is ported (`snd_music_start`,
-`0x1C930`) and the port's OPL register stream is compared tolerance-free
-against the original's captured gameplay traces (29 `.dro` files across 28
-capture directories; gp-pads holds two; the wall-paced device-2 walk skips by
-name) — the music truth phase; rendered
-audibility stays a named gap. The detailed,
-continuously-updated status is in **[`docs/PROGRESS.md`](docs/PROGRESS.md)**;
-the frame loop and pixel path are in `port/spec/game_flow.md`.
+Named gaps: the U14 fought live win (R1), the U16 live finisher, the 5120
+band's unisolated cause, rendered audibility, and the bounded-missing limits.
+The fought-match truth phase measured the harness and two game-side results
+(U14's one authorized live win lost, the two-human KO as game evidence only,
+the U16 case-3 exit) **without adding a claim**. The running detail and every
+gap's evidence are in [`docs/PROGRESS.md`](docs/PROGRESS.md); the frame loop and
+pixel path are in `port/spec/game_flow.md`.
 
 ## Layout
 
@@ -141,11 +94,9 @@ the frame loop and pixel path are in `port/spec/game_flow.md`.
 
 * **Ghidra 12.2** with the
   [`ghidra-lx-loader`](https://github.com/yetmorecode/ghidra-lx-loader)
-  extension (LE/LX loader, DOS/4GW aware), at
-  `~/ghidra_12.2_DEV/Extensions/Ghidra/ghidra-lx-loader` and
-  `~/Library/ghidra/ghidra_12.2_DEV/Extensions/ghidra-lx-loader`. It maps
-  object 0 to `0x10000` (code) and object 1 to `0x80000` (data) and applies the
-  LE fixups, so no manual image extraction is needed.
+  extension (LE/LX loader, DOS/4GW aware). It maps object 0 to `0x10000` (code)
+  and object 1 to `0x80000` (data) and applies the LE fixups, so no manual
+  image extraction is needed.
 * **JDK 25** (`temurin-25`) for Ghidra 12.2.
 * **dosbox-x** for ground truth (memory layout, runtime behaviour, captures).
 * Python 3 with `capstone` for ad-hoc disassembly and `Pillow` for
@@ -157,8 +108,8 @@ the frame loop and pixel path are in `port/spec/game_flow.md`.
 ### Regenerate the decompilation
 
 ```bash
-export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-25.jdk/Contents/Home
-G="$HOME/ghidra_12.2_DEV/support/analyzeHeadless"
+export JAVA_HOME=/path/to/temurin-25        # JDK 25
+G="${GHIDRA_HOME:-$HOME/ghidra_12.2_DEV}/support/analyzeHeadless"
 
 # one-shot import + analysis (the loader auto-detects the LE)
 $G _tools/ghidra_proj prage -import data/game/C/PRAGE.EXE -overwrite \
@@ -196,42 +147,25 @@ assertion failure.
 ### Verify
 
 ```bash
-PR_ORACLE_REQUIRED=1 ./build/run_tests            # or: make verify
+make verify            # the gate (sets PR_ORACLE_REQUIRED=1)
 ```
 
-`make verify` is the gate: a `--check 820` headless smoke run (crossing the
-boot attract into the title), the oracle-required test suite, the restart
-driver, every pixel and ratchet oracle (Smacker, title, attract, front end,
-demo fight, attract cycle 2, K11 service menu, the gameplay captures —
-idle-loss, character select, moves, keys, two-human, the U8 modes, the U12/U13
-and U9/U10 win/ending paths, the five ending captures and the U16 finisher),
-the differential harness, the E2 triage check, the tool unit tests, and
-`symbols.h` idempotence. `make gate-check` inventories **35 explicit capture
-paths** before that ladder. In the default `GATE_STRICT=1` mode an undeclared
-absence fails preflight; the measured full checkout has 34/35, with only the
-declared U14 gap. At the oracle-command level, strict mode requires three
-capture directories (`smk/twi5`, `smk/twg`, `title`), compares `title2` and the
-front-end family if present, and leaves 30 capture directories with their
-individual absent-capture skips. `GATE_STRICT=0` is the partial mode that
-tolerates undeclared absences so those skips can run. `GATE_STRICT` and
-`PR_PINS_EXACT` are exported, exact pins default to the strict mode, and an
-improvement in exact mode requires a re-pin. The unit run is sanitized against
-stray driver selectors; `PR_FN_MISS_REQUIRED=1` is verify-only.
+`make verify` runs the headless `--check` smoke, the oracle-required tests, the
+restart driver, the pixel/ratchet oracles, the register-stream audio oracle and
+`audio-render`, the differential harness, the E2 triage, the tool unit tests
+(including the docs-claim guard) and `symbols.h` idempotence. `make gate-check`
+inventories the **35 explicit capture paths** first; the full checkout is
+**34/35** with only the declared U14 gap. `GATE_STRICT=1` (the default) fails an
+undeclared absence; `GATE_STRICT=0` tolerates missing captures so their skips
+can run. `PR_PINS_EXACT` is strict by default, so an improvement requires a
+re-pin.
 
-The comparison model (DOSBox captures run at 70.09 Hz while the game ticks at
-60.05 Hz observed, 59.998 Hz from the PIT bytes) treats a capture frame as a
-byte-offset splice of two adjacent port frames. The ratchets
-(`DEMO_FIGHT_MIN_FIRST`, `ATTRACT2_MIN_FIRST`, the `gp_*` pins) hold the
-measured first unexplained frame and are raised as the port improves. Each
-pin's provenance is in the `Makefile`.
-
-Prerequisites for the full gate: `port/tests/ghidra_data.bin` (git-ignored;
-`make re-oracle` regenerates it), `unicorn` and `capstone` for the differential
-harness (`pip install -r tools/requirements-diff.txt`), and `data/game/C/CMOS`
-absent or 2040 zero bytes (the `make verify` precondition). `make deps` checks
-each one and warns when one is missing or wrong. Individual capture-backed
-oracle targets retain the skip behavior described above; strict `make verify`
-preflights their directories first.
+The full gate needs `port/tests/ghidra_data.bin` (git-ignored; `make re-oracle`
+regenerates it), `unicorn` and `capstone` (`pip install -r
+tools/requirements-diff.txt`), and `data/game/C/CMOS` absent or 2040 zero
+bytes; `make deps` checks them. The capture model (70.09 Hz captures vs the
+60.05 Hz game) and the ratchets are described in `AGENTS.md`; each pin's
+provenance is in the `Makefile`.
 
 To produce the title/attract captures yourself:
 
@@ -247,6 +181,6 @@ make title-oracle attract-oracle frontend-oracle # compare
 The FM synthesiser is vendored: **opal 2.0.3**, MIT
 (`https://github.com/RealBitdancer/opal`, commit `7e829f33`); its synthesis core
 is by Shayde/Reality (Reality Adlib Tracker 2), public domain. It lives at
-`port/src/platform/audio/opl/` with its licence at `opl/LICENSE.opal.txt`; the
-files are byte-identical to upstream apart from a provenance banner. See
-`docs/THIRD_PARTY_LICENSES.md`.
+`port/src/platform/audio/opl/` with its licence at
+`opl/LICENSE.opal.txt`; the files are byte-identical to upstream apart from a
+provenance banner. See `docs/THIRD_PARTY_LICENSES.md`.

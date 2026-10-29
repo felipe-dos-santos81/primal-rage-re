@@ -89,13 +89,15 @@ def ported_set(text=None):
 
 def inline_credits(text=None):
     """FN_ addresses credited only by a trailing/mid-comment `/* 0xADDR` (no
-    column-0 header, no fn_register). Every one must be a declared exception."""
+    column-0 header, no fn_register), excluding the addresses
+    tools/port_classification.txt declares host-owned/deferred/replaced (those
+    are not port credits). Every remaining one must be a declared exception."""
     text = port_tree_text() if text is None else text
     fns = fn_addresses()
     loose = {int(m, 16) for m in re.findall(r'/\* 0x([0-9A-Fa-f]{4,6})\b', text)} & fns
     col0 = {int(m, 16) for m in re.findall(r'^/\* 0x([0-9A-Fa-f]{4,6})\b', text, re.M)} & fns
     reg = {int(m, 16) for m in re.findall(r'fn_register\(\s*0x([0-9A-Fa-f]+)', text)} & fns
-    return frozenset(loose - col0 - reg)
+    return frozenset((loose - col0 - reg) - set(classification()))
 
 
 def classification():
