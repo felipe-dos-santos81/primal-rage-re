@@ -283,6 +283,17 @@
       "last_s_frame": 6108
     },
     {
+      "path": "data/k11-captures/gp-u25-endurance-end",
+      "kind": "k11",
+      "poll_log_sha256": "21fc6a739e22a71b659f746fd1d7ed6bcdca66d8348556283785b70e52808062",
+      "frame_count": 1360,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2474
+    },
+    {
       "path": "data/k11-captures/walk",
       "kind": "k11",
       "poll_log_sha256": "aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f",

@@ -76,6 +76,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u21-armadon-ending \
 	$(K11_CAPTURES)/gp-u22-diablo-ending \
 	$(K11_CAPTURES)/gp-u23-u16-finisher \
+	$(K11_CAPTURES)/gp-u25-endurance-end \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -128,7 +129,7 @@ chunk ?= 0
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
-        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle \
+        gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -668,6 +669,7 @@ GP_U20_MAX_MISSING = 70
 GP_U21_MAX_MISSING = 53
 GP_U22_MAX_MISSING = 52
 GP_U23_MAX_MISSING = 9
+GP_U25_MAX_MISSING = 12
 # <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
@@ -1176,6 +1178,46 @@ gp-u12-oracle: build ## Gameplay U12 oracle: gp-u12-endurance's team pass and fi
 		--min-reach "$(GP_U12_MIN_REACH)" --max-missing "$(GP_U12_MAX_MISSING)" \
 		--capture-sha256 "$(GP_U12_CAPTURE_SHA256)" --capture-frames "$(GP_U12_CAPTURE_FRAMES)"; \
 	fi
+
+# State coverage Task 5 (plan docs/superpowers/plans/2026-10-28-state-coverage.md §G3, record §D5):
+# gp-u25-endurance-end, the ENDURANCE match end. gp-u12-endurance's team pass and fight,
+# continued with four poked KOs of P2 (side 1) and the mode-0x33 600-frame wait into the
+# results screen (mode 0x17, the hook 0x25AE8). The loser is side 1, so the counter that
+# reaches 4 is af1 (DS_00104AF1), not af0; c1 walks side 1's roster 04 -> 06 -> 01 -> 03.
+# memsize=64 is the §W.13 harness value (the original OOMs at 16 MB on the fourth KO cycle).
+# Measured on data/k11-captures/gp-u25-endurance-end (an absent capture skips the target).
+# MIN_FIRST = 598 is the first unexplained capture frame (nearest port 440, rows 4..83), the
+# enforced compare's stop; MAX_START = 92 the window's first capture frame; MIN_REACH = 437 the
+# highest port frame a classified capture frame exhibits before 598; MAX_MISSING = 12 the
+# canonical non-black missing classes up to that reach. TRACE_MIN_FIRST/MOVES_MIN_FIRST = 2415
+# (0 differing through 2414, the replay's end f=0x96E), the MILESTONES ratchet 7 (gp_endurance's
+# seven rows all reproduced at the capture's frame). Raise MIN_FIRST/MIN_REACH when they improve.
+# >>> PIN-BASELINE-BEGIN gp-u25
+GP_U25_MIN_FIRST = 598
+GP_U25_TRACE_MIN_FIRST = 2415
+GP_U25_MOVES_MIN_FIRST = 2415
+GP_U25_MAX_START = 92
+GP_U25_MIN_REACH = 437
+GP_U25_CAPTURE_SHA256 = 21fc6a739e22a71b659f746fd1d7ed6bcdca66d8348556283785b70e52808062
+GP_U25_CAPTURE_FRAMES = 1360
+GP_U25_MILESTONES = 7
+# <<< PIN-BASELINE-END gp-u25
+gp-u25-oracle: build ## State coverage U25 oracle: gp-u25-endurance-end's four-KO roster walk and match end (skips without data/k11-captures/gp-u25-endurance-end)
+	@echo "== gameplay oracle: gp-u25-endurance-end (the ENDURANCE match end; modes 0x32/0x33) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_endurance
+	@if [ ! -d $(K11_CAPTURES)/gp-u25-endurance-end ]; then echo "gp-u25-oracle: no capture at $(K11_CAPTURES)/gp-u25-endurance-end (skipped)"; else \
+		$(PYTHON) tools/gp_endurance.py check --scenario gp-u25-endurance-end --capture $(K11_CAPTURES)/gp-u25-endurance-end \
+			--capture-sha256 "$(GP_U25_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u25-endurance-end GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u25-endurance-end --capture $(K11_CAPTURES)/gp-u25-endurance-end \
+		--port $(GP_DUMP)/gp-u25-endurance-end --min-first "$(GP_U25_MIN_FIRST)" \
+		--trace-min-first "$(GP_U25_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U25_MOVES_MIN_FIRST)" \
+		--max-start "$(GP_U25_MAX_START)" --min-reach "$(GP_U25_MIN_REACH)" --max-missing "$(GP_U25_MAX_MISSING)" \
+		--capture-sha256 "$(GP_U25_CAPTURE_SHA256)" --capture-frames "$(GP_U25_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_endurance.py path --scenario gp-u25-endurance-end --capture $(K11_CAPTURES)/gp-u25-endurance-end \
+			--port $(GP_DUMP)/gp-u25-endurance-end --min-milestones "$(GP_U25_MILESTONES)" \
+			--capture-sha256 "$(GP_U25_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u25-endurance-end; exit $$rc; fi
 
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
@@ -2275,6 +2317,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-modes-oracle
 	@echo "== gameplay oracle: gp-u12-endurance (the team pass and fight; skips without its capture; record §J4) =="
 	@$(MAKE) --no-print-directory gp-u12-oracle
+	@echo "== state coverage U25: the ENDURANCE match end (four-KO roster walk, modes 0x32/0x33; skips without its capture; record §D5) =="
+	@$(MAKE) --no-print-directory gp-u25-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u13-oracle
 	@echo "== gameplay oracle: gp-u14-win-live (a fought win; skips without its capture) =="
@@ -2306,7 +2350,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

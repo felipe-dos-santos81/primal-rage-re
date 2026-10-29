@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: Task 7 rotation anchor: TRACE_PINS re-pinned again (21 minima rise as the rotation anchor anchors the 0x31 and ending-cinematic sections; the reduction rework pre-rotates the section's registers by the derived k)
-069edcea8904b152b954dd4c81699399afcb7cc66fee7e452a9c990a527ae2b7
+# reason: state-coverage Task 5: gp-u25-endurance-end pins (MIN_FIRST 598, TRACE/MOVES 2415, MAX_START 92, MIN_REACH 437, MAX_MISSING 12, MILESTONES 7) and the +1 MAX_MISSING row, measured on data/k11-captures/gp-u25-endurance-end
+8b54899775b29d2145447b79bd767733ca0d61d340ff3ef634efb1c9e8750bcb

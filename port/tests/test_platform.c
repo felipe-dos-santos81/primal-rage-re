@@ -353,6 +353,16 @@ static const fnm_pair k_miss_gp_u22_diablo_ending[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u25-endurance-end (state coverage Task 5, record §D5), measured on its
+ * full replay to the X record (f=0x9AA): the same two wipe hooks of §G.24,
+ * 0x29D60 (bare `ret`) and 0x5D812 (runtime stub), both from
+ * frontend_mode_1b_step, hits=1 each; the global actor_spawn/set_dead 0x5D812
+ * rows are the fight's (as gp-u12-endurance's, record gameplay-truth-ii §J4). */
+static const fnm_pair k_miss_gp_u25_endurance_end[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -417,6 +427,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u20-chaos-ending", 0, k_miss_gp_u20_chaos_ending, FNM_N(k_miss_gp_u20_chaos_ending) },
     { "gp-u21-armadon-ending", 0, k_miss_gp_u21_armadon_ending, FNM_N(k_miss_gp_u21_armadon_ending) },
     { "gp-u22-diablo-ending", 0, k_miss_gp_u22_diablo_ending, FNM_N(k_miss_gp_u22_diablo_ending) },
+    { "gp-u25-endurance-end", 0, k_miss_gp_u25_endurance_end, FNM_N(k_miss_gp_u25_endurance_end) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a
