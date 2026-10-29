@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* PORT: aligned(0x4000). The original has no such object; this caps the
  * linker's requested alignment. A 64 MB array makes the compiler ask for
@@ -167,6 +168,22 @@ void fn_hit_report_f(FILE *out, const char *tag)
 void fn_hit_report(const char *tag)
 {
     fn_hit_report_f(stdout, tag);
+}
+
+/* Write the coverage hit dump for <tag> to coverage/<tag>.hits; <who> prefixes
+ * the error line on a write failure. Returns 1 on failure. */
+int fn_hit_report_file(const char *tag, const char *who)
+{
+    char path[64];
+    snprintf(path, sizeof path, "coverage/%s.hits", tag);
+    mkdir("coverage", 0755);           /* ignore EEXIST; Task 3 git-ignores it */
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "%s could not write %s\n", who, path);
+        return 1;
+    }
+    fn_hit_report_f(f, tag);
+    return fclose(f) != 0;
 }
 
 u32 fn_origin(void (*fn)(void))

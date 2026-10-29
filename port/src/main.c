@@ -171,26 +171,6 @@ static int write_misslog(const char *path)
     return fclose(f) != 0;
 }
 
-#ifdef PR_COVERAGE
-/* PORT: the coverage hit dump (record state-coverage §D1.9). When PR_COVERAGE
- * is on and PR_HIT_TAG names a tag, the run's recorded hits are written as one
- * `fn-hit <tag> 0xADDR n=N` line per address to coverage/<tag>.hits. Returns 1
- * on a write failure. */
-static int write_hits(const char *tag)
-{
-    char path[64];
-    snprintf(path, sizeof path, "coverage/%s.hits", tag);
-    mkdir("coverage", 0755);           /* ignore EEXIST; Task 3 git-ignores it */
-    FILE *f = fopen(path, "w");
-    if (!f) {
-        fprintf(stderr, "prageport: --check could not write %s\n", path);
-        return 1;
-    }
-    fn_hit_report_f(f, tag);
-    return fclose(f) != 0;
-}
-#endif
-
 /* PORT: the original has no headless mode. The port runs the real master loop
  * one frame at a time without opening a window: game_init() runs the init chain
  * once, then each game_loop_step() call advances exactly one frame (the step
@@ -318,7 +298,7 @@ static int run_check(const char *game_dir, int frames)
     fn_misslog_report("check");
     fail += write_misslog("frames/fn_miss.txt");
 #ifdef PR_COVERAGE
-    if (hit) fail += write_hits(hit_tag);
+    if (hit) fail += fn_hit_report_file(hit_tag, "prageport: --check");
 #endif
     fn_misslog_arm(0);
 #ifdef PR_COVERAGE

@@ -90,6 +90,9 @@ void fn_hit_clear(void);            /* empties the table, stays armed */
 /* One `fn-hit <tag> 0xADDR n=N` line per recorded address, to `out`. */
 void fn_hit_report_f(FILE *out, const char *tag);
 void fn_hit_report(const char *tag);   /* fn_hit_report_f(stdout, tag) */
+/* Write the coverage hit dump for <tag> to coverage/<tag>.hits; <who> prefixes
+ * the error line on a write failure. Returns 1 on failure. */
+int fn_hit_report_file(const char *tag, const char *who);
 
 #ifdef PR_COVERAGE
 #define PR_HIT(addr) fn_hit_note(addr)
