@@ -1,13 +1,18 @@
 # State coverage — design
 
-Status: **Proposed**, 2026-10-28. Follows claim-coverage (in flight), proof
-completion, endgame truth, music truth and fought-match truth. The port is
-complete against its declared population (`798 1203 66` raw, `759 759 100`
-portable) and the differential harness reads `1033/1033` functions,
-`14993/14993` mutants, 0 named gaps. What remains is not code coverage of the
-game: it is **evidence coverage of the game's states**, plus one measured port
-divergence and two model questions (a 13-pixel band and the OPL core) that the
-existing oracle families cannot decide.
+Status: **Implemented and gated**, 2026-10-28, gated 2026-10-29 (two full
+`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs plus
+`make audio-render`, both green; record
+`docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D8). Follows
+claim-coverage, proof completion, endgame truth, music truth and fought-match
+truth. The port is complete against its declared population (`798 1203 66`
+raw, `759 759 100` portable) and the differential harness reads `1033/1033`
+functions, `14993/14993` mutants, 0 named gaps. What remains is not code
+coverage of the game: it is **evidence coverage of the game's states**, plus
+one measured port divergence and two model questions (a 13-pixel band and the
+OPL core) that the existing oracle families cannot decide. §7's predicted
+figures are superseded by the measurements in the record §D1–§D8, itemised in
+§11 below.
 
 ## 1. Intent and why
 
@@ -317,8 +322,11 @@ repeating its capture-first risk.
 
 1. **Baseline and the record.** Re-measure and paste: the counters above, the
    52-mode union and the never-presented list, the seamed/registered split
-   (the recon's reading is 631/759 instrumented, 128 unseamed, the majority in
-   `game/`), the current `--check` frames and
+   (**measured: 631 of 759 portable addresses instrumented** — 610 seamed + 32
+   `fn_register`, 11 in both — and the 128 unseamed split into **124 addresses
+   carrying a `PR_HIT` line** plus the **4 `UNINSTRUMENTED` exceptions**
+   `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`; record §D1.4/§D1.9), the current
+   `--check` frames and
    `fn_miss` log, the U16 series against the U23 replay, the 5120 dump and the
    band's 13 offsets, the OPL facts and the U14 rule rows. Write
    `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1.
@@ -359,37 +367,51 @@ repeating its capture-first risk.
    the census rows and the declared-gap text; no capture.
 5. **ENDURANCE advance/end (`0x32`/`0x33`).** Clone `gp-u12-endurance`, keep its
    pins, and add four poked KOs of one side (the U10 `KO_P2`/`DEATH_DONE`
-   recipe keyed `after_entry 0x31 k`); the loser's roster byte is **predicted**
-   to walk `c1 04→06→01→03` from the roster table, `DS_00104AF0`/`DS_00104AF1`
-   reaches 4, mode `0x33` runs its 600-frame
-   wait and the results screen. Append `af0`/`af1` (`0x104AF0`/`0x104AF1`)
-   to `SNAP_FIELDS` — they are **not** `w2`/`w3` (`0x104AF2`/`0x104AF3`) — and
+   recipe keyed `after_entry 0x31 k`). **Measured** (`gp-u25-endurance-end`,
+   1,360 frames, `gp-u25-oracle` green; record §D5): the four-KO roster walk is
+   confirmed (the loser's roster byte `c1` walks `04 → 06 → 01 → 03` as
+   predicted), the counter that reaches 4 is **`af1` (`0x104AF1`)** — not
+   `af0`, which is the other side's byte — and the stop is mode **`0x17`**
+   (not the plan's predicted `0x14`, ledger R6), before the mode-`0x33`
+   600-frame wait and the results screen. Append `af0`/`af1`
+   (`0x104AF0`/`0x104AF1`) to `SNAP_FIELDS` — they are
+   **not** `w2`/`w3` (`0x104AF2`/`0x104AF3`) — and
    take a fresh capture. A `gp_endurance.py check` reads mode/`c1`/`af0`/`af1`/
    `b25`/`w10d`; a `gp-u25-oracle` pins the ratchets. The 0x33 screen and the
    0x31 re-entry are the new pixel claims.
 6. **Side-1 tour/ending (`ad4=1`).** Build the "RIGHT PLAYER ARCADE" route
    (`u8` row 1 + `p2.right`/`p2.start`) with seven poked wins for side 1
    (`KO_P1`, `lands_marked(1,c)`, the seven `after_entry 0x0C`/`0x0D`), stop at
-   mode `0x1F`/`0x1E`; `gp_win.py` gains a `side` parameter (c1, s0_5a,
-   `w2=0`/`w3=2`, `ad4=1`, `t104>>8`, `0xC0|c`), and the check asserts the
-   side-1-only rows (mode `0x12`'s pset-`0x74` banner, mode `0x1E` states 7/8).
-   The falsifiable cross-check: the mode-`0x1F` frames are byte-identical to
-   the same character's P1 ending (the ending content is side-independent by
-   the `0x208F8` differential row); a difference is a finding, not a tolerance.
-   New miss set, oracle and pins.
+   mode `0x1F`/`0x1E`; `gp_win.py`/`tools/gp_side1.py` carry the side parameter
+   (`c1`, `s0_5a`, `w2=0`/`w3=2`, `ad4=1`, `t104>>8`, `0xC0|c`), and the check
+   asserts the side-1-only rows (mode `0x12`'s pset-`0x74` banner, mode `0x1E`
+   states 7/8). **Measured** (`gp-u26-side1-ending`, ARMADON, `gp-u26-oracle`
+   green; record §D5): `b1f=2`, `ad4=1`, `c1=4`, and the falsifiable
+   cross-check passes — **268 mode-`0x1F` frames byte-identical to `gp-u21`**
+   (ARMADON's P1 ending), proving the ending content is side-independent (the
+   `0x208F8` differential row's claim); the cross-check is
+   `tools/gp_side1.py` with a mutation proof. A difference is a finding, not a
+   tolerance. New miss set, oracle and pins.
 7. **Timeout/health draw.** Poke `0x10780A = 0x10789E = 0x30` and the clock
    top byte `0x1088F2 = 0` in round 3 after two poked KOs (1-1); stop on
    `0x0B`; `gp_draw.py` gains a `--timeout` mode requiring `ad4=0xFFFFFFFF`,
-   `clock=0`, `|A-B| <= 3`, `b1e==adc==3`, and modes `0x0A` and `0x0B`. Do
-   **not** pin `b16`: `0x280BA` calls `flow_round_over` without `0x27C48`, so
-   `DS_00104B16` keeps round 2's value. A new scenario, oracle and pins; the KO
-   draw (`ad4=2`) is asserted *not* to match.
-8. **Name-entry letters (optional, only if 6 does not already cover it).** Clone
-   the U10 script and inject letter keys at mode `0x1E` so the entry screen is
-   driven, not just displayed, and extend the pixel window over the exit
-   frames the current pin (`5437`) excludes. No port change. If 6's side-1 run
-   already exhibits states 7/8, this task is dropped with that row as the
-   reason.
+   `clock=0`, `|A-B| <= 3`, `b1e==adc==3`, and modes `0x0A` and `0x0B`.
+   **Measured** (`gp-draw-timeout`, `gp-draw-timeout-oracle` green; record
+   §D5/§D7.6): the `clock = 0` predicate is read from the **`W` record's clock
+   poke** — the round-3 arm re-reads `+0x5A` after `0x39FF4`, so the health
+   values are bound to the clock-poke frame and asserted `< 0x78`, not the
+   earliest KO poke. Do **not** pin `b16`: `0x280BA` calls `flow_round_over`
+   without `0x27C48`, so `DS_00104B16` keeps round 2's value. A new scenario,
+   oracle and pins; the KO draw (`ad4=2`) is asserted *not* to match.
+8. **Name-entry letters (taken; 6's side-1 run does not exhibit states 7/8).**
+   Clone the U10 script and inject letter keys at mode `0x1E` so the entry
+   screen is driven, not just displayed, and extend the pixel window over the
+   exit frames the current pin (`5437`) excludes. No port change. **Measured**
+   (`gp-u27-name-entry`, record §D5): the exhibit drives entry sub-states `b25
+   00 → 04 → 05 → 06 → 07 → 0A`, three letters and the finaliser committing
+   "ABD". It is an **exhibit, not a gated oracle**: its replay has a pinned miss
+   set (`k_miss_gp_u27_name_entry`), but there is no `gp-u27-oracle` and it is
+   **not in `make verify`**.
 
 ### 7.3 Stage 3 — the known divergence (code truth)
 
@@ -412,7 +434,17 @@ repeating its capture-first risk.
     `0x13FF/0x1400/0x1401` (+`+0x42` bit 3) boundary test with a mutation
     proof, re-pin `GP_U23_MOVES_MIN_FIRST` and the trace field the fix moves,
     and prove every other pin unchanged. No fitted offset; if the class is not
-    one of the three, the task stops and records.
+    one of the three, the task stops and records. **Measured** (record §D3):
+    the class is **record motion** (`ab4` agrees at every frame, `rec+0x1C`
+    differs by `0x1180`), and the cause is a **null table base, not a
+    mistranscribed instruction** — the reaction stream's opcode `0x21` reads
+    `mem[1]`/`mem[3]` (the IVT at linear 0) with no base loaded. The fix is
+    the host stand-in `bios_ivt_stand_in()` (`flow.c`, called by `game_init`)
+    seeding `mem[1] = 0xCA`/`mem[3] = 0xF0` (the inverted dwell `-3456`/`-4480`
+    = `y * 64`); the x bytes `mem[0]`/`mem[2]` are the adjacent record-motion
+    defect, recorded not fixed. Only `GP_U23_TRACE_MIN_FIRST`
+    `5449 → 6050` and `GP_U23_MOVES_MIN_FIRST` `5467 → 6050` re-pinned; every
+    other pin unchanged.
 
 ### 7.4 Stage 4 — the two model questions
 
@@ -422,6 +454,12 @@ repeating its capture-first risk.
     record with `f=0x1826`; apply PASS-A/PASS-B/FAIL (§3 G7) and write the
     result into the record. PASS-B names the writer; PASS-A re-derives the band
     with the pipeline cause; FAIL keeps it a named gap. No pin moves.
+    **Measured** (record §D4): **INCONCLUSIVE**, a fourth outcome outside the
+    design's three — the DOSBox-X memory file maps the guest's main RAM only,
+    not the VGA aperture (`vgamem`), so every one of the 14 bytes (and all
+    140,280 across the capture) reads `0xFF` and the read is not a measurement
+    of the aperture. The band stays a named gap for that reason; its bounds
+    `(5120, 1, 5, 56b900b1…)` and every pin are unchanged.
 12. **The OPL single-voice test.** In `test_audio.c`, derive `f` from the
     register bytes (`fnum * 49716 / 2^(20-block)`), write one note
     (`0x20/0x40/0x60/0x80/0xA0/0xB0/0xC0`), render 1 s at 49,716 Hz and measure
@@ -429,7 +467,12 @@ repeating its capture-first risk.
     `49716/N + fnum quantization`). Pitch mutations (channel swap, block+1)
     must fail; a carrier-TL mutation must move the RMS by its derived factor.
     The claim is pitch fidelity of the core, not audibility; the topology fork
-    and Opal accuracy are named.
+    and Opal accuracy are named. **Measured** (record §D6): target A4 with
+    `fnum=580`, `block=4` → `f = 439.9915 Hz`, tolerance `1.7586 Hz`; the core
+    renders **439 rising crossings = 439.0000 Hz** (`|0.9915| ≤ 1.7586`); the
+    channel-swap and block+1 mutations fail (873 Hz and 879 Hz), and the
+    carrier-TL amplitude sanity reads mean-square ratio **0.2501** against the
+    derived 0.25.
 
 ### 7.5 Stage 5 — the declaration and the gate
 
@@ -439,10 +482,13 @@ repeating its capture-first risk.
     supplement `0x5D004`, each with the measured reason), storage §S.10 (a)
     terminal and (b) static trace recorded, (d)/(e) documentation, U17
     declared, the B2–B8 labels replaced by the census's measured NOT-HIT set,
-    and U14's rule mismatch recorded with the two re-scope options. Add the
-    `coverage`
-    baseline's provenance to `tools/pin_baseline.sha256` if the baseline is a
-    pin. No code.
+    and U14's rule mismatch recorded with the two re-scope options. **Measured**
+    (record §D7): 20 open rows over 19 addresses (the `TERMINAL_CENSUS`
+    terminals), 13 `WEAKER`, 8 `UNROWED`; the B2–B8 labels are replaced by the
+    census's measured NOT-HIT set (110 addresses) plus the declared modes. The
+    coverage baseline's provenance is a **separate pin**
+    (`tools/coverage_baseline.txt`), **not** part of `tools/pin_baseline.sha256`
+    (the capture-pin tripwire; record §D7.5). No code.
 14. **The gate and the docs.** Two full gates and `audio-render`; every new pin
     proved at ±1; `port_progress.py`, the diff counter, the gate inventory, the
     capture manifest, the pin baseline and `symbols.h` checked; the design
@@ -455,9 +501,10 @@ repeating its capture-first risk.
 declared `UNINSTRUMENTED`/`NOT-HIT` against a pinned baseline; ENDURANCE's
 advance/end and the side-1 tour's content are reproduced for their captured
 windows; the timeout draw is distinct from the KO draw and both `0x0A`/`0x0B`
-predicates are exhibited; the U16 reaction's offset is reproduced from the raw
-instruction the measurement names (or the contrary class is recorded); the 5120
-band's cause is one of two named outcomes; the OPL core renders a single voice
+predicates are exhibited; the U16 reaction's record-motion gap is fixed by the
+IVT stand-in (the raw instruction the measurement names); the 5120 band's cause
+is **INCONCLUSIVE** (the memory file excludes the VGA aperture — the fourth
+outcome, and the band stays a named gap); the OPL core renders a single voice
 at the derived pitch within a derived tolerance; the differential and storage
 frontiers are terminal with per-item reasons; the two-human-only modes
 (`0x21`, `0x25`) and the continue screen (`0x0E`) are declared with their
@@ -518,3 +565,59 @@ or universe the proof-completion phase declared.
   tolerance.
 - The OPL measurement window/tolerance derivation and the mutation set.
 - The declaration record's per-item reason table; the U14 re-scope wording.
+
+## 11. Measured outcome (Task 14)
+
+§7's predicted figures are superseded by these measurements (record §D1–§D8);
+the gate (`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` plus
+`make audio-render`, each run twice) is green.
+
+- **Mode census:** **35 of 52** table modes exhibited; the never-presented set
+  is `01 02 04 0A 0B 0E 18 19 1C 1D 20 21 25 26 2F 32 33` (the content-bearing
+  ones are `0A 0B 0E 21 25 32 33`, declared in §2/§D2) — as predicted.
+- **Seam/registration split:** **631 of 759** portable addresses instrumented
+  (610 seamed + 32 `fn_register`, 11 in both); the 128 unseamed split into
+  **124 addresses carrying a `PR_HIT` line** (125 `PR_HIT` lines — `0x50188`
+  carries two) plus the **4 `UNINSTRUMENTED`** exceptions `0x29D60`, `0x2EA30`,
+  `0x2EA64`, `0x500BB` (record §D1.4/§D1.9). The census reads **HIT 645 /
+  NOT-HIT 110 / UNINSTRUMENTED 4** (sums to 759), union sha `e93d7415f1…`
+  (record §D7.5) — the Task 3 baseline, now **stale by eight `improved:`
+  addresses** (R17/§D8.3): the phase's `gp-u25-endurance-end` and
+  `gp-draw-timeout` reach `0x292D4`/`0x29638`/`0x296B8`/`0x19820`/`0x19958`
+  (modes `0x32`/`0x33`) and `0x27ED8`/`0x28BD4`/`0x28C38` (modes `0x0A`/`0x0B`),
+  so a fresh census reads **HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4**.
+- **U16 (record §D3):** the class is **record motion**, not the anchor term or
+  call order; the cause is the reaction's null table base (the IVT at linear
+  0), fixed by `bios_ivt_stand_in()` seeding `mem[1] = 0xCA`/`mem[3] = 0xF0`.
+  Only `GP_U23_TRACE_MIN_FIRST` `5449 → 6050` and `GP_U23_MOVES_MIN_FIRST`
+  `5467 → 6050` re-pinned.
+- **ENDURANCE (record §D5):** the roster counter is **`af1`** (`0x104AF1`)
+  walking `0 → 4`; the stop is mode **`0x17`**; the capture
+  `gp-u25-endurance-end` is **1,360 frames** and `gp-u25-oracle` is green.
+- **Side-1 ending (record §D5):** `gp-u26-side1-ending` (ARMADON) shows
+  `b1f=2`, `ad4=1`, `c1=4`, and **268 mode-`0x1F` frames are byte-identical to
+  `gp-u21`** (ARMADON's P1 ending) — the side-independence cross-check passes.
+- **Timeout draw (record §D5):** `gp-draw-timeout` reads the `clock = 0`
+  predicate from the **`W` record's clock poke** (the round-3 arm re-reads
+  `+0x5A` after `0x39FF4`, so the health values are bound to that frame and
+  asserted `< 0x78`); `b16` is not asserted.
+- **Name-entry (record §D5):** `gp-u27-name-entry` is an **exhibit, not a gated
+  oracle** — it drives entry sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`,
+  three letters and the finaliser committing "ABD", with a pinned replay miss
+  set (`k_miss_gp_u27_name_entry`) but **no `gp-u27-oracle` and no `verify`
+  entry**.
+- **5120 (record §D4):** **INCONCLUSIVE** — the DOSBox-X memory file excludes
+  the VGA aperture, so the 14 diagnostic bytes read `0xFF` and the band stays a
+  declared gap.
+- **OPL (record §D6):** the core renders 439.9915 Hz (measured 439.0000 Hz)
+  within the 1.7586 Hz derived tolerance; the pitch mutations and the TL
+  amplitude sanity pass as derived.
+- **Proof debt (record §D7):** `make diff-verify` reads `1033/1033 functions
+  VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with
+  callees closed (188 have none); 809/845 closed on full rows; 8 ported
+  functions with no row`; **20 open rows over 19 addresses** (terminal),
+  **13 `WEAKER`**, **8 `UNROWED`**.
+- **Gate inventory:** **37/38 capture paths present**, `gp-u14-win-live` the
+  one declared absence (the phase added `gp-u25-endurance-end`,
+  `gp-u26-side1-ending` and `gp-draw-timeout` to `CAPTURE_DIRS`; the design's
+  §2 "34/35" is the pre-phase reading).

@@ -368,3 +368,27 @@ true original, and ported the divergence. Two pieces:
   **B2–B8 labels** are replaced by the census's measured NOT-HIT set (110
   addresses, §D7.5) and the declared modes; the census baseline is a separate
   pin (its own `tools/coverage_baseline.txt`, not `tools/pin_baseline.sha256`).
+- The state-coverage phase is implemented and gated (spec
+  `../docs/superpowers/specs/2026-10-28-state-coverage-design.md`, record
+  `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
+  two full gates plus `make audio-render`, green 2026-10-29). The census
+  (`make coverage`, outside `verify`) reads **HIT 645 / NOT-HIT 110 /
+  UNINSTRUMENTED 4** (the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`) —
+  the Task 3 baseline, **stale by eight `improved:` addresses** (R17/§D8.3): a
+  Task 14 re-run reads **HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4** (the phase's
+  `gp-u25-endurance-end`/`gp-draw-timeout` reach modes `0x32`/`0x33` and
+  `0x0A`/`0x0B`), not re-pinned.
+  The exhibits: ENDURANCE's team end (`gp-u25-endurance-end`, `af1` `0 → 4`,
+  stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
+  `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to
+  `gp-u21`**), the timeout draw (`gp-draw-timeout`, `clock=0` from the `W`
+  record, `b16` not asserted) and the name-entry exhibit (`gp-u27-name-entry`,
+  sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — an
+  exhibit, not a gated oracle). The U16 fix (§D3): the reaction's record-motion
+  gap is a null table base (the stream reads the IVT at linear 0), fixed by
+  `bios_ivt_stand_in()` seeding `mem[1] = 0xCA`/`mem[3] = 0xF0`; only
+  `GP_U23_TRACE_MIN_FIRST`/`GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 →
+  6050`). The 5120 band is **INCONCLUSIVE** (§D4): the DOSBox-X memory file
+  excludes the VGA aperture, so the diagnostic's 14 bytes read `0xFF` and the
+  band stays a declared gap. The OPL pitch test (§D6) renders 439.9915 Hz
+  (measured 439.0000 Hz) within the 1.7586 Hz derived tolerance.

@@ -1060,6 +1060,65 @@ audio traces (it is a diagnostic, like `gp-u24-u16-state`).
 
 ---
 
+## §D5 The capture exhibits (Tasks 5, 6, 7, 8)
+
+The four capture tasks' measured outcomes, incorporated here (ledger R15: the
+capture tasks record their corrections in their task reports, and the closing
+task incorporates them; §D7.6 restates the corrections). Each capture is a new
+`CAPTURE_DIRS` entry with a new `gp-u*-oracle` in `make verify` (each skips
+without its capture) — except the name-entry exhibit, which has no oracle.
+
+### §D5.1 ENDURANCE's team advance and match end (Task 5)
+
+`gp-u25-endurance-end` clones `gp-u12-endurance` and adds four poked KOs of one
+side (the U10 `KO_P2`/`DEATH_DONE` recipe keyed `after_entry 0x31 k`), with
+`memsize=64` (the first capture OOM'd at the 16 MB default, record §W.13).
+**Measured corrections:** the four-KO roster walk is confirmed (the loser's
+roster byte `c1` walks `04 → 06 → 01 → 03`, as predicted), the counter that
+reaches 4 is **`af1` (`0x104AF1`)** walking `0 → 4` (not the plan's `af0`, which
+is the other side's byte), and the stop is mode **`0x17`** (not the plan's
+`0x14`; ledger R6). The capture is **1,360
+frames** and `gp-u25-oracle` is green (its `gp_endurance.py check` reads
+mode/`c1`/`af0`/`af1`/`b25`/`w10d`); the mode-`0x33` 600-frame wait and the
+results screen are the new pixel claims.
+
+### §D5.2 The side-1 tour and ARMADON ending (Task 6)
+
+`gp-u26-side1-ending` builds the "RIGHT PLAYER ARCADE" route (`u8` row 1 +
+`p2.right`/`p2.start`) and drives seven poked wins for side 1. **Measured:** the
+capture reaches mode `0x1F` with `b1f=2`, `ad4=1`, `c1=4` (ARMADON), and the
+falsifiable cross-check — the ending content is side-independent — passes:
+**268 mode-`0x1F` frames are byte-identical to `gp-u21`** (ARMADON's P1 ending).
+The cross-check is `tools/gp_side1.py` with a mutation proof (11 `MAX_MISSING`
+classes itemized). The capture's mode-`0x1E` records all carry `st=0000` (756 S
+records; 49 replay frames), so states 7/8 never appear — which is why Task 8
+was taken.
+
+### §D5.3 The timeout/health drawn round (Task 7)
+
+`gp-draw-timeout` pokes `0x10780A = 0x10789E = 0x30` and the clock top byte
+`0x1088F2 = 0` in round 3 after two poked KOs. **Measured correction:** the
+`clock = 0` predicate is read from the **`W` record's clock poke** — the round-3
+arm re-reads `+0x5A` after `0x39FF4`, so the health values are bound to the
+clock-poke frame and asserted `< 0x78`, not the earliest KO poke. `gp_draw.py
+--timeout` requires `ad4=0xFFFFFFFF`, `clock=0`, `|A-B| <= 3`, `b1e==adc==3`,
+modes `0x0A`/`0x0B`; `b16` is **not** pinned (`0x280BA` calls `flow_round_over`
+without `0x27C48`, so `DS_00104B16` keeps round 2's value); the KO draw
+(`ad4=2`) is asserted not to match.
+
+### §D5.4 The name-entry letters exhibit (Task 8)
+
+`gp-u27-name-entry` clones the U10 script and injects letter keys at mode `0x1E`
+so the entry screen is driven, not just displayed. **Measured:** the exhibit
+drives sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters and the
+finaliser committing "ABD". It is an **exhibit, not a gated oracle**: its replay
+has a pinned miss set (`k_miss_gp_u27_name_entry`, the two §G.24 wipe hooks
+`0x29D60`/`0x5D812` from `frontend_mode_1b_step`), but there is no
+`gp-u27-oracle` and `gp-u27-name-entry` is **not in `make verify`** (the exhibit
+is not a regression gate, unlike the other gp captures).
+
+---
+
 ## §D6 The OPL single-voice pitch test (Task 12)
 
 The offline experiment the plan's §G7(b)/Task 12 asked for: does the vendored
@@ -1182,9 +1241,9 @@ not vacuous.
 
 The phase's closing record: what stays open after Tasks 1–12, each item with a
 measured reason and an address. This task changes no code, no capture and no
-pin; it consumes §D1's baseline, §D2's modes, §D3's U16 fix, §D4's 5120 FAIL
-and §D6's pitch test, and re-measures the counters it cites. No row, class or
-universe is widened.
+pin; it consumes §D1's baseline, §D2's modes, §D3's U16 fix, §D4's 5120
+INCONCLUSIVE and §D6's pitch test, and re-measures the counters it cites. No
+row, class or universe is widened.
 
 ### §D7.1 The counters (re-measured for this task, not copied)
 
@@ -1456,8 +1515,8 @@ The measurement tasks' corrections, restated so the declaration is self-containe
   recorded not fixed. Only `GP_U23_TRACE_MIN_FIRST` and
   `GP_U23_MOVES_MIN_FIRST` re-pinned (`5449/5467 → 6050`); every other pin is
   unchanged.
-- **The 5120 experiment (Task 11, §D4):** **FAIL** — the DOSBox-X memory file
-  holds the guest's main RAM only, not the VGA aperture (`vgamem`), so the
+- **The 5120 experiment (Task 11, §D4):** **INCONCLUSIVE** — the DOSBox-X memory
+  file holds the guest's main RAM only, not the VGA aperture (`vgamem`), so the
   "real aperture at the S record" reads `0xFF` at every offset and the
   capture-pipeline-artifact vs port-divergence question stays undecided; the
   band's bounds `(5120, 1, 5, 56b900b1…)` and every pin are unchanged and the gap
@@ -1477,3 +1536,150 @@ no capture or pin changes, and `make diff-verify`, `port_progress.py`,
 pre-declaration readings. The B-labels are replaced by the census's NOT-HIT set
 and the declared modes, which is what those labels always meant but never
 expanded to.
+
+---
+
+## §D8 The gate and the docs (Task 14)
+
+The phase's closing record: the two full gates, the two `audio-render` runs, and
+every counter re-verified. Documentation only — no code, no capture, no pin.
+
+### §D8.1 The two full gates
+
+Both runs are `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify`,
+run sequentially (never concurrently; the oracles are load-sensitive) from the
+repo root. The full gate is **~88 minutes** with `PR_DIFF_FULLSCAN=1` (the
+write-tracking-only form is ~26; the full-scan `diff-verify` alone runs 234
+harness tests in ~591 s plus the whole-memory scans). Load was 0.78 at start and
+peaked ~12–13 during the diff-verify pool run.
+
+```text
+$ PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify   # run 1, log /tmp/opencode/task14-gate1.log
+gate: captures 37/38 present, 1 missing (strict=1, pins_exact=1)
+gate: declared gap (absent): data/k11-captures/gp-u14-win-live
+capture_manifest: 37 present checked, 1 declared skipped, 0 problems
+capture_manifest: pin baseline ok (digest eed6eff69cedef33d57c590862ad3c4a3a0fd1ce1ec59a6d32f844cbca2f3579)
+capture_manifest: verify preflight ok
+...
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 809/845 closed on full rows; 8 ported
+functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape
+exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37).
+entry-triage: 736 candidates (732 by U0's rule); finisher=9 move-callback=71 span-writer=388
+  call-table=7 anim-target=112 mid-instruction=3 data=75 code-immediate=15 direct=2 interior=6 data-pointer=48
+entry-triage: targets 390 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+...
+== symbols.h must regenerate byte-identically ==
+python3 tools/gen_symbols.py port/decomp port/src/symbols.h
+1304 globals, 1206 functions -> port/src/symbols.h
+  dropped 11 globals, 1 functions outside the LE objects
+all checks passed
+=== gate run 1 exit: 0 at Thu Oct 29 02:21:18 PM -03 2026 ===
+```
+
+Run 2 (log `/tmp/opencode/task14-gate2.log`, start 14:23:37, exit 0 at 15:50:53)
+prints the same key lines — `gate: captures 37/38 present, 1 missing`, the
+identical `diff-verify` counter, the identical `entry-triage` line, and the
+identical `PR_AUDIO_SONG_WAV` peak/sha — and exits 0. No `improved:`/`re-pin`
+line appears in either run, so no pin drifted.
+
+**Plan-vs-raw correction (R16): the gate inventory is `37/38 present`, not the
+brief's `36 present / 1 declared`.** The phase added three `CAPTURE_DIRS` entries
+(`gp-u25-endurance-end`, `gp-u26-side1-ending`, `gp-draw-timeout`) to the design
+§2 baseline's `34/35`, so the count is 38 paths, 37 present, `gp-u14-win-live`
+the one declared absence. The brief's "36 present / 1 declared" (37 total) is
+off by one.
+
+The three new oracles' key result lines (run 1):
+
+```text
+gp_endurance: gp-u25-endurance-end: evidence: KO 4: af1=4 ends the match -> mode 0x33 (the 600-frame wait) at f=716 ok
+gp_endurance: gp-u25-endurance-end: evidence: 7/7 milestones ok
+gp_compare: gp-u25-endurance-end: frames: first unexplained 598, ratchet N 598 ok
+gp_side1: 268 mode-0x1F frames compared, all byte-identical in rendered RGB
+gp_side1: concat sha256 975684936cf55071cca1932c2a3c0bdeb80910c313fd1213209d97d14bd8f427
+gp_draw: gp-draw-timeout: timeout: the drawn round: ad4 = 0xFFFFFFFF, b1e = adc = 3, |A - B| <= 3, clock 0x1088F2 poked 0, mode 0x0A at f=B02, mode 0x0B at f=B26 ok
+gp_compare: gp-draw-timeout: frames: first unexplained 346, ratchet N 346 ok
+```
+
+### §D8.2 The two `audio-render` runs
+
+`make audio-render` runs standalone twice after the gates; both are byte-identical
+(the determinism pin; the claim is the port's own deterministic non-silence, not
+audibility — record §M5):
+
+```text
+$ make audio-render   # run 1 and run 2, identical
+PR_AUDIO_WAV: wrote /tmp/pr_title_fm.wav (12 s, 49716 Hz)
+PR_AUDIO_SONG_WAV: wrote /tmp/pr_selmo_fm.wav (12 s, 49716 Hz) peak 2790 sha256 530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef
+all checks passed
+```
+
+The selmo (s16selmo `0x0980025C`, volume `0x50`) renders at **peak 2790**, sha256
+`530a94301f4be46f9a5c666c94516f8a1f7fca6f136d3be0562faed802c47cef`, identical
+across both runs (the pinned `SELMO_WAV_PEAK`/`SELMO_WAV_SHA256` in
+`test_audio.c`).
+
+### §D8.3 The counters (each command and its line)
+
+```text
+$ python3 tools/port_progress.py
+798 1203 66
+759 759 100
+ported 798 (759 portable + 39 runtime)  host-owned 41  deferred 12  replaced 37  runtime 315
+
+$ make gate-check
+gate: captures 37/38 present, 1 missing (strict=1, pins_exact=1)
+gate: declared gap (absent): data/k11-captures/gp-u14-win-live
+capture_manifest: 37 present checked, 1 declared skipped, 0 problems
+capture_manifest: pin baseline ok (digest eed6eff69cedef33d57c590862ad3c4a3a0fd1ce1ec59a6d32f844cbca2f3579)
+capture_manifest: verify preflight ok
+
+$ make diff-verify   # (also the gate's step; the line is the FULLSCAN reading above)
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none); 809/845 closed on full rows; 8 ported functions with no row
+
+$ make entry-triage
+entry-triage: 736 candidates (732 by U0's rule); finisher=9 move-callback=71 span-writer=388 call-table=7 anim-target=112 mid-instruction=3 data=75 code-immediate=15 direct=2 interior=6 data-pointer=48
+entry-triage: targets 390 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+
+$ python3 tools/capture_manifest.py --check-pins
+capture_manifest: pin baseline ok (digest eed6eff69cedef33d57c590862ad3c4a3a0fd1ce1ec59a6d32f844cbca2f3579)
+
+$ python3 tools/coverage_census.py --check-instrumented
+check-instrumented: every .c column-0 header is instrumented
+
+$ python3 tools/coverage_census.py --check    # needs the coverage/ dumps (make coverage, outside verify)
+```
+
+`symbols.h` idempotence is the gate's closing step (it regenerates
+byte-identically and the `git diff --quiet` guard passes). The coverage census's
+`--check` compares the `coverage/<tag>.hits` dumps against the committed
+`tools/coverage_baseline.txt`; the dumps are produced by `make coverage` (the
+38-minute PR_COVERAGE build, **outside `verify`**). The four `UNINSTRUMENTED` are
+`0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`.
+
+**R17 — the coverage baseline is stale by eight `improved:` addresses.** This
+task re-ran `make coverage` (log `/tmp/opencode/task14-coverage.log`, exit 2) to
+regenerate the dumps and `--check` them against the committed baseline; the
+census printed, instead of a clean `baseline ok`:
+
+```text
+missing gp-u14-win-live
+coverage: split HIT=653 NOT-HIT=102 UNINSTRUMENTED=4
+improved: 0x19820 0x19958 0x27ED8 0x28BD4 0x28C38 0x292D4 0x29638 0x296B8
+make: *** [Makefile:2539: coverage] Error 2
+```
+
+The committed baseline (Task 3, measured 2026-10-29 before the capture tasks
+landed) reads **HIT 645 / NOT-HIT 110 / UNINSTRUMENTED 4**; the re-run reads
+**HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4** — exactly eight addresses moved
+NOT-HIT → HIT. They are the phase's own exhibits: `0x292D4` (the mode-`0x32`
+team list), `0x29638`/`0x296B8` (`game_mode_33_step`/`game_mode_32_step`) and
+`0x19820`/`0x19958` (the round-end debris spawner) reached by
+`gp-u25-endurance-end`'s four-KO match end (modes `0x32`/`0x33`), and `0x27ED8`
+(the mode-`0x0A` setter), `0x28BD4` (`game_mode_0a_step`) and `0x28C38`
+(`flow_winner_pose_step`, mode `0x0B`) reached by `gp-draw-timeout`'s drawn
+round (modes `0x0A`/`0x0B`). **Not re-pinned** — Task 14 changes docs only; a
+re-pin is a measured `--update-baseline --reason` action for a later task (the
+design §7.1 step 3's own "a new hit is an `improved:` re-pin with a recorded
+reason"). The changed hit set is a finding, recorded here, not a pin.

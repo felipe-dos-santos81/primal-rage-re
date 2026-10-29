@@ -44,6 +44,10 @@ make gp-u20-oracle         # endgame truth U20: CHAOS's ending (character 6, cel
 make gp-u21-oracle         # endgame truth U21: ARMADON's ending (character 4, cell 5); as gp-u18-oracle
 make gp-u22-oracle         # endgame truth U22: DIABLO's ending (character 5, cell 6); as gp-u18-oracle
 make gp-u23-oracle         # endgame truth U23: the U16 finisher reaction under the labelled poked-damage fallback on gp-u23-u16-finisher (gp_twop.py check --finisher without --allow-missing-reaction); in make verify; skips without the capture
+make gp-u25-oracle         # state coverage U25: gp-u25-endurance-end's four-KO roster walk and match end (modes 0x32/0x33; record §D5); in make verify; skips without the capture
+make gp-u26-oracle         # state coverage U26: gp-u26-side1-ending's side-1 tour and ARMADON ending (ad4=1; record §D5); in make verify; skips without the capture
+make gp-draw-timeout-oracle # state coverage Task 7: gp-draw-timeout's timeout/health drawn round (record §D7); in make verify; skips without the capture
+make coverage              # the PR_COVERAGE function census (build-cov + every driver with PR_HIT_TAG, then tools/coverage_census.py; NOT in make verify — it re-runs the drivers); COV_REASON="…" re-pins tools/coverage_baseline.txt
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -401,7 +405,8 @@ consolidation gate).
   (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
   is 19,887 (59.998 Hz), and `0x2D62C` is the counter the AIL callback `0x1BDF4` calls — the
   installer stays host-owned. Named gaps left by the phase: U14 R1, the 5120 band (a byte-pinned
-  13-pixel allowance whose cause is unisolated), the differential frontier, and the poked-win
+  13-pixel allowance whose cause is INCONCLUSIVE — the state-coverage §D4 aperture read is invalid,
+  the DOSBox-X memory file excluding the VGA aperture), the differential frontier, and the poked-win
   status above.
 - **The input sampler and its readers are ported; the game logic has no joystick path.** `0x2D2F0`
   (`input_joystick_device`) is `xor eax,eax; ret` (raw `31 c0 c3`; it has its own differential
@@ -555,6 +560,36 @@ consolidation gate).
   separate pin (its own `tools/coverage_baseline.txt`, not the `tools/pin_baseline.sha256`
   capture-pin tripwire). One `sprite_blit_aperture` (`0x51ED8`) pool mismatch was noted (three reruns
   green, not reproduced). No row, class or universe is widened and no capture or pin changed.
+- **The state coverage phase is implemented and gated** (spec
+  `docs/superpowers/specs/2026-10-28-state-coverage-design.md`, record
+  `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
+  two full `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs
+  plus `make audio-render`, green 2026-10-29). **The census** (`make coverage`,
+  outside `verify`) reads **HIT 645 / NOT-HIT 110 / UNINSTRUMENTED 4** (sums to
+  759; the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`, pinned in
+  `tools/coverage_baseline.txt`). A Task 14 re-run found the baseline **stale by
+  eight `improved:` addresses** (R17/§D8.3): the phase's `gp-u25-endurance-end`
+  and `gp-draw-timeout` reach `0x292D4`/`0x29638`/`0x296B8`/`0x19820`/`0x19958`
+  (modes `0x32`/`0x33`) and `0x27ED8`/`0x28BD4`/`0x28C38` (modes `0x0A`/`0x0B`),
+  so a fresh census reads **HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4**; not
+  re-pinned (Task 14 changes docs only). **The exhibits:** ENDURANCE's team end
+  (`gp-u25-endurance-end`, `af1` `0 → 4`, stop mode `0x17`, 1,360 frames), the
+  side-1 tour (`gp-u26-side1-ending`, `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F`
+  frames byte-identical to `gp-u21`**), the timeout draw (`gp-draw-timeout`,
+  `clock=0` from the `W` record, `b16` not asserted) and the name-entry exhibit
+  (`gp-u27-name-entry`, sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three
+  letters, "ABD" — an exhibit, not a gated oracle). **The U16 fix** (record
+  §D3): the reaction's record-motion gap is a null table base — the stream
+  reads the IVT at linear 0 — fixed by `bios_ivt_stand_in()` seeding
+  `mem[1] = 0xCA`/`mem[3] = 0xF0`; only `GP_U23_TRACE_MIN_FIRST` and
+  `GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 → 6050`). **The 5120 band**
+  is **INCONCLUSIVE** (§D4): the DOSBox-X memory file excludes the VGA aperture,
+  so the diagnostic's 14 bytes read `0xFF` and the band stays a declared gap.
+  **The OPL pitch test** (§D6) renders 439.9915 Hz (measured 439.0000 Hz)
+  within the 1.7586 Hz derived tolerance. The two-human KO stays
+  game-evidence-only, and `gp-u27-name-entry` is an exhibit, not a gated
+  oracle (its replay has the pinned miss set `k_miss_gp_u27_name_entry`, but
+  there is no `gp-u27-oracle` and it is not in `make verify`).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
