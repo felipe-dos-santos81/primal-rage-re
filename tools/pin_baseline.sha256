@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: state coverage Task 6: gp-u26-side1-ending cross-check pin GP_U26_MODE1F_COUNT=268 and the 11 itemized MAX_MISSING classes
-24bcba54a3ffbe46f0a2be7e8e6ff48b6ae51a56639deb747b9aae631bd4f76c
+# reason: state coverage: merge Tasks 6, 7 and 9 pins (gp-u26 cross-check, gp-draw-timeout, U16 trace fields)
+eed6eff69cedef33d57c590862ad3c4a3a0fd1ce1ec59a6d32f844cbca2f3579
