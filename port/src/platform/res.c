@@ -85,6 +85,7 @@ void res_set_screen_hook(void (*hook)(void)) { s_screen_hook = hook; }
 
 static void res_load_present(u32 entry, u32 draw)
 {
+    PR_HIT(0x1B3ACu);
     if (draw != 0u) {
         text_blit_string(game_string_get(0x1E9u), 0, 0xE6);   /* 0x1B3EA/0x1B3EF */
         if (s_screen_hook != NULL) s_screen_hook();
@@ -169,6 +170,7 @@ static FILE *res_open(const char *game_dir, u32 index)
  * index_path is the INDEX file itself. */
 int res_load_index(const char *game_dir, const char *index_path)
 {
+    PR_HIT(0x1B120u);
     FILE *f = fopen(index_path, "rb");
     if (!f) return 0;
     fseek(f, 0, SEEK_END);
@@ -302,6 +304,7 @@ u32 res_handle(u32 index, u32 offset) { return (index << 23) | (offset & 0x7FFFF
  * 23 bits name the offset within the payload). */
 void *res_resolve(u32 handle)
 {
+    PR_HIT(0x1B544u);
     u32 index = handle >> 23;
     if (index >= DSD(DS_001014F0)) return NULL;
     u32 entry = res_table() + index * RES_REC;

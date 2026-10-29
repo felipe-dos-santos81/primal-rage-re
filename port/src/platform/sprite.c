@@ -60,6 +60,8 @@ static void palette_dump_blit(const SpriteNode *n)
  * this body. The loader's glyph path 0x1C5E8 calls it at 0x1C60B. */
 void sprite_node_build(SpriteNode *n, u32 sprite_id)
 {
+    PR_HIT(0x1C528u);
+    PR_HIT(0x14268u);
     if (n == NULL) return;
     if (sprite_id == 0) {
         n->rows = n->width = n->xorg = n->yorg = 0;

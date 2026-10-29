@@ -59,6 +59,7 @@ void menu_fatal_error(u32 msg)
 /* 0x2FE40 — record §49-X. */
 u32 menu_entry_find(u32 base, u32 stride, s32 idx)
 {
+    PR_HIT(0x2FE40u);
     u32 entry = base;                                       /* 0x2FE41 */
     if (idx < 0) return 0u;                                 /* 0x2FE43..0x2FE47 `jge` */
     s32 n = 0;                                              /* 0x2FE4B */
@@ -163,6 +164,7 @@ static void menu_item_draw(u32 entry, const u8 *s, s32 row, u32 cell_mode, u32 d
  * title, row0, hdr, flags, cb, old, sel, entry, row, count, base. */
 u32 menu_run(u32 table, u32 stride, u32 flags)
 {
+    PR_HIT(0x2FA40u);
     u32 title = table;                                      /* 0x2FA5D */
     s32 row0 = 5;                                           /* 0x2FA58 */
     u32 hdr = 1u;                                           /* 0x2FA76 */

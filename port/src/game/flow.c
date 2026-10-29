@@ -116,7 +116,11 @@ static s16 s_audio_buf[AUDIO_FRAMES_MAX * 2];
 
 /* PORT: 0x4FBA2 is a BIOS `int 10h` mode query. In the port the SDL host owns
  * the window and always reports the VGA 320x200 mode the game gates on. */
-static u32 int10h_query(void) { return 0x13u; }
+static u32 int10h_query(void)
+{
+    PR_HIT(0x4FBA2u);
+    return 0x13u;
+}
 
 /* PORT: 0x1D290 prints an error and exits the process; the port does the same
  * rather than unwinding (the init chain has no clean recovery). */
@@ -170,6 +174,7 @@ _Noreturn void game_restart_longjmp(void)
  * offset table (0, 0x140, 0x280, ...). */
 void surface_setup(void)
 {
+    PR_HIT(0x51F45u);
     DSD(DS_000E87A0) = DSD(DS_001014E4);
     DSD(DS_000E87A4) = DSD(DS_001014E8);
     for (u32 i = 0; i < 200; i++) DSD(DS_001088F8 + i * 4) = i * 0x140u;
@@ -178,6 +183,7 @@ void surface_setup(void)
 /* 0x50188: swaps the front/back offscreen buffers. */
 void swap_buffers(void)
 {
+    PR_HIT(0x50188u);
     u32 t = DSD(DS_000E87A0);
     DSD(DS_000E87A0) = DSD(DS_000E87A4);
     DSD(DS_000E87A4) = t;
@@ -310,6 +316,7 @@ u32 string_decode(u32 id, u8 *out, u32 outlen)
  * empty (0x1C500 then returns ""). */
 void game_string_table_load(const char *dir)
 {
+    PR_HIT(0x47370u);
     if (s_string_table_loaded) return;
     s_string_table_loaded = 1;
     if (dir == NULL) return;
@@ -353,6 +360,7 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
  * machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
+    PR_HIT(0x1C500u);
     PR_SEAM(0x38B18u, (u32)((const u8 *)desc - mem), a2, a3);
     u32 slot = 0;
     while (slot < 7u && DSD(DS_00107A1C + slot * 4u) != 0) slot++;
@@ -366,6 +374,7 @@ void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
  * the end. Exposed for a unit test. */
 u32 frontend_list_next(u32 node)
 {
+    PR_HIT(0x33904u);
     u32 e = node ? node : DS_00107608;
     for (;;) {
         e += 0x10u;
@@ -1298,6 +1307,7 @@ void frontend_mode_19_step(void)
  * Only caller: 0x430F9 (0x430E8, EAX = 0). */
 void flow_screen_reset(u32 v)
 {
+    PR_HIT(0x4F200u);
     DSB(DS_00107A55) = (u8)v;                           /* 0x4F20A */
     DSB(DS_00107A54) = 0u;                              /* 0x4F20F */
     frontend_origin_zero();                             /* 0x4F215 0x4F1D0 */
@@ -1309,6 +1319,7 @@ void flow_screen_reset(u32 v)
  * 0x26A31 (0x26998). */
 void flow_1082c8_latch(void)
 {
+    PR_HIT(0x46504u);
     DSD(DS_001082C0) = DSD(DS_001082C8);                /* 0x46504/0x46509 */
     DSD(DS_001082C4) = DSD(DS_001082CC);                /* 0x4650E/0x46513 */
 }
@@ -2776,6 +2787,7 @@ void flow_bonus_count_step(void)
  * 0x27D67 (0x27C48), each with the winning side whose +0x5A is 0. */
 void flow_round_bonus_a(u32 side)
 {
+    PR_HIT(0x25FDCu);
     if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x25FE2/0x25FE9 */
         DSD(DS_00104AB4) = actor_spawn((const u32 *)(mem + DS_000A88E0),
                                        0x2A00u, 0xFFu, 0xE00u, 0u);   /* 0x25FEB..0x26019 0x2AE14 */
@@ -2797,6 +2809,7 @@ void flow_round_bonus_a(u32 side)
  * (flow_bonus_card_a_step), on the signed byte DS_00104B1C. */
 void flow_round_bonus_b(u32 side)
 {
+    PR_HIT(0x2604Cu);
     if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x26052/0x26059 */
         DSD(DS_00104AB0) = actor_spawn((const u32 *)(mem + DS_000A88F4),
                                        0x2A00u, 0xFFu, 0xE00u, 0u);   /* 0x2605B..0x26089 0x2AE14 */
@@ -2913,6 +2926,7 @@ void flow_bonus_card_b_step(void)
  * Callers: the four 0x27C48 exits (0x27D07, 0x27D85, 0x27DAA, 0x27DBF). */
 void flow_match_result_set(void)
 {
+    PR_HIT(0x27BA4u);
     u32 adc = DSD(DS_00104ADC);                         /* 0x27BA9 */
     u32 b1e = DSB(DS_00104B1E);                         /* 0x27BAF */
     u32 w2 = DSB(DS_00104AF2), w3 = DSB(DS_00104AF3);
@@ -5106,6 +5120,7 @@ u32 hiscore_audit_reset_due(void)
  * at 0x1E8B9 -> 0x1E912 with the champion kept). */
 void hiscore_init(void)
 {
+    PR_HIT(0x1E824u);
     for (u32 k = 0u; k < 2u; k++)                               /* 0x1E82B..0x1E856 */
         for (u32 i = 0u; i < 0x24u; i++)
             DSB(DS_00104367 + k * 0xA0u + i) = 0x20u;           /* 0x1E83B */
@@ -6076,6 +6091,7 @@ void game_state_init(void)
  * load, which the raw has not. */
 void game_audio_init(void)
 {
+    PR_HIT(0x1CF40u);
     /* PORT: FUN_0001cf40 gates the DIG install and its preferences behind
      * param_2 (DL, 0x1CF5E) and the MDI install behind param_1 (AL, 0x1CFBF);
      * the port has no parameters and installs both. Record §21 of
@@ -6262,6 +6278,7 @@ static const u8 *snd_music_bank(u32 buf)
  * 20,400, record §M1.4.1). */
 static void snd_music_start(void)
 {
+    PR_HIT(0x1C930u);
     u32 song = DSD(DS_001028CC);                           /* 0x1C936 */
     u32 buf = DSD(DS_001028D0);                            /* 0x1C961 */
     if (song == DSD(DS_001028DC)) {                        /* 0x1C93B */
@@ -6527,6 +6544,7 @@ u32 snd_samples_stop_all(void)
  * playing, 0x1CAD2), pushed to the device over 500 ms (0x1CAF6 0x5DECA). */
 void sound_music_volume(u32 v)
 {
+    PR_HIT(0x1CAB8u);
     if (v == DSD(DS_000A2CB8)) return;                     /* 0x1CABD */
     DSD(DS_000A2CB8) = v;                                  /* 0x1CACB */
     if (snd_music_playing() == 1u)                         /* 0x1CAD2..0x1CAF1 */
@@ -6542,6 +6560,7 @@ void sound_music_volume(u32 v)
  * runtime's printf) are not printed. */
 u32 sound_buffers_alloc(void)
 {
+    PR_HIT(0x1D0BCu);
     if (DSB(DS_000A2CB0) != 0u) return 0;                  /* 0x1D0BF/0x1D1A9 */
     if (DSD(DS_001028C4) != 0u && DSD(DS_001028C0) != 0u
         && DSD(DS_001028D0) == 0u) {                       /* 0x1D0CC..0x1D0E6 */
@@ -6578,6 +6597,7 @@ u32 sound_buffers_alloc(void)
  * not a mem[] word (see the sound-module comment above). */
 void sound_sfx_volume(u32 v)
 {
+    PR_HIT(0x1CED4u);
     if (v == DSD(DS_000A2CB4)) return;                     /* 0x1CED9 */
     DSD(DS_000A2CB4) = v;                                  /* 0x1CEE1 */
     for (u32 off = 0; off != SND_SLOT_END; off += SND_SLOT_STRIDE) {   /* 0x1CEE6 0x1CF15 */
@@ -6857,6 +6877,7 @@ u32 sound_voice(u32 id)
  * (music requests: no resource read, no draw, no rng). */
 u32 sound_voice_stage(u32 stage)
 {
+    PR_HIT(0x4F714u);
     return sound_voice((u32)DSW(SND_STAGE_VOICES + stage * 2u));  /* 0x4F71C..0x4F721, the read at 0x4F714 */
 }
 
@@ -6942,11 +6963,13 @@ void game_set_game_dir(const char *dir)
  * (game_init) at 0x20CC7. */
 void game_init_null(void)
 {
+    PR_HIT(0x32968u);
 }
 
 /* 0x2F9CC — record 2026-10-13-reverse-i §I.4 */
 void game_master_init(void)
 {
+    PR_HIT(0x2F9CCu);
     (void)config_file_load();                       /* 0x2F9CF 0x1AFE8; AL is not read (0x2F9D4 calls on) */
     effects_init();                                 /* 0x2F9D4 0x13ADC */
     frontend_input_reset();                         /* 0x2F9D9..0x2F9DB 0x4F1E4 (EAX = 0, unread: 0x4F1E5 loads it) */
@@ -6963,6 +6986,7 @@ void game_master_init(void)
 
 void game_init(void)
 {
+    PR_HIT(0x20C10u);
     char index_path[512];
     snprintf(index_path, sizeof index_path, "%s/INDEX", s_game_dir);
 
@@ -7205,6 +7229,7 @@ void sound_shutdown(void)
 #define DS_0010151A 0x0010151Au  /* no symbols.h name: the Ctrl-C vector's saved offset word */
 static void game_shutdown_restore(u32 vector, u32 offset, u32 segment)
 {
+    PR_HIT(0x1BE30u);
     /* 0x1ADE4 (DPMI 0x201 set real-mode vector): the port has no real mode. */
     (void)vector; (void)offset; (void)segment;
 }
@@ -7235,6 +7260,7 @@ void game_shutdown(void)
 
 int game_main(void)
 {
+    PR_HIT(0x1BEC4u);
     if (!s_game_dir) {
         fprintf(stderr, "game_main: no game dir set\n");
         return 1;
@@ -7291,6 +7317,7 @@ void game_loop_step(void)
 
 void game_loop(void)
 {
+    PR_HIT(0x255CCu);
     jmp_buf restart;
     jmp_buf *const prev = game_restart_arm(&restart);
     if (setjmp(restart) != 0) {
@@ -7978,6 +8005,7 @@ void game_frame(void)
 /* 0x11BCC — record 2026-10-13-reverse-i §I.2 */
 void game_state_timer_exit(void)
 {
+    PR_HIT(0x11BCCu);
     DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCC/0x11BCE */
     DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
     DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BDA/0x11BE0 */

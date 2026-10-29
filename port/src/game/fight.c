@@ -675,6 +675,7 @@ u32 fight_char_button(u32 side)
  * DS_00108111 is decremented once per match (0x4249F..0x424C6). */
 void fight_stage_mark_drop(u32 cls, u32 side)
 {
+    PR_HIT(0x4248Cu);
     u8 count = DSB(DS_00108111);                        /* 0x4248E */
     u8 key = (u8)((u8)cls | (u8)(side << 6));           /* 0x42494..0x4249D */
     for (u32 i = 0; i < 7u; i++) {                      /* 0x424C0..0x424C4 */
@@ -1180,6 +1181,7 @@ void fight_hook_430e8(void)
  * incremented before the 0x44616 store). Last, the 0x2E voice and 0x444C8. */
 static void fight_4454c(void)
 {
+    PR_HIT(0x4454Cu);
     (void)sound_voice(0x100u);                          /* 0x44552/0x44557 0x2C3FC */
     if (DSB(DS_00108173) != 0u) {                       /* 0x4455C */
         for (u32 i = 1; i <= 2u; i++) {                 /* 0x44565..0x44586 */
@@ -1266,6 +1268,7 @@ void fight_hook_4367c(void)
  * [esi+0x1080bc],eax` after the add). */
 void fight_413c8(void)
 {
+    PR_HIT(0x413C8u);
     DSD(DS_001080F4) = actor_spawn((const u32 *)(mem + DS_000C86DC),
                                    0x2A00u, 0xE0u, 0x1B00u, 0u);  /* 0x413E3/0x413EA */
     for (u32 i = 0; i < 7u; i++) {                      /* 0x413F1..0x41423 */
@@ -1601,6 +1604,7 @@ void fight_hud_bar2_set(s32 v, u32 side)
  * 0x33A10's out[3] (0x1D4D8). Caller: 0x1D563 (0x1D540). */
 u32 fight_hud_rate(u32 side)
 {
+    PR_HIT(0x1D4D0u);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                                /* 0x1D4D8 0x33A10 */
     u32 row = (u32)DSB(ctx[3] + 0x7Au) << 2;                    /* 0x1D4E1..0x1D4ED */
@@ -3594,6 +3598,7 @@ void fight_4987c(u32 side, s32 count, u32 kind)
  * byte of the addend is added (0x4DBE3). 0x12BB8 calls it with amount 1. */
 void fight_slot_5b_add(u32 slot, s32 amount)
 {
+    PR_HIT(0x4DBB4u);
     s32 add = (s32)((u32)amount * 120u) / 100;         /* 0x4DBBA..0x4DBCC */
     s32 sum = (s32)DSB(slot + 0x5Bu) + add;            /* 0x4DBD2..0x4DBD5 */
     if (sum > 0x78)                                    /* 0x4DBD7/0x4DBDA */

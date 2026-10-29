@@ -1,9 +1,28 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include "test.h"
 #include "mem.h"
 
 int g_failures = 0;
+
+#ifdef PR_COVERAGE
+/* PORT: the coverage hit dump (record state-coverage §D1.9), written beside the
+ * miss log when PR_HIT_TAG names a tag. Returns 1 on a write failure. */
+static int write_hits(const char *tag)
+{
+    char path[64];
+    snprintf(path, sizeof path, "coverage/%s.hits", tag);
+    mkdir("coverage", 0755);           /* ignore EEXIST; Task 3 git-ignores it */
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "run_tests: could not write %s\n", path);
+        return 1;
+    }
+    fn_hit_report_f(f, tag);
+    return fclose(f) != 0;
+}
+#endif
 
 /* The env-gated drivers each call game_init(), which may run only once per
  * process (a second res_load_index() would exhaust the 64 MB bump allocator),
@@ -40,10 +59,21 @@ int main(int argc, char **argv)
              * whole driver process, reported, and checked against the pinned
              * known-set of that driver. */
             fn_misslog_arm(1);
+#ifdef PR_COVERAGE
+            const char *hit_tag = getenv("PR_HIT_TAG");
+            int hit = hit_tag != NULL && hit_tag[0] != '\0';
+            if (hit) fn_hit_arm(1);
+#endif
             k_drivers[i].fn();
             fn_misslog_report(k_drivers[i].env);
             test_fn_misslog_driver(k_drivers[i].env);
+#ifdef PR_COVERAGE
+            if (hit) g_failures += write_hits(hit_tag);
+#endif
             fn_misslog_arm(0);
+#ifdef PR_COVERAGE
+            if (hit) fn_hit_arm(0);
+#endif
             printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
             return g_failures != 0;
         }

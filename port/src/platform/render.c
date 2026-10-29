@@ -54,6 +54,7 @@ static u16 node_layer(u32 node)
  * it. `node` must be detached -- its next field is overwritten here. */
 void render_splice(u32 *headp, u32 node)
 {
+    PR_HIT(0x1C3A0u);
     u16 layer = node_layer(node);
     u32 prev = 0;
     u32 cur  = *headp;
@@ -70,6 +71,7 @@ void render_splice(u32 *headp, u32 node)
  * free-head and count (the raw's display-list init). */
 void render_list_init(void)
 {
+    PR_HIT(0x1C350u);
     for (u32 i = 0; i < RENDER_NODE_COUNT; i++) {
         u32 node = RENDER_NODE_POOL + i * RENDER_NODE_BYTES;
         DSD(node) = (i + 1u < RENDER_NODE_COUNT) ? node + RENDER_NODE_BYTES : 0u;
@@ -86,6 +88,7 @@ void render_list_init(void)
  * no-op. Equivalent while mem[0..3] is zero. */
 u32 render_pop_free(void)
 {
+    PR_HIT(0x1C390u);
     u32 node = DSD(RENDER_FREE_HEAD);
     DSD(RENDER_FREE_HEAD) = DSD(node);
     return node;
@@ -105,6 +108,7 @@ int render_list_insert(u32 pset_off)
  * rooted at *headp; 0 when it is not there. */
 u32 render_find(u32 *headp, u32 pset_off)
 {
+    PR_HIT(0x1C458u);
     u32 cur = *headp;
     while (cur != 0 && DSD(cur + 4) != pset_off) cur = DSD(cur);
     return cur;
@@ -114,6 +118,7 @@ u32 render_find(u32 *headp, u32 pset_off)
  * no-op when it is not there) and pushes it on the free-list head. */
 void render_unlink(u32 *headp, u32 node)
 {
+    PR_HIT(0x1C3D0u);
     u32 prev = 0;
     u32 cur  = *headp;
     while (cur != 0 && cur != node) {
@@ -393,6 +398,7 @@ void render_scroll_setup(u32 i)
  * (fight_char_screen_setup) at 0x43822 (0x4381B). */
 void render_projection_reset(u8 al)
 {
+    PR_HIT(0x4F228u);
     DSB(DS_00107A54) = 0;
     DSB(DS_00107A55) = al;
     DSW(DS_00107A3A) = 0;

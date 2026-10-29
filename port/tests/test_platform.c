@@ -559,6 +559,90 @@ int test_fn_misslog(void)
     return g_failures - before;
 }
 
+/* ---- the coverage hit counter (mem.h PR_HIT; record state-coverage §D1.9) - */
+
+/* Runs fn_hit_report(tag) with stdout redirected to a fresh temp file, restores
+ * stdout, and returns the file's bytes as a NUL-terminated static buffer (a
+ * distinctive "(capture failed…)" sentinel when the redirect itself fails, so
+ * an empty-report assertion cannot pass on a broken capture). */
+static const char *fn_hit_capture(const char *tag)
+{
+    static char buf[4096];
+    char path[] = "/tmp/pr_hit_XXXXXX";
+    int fd = mkstemp(path);
+    if (fd < 0) { snprintf(buf, sizeof buf, "(capture failed: mkstemp)"); return buf; }
+    int saved = dup(1);
+    if (saved < 0) { close(fd); snprintf(buf, sizeof buf, "(capture failed: dup)"); return buf; }
+    fflush(stdout);
+    dup2(fd, 1);
+    fn_hit_report(tag);
+    fflush(stdout);
+    lseek(fd, 0, SEEK_SET);
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    if (n < 0) n = 0;
+    buf[n] = '\0';
+    dup2(saved, 1);
+    close(saved);
+    close(fd);
+    unlink(path);
+    return buf;
+}
+
+int test_fn_hit(void)
+{
+    int before = g_failures;
+    const u32 a = 0x03F10000u;
+
+    /* Unarmed: a note is inert, and the report writes nothing. */
+    fn_hit_arm(0);
+    fn_hit_clear();
+    fn_hit_note(a);
+    CHECK(strcmp(fn_hit_capture("t"), "") == 0, "an unarmed report writes nothing");
+
+    /* Armed: one address, one hit, reported as `fn-hit <tag> 0xADDR n=1`. */
+    fn_hit_arm(1);
+    fn_hit_note(a);
+    {
+        char want[64];
+        snprintf(want, sizeof want, "fn-hit t 0x%05X n=1\n", (unsigned)a);
+        CHECK(strcmp(fn_hit_capture("t"), want) == 0, "one address reports n=1");
+    }
+
+    /* Clear empties the table without disarming it. */
+    fn_hit_clear();
+    CHECK(strcmp(fn_hit_capture("t"), "") == 0, "a cleared counter reports empty");
+
+    /* Two notes of the same address count two. */
+    fn_hit_note(a);
+    fn_hit_note(a);
+    {
+        char want[64];
+        snprintf(want, sizeof want, "fn-hit t 0x%05X n=2\n", (unsigned)a);
+        CHECK(strcmp(fn_hit_capture("t"), want) == 0, "the same address twice reports n=2");
+    }
+
+    /* A direct call of the real fn_resolve (the parenthesised form, bypassing
+     * the fn_resolve macro's fn_resolve_from route) must note a hit for the
+     * found address. The note is compiled only under PR_COVERAGE, so the n=1
+     * assertion is too; the pre-fix placement noted only in fn_resolve_from, so
+     * a direct fn_resolve never counted, and a direct fn_hit_note cannot catch
+     * it. */
+    fn_hit_clear();
+    fn_register(0x03F10001u, fn_probe);
+    CHECK((fn_resolve)(0x03F10001u) == fn_probe, "the probe resolves directly");
+#ifdef PR_COVERAGE
+    {
+        char want[64];
+        snprintf(want, sizeof want, "fn-hit t 0x%05X n=1\n", 0x03F10001u);
+        CHECK(strcmp(fn_hit_capture("t"), want) == 0,
+              "a direct fn_resolve notes one hit");
+    }
+#endif
+
+    fn_hit_arm(0);
+    return g_failures - before;
+}
+
 /* ---- the call seam (mem.h PR_SEAM; record 2026-10-01-reverse-e3 §E3.3) ---- */
 
 static u32 s_seam_n, s_seam_addr[4], s_seam_nargs[4], s_seam_args[4][6];

@@ -171,6 +171,26 @@ static int write_misslog(const char *path)
     return fclose(f) != 0;
 }
 
+#ifdef PR_COVERAGE
+/* PORT: the coverage hit dump (record state-coverage §D1.9). When PR_COVERAGE
+ * is on and PR_HIT_TAG names a tag, the run's recorded hits are written as one
+ * `fn-hit <tag> 0xADDR n=N` line per address to coverage/<tag>.hits. Returns 1
+ * on a write failure. */
+static int write_hits(const char *tag)
+{
+    char path[64];
+    snprintf(path, sizeof path, "coverage/%s.hits", tag);
+    mkdir("coverage", 0755);           /* ignore EEXIST; Task 3 git-ignores it */
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "prageport: --check could not write %s\n", path);
+        return 1;
+    }
+    fn_hit_report_f(f, tag);
+    return fclose(f) != 0;
+}
+#endif
+
 /* PORT: the original has no headless mode. The port runs the real master loop
  * one frame at a time without opening a window: game_init() runs the init chain
  * once, then each game_loop_step() call advances exactly one frame (the step
@@ -195,6 +215,11 @@ static int run_check(const char *game_dir, int frames)
     u32 audio0 = game_audio_ticks();
     u32 host0 = host_tick_count();
     fn_misslog_arm(1);                 /* record gameplay-u0 §U0.1 */
+#ifdef PR_COVERAGE
+    const char *hit_tag = getenv("PR_HIT_TAG");
+    int hit = hit_tag != NULL && hit_tag[0] != '\0';
+    if (hit) fn_hit_arm(1);
+#endif
     game_init();                       /* init chain once; runs the audio init */
     for (int i = 1; i <= frames; i++) {
         game_loop_step();                /* frame i: one loop iteration */
@@ -292,7 +317,13 @@ static int run_check(const char *game_dir, int frames)
     game_shutdown();                   /* 0x1BE30 teardown */
     fn_misslog_report("check");
     fail += write_misslog("frames/fn_miss.txt");
+#ifdef PR_COVERAGE
+    if (hit) fail += write_hits(hit_tag);
+#endif
     fn_misslog_arm(0);
+#ifdef PR_COVERAGE
+    if (hit) fn_hit_arm(0);
+#endif
     return fail > 255 ? 255 : fail;
 }
 

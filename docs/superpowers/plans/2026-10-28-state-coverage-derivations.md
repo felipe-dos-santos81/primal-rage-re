@@ -483,3 +483,47 @@ these options is owned by Task 13 (§D7), not this baseline.
 - **The OPL write evidence** re-measures the topology fork's inputs; it does not
   decide dual-OPL2 vs one OPL3 (Task 12's pitch test is about pitch, not the
   topology).
+
+### §D1.9 The `PR_COVERAGE` hit counter (Task 2)
+
+The instrument Task 2 added (plan Step 2's counter; see
+`.superpowers/sdd/2026-10-28-state-coverage/task-2-report.md`). `PR_HIT(addr)`
+is a `mem.h` macro compiled only under `PR_COVERAGE` (a no-op otherwise); it
+notes one entry into a 1,300-slot `{addr, hits}` table in `mem.c`, never in
+`mem[]`. The four seam macros gain the `PR_HIT` line before `if (pr_seam)`, so
+the 610 seamed addresses are covered without a second edit, and `fn_resolve`
+notes a hit for a found (`fn_register`-registered) function at its
+found-return site. `main.c` and
+`run_tests.c` write `coverage/<tag>.hits` when `PR_COVERAGE` is on and
+`PR_HIT_TAG` names a tag; no output otherwise.
+
+**Re-measured site count — 124 distinct addresses, 125 `PR_HIT` lines, not the
+design's "128".** §D1.4's 128 unseamed addresses split into: 114 with a column-0
+`/* 0xADDR` header in a `.c` file (one line each, except `0x50188` which carries
+that header on two `.c` functions — `flow.c:swap_buffers` and
+`config.c:cfg_swap_buffers` — so 115 `.c`-header lines); 7 with a column-0 header
+only in a `.h` file (`0x33A10`, `0x33950`, `0x3AFC4`, `0x1AB10`, `0x255CC`,
+`0x1BEC4`, `0x33904`); 3 of the 7 `PORT_PROGRESS_EXCEPTIONS` addresses with a real
+`.c` body (`0x1B120` `res_load_index`, `0x20C10` `game_init`, `0x4FBA2`
+`int10h_query`); and 4 exceptions with no function body that stay uninstrumented
+— `0x29D60` (bare `ret`), `0x2EA30` (inert interrupt-lock counter), `0x2EA64`
+(bare `ret`), `0x500BB` (inlined DPMI clock read) — Task 3 declares these
+`UNINSTRUMENTED`. `tools/port_progress.py` is unchanged (`798 1203 66`,
+`759 759 100`).
+
+**Byte-identity** (plan Step 4): `build/` (PR_COVERAGE off) and `build-cov/`
+(`-DPR_COVERAGE=ON`, `PR_HIT_TAG` unset), both from the repo root. The outputs
+are byte-identical:
+
+| artifact | OFF | ON (tag unset) |
+|---|---|---|
+| `frames/fn_miss.txt` sha256 | `26c999cee30d7557d17d392639eaadcde0378f84288bc14f2d4a5be169d8eefe` | `26c999cee30d7557d17d392639eaadcde0378f84288bc14f2d4a5be169d8eefe` |
+| `--check 820` frames (sha256 of the sorted per-file sha list, 2460 files) | `100e5bbdb239036396acf60ce3f324efd7d18b25f92b109903940d9fea4beecf` | `100e5bbdb239036396acf60ce3f324efd7d18b25f92b109903940d9fea4beecf` |
+| `PR_TITLE_DUMP` driver frames (sha256 of the sorted per-file sha list, 96 files) | `ca293a7fa0fd0745f95afce846592b1f6fd757870d24a3b4439e9803369d3566` | `ca293a7fa0fd0745f95afce846592b1f6fd757870d24a3b4439e9803369d3566` |
+
+The `--check 820` run is 2,461 files (820 frames × 3 + `fn_miss.txt`). A smoke
+dump with `PR_HIT_TAG=smoke` wrote `coverage/smoke.hits` (`fn-hit smoke 0x20C10
+n=1`, … 144 lines), proving the dump path; the unset-tag run stays inert. The
+unit test (`test_fn_hit`) fails when the note increment is dropped and passes
+otherwise; no `PR_SEAM` was added. `diffrun` links the plain `prage_core`, so its
+bytes do not change.

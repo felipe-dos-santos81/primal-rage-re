@@ -10,6 +10,8 @@
 #ifndef PR_MEM_H
 #define PR_MEM_H
 
+#include <stdio.h>
+
 #include "types.h"
 
 #define MEM_SIZE 0x4000000u
@@ -74,6 +76,27 @@ int         fn_misslog_has(u32 addr);
  * `fn-miss <tag> distinct=N dropped=N`. */
 void        fn_misslog_report(const char *tag);
 
+/* PORT: the coverage hit counter (record state-coverage §D1.9). Host
+ * bookkeeping, never in mem[]: PR_HIT(addr) notes one entry into `addr` when
+ * the counter is armed, and the census reads the per-tag dump. The counter is
+ * a census instrument, not a seam: it changes no game state and never calls
+ * pr_seam. The macro is compiled only under PR_COVERAGE (a no-op otherwise), so
+ * the differential harness's bytes are unchanged; the note/report/clear
+ * functions always exist so the unit test runs in either build. */
+#define FN_HIT_MAX 1300u
+void fn_hit_note(u32 addr);         /* one hit for `addr` while armed */
+void fn_hit_arm(int on);            /* 1 arms and clears, 0 disarms */
+void fn_hit_clear(void);            /* empties the table, stays armed */
+/* One `fn-hit <tag> 0xADDR n=N` line per recorded address, to `out`. */
+void fn_hit_report_f(FILE *out, const char *tag);
+void fn_hit_report(const char *tag);   /* fn_hit_report_f(stdout, tag) */
+
+#ifdef PR_COVERAGE
+#define PR_HIT(addr) fn_hit_note(addr)
+#else
+#define PR_HIT(addr) ((void)0)
+#endif
+
 /* PORT: the differential harness's call seam (record 2026-10-01-reverse-e3
  * §E3.3); no original instruction. A ported function another one calls opens
  * with PR_SEAM (void) or PR_SEAM_RET (a value), passing its own original
@@ -88,6 +111,7 @@ typedef int (*pr_seam_fn)(u32 addr, u32 nargs, const u32 *args, u32 *eax);
 extern pr_seam_fn pr_seam;
 #define PR_SEAM(addr, ...)                                                  \
     do {                                                                    \
+        PR_HIT(addr);                                                       \
         if (pr_seam) {                                                      \
             const u32 seam_a_[] = { __VA_ARGS__ };                          \
             u32 seam_e_;                                                    \
@@ -98,6 +122,7 @@ extern pr_seam_fn pr_seam;
     } while (0)
 #define PR_SEAM0(addr)                                                      \
     do {                                                                    \
+        PR_HIT(addr);                                                       \
         if (pr_seam) {                                                      \
             u32 seam_e_;                                                    \
             if (pr_seam((addr), 0u, (const u32 *)0, &seam_e_)) return;      \
@@ -105,6 +130,7 @@ extern pr_seam_fn pr_seam;
     } while (0)
 #define PR_SEAM_RET0(addr)                                                  \
     do {                                                                    \
+        PR_HIT(addr);                                                       \
         if (pr_seam) {                                                      \
             u32 seam_e_;                                                    \
             if (pr_seam((addr), 0u, (const u32 *)0, &seam_e_))              \
@@ -113,6 +139,7 @@ extern pr_seam_fn pr_seam;
     } while (0)
 #define PR_SEAM_RET(addr, ...)                                              \
     do {                                                                    \
+        PR_HIT(addr);                                                       \
         if (pr_seam) {                                                      \
             const u32 seam_a_[] = { __VA_ARGS__ };                          \
             u32 seam_e_;                                                    \

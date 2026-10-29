@@ -45,7 +45,16 @@ void fn_register(u32 orig_addr, void (*fn)(void))
 void (*(fn_resolve)(u32 orig_addr))(void)
 {
     for (u32 i = 0; i < fn_table_len; i++)
-        if (fn_table[i].addr == orig_addr) return fn_table[i].fn;
+        if (fn_table[i].addr == orig_addr) {
+#ifdef PR_COVERAGE
+            /* PORT: the coverage census notes a hit for a found function here
+             * (the fn_register-registered addresses the seam macros and PR_HIT
+             * lines do not cover), so direct callers of the real fn_resolve note
+             * too. */
+            fn_hit_note(orig_addr);
+#endif
+            return fn_table[i].fn;
+        }
     return NULL;
 }
 
@@ -113,6 +122,51 @@ void fn_misslog_report(const char *tag)
                fn_miss[i].ctx, (unsigned)fn_miss[i].hits);
     printf("fn-miss %s distinct=%u dropped=%u\n", tag, (unsigned)fn_miss_len,
            (unsigned)fn_miss_dropped);
+}
+
+/* PORT: the coverage hit counter's storage is port instrumentation, not game
+ * state (like fn_table and fn_miss above). */
+static struct { u32 addr; u32 hits; } fn_hit[FN_HIT_MAX];
+static u32 fn_hit_len;
+static int fn_hit_armed;
+
+void fn_hit_note(u32 addr)
+{
+    if (!fn_hit_armed) return;
+    for (u32 i = 0; i < fn_hit_len; i++)
+        if (fn_hit[i].addr == addr) {
+            fn_hit[i].hits++;
+            return;
+        }
+    /* The 759 portable addresses fit FN_HIT_MAX with headroom, so this is
+     * unreachable in practice; guard the store rather than overrun. */
+    if (fn_hit_len >= FN_HIT_MAX) return;
+    fn_hit[fn_hit_len].addr = addr;
+    fn_hit[fn_hit_len].hits = 1;
+    fn_hit_len++;
+}
+
+void fn_hit_arm(int on)
+{
+    fn_hit_armed = on != 0;
+    if (on) fn_hit_len = 0;
+}
+
+void fn_hit_clear(void)
+{
+    fn_hit_len = 0;
+}
+
+void fn_hit_report_f(FILE *out, const char *tag)
+{
+    for (u32 i = 0; i < fn_hit_len; i++)
+        fprintf(out, "fn-hit %s 0x%05X n=%u\n", tag, (unsigned)fn_hit[i].addr,
+                (unsigned)fn_hit[i].hits);
+}
+
+void fn_hit_report(const char *tag)
+{
+    fn_hit_report_f(stdout, tag);
 }
 
 u32 fn_origin(void (*fn)(void))

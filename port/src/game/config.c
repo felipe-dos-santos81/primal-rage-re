@@ -109,6 +109,7 @@ s32 config_storage_read(u32 cell, u8 *dst, u32 len)
  * message 0x80AA8 "attempt to write outside eeprom" (a tail jump, 0x2D4A6/0x2D4AB). */
 void config_image_store(u32 addr, u32 value)
 {
+    PR_HIT(0x2D498u);
     if (addr < 0x00100CE4u || addr >= 0x001014DCu) {    /* 0x2D498..0x2D4A4 */
         menu_fatal_error(0x00080AA8u);                  /* 0x2D4A6/0x2D4AB */
         return;   /* PORT: 0x62003 does not return; the port drops the byte and its caller goes on. */
@@ -452,6 +453,7 @@ void config_validate(void)
  * (0x2DAE4), each with EAX = 0x26. */
 u32 config_codeword_len(u32 n)
 {
+    PR_HIT(0x2D4B4u);
     u32 eax = n;
     u32 edx = 1u;                                  /* 0x2D4B5 */
     for (;;) {
@@ -469,6 +471,7 @@ u32 config_codeword_len(u32 n)
  * value bytes, +6 the name bytes; the RAM block is [0x2D478 + 8*table]. */
 u32 hiscore_locate(u32 rec, u32 table, u32 *left_out, u32 *size_out)
 {
+    PR_HIT(0x2DB58u);
     if (table >= 3u) return 0u;                              /* 0x2DB5F `jc` */
     u32 desc = DS_0002D3FC + table * 8u;                     /* 0x2DB68 */
     u32 count = DSW(desc);                                   /* 0x2DB77 */
@@ -611,6 +614,7 @@ u32 config_not_free_play(void)
 /* 0x2CA2C. `mov edx,[0x85c00]; mov al,[0x85d60]; or eax,edx; setne al`. */
 u32 config_has_credit(void)
 {
+    PR_HIT(0x2CA2Cu);
     return (u32)((DSB(DS_00105D60) | DSD(DS_00105C00)) != 0u);
 }
 
@@ -662,6 +666,7 @@ void config_set_credit_row(u8 row)
 /* 0x2BF00. `mov byte [0x85c05], 0x1d`. */
 void config_set_credit_row_init(void)
 {
+    PR_HIT(0x2BF00u);
     DSB(DS_00105C05) = 0x1Du;
 }
 
@@ -677,6 +682,7 @@ void config_credits_init(void)
  * One caller, the timer ISR 0x1BDF4 (0x1BE28). */
 void config_isr_tick(void)
 {
+    PR_HIT(0x2D62Cu);
     DSD(DS_00105D88)++;                                 /* 0x2D62C */
 }
 
@@ -687,6 +693,7 @@ void config_isr_tick(void)
  * (0x329B7, 0x329BD), whose stores can land on them (a mask bit above 4). */
 u32 config_run_clock(u32 mask)
 {
+    PR_HIT(0x32970u);
     const u32 last = DSD(DS_0010747C);                  /* 0x3297B */
     const u32 now = DSD(DS_00105D88);                   /* 0x32981 */
     DSD(DS_0010747C) = now;                             /* 0x3298B */
@@ -868,6 +875,7 @@ void audit_characters(u32 c0, u32 c1)
  * keeps it static; 0x2EAD6 needs the same swap). */
 static void cfg_swap_buffers(void)
 {
+    PR_HIT(0x50188u);
     u32 t = DSD(DS_000E87A0);
     DSD(DS_000E87A0) = DSD(DS_000E87A4);
     DSD(DS_000E87A4) = t;
@@ -974,6 +982,7 @@ void config_screen_wait_zero(void)
  * in no Ghidra function and is not ported (a raw rel32 scan finds 7). */
 u32 config_key_latched(void)
 {
+    PR_HIT(0x2EB80u);
     u32 latch = DSD(CFG_KEY_LATCH);                         /* 0x2EB81 */
     if (latch != 0u) return latch;                          /* 0x2EB87 */
     if (DSD(CFG_TICK_ISR) - DSD(CFG_KEY_TIME) > 0x4B0u) {   /* 0x2EB94..0x2EB9F */
@@ -1051,6 +1060,7 @@ u32 config_key_flags(u32 mask)
  * EDX. Callers: 0x2FA40 (0x2FD29) and eighteen more. */
 u32 config_input_poll(u32 mask, u8 flag)
 {
+    PR_HIT(0x2EDE0u);
     u32 r = input_select_bits(mask);                        /* 0x2EDEA */
     if (flag != 0u) r |= config_key_flags(mask);            /* 0x2EDF3..0x2EE00 */
     if (r != 0u) DSD(CFG_KEY_TIME) = DSD(CFG_TICK_ISR);     /* 0x2EE04..0x2EE0B */
@@ -1133,6 +1143,7 @@ void config_code_row(s32 col, s32 row)
  * 0x30C9E..0x30DA3. */
 void config_bar_draw(s32 value, s32 row, s32 label_row)
 {
+    PR_HIT(0x30788u);
     if (value < 0) value = 0;                               /* 0x3079B..0x3079F */
     if (value > 0xFF) value = 0xFF;                         /* 0x307A3..0x307AD */
     if (label_row >= 0)                                     /* 0x307B5 `jl` */
@@ -1163,6 +1174,7 @@ void config_bar_draw(s32 value, s32 row, s32 label_row)
  * 0x32446 (unlisted). */
 void config_option_row(u32 which, u32 p, u8 flag)
 {
+    PR_HIT(0x31E28u);
     u32 arrow = (flag != 0u) ? 0x3000u : 0x4000u;           /* 0x31E33..0x31E3E */
     u32 value, base;
     if (which == 0u) {                                      /* 0x31E43 */
@@ -1205,6 +1217,7 @@ void config_option_row(u32 which, u32 p, u8 flag)
  * 0x31D08..0x31DC0. */
 u32 config_key_name(u32 key, u8 raw, u32 dest)
 {
+    PR_HIT(0x3157Cu);
     u32 ch = key & 0xFFu;                                   /* 0x3158B */
     u32 code = (u32)((s32)key >> 8);                        /* 0x31588 */
     if (ch != 0u && ch <= 0x7Fu && ch != 0xDu && ch != 0x20u)
@@ -1320,6 +1333,7 @@ void config_keys_apply_defaults(void)
  * 0x1AF2B..0x1AF42), then +0x24/+0x26 (0x1AF4D/0x1AF56). */
 void config_keys_pack(u32 rec)
 {
+    PR_HIT(0x1AEE0u);
     DSW(rec) = DSB(KEYCFG_DS_DEV1);                         /* 0x1AEED */
     DSW(rec + 0x12u) = DSB(KEYCFG_DS_DEV2);                 /* 0x1AEF8 */
     for (u32 i = 0u; i < 8u; i++)                           /* 0x1AF20 */
@@ -1338,6 +1352,7 @@ void config_keys_pack(u32 rec)
  * 0x1AF94/0x1AFB9) at BIOS+0x2DE.. and +0x2E6... */
 void config_keys_load(u32 rec)
 {
+    PR_HIT(0x1AF64u);
     u32 bios = DSD(DS_00101514);                            /* 0x1AF6C */
     DSW(bios + 0x2D4u) = DSB(rec);                          /* 0x1AF77 */
     DSW(bios + 0x2D6u) = DSB(rec + 0x12u);                  /* 0x1AF89 */
