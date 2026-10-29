@@ -1855,20 +1855,23 @@ gp-u16-oracle: build ## Gameplay U16 oracle: gp-u16-twop2's extended two-human m
 #   MIN_FIRST 4095: the report's first unexplained capture frame (raw 6783, nearest port 3442,
 #     rows 0..2, 510 px). It is not a loader overlay or a scan-out (the loader's 166-px six-row
 #     strip is capture 5461, after the pin), so no allowance is added; the tail is not claimed.
-#   TRACE_MIN_FIRST 5449: the first differing trace f, in rng (capture 75B49A54, port BA99085D);
-#     first tick difference f=147 is reported apart (host-timed).
-#   MOVES_MIN_FIRST 5467: the first differing move frame, f=0x155B in r0 (capture 0x33, the applied
-#     TALON finisher reaction, port 0x27). The capture-side reaction claim is gp_twop's; this pin
-#     says only that the move fields agree below 5467, so the port's reaction divergence is named
-#     and not claimed.
+#   TRACE_MIN_FIRST 6050: the state-coverage Task 10 fix (the reaction's record-motion
+#     y now matches the original), so the trace fields agree through the replay's end
+#     (0 differing through 6049); the exact pin is the end + 1 (record §D3.7). It was
+#     5449, the first differing trace f in rng, before the fix.
+#   MOVES_MIN_FIRST 6050: the same fix makes r0 reach 0x33 (f=0x155B), so the move
+#     fields agree through the replay's end; the exact pin is the end + 1. It was 5467,
+#     the first differing move frame (f=0x155B in r0: capture 0x33, port 0x27) before
+#     the fix. The capture-side reaction claim is gp_twop's; this pin says only that
+#     the move fields agree below 6050.
 #   MAX_START 106: the report's window start (raw 1749).
 #   MIN_REACH 3439: the highest port frame exhibited before the first unexplained capture frame.
 #   CAPTURE_SHA256 / CAPTURE_FRAMES: this capture's poll.log sha256 and its 5464 frame_*.raw.gz.
 # Raising a ratchet by one, lowering MAX_START by one, or changing the sha must fail; a
 # re-capture invalidates every pin (record §G.24).
 GP_U23_MIN_FIRST = 4095
-GP_U23_TRACE_MIN_FIRST = 5449
-GP_U23_MOVES_MIN_FIRST = 5467
+GP_U23_TRACE_MIN_FIRST = 6050
+GP_U23_MOVES_MIN_FIRST = 6050
 GP_U23_MAX_START = 106
 GP_U23_MIN_REACH = 3439
 GP_U23_CAPTURE_SHA256 = 6684d3cbb8cfabeed190b1139fa9cc93d69944c6d2b3ef9f9f56db2e0cb34446

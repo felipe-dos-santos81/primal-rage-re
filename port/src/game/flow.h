@@ -24,6 +24,13 @@ int game_main(void);
 void game_init(void);
 void game_shutdown(void);
 
+/* PORT: stand in for the DOS IVT's INT 0 vector at linear address 0. The
+ * reaction animation 0xED850 reads its motion table there (record
+ * 2026-10-28-state-coverage-derivations §D3.4/§D3.5); the port has no real
+ * mode, so it seeds the two bytes the y-opcode reads. Called by game_init and
+ * by the test that proves the dwell. */
+void bios_ivt_stand_in(void);
+
 /* 0x1D018 — record 2026-10-13-reverse-i §I.5. The sound shutdown: nothing
  * unless the sound flag DS_000A2CB1 is set; else it stops the sequence and
  * the four sample slots that still play, clears their handles and the two

@@ -6984,6 +6984,21 @@ void game_master_init(void)
     attract_config_volumes();                       /* 0x2FA32..0x2FA37 0x2C8F0(-2) */
 }
 
+/* PORT: the reaction animation 0xED850 reads its x/y motion table at linear
+ * address 0 (the DOS IVT's INT 0 vector): actors_anim_begin sets rec+0x0C = 0
+ * and the stream's first 0xFF20/0xFF21 opcodes do a mode-0x6000 table lookup
+ * before any base is loaded, so the y-opcode's operand is
+ * (s8)DSB(rec+0x52*2 + 1), i.e. mem[1] at rec+0x52 = 0 then mem[3] at 1. The
+ * port has no real mode, so it seeds those two bytes from the original's
+ * measured rec_y series (record 2026-10-28-state-coverage-derivations §D3.4:
+ * -3456 then -4480 = y[0] -54, y[1] -16). The x bytes mem[0]/mem[2] are
+ * the adjacent record-motion x defect, recorded not fixed (§D3). */
+void bios_ivt_stand_in(void)
+{
+    DSB(1) = 0xCAu;   /* y[0] = -54 */
+    DSB(3) = 0xF0u;   /* y[1] = -16 */
+}
+
 void game_init(void)
 {
     PR_HIT(0x20C10u);
@@ -7007,6 +7022,7 @@ void game_init(void)
             return;
         }
     }
+    bios_ivt_stand_in();                        /* PORT: the reaction reads the IVT at address 0 */
 
     /* 0x1BEC4 init chain, in order. */
     /* PORT: the argc==2 argv probe (0x623B0, "-f") has no host equivalent. */

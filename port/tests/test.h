@@ -139,6 +139,7 @@ extern int g_failures;
     X(test_p7_4b03c) \
     X(test_p8_3a820) \
     X(test_p8_29cfc) \
+    X(test_u16_reaction_motion) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_inlined_functions) \

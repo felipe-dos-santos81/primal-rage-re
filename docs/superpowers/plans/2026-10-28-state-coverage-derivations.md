@@ -900,6 +900,57 @@ those record-side instructions is mistranscribed. The fix is not in
 - This is a classification only. No offset, dwell, gate or anchor value was
   fitted; no game C function, oracle ratchet, miss set or Makefile pin changed.
 
+### §D3.7 The fix (Task 10): the reaction reads the IVT, not a fitted offset
+
+Task 10 inspected the raw stream at the dumped cursor and found the record-motion
+gap is a **null table base**, not a mistranscribed instruction. The reaction
+stream `0xED850` begins with the two mode-0x6000 opcodes `0xFF20` (x) and `0xFF21`
+(y); `actors_anim_begin` (`0x2BC30`) sets `rec+0x0C = 0` before its initial walk,
+and neither opcode loads a base first, so each does a table lookup against linear
+address **0**. In the original, address 0 is the DOS/4GW conventional memory (the
+IVT's INT 0 vector); in the port it is BSS zero. The port's opcode-0x21 handler
+(`0x2B7B8`), its operand source (`0x29F34` case 0x40) and the mode-0x6000 command
+decode were all re-checked against the raw assembly and are byte-faithful — the
+gap is the *data* at address 0, not the code.
+
+The y-opcode's operand is `(s8)DSB(rec+0x52*2 + 1)`, i.e. `mem[1]` at `rec+0x52 = 0`
+and `mem[3]` at 1, each applied once (the reaction enters once, `actors_anim_begin`
+is called once, and rec+0x1C accumulates across the two loop passes). The original's
+measured series (§D3.4/§D3.5) is `rec_y = 0xFFFFF280` (`-3456`) at `0x14FE` then
+`0xFFFFEE80` (`-4480`) at `0x1501`, so:
+
+- `y[0] = -54 = 0xCA` → `mem[1] = 0xCA` (`-3456 = -54 * 64`);
+- `y[1] = -16 = 0xF0` → `mem[3] = 0xF0` (`-4480 - (-3456) = -1024 = -16 * 64`).
+
+These are the INT 0 vector's offset-high and segment-high bytes (the port has no
+real mode, so it cannot read the real IVT). The fix is the host stand-in
+`bios_ivt_stand_in()` (`port/src/game/flow.c`, called by `game_init`), which writes
+those two bytes. **The x bytes `mem[0]`/`mem[2]` (the INT 0 vector's offset-low and
+segment-low, read by the x-opcode) are the adjacent record-motion x defect, recorded
+not fixed**: they were not captured, and the acceptance (the dwell, the `0x4844C`
+gate, `r0`) reads only the y. No offset, dwell or amplitude was fitted; the two bytes
+are derived from the measured series with the addresses that prove them.
+
+The boundary test `test_u16_reaction_motion` (registered in `test.h`) seeds
+`bios_ivt_stand_in`, runs the reaction stream's two passes, and asserts the dwell
+`0xFFFFF280` (`-3456`) then `0xFFFFEE80` (`-4480`); it fails before the fix
+(`mem[1] = 0`) and under a `mem[1] = 0xCB` mutation (`-0xD40`, `-0x1140`). The gate's `0x13FF/0x1400/0x1401`
+boundary is `test_p3_4844c`'s state-3 claim (already committed), not re-added.
+
+Measured on the ordinary U23 replay after the fix: the port's `rec_y`/`s0_30` now
+match the original's series at every frame `0x14FC..0x1531` (the port is no longer
+`0x1180` above it), `s0_54` clears at `0x1533` (the capture's exit frame, not the
+old `0x155C`), and `r0` reaches `0x33` at `f=0x155B`. The U23 oracle re-pins
+**only** `GP_U23_TRACE_MIN_FIRST` `5449 → 6050` and `GP_U23_MOVES_MIN_FIRST`
+`5467 → 6050` (both are the replay's end + 1: `0 differing through 6049`, exact at
+±1 — 6051 is unreachable, 5449/5467 fail under `PR_PINS_EXACT`). `MIN_FIRST 4095`,
+`MAX_START 106`, `MIN_REACH 3439`, `MAX_MISSING 9`, the capture sha and the frame
+count are unchanged. `make diff-verify` stays `1033/1033 functions VERIFIED;
+14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188
+have none); 809/845 closed on full rows; 8 ported functions with no row`
+(`0x20C10` is one of the 8, so the new `bios_ivt_stand_in` call in `game_init` moves
+no row), and `port_progress.py` stays `798 1203 66` / `759 759 100`.
+
 ---
 
 ## §D6 The OPL single-voice pitch test (Task 12)
