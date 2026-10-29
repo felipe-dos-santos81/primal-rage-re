@@ -579,13 +579,11 @@ the gate (`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` plus
   (610 seamed + 32 `fn_register`, 11 in both); the 128 unseamed split into
   **124 addresses carrying a `PR_HIT` line** (125 `PR_HIT` lines — `0x50188`
   carries two) plus the **4 `UNINSTRUMENTED`** exceptions `0x29D60`, `0x2EA30`,
-  `0x2EA64`, `0x500BB` (record §D1.4/§D1.9). The census reads **HIT 645 /
-  NOT-HIT 110 / UNINSTRUMENTED 4** (sums to 759), union sha `e93d7415f1…`
-  (record §D7.5) — the Task 3 baseline, now **stale by eight `improved:`
-  addresses** (R17/§D8.3): the phase's `gp-u25-endurance-end` and
-  `gp-draw-timeout` reach `0x292D4`/`0x29638`/`0x296B8`/`0x19820`/`0x19958`
-  (modes `0x32`/`0x33`) and `0x27ED8`/`0x28BD4`/`0x28C38` (modes `0x0A`/`0x0B`),
-  so a fresh census reads **HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4**.
+  `0x2EA64`, `0x500BB` (record §D1.4/§D1.9). The census reads **HIT 653 /
+  NOT-HIT 102 / UNINSTRUMENTED 4** (sums to 759; Task 14 re-pinned it from the
+  Task 3 baseline's `HIT 645 / NOT-HIT 110` — R17/§D8.3 — the eight `improved:`
+  addresses measured as `gp-u25-endurance-end`'s `0x292D4`/`0x29638`/`0x296B8`
+  and `gp-draw-timeout`'s `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`).
 - **U16 (record §D3):** the class is **record motion**, not the anchor term or
   call order; the cause is the reaction's null table base (the IVT at linear
   0), fixed by `bios_ivt_stand_in()` seeding `mem[1] = 0xCA`/`mem[3] = 0xF0`.

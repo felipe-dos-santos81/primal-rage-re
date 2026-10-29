@@ -372,12 +372,12 @@ true original, and ported the divergence. Two pieces:
   `../docs/superpowers/specs/2026-10-28-state-coverage-design.md`, record
   `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
   two full gates plus `make audio-render`, green 2026-10-29). The census
-  (`make coverage`, outside `verify`) reads **HIT 645 / NOT-HIT 110 /
+  (`make coverage`, outside `verify`) reads **HIT 653 / NOT-HIT 102 /
   UNINSTRUMENTED 4** (the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`) —
-  the Task 3 baseline, **stale by eight `improved:` addresses** (R17/§D8.3): a
-  Task 14 re-run reads **HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4** (the phase's
-  `gp-u25-endurance-end`/`gp-draw-timeout` reach modes `0x32`/`0x33` and
-  `0x0A`/`0x0B`), not re-pinned.
+  Task 14 re-pinned it from the Task 3 baseline's `HIT 645 / NOT-HIT 110`
+  (R17/§D8.3): the eight `improved:` addresses are `gp-u25-endurance-end`'s
+  `0x292D4`/`0x29638`/`0x296B8` and `gp-draw-timeout`'s
+  `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`.
   The exhibits: ENDURANCE's team end (`gp-u25-endurance-end`, `af1` `0 → 4`,
   stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
   `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to

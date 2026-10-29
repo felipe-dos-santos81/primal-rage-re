@@ -1487,7 +1487,9 @@ this phase:
 tripwire.** `tools/coverage_baseline.txt` is a pin: its header records the
 measured provenance (`measured 2026-10-29, make coverage runs 1 and 2`, the
 portable HIT union sha256 `e93d7415f1…`, `HIT 645 / NOT-HIT 110 /
-UNINSTRUMENTED 4`), and `coverage_census.py --check` fails on a new NOT-HIT. It
+UNINSTRUMENTED 4` — re-pinned by Task 14 §D8.3 to `HIT 653 / NOT-HIT 102 /
+UNINSTRUMENTED 4`, reason in the header), and `coverage_census.py --check` fails
+on a new NOT-HIT. It
 is **not** part of `tools/pin_baseline.sha256`: that file is the
 capture/oracle pin-region tripwire over the marker-delimited regions of
 `Makefile`, `tools/audio_compare.py`, `tools/k11_compare.py`,
@@ -1658,8 +1660,8 @@ byte-identically and the `git diff --quiet` guard passes). The coverage census's
 38-minute PR_COVERAGE build, **outside `verify`**). The four `UNINSTRUMENTED` are
 `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`.
 
-**R17 — the coverage baseline is stale by eight `improved:` addresses.** This
-task re-ran `make coverage` (log `/tmp/opencode/task14-coverage.log`, exit 2) to
+**R17 — the coverage baseline was re-pinned to eight `improved:` addresses.** This
+task re-ran `make coverage` (log `/tmp/opencode/task14-coverage.log`) to
 regenerate the dumps and `--check` them against the committed baseline; the
 census printed, instead of a clean `baseline ok`:
 
@@ -1671,15 +1673,24 @@ make: *** [Makefile:2539: coverage] Error 2
 ```
 
 The committed baseline (Task 3, measured 2026-10-29 before the capture tasks
-landed) reads **HIT 645 / NOT-HIT 110 / UNINSTRUMENTED 4**; the re-run reads
+landed) read **HIT 645 / NOT-HIT 110 / UNINSTRUMENTED 4**; the re-run read
 **HIT 653 / NOT-HIT 102 / UNINSTRUMENTED 4** — exactly eight addresses moved
-NOT-HIT → HIT. They are the phase's own exhibits: `0x292D4` (the mode-`0x32`
-team list), `0x29638`/`0x296B8` (`game_mode_33_step`/`game_mode_32_step`) and
-`0x19820`/`0x19958` (the round-end debris spawner) reached by
-`gp-u25-endurance-end`'s four-KO match end (modes `0x32`/`0x33`), and `0x27ED8`
-(the mode-`0x0A` setter), `0x28BD4` (`game_mode_0a_step`) and `0x28C38`
-(`flow_winner_pose_step`, mode `0x0B`) reached by `gp-draw-timeout`'s drawn
-round (modes `0x0A`/`0x0B`). **Not re-pinned** — Task 14 changes docs only; a
-re-pin is a measured `--update-baseline --reason` action for a later task (the
-design §7.1 step 3's own "a new hit is an `improved:` re-pin with a recorded
-reason"). The changed hit set is a finding, recorded here, not a pin.
+NOT-HIT → HIT. Measured per-tag attribution (from the dumps, not the report's
+prose): `gp-u25-endurance-end` reaches `0x292D4` (the mode-`0x32` team list),
+`0x29638`/`0x296B8` (`game_mode_33_step`/`game_mode_32_step`), and
+`gp-draw-timeout` reaches `0x19820`/`0x19958` (the round-end debris spawner),
+`0x27ED8` (the mode-`0x0A` setter), `0x28BD4` (`game_mode_0a_step`) and
+`0x28C38` (`flow_winner_pose_step`, mode `0x0B`) — the earlier report prose
+wrongly credited `0x19820`/`0x19958` to ENDURANCE. **Re-pinned** with the
+measured reason (design §7.1 step 3's "a new hit is an `improved:` re-pin with a
+recorded reason"):
+
+```text
+$ python3 tools/coverage_census.py --update-baseline --reason "state coverage Task 14: eight addresses improved by the phase's captures (gp-draw-timeout: 0x19820 0x19958 0x27ED8 0x28BD4 0x28C38; gp-u25-endurance-end: 0x292D4 0x29638 0x296B8)"
+coverage: baseline written (…/tools/coverage_baseline.txt)
+```
+
+After the re-pin, `--check` exits 0 (`coverage: split HIT=653 NOT-HIT=102
+UNINSTRUMENTED=4`, no `improved:`/`new NOT-HIT` line) and `--check-instrumented`
+passes (`every .c column-0 header is instrumented`). The baseline header now
+records the reason above.
