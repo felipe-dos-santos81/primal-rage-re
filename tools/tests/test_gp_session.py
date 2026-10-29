@@ -811,6 +811,50 @@ class TestSide1Ending(unittest.TestCase):
         self.assertIn('gp-u26-side1-ending', gs.STOP_AT_END)
 
 
+class TestNameEntry(unittest.TestCase):
+    """gp-u27-name-entry (plan 2026-10-28-state-coverage Task 8): the name-entry
+    letters. gp-u10-ending's path with letter keys (A/B/D) injected at mode 0x1E so
+    side 0's entry (state 5) is driven, and NAME_ENTRY_EXTRA S fields that observe the
+    typed letters, the letter cells and the committed name."""
+
+    def test_the_letters_are_set1_make_words_not_pad_scans(self):
+        # A/B/D's scans (0x1E/0x30/0x20) are none of P1's pad keys (S/X/Z/C/U/I/N/M),
+        # so the key-state write a letter step makes cannot set a pad bit and move the
+        # cursor through ne_pad.
+        for n, (scan, word) in (('a', (0x1E, 0x1E61)), ('b', (0x30, 0x3062)),
+                                ('d', (0x20, 0x2064))):
+            self.assertEqual(gs.KEYS[n], (scan, word))
+            self.assertNotIn(scan, [p[0] for p in gs.PAD.values()])
+            self.assertEqual(word, scan << 8 | (word & 0xFF))    # the set-1 make word
+
+    def test_the_scenario_clones_u10_and_injects_the_letters(self):
+        scn = gs.SCENARIOS['gp-u27-name-entry']
+        u10 = gs.SCENARIOS['gp-u10-ending']
+        self.assertEqual(scn['time_limit'], 240)
+        self.assertEqual(scn['memsize'], 64)
+        self.assertEqual(scn['extra'], gs.WIN_EXTRA + gs.NAME_ENTRY_EXTRA)
+        # the body through the seven poked final opponents is u10's, then the letters
+        self.assertEqual(scn['steps'][:len(u10['steps']) - 1],
+                         u10['steps'][:-1])
+        self.assertEqual(scn['steps'][-1], ('until_mode', 0x03, 0))
+        tail = scn['steps'][len(u10['steps']) - 1:-1]
+        self.assertEqual([st[-1] for st in tail],
+                         [('key', n) for n in gs.NAME_ENTRY_KEYS] + [('key', 'enter')])
+        self.assertEqual(tail[0][0], 'after_mode')
+        self.assertEqual(tail[0][1], 0x1E)
+        self.assertEqual([st[0] for st in tail[1:]], ['after'] * 3)
+        self.assertIsNot(scn['steps'], u10['steps'])            # a new tuple
+
+    def test_the_extra_fields_read_the_name_entry_addresses(self):
+        self.assertEqual(gs.NAME_ENTRY_EXTRA,
+                         (('ncnt', 0x10431C, 1), ('cell0', 0x104126, 1), ('name', 0x104343, 4)))
+        # cell0 is letter cell 0's +0x12 state (DS_00104114 + 0x12), not the record base
+        self.assertEqual(gs.NAME_ENTRY_EXTRA[1][1], 0x104114 + 0x12)
+
+    def test_the_capture_stops_at_the_scenarios_end(self):
+        self.assertIn('gp-u27-name-entry', gs.STOP_AT_END)
+
+
 class TestSecondEnding(unittest.TestCase):
     """gp-u13-ending2 (plan 2026-10-20-gameplay-truth-ii Task 5; record
     2026-10-01-gameplay-u5 §C5.4/§C5.7, 2026-10-02-gameplay-u9-u10 §W.6): the

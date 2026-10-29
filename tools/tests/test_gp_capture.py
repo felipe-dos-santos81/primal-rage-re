@@ -619,12 +619,14 @@ class TestMemsize(unittest.TestCase):
     the one its capture was taken with. gp-u25-endurance-end (state coverage Task 5)
     and gp-u26-side1-ending (Task 6) also set memsize=64: both reproduce the poked-KO /
     ending path that ran out of memory at 16 MB in the original (the §W.13 OOM), so
-    they carry the same harness value."""
+    they carry the same harness value. gp-u27-name-entry (Task 8) clones gp-u10-ending
+    and so carries the same value."""
     MEM = ['-set', 'dosbox memsize=64']
     POKED_FINAL = ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
                    'gp-u19-vertigo-ending', 'gp-u20-chaos-ending',
                    'gp-u21-armadon-ending', 'gp-u22-diablo-ending',
-                   'gp-u25-endurance-end', 'gp-u26-side1-ending', 'gp-u13-band')
+                   'gp-u25-endurance-end', 'gp-u26-side1-ending', 'gp-u13-band',
+                   'gp-u27-name-entry')
 
     def cmd(self, name, root='/r'):         # as gp_capture.main builds it
         scn = gs.SCENARIOS[name]

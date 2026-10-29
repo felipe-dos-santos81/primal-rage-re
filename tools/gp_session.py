@@ -159,6 +159,14 @@ PAD = {
 # M (0x32) and N (0x31) are also P1's up, b3 and b2 in the default binding.
 KEYS.update({'space': (0x39, 0x3920), 'y': (0x15, 0x1579), 'n': (0x31, 0x316E),
              'alt-q': (0x10, 0x1000), 'alt-s': (0x1F, 0x1F00), 'alt-m': (0x32, 0x3200)})
+# State coverage Task 8 (plan 2026-10-28-state-coverage Task 8): the name-entry
+# letters. A/B/D are the standard set-1 make words (scan << 8 | ascii, lowercase
+# as U11's y/n), the same form game_key_loop (0x24C5C) passes to nameentry_key
+# (0x20860 -> 0x1F458, record §53-A). Their scans (0x1E/0x30/0x20) are NOT P1's
+# pad keys (S/X/Z/C/U/I/N/M = 0x1F/0x2D/0x2C/0x2E/0x16/0x17/0x31/0x32), so the
+# key-state-table write each `key` step makes does not set a pad bit and move the
+# name-entry cursor through ne_pad (nameentry_step's 0x1F4DF..0x1F7D0 arms).
+KEYS.update({'a': (0x1E, 0x1E61), 'b': (0x30, 0x3062), 'd': (0x20, 0x2064)})
 
 _DEC = ('ms', 'rc', 'step', 'late', 'ring', 'len', 'race')
 _TEXT = ('reason', 'press', 'release', 'was', 'now')
@@ -763,6 +771,40 @@ SCENARIOS['gp-u26-side1-ending'] = dict(
         ('until_mode', 0x03, 0),
     ))
 
+# State coverage Task 8 (plan 2026-10-28-state-coverage Task 8, report
+# task-8-report.md): the name-entry letters. gp-u10-ending's path (P1 SAURON
+# wins, so side 0 is the human and its entry is mode-0x1E state 5) with letter
+# keys injected at mode 0x1E so the entry screen is driven -- three letters then
+# Enter (END) -- rather than displayed to its 0x2EE-frame timeout. The letters
+# are A/B/D (NAME_ENTRY_KEYS above): their scans are not P1's pad keys, so a
+# letter's key-state write does not move the cursor. NAME_ENTRY_EXTRA are the S
+# fields that observe it: ncnt (NE_NAME_COUNT DS_0010431C, nameentry_step
+# 0x1F458 increments it per letter), cell0 (letter cell 0's +0x12 animation
+# state, DS_00104114 + 0x12) and name (the committed name buffer DS_00104343,
+# written by each cell's state-8 commit and filtered by nameentry_finish
+# 0x20710). The 20-frame wait into mode 0x1E, the 30-frame letter gaps and the
+# 90-frame Enter gap are harness values (mode 0x1E enters at f=0x217E and state
+# 5 arms at f=0x2183 in gp-u10-ending). time_limit 240, WIN_EXTRA and memsize 64
+# are U10's; no pin and no oracle hang off this capture (a failure is preserved
+# as .failed.N), so it is not in CAPTURE_DIRS.
+NAME_ENTRY_EXTRA = (('ncnt', 0x10431C, 1), ('cell0', 0x104126, 1), ('name', 0x104343, 4))
+NAME_ENTRY_KEYS = ('a', 'b', 'd')
+SCENARIOS['gp-u27-name-entry'] = dict(
+    time_limit=240, extra=WIN_EXTRA + NAME_ENTRY_EXTRA, memsize=64,
+    steps=WIN_MENU + (
+        ('after_entry', 0x06, 1, 10,
+         ('poke', ((0x108106, lands_marked(0, 0)), (0x10789E, b'\x78')))),
+        ('after_entry', 0x06, 2, 10, KO_P2),
+    ) + tuple(st for k in range(1, 8) for st in (
+        ('after_entry', 0x0C, k, 10, KO_P2),
+        ('after_entry', 0x0D, k, 10, DEATH_DONE),
+    )) + (
+        ('after_mode', 0x1E, 20, ('key', NAME_ENTRY_KEYS[0])),
+    ) + tuple(('after', 30, ('key', n)) for n in NAME_ENTRY_KEYS[1:]) + (
+        ('after', 90, ('key', 'enter')),
+        ('until_mode', 0x03, 0),
+    ))
+
 # Gameplay truth II U14 (plan 2026-10-20-gameplay-truth-ii.md Task 6; spec §W5): a match
 # won by fought hits, so the win path's pokes are not needed. The menu path is gp-idle-loss's
 # with WIN_MENU's immediate confirm of character 0 (SAURON); the two rounds are punched.
@@ -1322,6 +1364,8 @@ class Schedule:
 # winner pose; stop_mode/stop_delay), so mode 0xA (the round-over, which precedes it)
 # and the pose are recorded and nothing past them is compared.
 # gp-draw-timeout (state coverage Task 7) stops the same way: mode 0xB 60 frames in.
+# gp-u27-name-entry (state coverage Task 8) stops too: its end is mode 3 after the
+# letter-driven high-score entry (u10's until_mode), and nothing past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1333,7 +1377,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
-                         'gp-u13-band'})
+                         'gp-u13-band', 'gp-u27-name-entry'})
 
 
 class ScriptError(Exception):

@@ -373,6 +373,16 @@ static const fnm_pair k_miss_gp_u26_side1_ending[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u27-name-entry (state coverage Task 8, report task-8-report.md), measured on its full
+ * replay to the X record: the same two wipe hooks of §G.24, 0x29D60 (bare
+ * `ret`, hits=1) and 0x5D812 (runtime stub, hits=3), both from
+ * frontend_mode_1b_step (the letter-driven high-score entry's wipe, as
+ * gp-u10-ending's). */
+static const fnm_pair k_miss_gp_u27_name_entry[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* gp-draw-timeout (state coverage Task 7, report task-7-report.md), measured on its full
  * replay to the X record (f=0xB62): the same two wipe hooks of §G.24, 0x29D60
  * (bare `ret`, hits=1) and 0x5D812 (runtime stub, hits=1), both from
@@ -449,6 +459,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u22-diablo-ending", 0, k_miss_gp_u22_diablo_ending, FNM_N(k_miss_gp_u22_diablo_ending) },
     { "gp-u25-endurance-end", 0, k_miss_gp_u25_endurance_end, FNM_N(k_miss_gp_u25_endurance_end) },
     { "gp-u26-side1-ending", 0, k_miss_gp_u26_side1_ending, FNM_N(k_miss_gp_u26_side1_ending) },
+    { "gp-u27-name-entry", 0, k_miss_gp_u27_name_entry, FNM_N(k_miss_gp_u27_name_entry) },
     { "gp-draw-timeout", 0, k_miss_gp_draw_timeout, FNM_N(k_miss_gp_draw_timeout) },
 };
 
