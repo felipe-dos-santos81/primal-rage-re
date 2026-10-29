@@ -39,7 +39,7 @@ class TestTables(unittest.TestCase):
         # plan gameplay-u6b, record gameplay-u6 §U6.11: after every U1 field, so older
         # poll.log lines are a prefix of the new format (U17's device words and the
         # fought-match phase's slot fields follow them)
-        self.assertEqual(gs.SNAP_FIELDS[-11:-6], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
+        self.assertEqual(gs.SNAP_FIELDS[-13:-8], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
                                                   ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
                                                   ('s0_43', 0x1077F3, 1)))
         self.assertEqual(gs.MOVE_FIELDS, ('c0', 'c1', 'r0', 'r1', 's0_43'))
@@ -49,7 +49,7 @@ class TestTables(unittest.TestCase):
         # host input truth U17, record §H6: dev1/dev2 follow the U1/U6 fields (older S
         # lines lack them) and live behind the key-config pointer DS_00101514, not at a
         # fixed DS address (their offsets are below DATA_BASE_VA)
-        self.assertEqual(gs.SNAP_FIELDS[-6:-4], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
+        self.assertEqual(gs.SNAP_FIELDS[-8:-6], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
         self.assertEqual((gs.KB_DEV1, gs.KB_DEV2), (0x2D4, 0x2D6))
         self.assertEqual(gs.DEV_FIELDS, ('dev1', 'dev2'))
         self.assertEqual(set(gs.DEV_FIELDS), set(gs.POINTER_FIELDS))
@@ -64,7 +64,7 @@ class TestTables(unittest.TestCase):
         self.assertEqual(snaps[3]['rng'], 3)
 
     def test_the_state_fields_are_appended_with_their_addresses_and_widths(self):
-        self.assertEqual(gs.SNAP_FIELDS[-4:],
+        self.assertEqual(gs.SNAP_FIELDS[-6:-2],
                          (('s0_30', 0x1077E0, 4), ('s0_42', 0x1077F2, 2),
                           ('s1_30', 0x107874, 4), ('s1_42', 0x107886, 2)))
         vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
@@ -75,6 +75,31 @@ class TestTables(unittest.TestCase):
         self.assertIn('s0_42=0820', line)
         self.assertIn('s1_30=000013FF', line)
         self.assertIn('s1_42=0008', line)
+
+    def test_the_af_counters_are_appended_not_the_round_wins(self):
+        # state coverage Task 5 (record §D5): af0/af1 are the ENDURANCE loss
+        # counters DS_00104AF0/AF1 (bytes), appended after the slot-state fields;
+        # they are NOT WIN_EXTRA's round wins w2/w3 at DS_00104AF2/AF3.
+        self.assertEqual(gs.SNAP_FIELDS[-2:],
+                         (('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1)))
+        self.assertNotIn('af0', gs.WIN_FIELDS)
+        self.assertNotIn('af1', gs.WIN_FIELDS)
+        self.assertEqual(gs.WIN_EXTRA[:2], (('afc', 0x104AFC, 2), ('ad4', 0x104AD4, 4)))
+        vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+        vals.update({'f': 0x1234, 'af0': 4, 'af1': 0})
+        line = gs.format_s(1, vals, 0, 0, 0)
+        self.assertIn('af0=04', line)
+        self.assertIn('af1=00', line)
+        # an old S line without af0/af1 still parses (the fields are absent)
+        old = ('S ms=1 f=1234 mode=0006 st=0000 tick=00000000 t508=00000000 '
+               't50c=00000000 raw=00000000 pad=00000000 new=00000000 held=00000000 '
+               'e0=0000 e2=0000 rng=00000000 cred=00000000 fp=00 b1d=00 b1f=03 b25=00 '
+               'w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=00 s1_54=00 s1_5a=00 '
+               'ent=00000000 r0=00 r1=00 c0=00 c1=00 s0_43=00 dev1=0000 dev2=0000 '
+               's0_30=00000000 s0_42=0000 s1_30=00000000 s1_42=0000 kb=0000 head=001E tail=003E')
+        r = gs.parse(old)
+        self.assertNotIn('af0', r)
+        self.assertNotIn('af1', r)
 
     def test_an_old_s_line_without_the_state_fields_still_parses(self):
         old = ('S ms=1 f=1234 mode=0006 st=0000 tick=00000000 t508=00000000 '
@@ -635,6 +660,32 @@ class TestEnduranceFight(unittest.TestCase):
         # The 70 s limit leaves ~18 s of idle fight past the end frame; gp_capture
         # stops STOP_TAIL frames after it (a name not in STOP_AT_END would run on).
         self.assertIn('gp-u12-endurance', gs.STOP_AT_END)
+
+
+class TestEnduranceEnd(unittest.TestCase):
+    """gp-u25-endurance-end (plan 2026-10-28-state-coverage Task 5, record §D5):
+    gp-u12-endurance's path with four poked KOs of P2 (side 1) and the mode-0x17
+    results screen. The loser is side 1, so the counter is af1; the plan's
+    until_mode 0x14 prediction is corrected by the raw to 0x17."""
+
+    def test_the_scenario_clones_u12_and_adds_four_poked_kos(self):
+        scn = gs.SCENARIOS['gp-u25-endurance-end']
+        prefix = gs.SCENARIOS['gp-u8-endurance']['steps'][:-1] + gs.ENDURANCE_PICKS
+        self.assertEqual(scn['steps'][:len(prefix)], prefix)
+        self.assertEqual(scn['time_limit'], 90)
+        # the original OOMs at the default 16 MB on the fourth KO (record §D5):
+        # memsize 64 is the §W.13 harness value gp-u10-ending already uses
+        self.assertEqual(scn['memsize'], 64)
+        pokes = [st for st in scn['steps'][len(prefix):]
+                 if isinstance(st[-1], tuple) and st[-1][0] == 'poke']
+        self.assertEqual([(st[1], st[2], st[3]) for st in pokes],
+                         [(m, k, 10) for k in (1, 2, 3, 4) for m in (0x31, 0x32)])
+        self.assertEqual([st[-1] for st in pokes],
+                         [gs.KO_P2, gs.DEATH_DONE] * 4)
+        self.assertEqual(scn['steps'][-1], ('until_mode', 0x17, 0))
+
+    def test_the_capture_stops_at_the_results_screen(self):
+        self.assertIn('gp-u25-endurance-end', gs.STOP_AT_END)
 
 
 class TestSecondEnding(unittest.TestCase):

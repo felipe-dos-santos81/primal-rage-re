@@ -59,6 +59,12 @@ SNAP_FIELDS = (
     # Appended, so every older poll.log's S lines lack them.
     ('s0_30', 0x1077E0, 4), ('s0_42', 0x1077F2, 2),
     ('s1_30', 0x107874, 4), ('s1_42', 0x107886, 2),
+    # State coverage Task 5 (plan 2026-10-28-state-coverage §G3, record §D5):
+    # the ENDURANCE loss counters DS_00104AF0/DS_00104AF1 (bytes, written by
+    # game_mode_32_step 0x296B8), NOT the round wins w2/w3 at DS_00104AF2/AF3
+    # (WIN_EXTRA). Appended like the slot-state fields, so every older
+    # poll.log's S lines lack them.
+    ('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -417,6 +423,39 @@ KO_P2 = ('poke', ((0x10789E, b'\x78'),))
 # The byte 0x37EA0 sets at 0x37FF6 when a KO'd fighter's death animation ends; mode
 # 0xD (0x274FC) waits for it, and a poked KO never starts that animation (record §W.5).
 DEATH_DONE = ('poke', ((0x104B0C, b'\x01'),))
+
+
+# State coverage Task 5 (plan 2026-10-28-state-coverage §G3, record §D5): the
+# ENDURANCE match end. gp-u12-endurance's path (the team pass and the modes
+# 0x30/0x31 fight) continued with four poked KOs of P2 (side 1): KO_P2 (poke
+# side 1's +0x5A DS_0010789E to the KO value 0x78) keyed after_entry 0x31 k,
+# then DEATH_DONE (poke DS_00104B0C = 1, skipping the KO'd fighter's death
+# animation) keyed after_entry 0x32 k. flow_round_over_check (0x29970, the
+# mode-0x31 tail) sets mode 0x32 and DS_00104B09 = the KO'd side once its
+# +0x5A reaches 0x78; game_mode_32_step (0x296B8) then advances the loser's
+# loss counter DS_00104AF0[s] and replaces its fighter with the next roster
+# byte DS_00108134[s*4 + count] (mode 0x31), or, at count 4, ends the match
+# (mode 0x33, the 0x258 = 600-frame wait) and mode 0x17's results screen (the
+# hook 0x25AE8 = game_hook_25ae8, game_mode_33_step 0x29638). The loser is
+# side 1 (P2), so the counter is af1 (DS_00104AF1), not af0, and c1 walks side
+# 1's roster [4,6,1,3] -> 04,06,01,03 (predicted from ENDURANCE_PICKS' P2
+# picks, cells 5,4,3,2 = classes 4,6,1,3; the capture measures it). The stop
+# is until_mode 0x17 (the results screen), NOT the plan's predicted 0x14: the
+# raw enters mode 0x14 only from the high-score-entry flow (0x1F18C/0x1F42E),
+# never from mode 0x33. time_limit 90 s and memsize 64 are harness values: the
+# end is predicted near f ~0x990 (gp-u12's X at f=0x78A plus the four KO
+# cycles, the 600-frame wait and the results screen's first frames), and the
+# original runs out of memory at the default 16 MB on the fourth KO cycle
+# (f=0x710, "Primal Rage is out of memory."), exactly the §W.13 poked-final
+# symptom, so memsize=64 is carried over from gp-u10-ending.
+ENDURANCE_KOS = tuple(st for k in range(1, 5) for st in (
+    ('after_entry', 0x31, k, 10, KO_P2),
+    ('after_entry', 0x32, k, 10, DEATH_DONE),
+))
+SCENARIOS['gp-u25-endurance-end'] = dict(time_limit=90, memsize=64, steps=(
+    SCENARIOS['gp-u8-endurance']['steps'][:-1] + ENDURANCE_PICKS + ENDURANCE_KOS + (
+        ('until_mode', 0x17, 0),                       # the results screen (mode 0x17, entry 2)
+    )))
 
 
 def lands_marked(side, char):
@@ -1179,7 +1218,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
-                         'gp-draw'})
+                         'gp-draw', 'gp-u25-endurance-end'})
 
 
 class ScriptError(Exception):
