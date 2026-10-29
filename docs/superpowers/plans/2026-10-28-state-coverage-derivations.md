@@ -707,6 +707,201 @@ reason only, and leaves the three modes in the never-presented set
 
 ---
 
+## §D3 The U16 discriminating dump (Task 9)
+
+**Measured class: record motion (`rec+0x1C`), not the anchor term and not
+`0x186D0` call order.** At every required boundary frame, the original and the
+port have the same `0x100AB4` addend and the same anchor index. The original's
+record-y is `0x1180` below the port's; equivalently, the port's record-y and
+latched `slot+0x30` are `0x1180` above the original's. No port behaviour or pin
+changed.
+
+### §D3.1 The appended fields and the pointer correction
+
+`SNAP_FIELDS` and the `PR_GP_DUMP` T record append, in order:
+
+```text
+ab4    [0x100AB4]      dword    rec_y  [[0x1077B0]+0x1C]  dword
+anchor [0x100AF0]      dword    s0_57  [0x107807]         byte
+rec8   [[0x1077B0]+0x08] dword  rec34  [[0x1077B0]+0x34]  word
+rec36  [[0x1077B0]+0x36] word   rec44  [[0x1077B0]+0x44]  word
+```
+
+The slot-1 record pointer is `0x107844`; this measurement uses slot 0. In the
+port, the record pointer is an original linear address. In DOSBox-X's memory
+file it is a **physical address**: the diagnostic S records measured
+`[0x1077B0] = 0x0030AF18` and `[0x1077A8] = 0x002ED7B0`. `read_snap` therefore
+uses `record_physical + field_offset`, exactly as it already does for the
+key-config pointer, not `base + record - 0x80000 + field_offset`. The first
+version of this task's reader used the latter and returned zeroes; the r3/r4
+runs made with it are rejected as component evidence. The pointer diagnostic
+is `gp-u24-u16-state-t9-r4`; the accepted component run is r5 below.
+
+`test_the_u16_component_fields_are_appended_with_their_widths` and
+`test_read_snap_resolves_the_u16_fields_through_the_slot_record` failed before
+the append/dereference (missing fields and `None` values), passed after it,
+then failed again when the test was changed to the measured physical-pointer
+layout (`rec_y` and the other record fields read zero) and passed after the
+one-line correction. `format_s` needs no pointer arithmetic of its own: its
+input is the resolved value dictionary, and the test round-trips all eight new
+values. The port T-line test checks field order, widths, every fixed address,
+and every `[DS_001077B0]` record offset. The combined
+`test_gp_session`/`test_gp_capture` run is 135 tests, OK.
+
+### §D3.2 Port arm
+
+```text
+$ make gp-replay scenario=gp-u23-u16-finisher
+...
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+all checks passed
+```
+
+The U23 T records confirm the baseline series: `s0_30 = 0x0D40` at `0x1501`,
+rising to `0x1B40` at `0x152C..0x1531`; `ab4` equals `s0_30` and `rec_y` is zero
+throughout that interval. At the U23 reaction set (`0x1532`), `ab4 = 0x1D40`
+and `rec_y = 0x2EE`. The complete extraction is in this task's report; every
+row satisfies `(ab4 + rec_y) mod 2^32 == s0_30`.
+
+For the same-state original comparison below, the accepted r5 capture was also
+replayed with U23's scenario definition (U24 clones its steps object):
+
+```text
+$ python3 tools/gp_session.py port-script --scenario gp-u23-u16-finisher \
+    --capture data/k11-captures/gp-u24-u16-state-t9-r5 \
+    --out /tmp/pr_gp_dump/gp-u24-u16-state-t9-r5-u23.script
+$ PR_GP_DUMP=/tmp/pr_gp_dump/gp-u24-u16-state-t9-r5-u23 \
+  PR_GP_SCRIPT=/tmp/pr_gp_dump/gp-u24-u16-state-t9-r5-u23.script \
+  PR_GAME_DIR=data/game/C ./build/run_tests
+...
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+all checks passed
+```
+
+### §D3.3 Original arm and run validity
+
+Immediately before the original runs the 1-minute load was 0.83, 1.01, 1.13,
+0.97 and 0.91 (all below 8); no build or replay ran concurrently. Two ordinary
+BIOS-pad guarded attempts (`t9`, `t9-r2`) both stopped at `f=0x1485` before the
+window because the guard requires an S record the mode-9 transition never
+produces, and retained no log. The installed DOSBox-X 2026.08.31 has no usable
+scripted debugger path here (`DEBUGBOX` is `Bad command or filename`, and
+Alt+Pause does not open one), so the BPX fallback could not be used.
+
+The accepted run kept the PinGuard but disabled pad-BIOS synthesis, a harness
+input-path change that is explicit in its `session.txt` (`pad_bios=0`):
+
+```text
+$ DISPLAY=:1 timeout 600 python3 tools/gp_capture.py \
+    --scenario gp-u24-u16-state \
+    --out data/k11-captures/gp-u24-u16-state-t9-r5 \
+    --exe /tmp/pr_title_pin/PRAGE.EXE --no-pad-bios
+gp_capture: snapshots 6089, f 5..17DC, 15 frames missed (spec §3.7)
+gp_capture: CHECK steps fired 75/75 (0 skipped); stopped on mode 0x12: ok
+gp_capture: CHECK port script v2: ok
+gp_capture: CHECK no unscripted input: ok
+gp_capture: CHECK pokes written 1/1, 0 raced: ok
+gp_capture: CHECK capture pins: 0 BIOS words skipped (backlog over the 14-entry cap): ok
+gp_capture: CHECK stopped at the end (SIGTERM at f=17DC, rc=0): ok
+gp_capture: wrote 5563 frames ... wall 123.3s
+```
+
+All eleven checks pass (the five not quoted in full are `base`,
+`end frame reached`, `mode 0x27 after the Enter`, `snapshots kb == raw`, and
+`frames written 5563/5563`). `poll.log` is 6367 lines, sha256
+`d0ba4382b2fb56f3e9463051ee21214e214aa6e9e4768088c23db357c33919e5`. The
+run is a new diagnostic directory, not a published capture, not in
+`CAPTURE_DIRS`, and has no oracle or pin.
+
+The no-BIOS-pad arm advances some reaction stream steps one frame earlier than
+the ordinary U23/U24 runs. The aligned port replay advances at exactly the
+same frames, so the comparison below is same-state throughout. As independent
+controls, the new original's `s0_30` equals the existing
+`gp-u24-u16-state.failed` original at `0x1501` (`0xFFFFFBC0`) and at every
+frame `0x152C..0x1530` (`0x09C0`). At `0x1531` the old run still holds
+`0x09C0`, while the accepted run and its aligned port replay both enter the
+next state (`s0_57 = 3`, `s0_54 = 2`); the old and new `0x1531` records are not
+interchanged. The aligned replay's `trace.txt` sha256 is
+`6e2c6fd666ee7234273bba1fae1ceb715d25d1f97e01df3784e9ab48ec2dba40`.
+
+### §D3.4 The two complete boundary series
+
+These are the accepted original S records and the aligned port T records at
+**every** frame `0x1501..0x1531`. `O` is original, `P` is port; all values are
+hex. `rec_y` is the record component before the latch, not `s0_30`.
+
+| frame(s) | O `s0_30` | O `ab4` | O `rec_y` | P `s0_30` | P `ab4` | P `rec_y` |
+|---|---:|---:|---:|---:|---:|---:|
+| `1501..1502` | `FFFFFBC0` | `00000D40` | `FFFFEE80` | `00000D40` | `00000D40` | `00000000` |
+| `1503..1507` | `FFFFFCC0` | `00000E40` | `FFFFEE80` | `00000E40` | `00000E40` | `00000000` |
+| `1508..150D` | `FFFFFC40` | `00000DC0` | `FFFFEE80` | `00000DC0` | `00000DC0` | `00000000` |
+| `150E..150F` | `00000040` | `000011C0` | `FFFFEE80` | `000011C0` | `000011C0` | `00000000` |
+| `1510..1511` | `000002C0` | `00001440` | `FFFFEE80` | `00001440` | `00001440` | `00000000` |
+| `1512..152A` | `00000840` | `000019C0` | `FFFFEE80` | `000019C0` | `000019C0` | `00000000` |
+| `152B..1530` | `000009C0` | `00001B40` | `FFFFEE80` | `00001B40` | `00001B40` | `00000000` |
+| `1531` | `00000EAE` | `00001D40` | `FFFFF16E` | `0000202E` | `00001D40` | `000002EE` |
+
+Every row also has identical `anchor`, `s0_57`, `rec34`, `rec36` and `rec44`.
+`rec8` is the same stream address after removing the measured DOS4GW physical
+relocation (`original = port + 0x1E6000` in this run). Every row satisfies the
+latch sum modulo `2^32`. In particular:
+
+- at `0x1501`, `0xD40 + 0xFFFFEE80 = 0xFFFFFBC0` on the original and
+  `0xD40 + 0 = 0xD40` on the port;
+- at `0x152C..0x1530`, `0x1B40 + 0xFFFFEE80 = 0x09C0` on the original and
+  `0x1B40 + 0 = 0x1B40` on the port;
+- at the aligned `0x1531` state, `0x1D40 + 0xFFFFF16E = 0x0EAE` on the original
+  and `0x1D40 + 0x2EE = 0x202E` on the port.
+
+Signed subtraction gives the same direction at every row: **P minus O is
+`+0x1180`; O minus P is `-0x1180`**, for both `rec_y` and `s0_30`. The earlier
+`0x14FE` transition shows the record moving before the plateau: the accepted
+original has `rec_y = 0xFFFFF280` while the aligned port still has zero, with
+`ab4 = 0x0A80` on both. This is not a constant fabricated from the plateau;
+it is the measured record component at each frame.
+
+### §D3.5 The class and the follow-up addresses
+
+The classification rule is direct: `ab4` agrees at both boundaries and at every
+intervening frame, while `rec_y` differs. Therefore the defect is **record
+motion**. The `0x100AB4` producer (`0x18350`, the `0xCFC32` TALON table and the
+`0x18540` anchor index path) is not the differing term, and the two-addend
+`0x186D0` latch is not a call-order mismatch.
+
+A read-only `PR_GP_DUMP` opcode print (reverted after the measurement) shows
+that the port reaches the reaction stream's y opcode with a zero operand:
+
+```text
+f=14FD p=000ED858 cw=FF21 op=21 ax=0000 y=00000000 r52=00
+f=1500 p=000ED858 cw=FF21 op=21 ax=0000 y=00000000 r52=01
+```
+
+At those same stream states the original holds `rec_y = 0xFFFFF280` and then
+`0xFFFFEE80`. The follow-up fix therefore belongs to the **record-motion
+path**: stream `0xED850`, command word `0xFF21` at **`0xED858`**, opcode `0x21`'s
+`rec+0x1C += (s16)operand * 64` writer at **`0x2B7B8`**, and its `rec+0x52`
+operand source in **`0x29F34` case `0x40`**. The raw stream bytes and that
+operand's seed are Task 10's next inspection; this task does not guess which of
+those record-side instructions is mistranscribed. The fix is not in
+`0x18350`, `0xCFC32`, `0x186D0`, or the `0x48599` gate.
+
+### §D3.6 Limits and measured corrections
+
+- The two ordinary guarded attempts could not pass the pre-window `0x1485` pin
+  gap; the accepted original uses `--no-pad-bios`. Its aligned port replay is
+  therefore part of the evidence, not an optional convenience. No claim is made
+  that a differently timed `0x1531` record can be substituted for another.
+- The physical-pointer correction is raw-derived from r4's explicit pointer
+  fields. The zero-valued r3/r4 component fields are not used in the class.
+- The ordinary U23 port baseline and the existing `.failed` original baseline
+  still read exactly as §D1.5.1 states: the original is `0x1180` below the port
+  at the sampled frames, or the port is `0x1180` above the original. The new
+  one-frame-earlier stream steps do not rewrite that baseline.
+- This is a classification only. No offset, dwell, gate or anchor value was
+  fitted; no game C function, oracle ratchet, miss set or Makefile pin changed.
+
+---
+
 ## §D6 The OPL single-voice pitch test (Task 12)
 
 The offline experiment the plan's §G7(b)/Task 12 asked for: does the vendored

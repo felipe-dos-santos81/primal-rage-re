@@ -77,11 +77,22 @@ SNAP_FIELDS = (
     # sets it to 0x1E). Appended like c82b, so every older poll.log's S lines
     # lack it; gp-draw-timeout pokes it to 0 for the timeout draw.
     ('clock', 0x1088F2, 1),
+    # State coverage Task 9 (plan 2026-10-28-state-coverage Task 9): the U16
+    # reaction latch's anchor term and index, its slot state, and the animation
+    # record's stream cursor and vertical-motion components. The rec* offsets
+    # are behind slot 0's record pointer [DS_001077B0], not fixed DS addresses.
+    ('ab4', 0x100AB4, 4), ('rec_y', 0x1C, 4), ('anchor', 0x100AF0, 4),
+    ('s0_57', 0x107807, 1), ('rec8', 0x08, 4), ('rec34', 0x34, 2),
+    ('rec36', 0x36, 2), ('rec44', 0x44, 2),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
 # is [DS_00101514] + the field's offset.
 POINTER_FIELDS = frozenset(('dev1', 'dev2'))
+# State coverage Task 9: these fields are [DS_001077B0] + their record offset.
+# This is a second pointer class, independent of the key-config block above.
+SLOT_RECORD_PTR_DS = 0x1077B0
+SLOT_RECORD_FIELDS = frozenset(('rec_y', 'rec8', 'rec34', 'rec36', 'rec44'))
 DEV_FIELDS = ('dev1', 'dev2')                   # the device-word claim's fields
 TRACE_FIELDS = ('mode', 'st', 'raw', 'pad', 'e0', 'e2', 'rng', 'cred', 's0_5a', 's1_5a')
 MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (record gameplay-u6 §U6.11)

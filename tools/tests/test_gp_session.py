@@ -4,6 +4,7 @@ import os, subprocess, sys, tempfile, unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import gp_moves as gm
+import gp_capture as gc
 import gp_session as gs
 
 
@@ -39,7 +40,7 @@ class TestTables(unittest.TestCase):
         # plan gameplay-u6b, record gameplay-u6 §U6.11: after every U1 field, so older
         # poll.log lines are a prefix of the new format (U17's device words and the
         # fought-match phase's slot fields follow them)
-        self.assertEqual(gs.SNAP_FIELDS[-15:-10], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
+        self.assertEqual(gs.SNAP_FIELDS[-23:-18], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
                                                    ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
                                                    ('s0_43', 0x1077F3, 1)))
         self.assertEqual(gs.MOVE_FIELDS, ('c0', 'c1', 'r0', 'r1', 's0_43'))
@@ -49,7 +50,7 @@ class TestTables(unittest.TestCase):
         # host input truth U17, record §H6: dev1/dev2 follow the U1/U6 fields (older S
         # lines lack them) and live behind the key-config pointer DS_00101514, not at a
         # fixed DS address (their offsets are below DATA_BASE_VA)
-        self.assertEqual(gs.SNAP_FIELDS[-10:-8], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
+        self.assertEqual(gs.SNAP_FIELDS[-18:-16], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
         self.assertEqual((gs.KB_DEV1, gs.KB_DEV2), (0x2D4, 0x2D6))
         self.assertEqual(gs.DEV_FIELDS, ('dev1', 'dev2'))
         self.assertEqual(set(gs.DEV_FIELDS), set(gs.POINTER_FIELDS))
@@ -64,7 +65,7 @@ class TestTables(unittest.TestCase):
         self.assertEqual(snaps[3]['rng'], 3)
 
     def test_the_state_fields_are_appended_with_their_addresses_and_widths(self):
-        self.assertEqual(gs.SNAP_FIELDS[-8:-4],
+        self.assertEqual(gs.SNAP_FIELDS[-16:-12],
                          (('s0_30', 0x1077E0, 4), ('s0_42', 0x1077F2, 2),
                           ('s1_30', 0x107874, 4), ('s1_42', 0x107886, 2)))
         vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
@@ -84,7 +85,7 @@ class TestTables(unittest.TestCase):
         # of WIN_EXTRA's c82) is appended after them, also in SNAP_FIELDS not WIN_EXTRA.
         # state coverage Task 7 (report task-7-report.md): clock (DS_001088F2) is appended after
         # c82b, also in SNAP_FIELDS.
-        self.assertEqual(gs.SNAP_FIELDS[-4:-1],
+        self.assertEqual(gs.SNAP_FIELDS[-12:-9],
                          (('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1), ('c82b', 0x1078C6, 1)))
         self.assertNotIn('af0', gs.WIN_FIELDS)
         self.assertNotIn('af1', gs.WIN_FIELDS)
@@ -111,8 +112,9 @@ class TestTables(unittest.TestCase):
 
     def test_the_clock_field_is_appended(self):
         # state coverage Task 7 (report task-7-report.md): clock is the round timer's top byte
-        # DS_001088F2 (a byte, not the dword DS_001088EF), appended last.
-        self.assertEqual(gs.SNAP_FIELDS[-1], ('clock', 0x1088F2, 1))
+        # DS_001088F2 (a byte, not the dword DS_001088EF), appended after c82b; Task 9's
+        # eight U16 component fields follow it.
+        self.assertEqual(gs.SNAP_FIELDS[-9], ('clock', 0x1088F2, 1))
         self.assertNotIn('clock', gs.TRACE_FIELDS)          # not ratcheted
         self.assertNotIn('clock', gs.MOVE_FIELDS)
         vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
@@ -120,6 +122,54 @@ class TestTables(unittest.TestCase):
         line = gs.format_s(1, vals, 0, 0, 0)
         self.assertIn('clock=2A', line)
         self.assertEqual(gs.parse(line)['clock'], 0x2A)
+
+    def test_the_u16_component_fields_are_appended_with_their_widths(self):
+        # State coverage Task 9: the latch's two addends and the reaction record's
+        # motion/cursor state. These follow c82b, so older S records stay prefixes.
+        self.assertEqual(gs.SNAP_FIELDS[-8:],
+                         (('ab4', 0x100AB4, 4), ('rec_y', 0x1C, 4),
+                          ('anchor', 0x100AF0, 4), ('s0_57', 0x107807, 1),
+                          ('rec8', 0x08, 4), ('rec34', 0x34, 2),
+                          ('rec36', 0x36, 2), ('rec44', 0x44, 2)))
+
+    def test_read_snap_resolves_the_u16_fields_through_the_slot_record(self):
+        # A fixed-DS read of rec+0x1C cannot see the animation record. Seed both
+        # that record and decoys at the fixed addresses, then move its pointer:
+        # the next snapshot must follow it, and format_s/parse must round-trip it.
+        base, rec, rec2 = 0x266000, 0x30AF18, 0x30B0B8
+        m = bytearray(0x600000)
+
+        def put_ds(ds, size, value):
+            o = base + ds - gs.DATA_BASE_VA
+            m[o:o + size] = value.to_bytes(size, 'little')
+
+        def put_rec(ptr, off, size, value):
+            # DOS4GW's stored record pointers are physical addresses in DOSBox-X's
+            # memory file (the measured U16 value 0x0030AF18), not LE-relative VAs.
+            o = ptr + off
+            m[o:o + size] = value.to_bytes(size, 'little')
+            # A base + ptr - DATA_BASE_VA reading is a decoy, not the record.
+            o = base + ptr - gs.DATA_BASE_VA + off
+            m[o:o + size] = (0x2222 if size == 2 else 0x22222222).to_bytes(size, 'little')
+
+        put_ds(0x1077B0, 4, rec)
+        put_ds(0x100AB4, 4, 0x1D40)
+        put_ds(0x100AF0, 4, 0x1E7)
+        put_ds(0x107807, 1, 3)
+        for off, size, value in ((0x08, 4, 0xED901), (0x1C, 4, 0xFFFFFBC0),
+                                 (0x34, 2, 0xFF80), (0x36, 2, 0x02EE), (0x44, 2, 0x0028)):
+            put_rec(rec, off, size, value)
+            put_ds(off, size, 0x1111 if size == 2 else 0x11111111)
+        v = gc.read_snap(m, base)
+        want = {'ab4': 0x1D40, 'rec_y': 0xFFFFFBC0, 'anchor': 0x1E7, 's0_57': 3,
+                'rec8': 0xED901, 'rec34': 0xFF80, 'rec36': 0x02EE, 'rec44': 0x0028}
+        self.assertEqual({n: v.get(n) for n in want}, want)
+        line = gs.format_s(1, dict(v, f=0x1501), 0, 0x1E, 0x1E)
+        parsed = gs.parse(line)
+        self.assertEqual({n: parsed.get(n) for n in want}, want)
+        put_ds(0x1077B0, 4, rec2)
+        put_rec(rec2, 0x1C, 4, 0x09C0)
+        self.assertEqual(gc.read_snap(m, base).get('rec_y'), 0x09C0)
 
     def test_an_old_s_line_without_the_state_fields_still_parses(self):
         old = ('S ms=1 f=1234 mode=0006 st=0000 tick=00000000 t508=00000000 '
@@ -199,12 +249,16 @@ class TestTables(unittest.TestCase):
             # (record gameplay-u11 §K.3), the twelve U9/U10 win fields and the four
             # 2026-10-26 slot-state fields (record §F1) read the field's address
             if (n in gs.MOVE_FIELDS or n in gs.SLOT_STATE_FIELDS
-                    or n == 'c82b'
+                    or n in ('c82b', 'ab4', 'anchor', 's0_57')
                     or (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA):
                 m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
                 self.assertIsNotNone(m, (n, arg))
                 got = int(m.group(1), 16) + (int(m.group(2), 0) if m.group(2) else 0)
                 self.assertEqual(got, addr, (n, arg))
+            if n in gs.SLOT_RECORD_FIELDS:
+                m = re.fullmatch(r'\(unsigned\)%s\(DSD\(DS_001077B0\) \+ (0x[0-9A-Fa-f]+)u\)' % acc[size], arg)
+                self.assertIsNotNone(m, (n, arg))
+                self.assertEqual(int(m.group(1), 16), addr, (n, arg))
             # KEYS_EXTRA: accessor by size on the field's own DS_ symbol, no offset
             if (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA:
                 self.assertEqual(arg, '(unsigned)%s(DS_%08X)' % (acc[size], addr), n)

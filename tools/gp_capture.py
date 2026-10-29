@@ -38,11 +38,21 @@ def read_snap(mm, base, fields=gs.SNAP_FIELDS, ptr=None):
     lives in the key-config block at [DS_00101514] + its offset, not at a fixed
     DS address: without the block pointer (the pre-block and consistency reads)
     there is no address to read and the value is 0; an S record is only written
-    with the pointer, which the poller has by then."""
+    with the pointer, which the poller has by then. A SLOT_RECORD_FIELDS entry
+    (state coverage Task 9) is instead the physical pointer [DS_001077B0] plus
+    its record offset (the DOS4GW runtime relocates stored pointers)."""
     out = {}
+    rec = None
     for name, ds, size in fields:
         if name in gs.POINTER_FIELDS:
             out[name] = 0 if ptr is None else int.from_bytes(mm[ptr + ds:ptr + ds + size], 'little')
+            continue
+        if name in gs.SLOT_RECORD_FIELDS:
+            if rec is None:
+                o = base + gs.SLOT_RECORD_PTR_DS - gs.DATA_BASE_VA
+                rec = int.from_bytes(mm[o:o + 4], 'little')
+            o = rec + ds
+            out[name] = int.from_bytes(mm[o:o + size], 'little')
             continue
         o = base + ds - gs.DATA_BASE_VA
         out[name] = int.from_bytes(mm[o:o + size], 'little')
