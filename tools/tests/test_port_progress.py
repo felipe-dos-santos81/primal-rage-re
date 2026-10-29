@@ -55,7 +55,8 @@ class TestPortProgress(unittest.TestCase):
 
     def test_every_inline_credit_is_declared(self):
         # Every trailing `/* 0xADDR` credit without a column-0 header or
-        # fn_register must be a declared PORT_PROGRESS_EXCEPTIONS entry.
+        # fn_register must be a declared PORT_PROGRESS_EXCEPTIONS entry or an
+        # address the classification declares host-owned/deferred/replaced.
         undeclared = pp.inline_credits() - set(pp.PORT_PROGRESS_EXCEPTIONS)
         self.assertFalse(undeclared, 'undeclared inline credits: %s' %
                          ' '.join('%05X' % a for a in sorted(undeclared)))
