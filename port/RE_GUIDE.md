@@ -322,14 +322,21 @@ true original, and ported the divergence. Two pieces:
   §E9). The game-set `b0c` is U10's (`GP_ENDING_WIN_MIN_FIRST=9954`), not a
   gap; only the fought no-poke win is open (§E1.3).
 - The differential audit (proof-completion phase, record
-  `2026-10-24-proof-completion-derivations.md` §P5–§P8): `make diff-verify`
+  `2026-10-24-proof-completion-derivations.md` §P5–§P8; the state-coverage
+  proof-debt declaration §D7): `make diff-verify`
   reads `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named
-  gaps; 825/845 rows with callees closed (188 have none); 807/845 closed on
+  gaps; 825/845 rows with callees closed (188 have none); 809/845 closed on
   full rows; 8 ported functions with no row`. The **20 open rows** are declared
   terminals (15 AIL thunks, `sound_buffers_alloc`, `input_sampler`, and the
   three runtime-flush rows `config_file_load`/`config_file_save`/
-  `menu_fatal_error`), **15 rows are `WEAKER`**, and **8 portable functions are
-  `UNROWED`** (45 `FN_` ported-unrowed: 8 portable + 37 runtime). The
+  `menu_fatal_error`), **13 rows are `WEAKER`**, and **8 portable functions are
+  `UNROWED`** (45 `FN_` ported-unrowed: 8 portable + 37 runtime); the three
+  lists are the harness's `TERMINAL_CENSUS`/`WEAKER_CENSUS`/`UNROWED_CENSUS`
+  tables (`tools/tests/test_diff_verify.py`). The span census is 417 slots / 392
+  distinct / 385 writer slots (384 reachable + dead `0x57E3C`) plus the
+  out-of-table `0x5D110` (`0x81110[128] == 0x81310[0]`, the 386th target,
+  reachable), and the E2 triage has 388 `span-writer` rows plus the supplement
+  `0x5D004` (`0x81110[127]`). The
   counter and its clauses are in `AGENTS.md`, the phase record in
   `docs/PROGRESS.md`; `make diff-verify` prints it.
 - Host and product work: audio audibility (no device-recording oracle), CI and
@@ -349,3 +356,15 @@ true original, and ported the divergence. Two pieces:
   cannot open `0x21`/`0x25`. Their census rows (`0x4BD98`/`0x4E11C`/`0x27A2C`)
   are `NOT-HIT`, and `0x0B` (the drawn winner pose) stays unexhibited
   (claim-coverage Task 11's `gp-draw` did not publish).
+- The proof-debt declaration (state-coverage §D7) declares what stays open:
+  **U17** (the `gp-u17-device2` wall-paced walk has no tick-keyed replay — its
+  screens are already covered by the K11 captures, record §H6.9) and **U14**
+  (the fought live win) are declared, neither run; U14's `live_death` rule
+  anchors on the match-1 round-2 KO but `b0c`'s only setter (`0x37FF6` in
+  `0x37EA0`) runs on the ending path, so the two re-scope options are (a) drop
+  the `b0c` clause ("fought KOs, no pokes") or (b) move to the final — with the
+  measured correction that `b0c`'s ending write is **not universal** (BLIZZARD
+  U13 and ARMADON U21 keep `b0c = 0`). The claim-coverage design's undefined
+  **B2–B8 labels** are replaced by the census's measured NOT-HIT set (110
+  addresses, §D7.5) and the declared modes; the census baseline is a separate
+  pin (its own `tools/coverage_baseline.txt`, not `tools/pin_baseline.sha256`).

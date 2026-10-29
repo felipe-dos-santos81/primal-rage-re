@@ -1175,3 +1175,305 @@ not vacuous.
   only, not bit-accuracy against a real YMF262.
 - **The mixer stays invented** (mixer.h:4-9); the test bypasses it and drives
   `opl_render` directly.
+
+---
+
+## §D7 The proof-debt declaration (Task 13)
+
+The phase's closing record: what stays open after Tasks 1–12, each item with a
+measured reason and an address. This task changes no code, no capture and no
+pin; it consumes §D1's baseline, §D2's modes, §D3's U16 fix, §D4's 5120 FAIL
+and §D6's pitch test, and re-measures the counters it cites. No row, class or
+universe is widened.
+
+### §D7.1 The counters (re-measured for this task, not copied)
+
+```text
+$ make diff-verify            # this task's build, EXIT:0
+diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 809/845 closed on full rows; 8 ported
+functions with no row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape
+exceptions] + 37 runtime; the scan-visible subset is 42 = 5 + 37).
+```
+
+```text
+$ python3 - <<'EOF'   # WEAKER / UNROWED re-imported from tools/diff_verify.py
+import importlib.util
+spec = importlib.util.spec_from_file_location('dv','tools/diff_verify.py')
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print("WEAKER:", len(m.WEAKER), ' '.join('%05X'%a for a in sorted(m.WEAKER)))
+print("UNROWED:", len(m.UNROWED), ' '.join('%05X'%a for a in sorted(m.UNROWED)))
+EOF
+WEAKER: 13 1AFE8 1B084 1B544 1C740 1D0BC 249F0 24C5C 255CC 2CADC 2EA30 2EA68 2EA74 2EA78
+UNROWED: 8 1B120 1B3AC 1BEC4 1C930 1CF40 20C10 47370 4FBA2
+```
+
+The tool's printed line is authoritative and confirms §D1.2: the full-rows
+counter is **`809/845`** (not the stale `807/845` that AGENTS.md and
+`port/RE_GUIDE.md` still carry), `825/845` with callees (so **20 open rows**),
+and **8** ported functions with no row. The imported `WEAKER` frozenset holds
+**13** addresses — `0x51ED8` and `0x1BE30` are absent (they left `WEAKER` when
+claim-coverage Task 6 closed them; record
+`2026-10-27-claim-coverage-derivations.md` §C1.10: full 807 → 809, WEAKER 15 →
+13, `0x255CC` stays for its `0x256D4` spin). AGENTS.md's "15" and its `0x51ED8`
+entry are stale and corrected in this task's docs pass. `UNROWED` reads **8**
+(three of them `UNROWED_HEADER_SHAPE`: `0x1B120`, `0x20C10`, `0x4FBA2`).
+`python3 tools/port_progress.py` is unmoved (`798 1203 66` / `759 759 100`; the
+§D1.2 class breakdown). The three lists below are the harness's own tables
+(`tools/tests/test_diff_verify.py`: `TERMINAL_CENSUS`, `WEAKER_CENSUS`,
+`UNROWED_CENSUS`), not a second hand-written list, and their test derives the
+open set from `closed_rows` and compares every blocker, so the declaration and
+the counter cannot drift apart.
+
+### §D7.2 The differential table
+
+**20 open rows over 19 distinct addresses.** `attract_config_volumes_unscaled`
+and `attract_config_volumes` are two specs at `0x2C8F0`, so the open set is
+keyed `(name, entry)`. The 20 are 15 AIL runtime thunks, `sound_buffers_alloc`,
+`input_sampler`, and the three runtime exit-flush rows; each is terminal because
+its measured blocker is a runtime/host boundary a faithful row would have to
+fabricate.
+
+| row | entry | blocker(s) | class |
+|---|---|---|---|
+| `snd_music_stop` | `0x1CA6C` | `0x5DEAF` | AIL runtime stub |
+| `snd_sample_playing` | `0x1CE70` | `0x5DD03` | AIL runtime stub |
+| `snd_samples_stop_all` | `0x1CD9C` | `0x5DC0F`, `0x5DC8B`, `0x5DD03` | AIL runtime stubs |
+| `snd_sample_stop` | `0x1CE04` | `0x5DC0F`, `0x5DC8B`, `0x5DD03` | AIL runtime stubs |
+| `snd_sample_queue` | `0x1CC28` | `0x5DC0F`, `0x5DC8B`, `0x5DD03` | AIL runtime stubs |
+| `snd_music_playing` | `0x1CA40` | `0x5DEED` | AIL runtime stub |
+| `input_sampler` | `0x1BBAC` | `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FDF5` | host-owned PIT/game-port stubs |
+| `sound_music_pause_toggle` | `0x1D1B0` | `0x5DEAF` | AIL runtime stub |
+| `sound_music_volume` | `0x1CAB8` | `0x5DECA`, `0x5DEED` | AIL runtime stubs |
+| `sound_sfx_volume` | `0x1CED4` | `0x5DCC5`, `0x5DD03` | AIL runtime stubs |
+| `sound_buffers_alloc` | `0x1D0BC` | `0x1C308` | host-owned audio/allocation stub |
+| `attract_config_volumes_unscaled` | `0x2C8F0` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs |
+| `attract_config_volumes` | `0x2C8F0` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs |
+| `sound_sample_start` | `0x1CB18` | `0x5DC0F`, `0x5DC2A`, `0x5DC4D`, `0x5DC70`, `0x5DCA6`, `0x5DCC5`, `0x5DCE4` | AIL runtime stubs |
+| `fight_char_screen_open` | `0x43738` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs |
+| `fight_char_screen_open_both` | `0x444C8` | `0x5DCC5`, `0x5DD03`, `0x5DECA`, `0x5DEED` | AIL runtime stubs |
+| `config_file_load` | `0x1AFE8` | `0x6C4CF` | runtime exit-flush stub |
+| `config_file_save` | `0x1B084` | `0x6C4CF` | runtime exit-flush stub |
+| `menu_fatal_error` | `0x2EA68` | `0x6C4CF` | runtime exit-flush stub |
+| `sound_shutdown` | `0x1D018` | `0x5D86A`, `0x5DC8B`, `0x5DD03`, `0x5DEAF`, `0x5DEED` | AIL runtime stubs |
+
+Why each class is terminal (record §P8.1; the `_AIL_REASON` text): the AIL
+implementation is host-owned (NG4) and the runtime thunk has no portable C
+binding, so a callee row would validate a harness-authored audio model, not game
+code; `sound_buffers_alloc`'s driver/allocation boundary (`0x1C308`) is
+host-owned with no portable original-C binding; `input_sampler`'s four probes
+(`0x4FBBB`/`0x4FC05`/`0x4FCFD`/`0x4FDF5`) are harness-owned hardware models; and
+the three exit-flush rows all block on the unrowed runtime flush `0x6C4CF`
+(`config_file_save` reopened by the short-write case, §P7.3). No row blocks on a
+ported function in the portable set by accident — the 8 `UNROWED` functions are
+callees of none.
+
+**13 `WEAKER` rows** (the rowed functions whose row is not full), with the
+one-line reason from `WEAKER_CENSUS`:
+
+| entry | why it cannot be full | evidence |
+|---|---|---|
+| `0x1AFE8` | l6 declares the short-read exit-versus-defaults difference; that case compares no port side. | reverse-g §G2 |
+| `0x1B084` | s5 declares the short-write exit-versus-failed-write-return difference; its port side is not compared. | proof-completion §P7.2 |
+| `0x1B544` | The row covers only the resident arm; the slow tail-jump arm is named unhit (2/11 blocks). | reverse-g §G3 |
+| `0x1C740` | The movie row pokes runtime/Smacker entry points and covers only the port's prefix (4/23 blocks). | reverse-n §N.3 |
+| `0x1D0BC` | The two buffer-failure arms `0x1D10E`/`0x1D183`, ending in runtime printf, remain unhit. | proof-completion §P7.4 |
+| `0x249F0` | The reachable restart arm `0x24A9C` remains unexercised after the longjmp became scan-only. | proof-completion §P6.3 |
+| `0x24C5C` | The key rows omit the Alt-J/calibration path through `0x5004A` and the restart arm by design. | reverse-h §H.2 |
+| `0x255CC` | The loop row leaves the spin block `0x256D4` unhit (19/20); the full copy `0x25680` runs in k4. | reverse-g §G4; claim-coverage Task 6 |
+| `0x2CADC` | Three raw calls the port deliberately omits are nop pokes; only the seven calls the port makes are compared. | reverse-d6a §4 |
+| `0x2EA30` | The SET-lock clear block `0x2EA49` is named unhit (7/8 blocks). | reverse-g §G3 |
+| `0x2EA68` | Every case declares exit-versus-return, so the row proves the original but compares no port side. | reverse-g §G2 |
+| `0x2EA74` | The key wait leaves the `0x5004A` calibration path and two other blocks named unhit (20/23). | reverse-h §H.2 |
+| `0x2EA78` | The key wait leaves the `0x5004A` calibration path and two other blocks named unhit (20/23). | reverse-h §H.2 |
+
+The two addresses that *left* `WEAKER` in claim-coverage Task 6 are `0x51ED8`
+(the `sprite_blit_aperture` node-scratch byte difference, closed by the
+`+0x14`/`+0x38` write-back) and `0x1BE30` (the teardown row's one code poke,
+closed); they are full now and absent from the set. `0x255CC` stays weaker
+because its `0x256D4` spin block is named unhit, even though its `0x25680` full
+copy now runs in case k4.
+
+**8 `UNROWED` functions** (ported functions with no differential row; none
+open), with the port replacement and why a row would mask the boundary:
+
+| entry | replacement | why a row would mask the boundary | evidence |
+|---|---|---|---|
+| `0x1B120` | res_load_index plus res_load_present and the host INDEX loader | The withdrawn poked row assigned `0x1B3AC`'s read/mark work and an invented frame effect to the port; it compared a composition, not the C function. | reverse-n §N.3.1/§N.4 |
+| `0x1B3AC` | res_load_present's head, res_load_index's host reads/marks, and res_resolve's mark | No single C function spans the raw body; the port adds the ISR read-stall model and omits the raw driver stores, so a row would bind a synthetic composition. | reverse-n §N.3/§N.3.5/§N.4 |
+| `0x1BEC4` | game_main, game_init, the host boot loaders, and game_shutdown | The boot chain has no one C counterpart and immediately reaches the BIOS query; a row would compare a harness-assembled boot against host startup. | reverse-n §N.1 |
+| `0x1C930` | the host music-request/sequencer path (title_music_start) | The raw's AIL handle gates, copies, stops and clear have no port counterparts; a row would replace them with fabricated handle state. | reverse-n §N.2.3 |
+| `0x1CF40` | game_audio_init's host audio objects, mixer reset and FAT.OPL load | The raw returns and stores ten AIL handles while the port deliberately stores different sentinels and does extra host work; a row would mask those differences. | reverse-n §N.2.2 |
+| `0x20C10` | game_init, game_init_resume, and game_main's game_loop/restart call | The raw setjmp frame is split across those functions; entering only the resume tail lacks its stack frame, so no faithful single binding exists. | reverse-n §N.1 |
+| `0x47370` | game_string_table_load's host file loader and fixed string handle | The port does not reproduce the raw allocator/pager, language index, free/reload or size stores; a row would validate an invented loader model. | reverse-n §N.3/§N.3.5 |
+| `0x4FBA2` | int10h_query's host-window mode answer 0x13 | The raw returns BIOS AL from int 0x10; poking it would compare a harness-chosen constant with the port's constant and prove nothing about the BIOS. | reverse-n §N.1; reverse-d6a §4 |
+
+**The span census and the E2 triage** (proof-completion §P2/§P4, claim-coverage
+§C1.5.1; unchanged since, no code moved). The span blit's five tables hold **417
+slots** and **392 distinct targets** (six renderers, one bare `ret`, **385
+writer slots**). Of the 385 writer slots, **384 are reachable** and one —
+`0x80E0C[128] = 0x57E3C`, the mirrored RLE's `lit_bwd/chunk128` entry — is
+**dead** (a literal control byte is 7-bit, so index 128 is unreachable there).
+The out-of-table `0x81110[128] = 0x81310[0] = 0x5D110` is reachable (the raw and
+shear renderers call it for a span `>= 128` pixels) and is the **386th writer
+target, outside the 385 slots**. The minimal fixture proves **26/26 code-shape
+classes** and the exhaustive fixture **385/386 distinct targets (all 385
+reachable)**, including both-edges clipping `0x5D580`/`0x582F4` and the clipped
+14/15 word tails. **E2 triage:** the committed table lists **388 `span-writer`
+rows** (the **384** writer-slot targets plus the four renderers `0x5215C`,
+`0x57F80`, `0x57FFB`, `0x58CBD`); the one writer slot without an E2 row is the
+residual **`0x5D004`** — slot 127 of the literal-forward table `0x81110` (dword
+`0x8130C`, read by the `call` at `0x521AE`) — which lies at `0x5D004 >=
+RUNTIME_BASE` (`0x5D000`) so universe rule (b) excludes it, and it is named in
+the table's supplement row, not as a candidate. `make entry-triage` still reads
+`736 candidates (732 by U0's rule); … span-writer=388 … supplement 131 (3
+unported, 0 stale)` (§D1.2), byte-identical to a fresh run.
+
+**The `sprite_blit_aperture` note.** One `make diff-verify` run during the phase
+reported a pool mismatch in the `sprite_blit_aperture` (`0x51ED8`) row; three
+immediate reruns of the same row were green and it was not reproduced, so it is
+noted as a one-off harness observation, not a divergence — no row, case or pin
+was changed on account of it.
+
+### §D7.3 The storage table
+
+The storage layer's open items (record `2026-10-13-reverse-s-derivations.md`
+§S.8's PLAUSIBLE items and §S.10's slot-13 defect) are declared terminal with a
+measured reason each:
+
+| # | open item | declaration | measured reason |
+|---|---|---|---|
+| (a) | whether the original can itself save a slot byte of 13+ (the runtime's exit-routine walk `0x6C4CF` "not traced") | **terminal — the exit chain is save-free** | `0x2EA68` is `mov eax,1` then a tail-jump to `0x62003` (the runtime `_exit`; `port/src/game/menu.c:56`), and `0x6C4CF`'s closure reaches **only runtime call targets** (`>= 0x5D000`, WATCOM libc/DOS-4GW glue — never `0x1B084` `config_file_save`), so the original never writes a slot-13..35 save and no boot loads one. |
+| (b) | — (the method behind (a)) | **the static trace** | the closure of `0x6C4CF` is read statically from its bytes/call targets (every target runtime), closing §S.8's "not traced" limb without a dynamic exit-chain run through the differential harness. |
+| (c) | the two "nothing else stores it" absolute-operand scans (the byte `0x2D490`; `0x105DA4`/`0x105DA5`) | **already implicitly covered** | the differential rows compare every changed byte on both sides, so any other writer of either byte would already be a byte difference; the explicit static watch is optional and **not taken**. |
+| (d) | which statistics screens a capture compares (under the audit's F2) | **already enforced** | the save-reload boot-2 comparison pins the five storage ranges (§J3.3: the `config` image, the kind-0 counters and the three high-score tables), which is the statistics screens the gate decides. |
+| (e) | the 39 `config_field_get` consumers of a checksum-valid save, none audited for an index leaving `mem[]` | **bounded and audited** | the field indices the 39 consumers pass are bounded and the audit's walk found no index that leaves `mem[]`. |
+
+### §D7.4 U17 and U14 declared (neither run)
+
+**U17** (host-input-truth record §H6.9) is declared, not run: the
+`gp-u17-device2` walk is **wall-paced** — `menu_run` (`0x2FA40`) blocks inside one
+`game_loop_step`, so the master loop's frame counter freezes and the poller
+writes no `S` record to key a frame-keyed script on; `port_script` therefore
+refuses a wall scenario with a `ScriptError`, and the capture's frame/trace
+ratchets (`MIN_FIRST`/`TRACE_MIN_FIRST`/`MAX_START`/`MIN_REACH`) stay empty.
+Its screens (the MODIFY CONTROLS menu and the device-2 selection) are **already
+covered** by the K11 walk/menuesc captures and the capture-side screen proof
+(`make gp-u17-oracle` runs the evidence check and the identity pins only). The
+tick-keyed replay is a named gap for the controller, not a claim; no capture is
+re-run.
+
+**U14** (the fought live win, R1) is declared, not run. §D1.6 measured the rule
+mismatch: `tools/gp_win.py`'s `live_death` rule anchors on the round-2 KO row of
+*match 1* (mode 9, k = 1) and requires a game-set `b0c = 1`, but `b0c`'s only
+setter is `DSB(DS_00104B0C) = 1` at `0x37FF6` inside `0x37EA0`
+(`fighter_37ea0`, the remains streams' `0xD100` target), which runs only on the
+*ending* path after the seventh final KO — while the U14 scenario stops at mode
+`0x12` in match 1, so no `S` record at or after the round-2 KO can ever hold
+`b0c = 1`. The rule, not the capture, needs re-scoping. The **two options** are
+recorded (design §1.5/§4): **(a)** drop the `b0c` clause and claim "fought KOs,
+no pokes"; or **(b)** move the scenario to the final, where the remains stream
+itself sets the byte. Both stay unmeasured; the nine `GP_U14_*` pins stay empty
+and `gp-u14-oracle` keeps its absent-capture skip.
+
+**The `b0c` non-universality correction (carried from §D1.7 item 4).** The
+"seventh final KO" rule is a property of the captures that measured it, not of
+every ending: five of the seven ending captures set `b0c = 1` after the final
+(U10 char 0 `0x1602`, U18 char 2 `0x15F7`, U19 char 3 `0x1641`, U20 char 6
+`0x1686`, U22 char 5 `0x1665`), but **BLIZZARD (U13) and ARMADON (U21) keep
+`b0c = 0` in every `S` record**. So re-scope option (b) — move to the final and
+let the remains stream set the byte — would still fail for those two characters,
+whose endings never set `b0c`. The declaration records this; it does not weaken
+or widen the rule.
+
+### §D7.5 The B2–B8 replacement and the census baseline's provenance
+
+The claim-coverage design's non-goal §4 names "the remaining
+front-end/ENDURANCE/high-score/finisher/service-menu blind spots (B2, B3, B4,
+B6, B7, B8)" and its §G repeats "spots B2/B3/B4/B6/B7/B8", but those labels are
+**never defined anywhere in the repo** (no table expands B2..B8). The measured
+replacement is the census's NOT-HIT set plus the declared modes, both owned by
+this phase:
+
+- **The census's measured NOT-HIT set** (`tools/coverage_baseline.txt`, Task 3's
+  pin): **110** portable addresses no driver entered, plus **4**
+  `UNINSTRUMENTED` (`0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`) against **645**
+  `HIT`. The NOT-HIT set (in baseline order) is:
+
+```text
+12BB8 12FD8 13134 1324C 13B3C 14988 14A5C 14B90 17BC8 18950 18B44 19820 19958
+1B890 1B8DC 1B908 1BE30 1BEC4 1ECC8 20860 21458 216EC 26540 266AC 271E0 27254
+278B0 2791C 27A2C 27ED8 28BD4 28C38 292D4 29638 296B8 29C20 2A148 2BD20 2BD44
+2C1C8 2C1D4 2CA48 2E0A4 2EA68 2F940 305FC 319B0 33B00 36300 37464 37B54 380C4
+38154 382C4 38434 384F8 385B0 3A8E8 3B90C 3C1C8 3D004 3E6A8 3EA24 3EE00 3F9C8
+3FF08 40608 406B4 408E8 40954 40BBC 41578 416D4 42FE0 43738 43928 44054 4505C
+45908 45B50 48AAC 48C4C 48D94 4987C 4A808 4A8A8 4AF04 4BD98 4BF18 4C60C 4C784
+4CB18 4CC0C 4CD98 4CE70 4D898 4E11C 4E27C 4E350 4E5A4 4E67C 4E99C 4EBB8 4EF8C
+4F0FC 4F6E8 4F704 4F944 4FF8F 4FFD8
+```
+
+  The content-bearing subset is the declared modes and their co-entered rows
+  (§D2.6): `0x4BD98`/`0x4E11C`/`0x27A2C` are the `0x21`/`0x25`/`0x0E` entries,
+  `0x28BD4`/`0x28C38` are the drawn round's `0x0A`/`0x0B` handlers (Task 7's
+  timeout draw exhibits `0x0A`/`0x0B`; `0x0B`'s KO pose stays unexhibited because
+  `gp-draw` never published, §D2.7), and the `front-end/ENDURANCE/high-score/
+  finisher/service-menu` blind spots the B-labels meant are exactly the
+  remaining NOT-HIT addresses, none of which is a regression.
+
+- **The declared modes** `0x21` (volleyball), `0x25` (mirror-ARMADON camera) and
+  `0x0E` (continue screen) — §D2 — whose two-human/credit gates a poked 1P
+  scenario cannot open, so they stay declared, not captured.
+
+**The census baseline's provenance — a separate pin, not the pin-baseline
+tripwire.** `tools/coverage_baseline.txt` is a pin: its header records the
+measured provenance (`measured 2026-10-29, make coverage runs 1 and 2`, the
+portable HIT union sha256 `e93d7415f1…`, `HIT 645 / NOT-HIT 110 /
+UNINSTRUMENTED 4`), and `coverage_census.py --check` fails on a new NOT-HIT. It
+is **not** part of `tools/pin_baseline.sha256`: that file is the
+capture/oracle pin-region tripwire over the marker-delimited regions of
+`Makefile`, `tools/audio_compare.py`, `tools/k11_compare.py`,
+`tools/gp_compare.py` and `tools/title_compare.py` (record `…-claim-coverage`
+§C1.7), a different mechanism. The census baseline therefore belongs in its own
+file (as it already is), not in the pin-baseline digest, and this task changes
+neither.
+
+### §D7.6 The phase corrections carried into the declaration (R15)
+
+The measurement tasks' corrections, restated so the declaration is self-contained:
+
+- **ENDURANCE (Task 5):** the roster counter is `af1` (`0x104AF1`), walking
+  `0 → 4`; the stop is mode `0x17`, not the plan's predicted `0x14`. The
+  capture `gp-u25-endurance-end` is pinned by `gp-u25-oracle`; `af0` is the other
+  side's byte.
+- **The timeout draw (Task 7):** the `clock = 0` predicate is read from the `W`
+  record's clock poke (the round-3 arm re-reads `+0x5A` after `0x39FF4`, so the
+  health values are bound to the clock-poke frame and asserted `< 0x78`, not the
+  earliest KO poke).
+- **The U16 fix (Task 10, §D3.7):** the reaction's null table base — it reads
+  the IVT at linear 0 — is fixed by the host stand-in `bios_ivt_stand_in()`
+  seeding `mem[1] = 0xCA`/`mem[3] = 0xF0` (the inverted dwell `-3456`/`-4480` =
+  `y * 64`); the x bytes `mem[0]`/`mem[2]` are the adjacent record-motion defect,
+  recorded not fixed. Only `GP_U23_TRACE_MIN_FIRST` and
+  `GP_U23_MOVES_MIN_FIRST` re-pinned (`5449/5467 → 6050`); every other pin is
+  unchanged.
+- **The 5120 experiment (Task 11, §D4):** **FAIL** — the DOSBox-X memory file
+  holds the guest's main RAM only, not the VGA aperture (`vgamem`), so the
+  "real aperture at the S record" reads `0xFF` at every offset and the
+  capture-pipeline-artifact vs port-divergence question stays undecided; the
+  band's bounds `(5120, 1, 5, 56b900b1…)` and every pin are unchanged and the gap
+  stays declared.
+- **`0x0B` stays unexhibited** (§D2.7): `gp-draw` never published, so the KO
+  drawn winner pose has no capture, no oracle and no miss set.
+
+### §D7.7 What this declaration claims
+
+The declaration proves the *measured shape* of the remaining gap — 20 open / 13
+`WEAKER` / 8 `UNROWED` differential rows, the 385-slot span census and the
+388-row E2 triage, the storage table's five terminal items, and U17/U14 as
+declared with the `b0c` non-universality noted — each with an address and a
+reason. It does **not** close any of them: no row, class or universe is widened,
+no capture or pin changes, and `make diff-verify`, `port_progress.py`,
+`entry-triage` and the coverage/pin baselines are byte-identical to their
+pre-declaration readings. The B-labels are replaced by the census's NOT-HIT set
+and the declared modes, which is what those labels always meant but never
+expanded to.
