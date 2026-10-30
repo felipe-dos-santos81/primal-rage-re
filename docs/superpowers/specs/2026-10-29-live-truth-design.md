@@ -1,7 +1,7 @@
 # Live Truth — design
 
-**Status:** Implemented through Task 12a. Task 6 is a declared gap, Task 10 was
-not taken, and Task 12b's measured re-pin plus the Task 13 full gate remain.
+**Status:** Implemented through Task 12b. Task 6 is a declared gap, Task 10 was
+not taken, and the Task 13 full gate remains.
 The implementation plan is `docs/superpowers/plans/2026-10-29-live-truth.md`;
 the derivation record is
 `docs/superpowers/plans/2026-10-29-live-truth-derivations.md`.
@@ -128,8 +128,12 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
 - The two-human route is `gp-twop`'s join, P1 five rights to cell 5 (class 4
   ARMADON), P2's default cell 5 (class 4), then both perform move 0
   (`gp_moves.py steps --char 4 --facing 0/1 --moves 0`). The capture stops on
-  mode `0x25`. This is the family's first execution evidence; the census rows
-  are all `NOT-HIT` today.
+  mode `0x25`. This was the proposed route to the family's first execution
+  evidence; the census rows were all `NOT-HIT` at design time.
+- **Execution outcome (Task 6; declared gap, record §L6):** mode `0x25` never
+  opened in either real-input attempt. The symmetric route is structurally
+  blocked by slot `+0x53`; the two `.failed` artifacts have no replay, oracle
+  or pins, and no further execution of the current route is authorized.
 
 ### 2.6 `0x21` — volleyball stays declared
 
@@ -354,3 +358,22 @@ gate is last.
 - Task 12a reconciles the documents only. Task 12b owns the measured census,
   manifest and pin-baseline results; Task 13 owns the full gate. No full-gate
   claim is made here.
+
+## 11. Measured re-pin and counter reconciliation (Task 12b)
+
+The completed coverage run's existing hit dumps re-pin the census to **HIT 657 /
+NOT-HIT 98 / UNINSTRUMENTED 4** (sums to 759). `gp-u27-name-entry` improves
+`0x20860`; `gp-u28-continue` improves `0x27254`, `0x278B0` and `0x27A2C`. The
+four `UNINSTRUMENTED` addresses stay `0x29D60`, `0x2EA30`, `0x2EA64` and
+`0x500BB`; the taken-continue `0x2791C` stays NOT-HIT. The baseline reason names
+this measured set, and both census checks pass without re-running the coverage
+build.
+
+The other counters are unchanged: differential **1033/1033 functions VERIFIED;
+14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed
+(188 have none); 809/845 closed on full rows; 8 ported functions with no row**;
+entry triage **736 candidates (732 by U0's rule), 388 span-writer rows**; port
+progress **798 1203 66 / 759 759 100**. `symbols.h` regenerates byte-identically,
+the gate reads **41/42 present** with U14 declared absent, and the capture-pin
+baseline is unchanged at digest `adffb4c9…`. No port code, capture, oracle,
+Makefile pin, manifest or pin baseline changed. Task 13's full gate remains.

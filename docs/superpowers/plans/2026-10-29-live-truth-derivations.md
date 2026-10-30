@@ -1,7 +1,7 @@
 # Live Truth — derivation record
 
 **Phase:** Live Truth. **Design:** `docs/superpowers/specs/2026-10-29-live-truth-design.md`
-(status implemented through Task 12a; Task 12b and the Task 13 full gate pending).
+(status implemented through Task 12b; the Task 13 full gate is pending).
 **Plan:** `docs/superpowers/plans/2026-10-29-live-truth.md`.
 **Baseline:** `main` at `0b458148` (`Merge branch 'state-coverage'`), full SHA
 `0b45814842650de0b8f70fceeeab55a8d761fda4`. Branch `live-truth`.
@@ -1203,7 +1203,7 @@ tail, and not rendered audibility (the OPL core/mixer remains an invented model;
 the PCM pin remains determinism). The U14 gap, all gameplay pins and every
 pre-existing audio pin stay unchanged.
 
-## §L12 Documentation reconciliation (Task 12a)
+## §L12 Documentation and measured reconciliation (Tasks 12a–12b)
 
 **Decision: the narrative now matches the landed claims; Task 12b and the full
 gate remain separate.** `gp-draw-oracle`, `gp-twop-ko-oracle`,
@@ -1253,3 +1253,50 @@ No capture, census, `diff-verify` or full `make verify` was run. Task 12a did
 not modify `tools/coverage_baseline.txt`, `tools/capture_manifest.json` or
 `tools/pin_baseline.sha256`; Task 12b owns those measured results and Task 13
 owns the full gate.
+
+### L12.1 Task 12b measured re-pin and counters
+
+The already-completed `make coverage` run left the measured split **HIT 657 /
+NOT-HIT 98 / UNINSTRUMENTED 4** (was 653/102/4). Task 12b reused its existing
+hit dumps and did not re-run the 38-minute build. `gp-u27-name-entry` improves
+`0x20860`; `gp-u28-continue` improves `0x27254`, `0x278B0` and `0x27A2C`.
+`0x2791C` stays NOT-HIT as §L5 predicted. The four UNINSTRUMENTED addresses stay
+`0x29D60`, `0x2EA30`, `0x2EA64` and `0x500BB`. The baseline reason now names the
+four improvements and their drivers. `coverage_census.py --check-instrumented`
+and `--check` pass; `--check` reports `coverage: no change (HIT=657 NOT-HIT=98
+UNINSTRUMENTED=4)`.
+
+The remaining counters were re-measured, not copied:
+
+```text
+make diff-verify
+1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
+825/845 rows with callees closed (188 have none); 809/845 closed on full rows;
+8 ported functions with no row
+
+make entry-triage
+entry-triage: 736 candidates (732 by U0's rule); finisher=9 move-callback=71
+span-writer=388 call-table=7 anim-target=112 mid-instruction=3 data=75
+code-immediate=15 direct=2 interior=6 data-pointer=48
+entry-triage: targets 390 unported, 262 ported; supplement 131 (3 unported,
+0 stale); untrusted entries 30
+
+python3 tools/port_progress.py
+798 1203 66
+759 759 100
+
+make gate-check
+gate: captures 41/42 present, 1 missing (strict=1, pins_exact=1)
+gate: declared gap (absent): data/k11-captures/gp-u14-win-live
+capture_manifest: 41 present checked, 1 declared skipped, 0 problems
+
+python3 tools/capture_manifest.py --check-pins
+capture_manifest: pin baseline ok (digest adffb4c97366215f2e4e3ed0e5a07b56c3eb275f156c7c492f7a3b94cc2a9bf7)
+```
+
+Entry triage is byte-for-byte unchanged from the committed table. `symbols.h`
+regenerates byte-identically (sha256
+`ca95a2cb3a8999d85a296b6d62eaab024222c7178ddaca56f3e3c5d8451e58bc` before
+and after). No port code, capture, oracle, Makefile pin, manifest or pin
+baseline changed; only the measured coverage baseline and documentation moved.
+Task 13's full gate remains outstanding.

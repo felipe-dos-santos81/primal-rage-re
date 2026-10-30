@@ -395,19 +395,21 @@ true original, and ported the divergence. Two pieces:
   the `b0c` clause ("fought KOs, no pokes") or (b) move to the final — with the
   measured correction that `b0c`'s ending write is **not universal** (BLIZZARD
   U13 and ARMADON U21 keep `b0c = 0`). The claim-coverage design's undefined
-  **B2–B8 labels** are replaced by the census's measured NOT-HIT set (110
-  addresses, §D7.5) and the declared modes; the census baseline is a separate
+  **B2–B8 labels** are replaced by the census's measured NOT-HIT set (98
+  addresses, §D7.5, §D8.3 and live-truth §L12) and the declared modes; the census baseline is a separate
   pin (its own `tools/coverage_baseline.txt`, not `tools/pin_baseline.sha256`).
 - The state-coverage phase is implemented and gated (spec
   `../docs/superpowers/specs/2026-10-28-state-coverage-design.md`, record
   `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
   two full gates plus `make audio-render`, green 2026-10-29). The census
-  (`make coverage`, outside `verify`) reads **HIT 653 / NOT-HIT 102 /
+  (`make coverage`, outside `verify`) now reads **HIT 657 / NOT-HIT 98 /
   UNINSTRUMENTED 4** (the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`) —
-  Task 14 re-pinned it from the Task 3 baseline's `HIT 645 / NOT-HIT 110`
-  (R17/§D8.3): the eight `improved:` addresses are `gp-u25-endurance-end`'s
-  `0x292D4`/`0x29638`/`0x296B8` and `gp-draw-timeout`'s
-  `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`.
+  Task 14 re-pinned it from the Task 3 baseline's `HIT 645 / NOT-HIT 110` to
+  `HIT 653 / NOT-HIT 102` (R17/§D8.3): the eight `improved:` addresses are
+  `gp-u25-endurance-end`'s `0x292D4`/`0x29638`/`0x296B8` and `gp-draw-timeout`'s
+  `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`. Live truth Task 12b then
+  re-pinned it with `gp-u27-name-entry` improving `0x20860` and
+  `gp-u28-continue` improving `0x27254`/`0x278B0`/`0x27A2C` (record §L12).
   The exhibits: ENDURANCE's team end (`gp-u25-endurance-end`, `af1` `0 → 4`,
   stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
   `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to
