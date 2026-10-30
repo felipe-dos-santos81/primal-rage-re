@@ -467,6 +467,65 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('DIFF ALLOWED named gap', r.stdout)
 
+    def test_diff_allowed_matched_prefix_pin_fails_one_tick_short(self):
+        # The capture differs at tick 5, so ticks 0..4 are the measured matched
+        # prefix. A minimum of 5 passes; raising that same section's pin to 6
+        # must fail rather than letting the named remainder erase the prefix.
+        port, cap = base_case()
+        cap = [(rel, reg, 0x09 if rel == 5 else val) for rel, reg, val in cap]
+        args = ('--allow-diff', '%08X' % BANK)
+        r = self.case(port, cap, *args, '--prefix-pin', '0:5')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('claimed matched prefix 5 ticks', r.stdout)
+        r = self.case(port, cap, *args, '--prefix-pin', '0:6')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('claimed matched prefix 5 ticks, pinned minimum 6', r.stdout)
+
+    def test_anchored_section_shorter_than_prefix_pin_fails(self):
+        # A full match does not make a short section stronger than its pin:
+        # base_case claims ticks 0..6, so the minimum of 8 must fail.
+        r = self.case(*base_case(), '--prefix-pin', '0:8')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('claimed matched prefix 7 ticks, pinned minimum 8', r.stdout)
+
+    def test_diff_allowed_prefix_difference_at_tick_zero_claims_zero(self):
+        # Bypass anchor selection to isolate the already-computed alignment
+        # prefix: a capture that differs in its first group has no prefix to
+        # claim, not a one-tick claim and not the named section's whole length.
+        r = audio_compare.align_groups([[(0x21, 0x03)]], [[(0x22, 0x04)]])
+        self.assertFalse(r.ok)
+        self.assertEqual(r.first_tick, 0)
+        self.assertEqual(r.claimed, 0)
+
+    def test_diff_allowed_section_without_a_prefix_pin_fails(self):
+        # Section 0 anchors and differs at tick 4. Section 1 is fully matched,
+        # so its pin is satisfied and isolates section 0's missing-pin guard.
+        p = write_port_sections(self.d, [(0xAAAA0001, SEC_A5),
+                                         (0xBBBB0002, SEC_B)])
+        cap_a_diff = [(0, 0x20, 0x01), (0, 0xB0, 0x2B),
+                      (1, 0x21, 0x01), (2, 0x22, 0x02), (3, 0x23, 0x03),
+                      (4, 0x24, 0x09)]
+        c = write_capture_sections(self.d, [(0, cap_a_diff), (1000, CAP_B)])
+        r = compare(self.d, p, c, '--allow-diff', 'AAAA0001',
+                    '--prefix-pin', '1:1')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('section 0 bank AAAA0001: diff-allowed matched prefix '
+                      'has no per-section pin', r.stdout)
+        self.assertNotIn('absent from the port dump', r.stdout)
+
+    def test_pinned_prefix_index_absent_fails(self):
+        r = self.case(*base_case(), '--prefix-pin', '99:1')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('section 99: pinned matched prefix 1 ticks is absent '
+                      'from the port dump', r.stdout)
+
+    def test_malformed_prefix_pin_is_a_usage_error(self):
+        r = self.case(*base_case(), '--prefix-pin', '1')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('usage:', r.stderr)
+        self.assertIn('expected INDEX:TICKS', r.stderr)
+        self.assertNotIn('Traceback', r.stderr)
+
     def test_capture_end_reads_the_x_record(self):
         cap = os.path.join(self.d, 'cap')
         os.makedirs(cap)
@@ -519,11 +578,14 @@ class AudioCompareTests(unittest.TestCase):
     _ROT_CAP = [(0, [(0, 0xB2, 0x2B)]),
                 (100, [(0, 0xB3, 0x36), (1, 0xB4, 0x23), (2, 0xB5, 0x27),
                         (3, 0xB6, 0x2E), (4, 0xB7, 0x32), (5, 0xB8, 0x2F)])]
+    _ROT_WRONG = [(0, [(0, 0xB2, 0x2B)]),
+                  (100, [(0, 0xB4, 0x36), (1, 0xB5, 0x23), (2, 0xB6, 0x27),
+                          (3, 0xB7, 0x2E), (4, 0xB8, 0x32), (5, 0x1B0, 0x2F)])]
 
-    def rotation_case(self, cap_sections):
+    def rotation_case(self, cap_sections, *extra):
         p = write_port_sections(self.d, self._ROT_PORT)
         c = write_capture_sections(self.d, cap_sections)
-        return compare(self.d, p, c)
+        return compare(self.d, p, c, *extra)
 
     def test_rotation_anchor_matches_a_rotated_section(self):
         r = self.rotation_case(self._ROT_CAP)
@@ -535,13 +597,20 @@ class AudioCompareTests(unittest.TestCase):
         # 4..9) but its tail note is unchanged, so the derived k stays 2 and the
         # candidate's register (0xB4) is not the port's first key-on rotated by
         # 2 (0xB3): a searched k would accept it, the derived k rejects it.
-        rotated = [(0, [(0, 0xB2, 0x2B)]),
-                   (100, [(0, 0xB4, 0x36), (1, 0xB5, 0x23), (2, 0xB6, 0x27),
-                          (3, 0xB7, 0x2E), (4, 0xB8, 0x32), (5, 0x1B0, 0x2F)])]
-        r = self.rotation_case(rotated)
+        r = self.rotation_case(self._ROT_WRONG)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('synthetic: FAIL', r.stdout)
         self.assertNotIn('synthetic: ok', r.stdout)
+
+    def test_pinned_prefix_lost_when_rotation_anchor_is_unanchored_fails(self):
+        # The named unanchored allowance must not erase a previously pinned
+        # prefix: without the lost-prefix guard this same named gap passes.
+        r = self.rotation_case(self._ROT_WRONG,
+                               '--allow-unanchored', 'AAAA0001',
+                               '--prefix-pin', '0:1')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('matched-prefix claim lost (unanchored-allowed), '
+                      'pinned minimum 1', r.stdout)
 
     def test_rotation_anchor_rejects_a_shuffled_capture(self):
         # The section's notes are reordered (0x27 and 0x23 swapped): the anchor

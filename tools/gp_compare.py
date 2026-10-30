@@ -274,6 +274,17 @@ BANDS_ALLOWED = {
         # (00001c occurs at five entries, black at 207), not a palette shift.
         (5120, 1, 5, '56b900b1562b3abdf600bb678e31abed485327c292ea26eb022fe7daf0e32250'),
     ),
+    'gp-twop-ko': (
+        # Live truth Task 3 (record §L3): two in-fight scan-out bands, each
+        # byte-pinned because no dumped present holds the whole band. Capture
+        # 1286 (raw 3881): rows 0..163 port 1042's, rows 166..199 port 1043's,
+        # rows 164..165 the band; (1042, 1043) is the unique pair. Capture 1291
+        # (raw 3886): rows 0..109 port 1046's, rows 133..199 port 1047's, rows
+        # 110..132 the band; (1046, 1047) is the unique pair. The bands' causes
+        # are not isolated; the named bytes and both bound segments are the claim.
+        (1286, 164, 166, '1aa2036067e12911947678cccf93019be63002eecace6db4ba1f2e780af6d8b6'),
+        (1291, 110, 133, 'd17fe0cfb943bb2991295515c4c76cc881168e42391779d7dc4d85bb410ff7e3'),
+    ),
 }
 # <<< PIN-BASELINE-END bands
 
@@ -284,13 +295,15 @@ BANDS_ALLOWED = {
 # isolation and the rejection of the loader re-sync hypothesis there). Like
 # BANDS_ALLOWED this is never a class and never an extension of the two-frame
 # model: only the named capture frames, each only with its own byte recipe. An
-# entry is (capture frame j, r1, r2, top_sha256): the frame is explained ONLY if
+# entry is (capture frame j, r1, r2, top_sha256[, B]): the frame is explained ONLY if
 #   1. sha256 of its bytes [0, r1*ROW) equals top_sha256 (the still-held top rows
 #      of the old screen, the segment no *unique* port frame answers for),
 #   2. EXACTLY ONE adjacent pair (B, B+1) in the CURRENT port dump holds: the
 #      capture's rows [r1, r2) equal port[B]'s rows and its rows [r2, FRAME_H)
 #      equal port[B+1]'s (the middle range is vacuous when r1 == r2 — the U9
-#      shape, where only the bottom rows are pair-bound), and
+#      shape, where only the bottom rows are pair-bound). When a repeated wipe
+#      makes several byte-identical pairs, the optional fifth field pins the
+#      measured B instead; that pair must still bind the same rows, and
 #   3. at least one port frame A with A < B holds the capture's rows [0, r1):
 #      the still-scanned old screen IS one of the port's own earlier frames.
 # The pair and the top are byte-verified against the port's dump, so a port that
@@ -496,6 +509,44 @@ SCAN3_ALLOWED = {
         # 5034 clean at 4302.
         (5033, 130, 198, '9a5cd9bd7b6dc2c14642eab62211a5d64a5928dec2abb29b2002725ee333c17e'),
     ),
+    'gp-twop-ko': (
+        # Live truth Task 3 (record §L3): capture 272 (raw 2422), the wipe's
+        # three-present scan-out. Captures 106/107/108 exhibit the earlier
+        # 31/32/33 layout cleanly; capture 271 is clean 172 and capture 273 a
+        # (177,178) splice, so this frame's timeline occurrence is ports
+        # 175/176/177 (rows 0..13/14..57/58..199), not the byte-identical
+        # 31/32/33. The layout repeats again at 222/223/224; all three pairs
+        # bind, so the fifth field pins B=176 where the ordinary unique-pair
+        # rule cannot choose. Capture 2286 (raw 4906): rows 0..50 port 1896's,
+        # rows 51..193 port 1899's and rows 194..199 port 1900's;
+        # (1899, 1900) is the unique pair and port 1896 the only earlier top.
+        (272, 14, 58, 'd6d2b8293a6abc261a545b31f7dc8ccedd3050b345a471122d066a27c22b4184', 176),
+        (2286, 51, 194, 'f598b5d6c06a8334ebfb4ea3ec39d6cf99f052217a5dfa692d6bf285d9709da3'),
+    ),
+    'gp-draw': (
+        # Live truth Task 2 (record §L2): capture 346 (raw 2827), the round-1
+        # mode-8 entry's two-segment scan-out. Rows 0..2 are port 218's alone
+        # before the bind and rows 3..199 are port 221's; the vacuous-middle
+        # pair (220, 221) is the 1686-frame dump's unique adjacent-pair bind.
+        # Ports 219/220 are unexhibited.
+        (346, 3, 3, 'f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b'),
+    ),
+    'gp-u27-name-entry': (
+        # Live truth Task 7 (record §L7): capture 334 (raw 2837), the round-1
+        # mode-8 entry's three-present scan-out. Rows 0..2 are port 219's alone
+        # before the bind (f=0x47C), rows 3..62 are port 221's (f=0x47E) and
+        # rows 63..199 are port 222's (f=0x47F); (221, 222) is the 4991-frame
+        # dump's unique adjacent-pair bind. Port 220 (f=0x47D) is unexhibited.
+        (334, 3, 63, 'f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b'),
+    ),
+    'gp-u28-continue': (
+        # Live truth Task 5 (record §L5): capture 336 (raw 2825), the round-1
+        # mode-8 entry's three-present scan-out. Rows 0..1 are port 216's alone
+        # before the bind, rows 2..9 are port 218's and rows 10..199 port 219's;
+        # (218, 219) is the 3844-frame dump's unique adjacent-pair bind. Port
+        # 217 is unexhibited. The byte recipe covers this capture frame only.
+        (336, 2, 10, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
+    ),
 }
 # <<< PIN-BASELINE-END scan3
 
@@ -622,9 +673,11 @@ def decide_aperture(ap_indices, dac, port_rgb, capture_rgb, control):
     return 'FAIL'              # a valid read that matches neither side
 
 
-def scan3_bind(c, port, r1, r2):
+def scan3_bind(c, port, r1, r2, pinned=None):
     """The unique adjacent port pair (B, B+1) with c's rows [r1, r2) == port[B]'s
     and c's rows [r2, FRAME_H) == port[B+1]'s; None if there is not exactly one.
+    A non-None `pinned` instead names the one measured occurrence to accept when
+    a repeated byte layout gives several identical pairs; it must still bind.
     The [r1, r2) test is vacuous when r1 == r2 (the U9 two-segment shape), so the
     bind then asks for exactly one pair whose B+1 holds the whole [r2, FRAME_H)."""
     R = tc.ROW
@@ -635,6 +688,8 @@ def scan3_bind(c, port, r1, r2):
     for m in range(1, len(port)):
         if port[m - 1][r1 * R:r2 * R] == mid and port[m][r2 * R:] == bot:
             hits.append(m - 1)
+    if pinned is not None:
+        return pinned if pinned in hits else None
     return hits[0] if len(hits) == 1 else None
 
 
@@ -653,13 +708,17 @@ def scan3_explain(c, port, entry):
     the earlier top holders plus the bound pair (B, B+1); B is dropped when the
     middle range is vacuous (r1 == r2) so a frame with no bound pixel is never
     exhibited."""
-    _j, r1, r2, top_sha = entry
+    _j, r1, r2, top_sha = entry[:4]
+    pinned = entry[4] if len(entry) > 4 else None
     got = hashlib.sha256(c[:r1 * tc.ROW]).hexdigest()
     if got != top_sha:
         return None, 'its top rows 0..%d are %s.., not the named %s..' % (
             r1 - 1, got[:12], top_sha[:12])
-    B = scan3_bind(c, port, r1, r2)
+    B = scan3_bind(c, port, r1, r2, pinned)
     if B is None:
+        if pinned is not None:
+            return None, 'pinned adjacent port pair %d/%d does not bind its rows [%d,%d) and [%d,200)' % (
+                pinned, pinned + 1, r1, r2, r2)
         return None, 'no unique adjacent port pair binds its rows [%d,%d) and [%d,200)' % (
             r1, r2, r2)
     tops = scan3_top(c, port, B, r1)
@@ -1153,8 +1212,9 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                     'its named three-frame scan-out: %s' % (name, j, raws[j], why))
                 allow_bad = 1
             else:
-                _j, r1, r2, _sha = scan3[j]
-                B = scan3_bind(c, port, r1, r2)
+                _j, r1, r2, _sha = scan3[j][:4]
+                pinned = scan3[j][4] if len(scan3[j]) > 4 else None
+                B = scan3_bind(c, port, r1, r2, pinned)
                 tops = ' '.join(str(a) for a in ex if a < B)
                 mid = '' if r1 == r2 else 'port %d rows %d..%d, ' % (B, r1, r2 - 1)
                 out('gp_compare: %s: frames: captured frame %d (raw %d) allowed by name '

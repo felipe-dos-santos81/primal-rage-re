@@ -2069,6 +2069,11 @@ commands (design G3, Task 5 review).
 
 ### §M6.6 The phase's named gaps and what it does not claim
 
+**Superseded coverage note:** the historical 16/5 cut-window bank wording below is
+superseded by live-truth §L11's 27-report **12 whole-section-claimed / 10
+requested-unclaimed / 4 never-requested** measurement and its per-section
+matched-prefix pins; the four never-requested banks are named there.
+
 - **Rendered audibility / PCM vs the original** — not claimed; the OPL core and
   mixer are the port's invented model (§M1.7). The PCM pin is determinism only.
 - **Bank coverage in the measured cut windows** — 16 of the 26 code-reachable

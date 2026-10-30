@@ -57,6 +57,17 @@
       "last_s_frame": 1565
     },
     {
+      "path": "data/k11-captures/gp-twop-ko",
+      "kind": "k11",
+      "poll_log_sha256": "15705a3f95c9c9333abcc8ca3c751a2fb0d5525b1556132bdee740eb2807a0ee",
+      "frame_count": 2565,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 3211
+    },
+    {
       "path": "data/k11-captures/gp-u8-attract-start",
       "kind": "k11",
       "poll_log_sha256": "d6b0cf6b210992de4e7cda211f02cbe5653e21a22d3fbec3dd02e7e30e0351fd",
@@ -305,6 +316,28 @@
       "last_s_frame": 9959
     },
     {
+      "path": "data/k11-captures/gp-u27-name-entry",
+      "kind": "k11",
+      "poll_log_sha256": "5e2c5824ee009d814c1929663110c22b24d658e4b0ea0c440a4b3327eeb79d04",
+      "frame_count": 5885,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 4,
+      "last_s_frame": 9457
+    },
+    {
+      "path": "data/k11-captures/gp-draw",
+      "kind": "k11",
+      "poll_log_sha256": "d99571d3db0bf2135ad10d3a0f08d5c5bbdebdea392fad2821e7ce0901299885",
+      "frame_count": 2132,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2974
+    },
+    {
       "path": "data/k11-captures/gp-draw-timeout",
       "kind": "k11",
       "poll_log_sha256": "bb3e1b8ba888e4f9aed9728f4cbe94570c5f6493c6815aec57ef7e4613674290",
@@ -314,6 +347,17 @@
       ],
       "first_s_frame": 5,
       "last_s_frame": 2973
+    },
+    {
+      "path": "data/k11-captures/gp-u28-continue",
+      "kind": "k11",
+      "poll_log_sha256": "96645e99a3718f5c387c6613d2faddaa8221ad936ea8c80f82a3dd602e51246e",
+      "frame_count": 4621,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 6395
     },
     {
       "path": "data/k11-captures/walk",

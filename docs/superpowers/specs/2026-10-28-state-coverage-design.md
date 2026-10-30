@@ -35,8 +35,9 @@ strongly than the evidence supports:
    scenario and has no capture yet), `0E` (the continue/toll screen,
    `game_mode_0e_step` `0x27A2C`, `flow.c:1967`), `21` (the volleyball
    easter egg, entered at `0x4BD98`, `fight.c:2945`, after the eighth
-   **worshipper trample**, `fight.c:3080`), `25` (the both-characters-4
-   camera sequence, entered at `0x4E11C`, `fight.c:5575`) and `32`/`33`
+   **worshipper trample**, `fight.c:3080`), `25` (the bowling easter egg,
+   entered at `0x4E11C`, `fight.c:5575`; string `0x61` decodes "BOWLING!",
+   live-truth §L6) and `32`/`33`
    (ENDURANCE's team advance and match end, `flow.c:2124`/`2651`).
    `18`/`19` are effects-gated transitions with no content
    (`flow.c:1250`/`1272`). **Two of these gates are two-human-only**:
@@ -168,10 +169,10 @@ new column-0 header without one.
 
 **G2 — The out-of-scope modes declared, not captured.** `0x21` (the
 volleyball easter egg, `0x4BD98` after the eighth worshipper trample) and
-`0x25` (the both-characters-4 camera sequence, `0x4E11C`) both require
+`0x25` (the bowling easter egg, `0x4E11C`) both require
 `DS_00104ABC >= 2`, which is `b1f == 3` only (`flow.c:1621`/`2405`); their
 capture is a two-human scenario with eight tramples of a specific effects
-entry and a mirror-ARMADON camera condition. The phase derives the exact gates
+entry and a mirror-ARMADON bowling trigger. The phase derives the exact gates
 from the bytes, records why they are not in scope, and leaves them as declared
 gaps with the census rows. `0x0E` (the continue/toll screen) is declared for a
 different reason: it needs a lost match plus a credit, a scenario this phase
@@ -254,7 +255,7 @@ bring new evidence to re-open any of them.
   consumes whatever that task publishes (it feeds the census baseline).
 - **The two-human-only modes `0x21`/`0x25` and the continue screen `0x0E`.**
   The gates are `DS_00104ABC >= 2`, i.e. `b1f == 3`; `0x21` needs eight
-  worshipper tramples and `0x25` a mirror-ARMADON camera sequence, and `0x0E`
+  worshipper tramples and `0x25` a mirror-ARMADON bowling trigger, and `0x0E`
   a lost match with credits. They are declared with their measured gates and
   census rows, not captured.
 - **Language reload, the coin countdown beyond the already-captured debit, the
@@ -366,7 +367,7 @@ repeating its capture-first risk.
    camera within `±0x3300`; `0x27A2C`: the continue poll and the credit) and
    record why each is out of scope: `DS_00104ABC = (b1f == 3) + 1`
    (`flow.c:1621`/`2405`) makes `0x21`/`0x25` two-human-only, and `0x21`/`0x25`
-   need an eight-trample and a mirror-ARMADON camera sequence respectively. Add
+   need an eight-trample and a mirror-ARMADON bowling trigger respectively. Add
    the census rows and the declared-gap text; no capture.
 5. **ENDURANCE advance/end (`0x32`/`0x33`).** Clone `gp-u12-endurance`, keep its
    pins, and add four poked KOs of one side (the U10 `KO_P2`/`DEATH_DONE`
@@ -413,11 +414,11 @@ repeating its capture-first risk.
    Clone the U10 script and inject letter keys at mode `0x1E` so the entry
    screen is driven, not just displayed, and extend the pixel window over the
    exit frames the current pin (`5437`) excludes. No port change. **Measured**
-   (`gp-u27-name-entry`, record §D5): the exhibit drives entry sub-states `b25
-   00 → 04 → 05 → 06 → 07 → 0A`, three letters and the finaliser committing
-   "ABD". It is an **exhibit, not a gated oracle**: its replay has a pinned miss
-   set (`k_miss_gp_u27_name_entry`), but there is no `gp-u27-oracle` and it is
-   **not in `make verify`**.
+   (`gp-u27-name-entry`, record §D5): the state-coverage phase recorded an
+   exhibit driving entry sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three
+   letters and the finaliser committing "ABD", with the pinned replay miss set
+   `k_miss_gp_u27_name_entry`. Live-truth Task 7 later promoted it to
+   `gp-u27-oracle` in `make verify` (record §L7).
 
 ### 7.3 Stage 3 — the known divergence (code truth)
 
@@ -518,7 +519,7 @@ frontiers are terminal with per-item reasons; the two-human-only modes
 measured gates.
 
 **Will not claim:** U14's fought win; the two-human KO (claim-coverage owns
-it); the `0x21` volleyball, the `0x25` camera sequence or the `0x0E` continue
+it); the `0x21` volleyball, the `0x25` bowling easter egg or the `0x0E` continue
 screen's content; the full pixel content of every unexhibited mode outside the
 captured windows; death-stream intermediate state; the full audibility chain;
 the 5120 band's cause if the experiment is inconclusive; any row, classification
@@ -586,8 +587,10 @@ the gate (`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` plus
   (610 seamed + 32 `fn_register`, 11 in both); the 128 unseamed split into
   **124 addresses carrying a `PR_HIT` line** (125 `PR_HIT` lines — `0x50188`
   carries two) plus the **4 `UNINSTRUMENTED`** exceptions `0x29D60`, `0x2EA30`,
-  `0x2EA64`, `0x500BB` (record §D1.4/§D1.9). The census reads **HIT 653 /
-  NOT-HIT 102 / UNINSTRUMENTED 4** (sums to 759; Task 14 re-pinned it from the
+  `0x2EA64`, `0x500BB` (record §D1.4/§D1.9). The census read **HIT 653 /
+  NOT-HIT 102 / UNINSTRUMENTED 4** at Task 14 (sums to 759; live-truth Task 12b
+  later re-pinned it to HIT 657 / NOT-HIT 98 / UNINSTRUMENTED 4, record §L12; Task 14
+  re-pinned it from the
   Task 3 baseline's `HIT 645 / NOT-HIT 110` — R17/§D8.3 — the eight `improved:`
   addresses measured as `gp-u25-endurance-end`'s `0x292D4`/`0x29638`/`0x296B8`
   and `gp-draw-timeout`'s `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`).
@@ -606,11 +609,11 @@ the gate (`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` plus
   predicate from the **`W` record's clock poke** (the round-3 arm re-reads
   `+0x5A` after `0x39FF4`, so the health values are bound to that frame and
   asserted `< 0x78`); `b16` is not asserted.
-- **Name-entry (record §D5):** `gp-u27-name-entry` is an **exhibit, not a gated
-  oracle** — it drives entry sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`,
-  three letters and the finaliser committing "ABD", with a pinned replay miss
-  set (`k_miss_gp_u27_name_entry`) but **no `gp-u27-oracle` and no `verify`
-  entry**.
+- **Name-entry (record §D5):** the state-coverage phase recorded
+  `gp-u27-name-entry` as an **exhibit** driving entry sub-states `b25 00 → 04 →
+  05 → 06 → 07 → 0A`, three letters and the finaliser committing "ABD", with
+  the pinned replay miss set `k_miss_gp_u27_name_entry`. Live-truth Task 7
+  later promoted it to `gp-u27-oracle` in `make verify` (record §L7).
 - **5120 (record §D4):** **INCONCLUSIVE** — the DOSBox-X memory file excludes
   the VGA aperture, so the 14 diagnostic bytes read `0xFF` and the band stays a
   declared gap.

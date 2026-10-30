@@ -164,6 +164,15 @@ static const fnm_pair k_miss_gp_twop[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-twop-ko (live truth Task 3, record §L3), measured on the full replay to
+ * its X record (f = 0xC50): the global 0x5D812 actor_spawn/set_dead pair plus
+ * the two wipe hooks, 0x29D60 (the bare ret) and 0x5D812 (the runtime stub),
+ * one hit each from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_twop_ko[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* Gameplay U8 (record 2026-10-01-gameplay-u8-derivations.md §U8.16): one set
  * per U8 scenario (an exact name), each pair measured on the full replay of its
  * capture and classified from the raw in the record.
@@ -383,12 +392,30 @@ static const fnm_pair k_miss_gp_u27_name_entry[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-draw (live truth Task 2, record §L2), measured on its full replay to the
+ * script end (f=0xB62): the same two wipe hooks of §G.24, 0x29D60 (bare `ret`,
+ * hits=1) and 0x5D812 (runtime stub, hits=1), both from frontend_mode_1b_step;
+ * the global actor_spawn/set_dead 0x5D812 rows are the fight's. */
+static const fnm_pair k_miss_gp_draw[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* gp-draw-timeout (state coverage Task 7, report task-7-report.md), measured on its full
  * replay to the X record (f=0xB62): the same two wipe hooks of §G.24, 0x29D60
  * (bare `ret`, hits=1) and 0x5D812 (runtime stub, hits=1), both from
  * frontend_mode_1b_step; the global actor_spawn/set_dead 0x5D812 rows are the
  * fight's (as gp-u9-win's, record gameplay-u9-u10 §W.12). */
 static const fnm_pair k_miss_gp_draw_timeout[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-u28-continue (live truth Task 5, record §L5), measured on the full replay
+ * to its X record (f=0x18C2): the two wipe hooks of §G.24, 0x29D60 (bare `ret`,
+ * hits=1) and 0x5D812 (runtime stub, hits=3), both from frontend_mode_1b_step;
+ * the global actor_spawn/set_dead 0x5D812 rows are the fight's, as gp-u10-ending's. */
+static const fnm_pair k_miss_gp_u28_continue[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
 };
@@ -438,6 +465,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u6-moves", 1, k_miss_gp_u6_moves, FNM_N(k_miss_gp_u6_moves) },
     { "gp-keys-fight", 0, k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight) },
     { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
+    { "gp-twop-ko", 0, k_miss_gp_twop_ko, FNM_N(k_miss_gp_twop_ko) },
     { "gp-u8-right-arcade", 0, k_miss_gp_u8_right_arcade, FNM_N(k_miss_gp_u8_right_arcade) },
     { "gp-u8-left-training", 0, k_miss_gp_u8_left_training, FNM_N(k_miss_gp_u8_left_training) },
     { "gp-u8-right-training", 0, k_miss_gp_u8_right_training, FNM_N(k_miss_gp_u8_right_training) },
@@ -460,7 +488,9 @@ static const gp_set k_gp_sets[] = {
     { "gp-u25-endurance-end", 0, k_miss_gp_u25_endurance_end, FNM_N(k_miss_gp_u25_endurance_end) },
     { "gp-u26-side1-ending", 0, k_miss_gp_u26_side1_ending, FNM_N(k_miss_gp_u26_side1_ending) },
     { "gp-u27-name-entry", 0, k_miss_gp_u27_name_entry, FNM_N(k_miss_gp_u27_name_entry) },
+    { "gp-draw", 0, k_miss_gp_draw, FNM_N(k_miss_gp_draw) },
     { "gp-draw-timeout", 0, k_miss_gp_draw_timeout, FNM_N(k_miss_gp_draw_timeout) },
+    { "gp-u28-continue", 0, k_miss_gp_u28_continue, FNM_N(k_miss_gp_u28_continue) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

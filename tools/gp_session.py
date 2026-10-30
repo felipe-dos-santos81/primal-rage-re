@@ -84,6 +84,12 @@ SNAP_FIELDS = (
     ('ab4', 0x100AB4, 4), ('rec_y', 0x1C, 4), ('anchor', 0x100AF0, 4),
     ('s0_57', 0x107807, 1), ('rec8', 0x08, 4), ('rec34', 0x34, 2),
     ('rec36', 0x36, 2), ('rec44', 0x44, 2),
+    # Live truth Task 6 (record §L6): the mode-0x25 trigger and the stores
+    # fight_mode25_enter (0x4E11C) makes. Appended, so every older poll.log's
+    # S lines lack them; only gp-bowling asserts them.
+    ('b892', 0x108892, 2), ('b8c4', 0x1088C4, 1),
+    ('b8a6', 0x1088A6, 2), ('b8bd', 0x1088BD, 1),
+    ('b415', 0x104B15, 1), ('b8c0', 0x1088C0, 1),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -262,6 +268,50 @@ SCENARIOS = {
         ('after', 60, ('end',)),
     )),
 }
+
+# Live truth Task 6 (record §L6): the mode-0x25 bowling entry, with no poke.
+# gp-twop's LEFT PLAYER ARCADE, P2 join and 30-frame fight walk-in, then P1
+# walks cell 0 -> 5 (five rights; 0xC8882[5] = class 4 ARMADON) while P2 keeps
+# its default cell 5. Both confirm. Character 4's keyboard move 0 (reaction
+# 0x22, callback 0x455A0) then runs THREE times on both sides from
+# tools/gp_moves.py: facing 0 is right + b0/b2, down, left; facing 1 is its
+# left/right mirror. The failed one-attempt run measured b892 = 2, one per side
+# in one frame; three attempts are needed for 6. Its S records showed both
+# slots back at +0x52 = 0 at f=0x636, 139 frames after the first move's spin at
+# f=0x5AB, so the corrected attempts start 150 frames apart (142 after the last
+# direction step), the next 30-frame harness gap. The third pair's increment
+# and the mode entry/reset share an iteration. The 300-frame tail records the
+# BOWLING! banner; the scoreboard beyond it is not claimed.
+BOWLING_MOVE0_ATTEMPTS = (
+    ('after', 60, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+)
+SCENARIOS['gp-bowling'] = dict(time_limit=90, steps=(
+    SCENARIOS['gp-twop']['steps'][:4] + (
+        ('after', 60, ('pad', ('p1.right',), 5)),      # P1 cell 0 -> 1
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 1 -> 2
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 2 -> 3
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 3 -> 4
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 4 -> 5 (class 4)
+        ('after', 30, ('pad', ('p1.b0',), 5)),         # P1 confirms
+        ('after', 30, ('pad', ('p2.b0',), 5)),         # P2 confirms cell 5
+        ('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 30)),
+    ) + BOWLING_MOVE0_ATTEMPTS + (
+        ('until_mode', 0x25, 300),
+    )))
+# The corrected capture has its own name; gp-bowling.failed preserves the
+# one-attempt run. The steps tuple is immutable and shared, not rebuilt.
+SCENARIOS['gp-bowling-fix'] = dict(SCENARIOS['gp-bowling'])
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
 # Plan gameplay-u6b (record gameplay-u6 §U6.12): P1 (Sauron, character 0, the
@@ -584,6 +634,23 @@ SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, memsize=64, s
 # sequence"). The pokes anchor on the k-th mode-6 entry (round 1/2/3), as U9's.
 KO_P1 = ('poke', ((0x10780A, b'\x78'),))             # P1's +0x5A (DS_0010780A): P2 wins the round
 KO_BOTH = ('poke', ((0x10780A, b'\x78'), (0x10789E, b'\x78')))   # the drawn round: A == B (0x27C48)
+
+# Live truth Task 5 (record §L5): the continue screen 0x0E and its expiry. Reuse
+# gp-u10-ending's LEFT PLAYER ARCADE route only through the two match-1 KOs (a new
+# tuple: WIN_MENU and gp-u10-ending are not mutated), then poke the incumbent side's
+# +0x5A at the first final-arena entry. flow_arena_ko_check (0x272DC) opens 0x0E only
+# when that side, DS_0010810D, is KO'd; the other side takes the 0x0D winner-pose arm.
+# Boot's five credits leave four after the arcade start, so no credit write is needed.
+# Stop at the countdown expiry (mode 0x15): the full 15->0 countdown and the b25=0
+# expiry are in the replayed window. The three KOs are harness writes, not a fought-KO
+# or continue-taken claim. time_limit 240 and WIN_EXTRA are gp-u10-ending's; the
+# default guest memory suffices because this stops before the fourth-final OOM (§W.13).
+SCENARIOS['gp-u28-continue'] = dict(
+    time_limit=240, extra=WIN_EXTRA, stop_mode=0x15, stop_delay=0,
+    steps=SCENARIOS['gp-u10-ending']['steps'][:len(WIN_MENU) + 2] + (
+        ('after_entry', 0x0C, 1, 10, KO_P1),
+    ))
+
 # The fields the draw check (gp_draw.py) reads. adc (the best-of rounds, DS_00104ADC,
 # 0x25A14..0x25A28, §W.1) is the one WIN_EXTRA lacks; ad4/w2/w3/b1e are WIN_EXTRA's (§W.2)
 # and mode/s0_5a/s1_5a are SNAP_FIELDS'. The scenario logs WIN_EXTRA + adc.
@@ -1364,6 +1431,8 @@ class Schedule:
 # winner pose; stop_mode/stop_delay), so mode 0xA (the round-over, which precedes it)
 # and the pose are recorded and nothing past them is compared.
 # gp-draw-timeout (state coverage Task 7) stops the same way: mode 0xB 60 frames in.
+# gp-u28-continue (live truth Task 5) stops at the continue countdown's expiry (mode
+# 0x15), so the replay's script includes the entire prompt/countdown window.
 # gp-u27-name-entry (state coverage Task 8) stops too: its end is mode 3 after the
 # letter-driven high-score entry (u10's until_mode), and nothing past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
@@ -1377,7 +1446,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
-                         'gp-u13-band', 'gp-u27-name-entry'})
+                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue', 'gp-bowling', 'gp-bowling-fix'})
 
 
 class ScriptError(Exception):

@@ -173,7 +173,7 @@ Per-mode `P`-record count and distinct-file count (the 35 presented modes):
 | | | | | 31 | 1 | 1 |
 
 The two content-bearing never modes this phase's tasks cite are confirmed
-absent from every capture: `0x21` (volleyball, in 0 files), `0x25` (camera
+absent from every capture: `0x21` (volleyball, in 0 files), `0x25` (bowling
 sequence, 0 files), `0x0E` (continue screen, 0 files), `0x32`/`0x33`
 (ENDURANCE end, 0 files — `0x30`/`0x31` are present in `gp-u12-endurance`
 only), and `0x0A`/`0x0B` (the drawn round, 0 files). `0x04` is the design's
@@ -534,7 +534,7 @@ bytes do not change.
 
 The three content-bearing never-presented modes that this phase **declares,
 not captures** (design §3 G2, §7.2 Step 4): the volleyball easter egg `0x21`,
-the both-characters-4 camera sequence `0x25`, and the continue/toll screen
+the mirror-ARMADON bowling easter egg `0x25`, and the continue/toll screen
 `0x0E`. No capture, no pin, no code change: this is the measured gate
 derivation and the declared reason each is out of scope. The census's measured
 NOT-HIT rows (Task 3's `tools/coverage_baseline.txt`, pinned, not touched here)
@@ -605,7 +605,12 @@ On a pass the store body runs (`fight.c:2946-2977`): `DS_00108864 = entry`
 spawns** `0xBAB88` (`fight.c:2968`) / `0xBAB9C` (`fight.c:2971`) at the
 fighters' midpoint, both with `+0x36 = 0x1A4`.
 
-### §D2.3 Mode `0x25` — the both-characters-4 camera sequence (entry `0x4E11C`)
+### §D2.3 Mode `0x25` — the mirror-ARMADON bowling easter egg (entry `0x4E11C`)
+
+**Label correction (live-truth §L6):** the game's decoder returns string
+`0x61` = "BOWLING!"; the earlier "both-characters-4 camera" label was wrong.
+The two later real-input attempts remained below the trigger (2, then 5) and
+did not change this section's declared-status evidence.
 
 The mode store is `fight_mode25_enter` (`0x4E11C`), called once, from
 `game_mode_04_step` (`0x26254`, `flow.c:3231`, `0x263EA`). Two gate layers:
@@ -1505,7 +1510,7 @@ this phase:
   spots the B-labels meant are exactly the remaining NOT-HIT addresses, none of
   which is a regression.
 
-- **The declared modes** `0x21` (volleyball), `0x25` (mirror-ARMADON camera) and
+- **The declared modes** `0x21` (volleyball), `0x25` (mirror-ARMADON bowling) and
   `0x0E` (continue screen) — §D2 — whose two-human/credit gates a poked 1P
   scenario cannot open, so they stay declared, not captured.
 

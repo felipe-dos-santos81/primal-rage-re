@@ -220,8 +220,8 @@ uninstrumented header.
   address.
 - [ ] **Step 2: Record why they are out of scope.** `DS_00104ABC` is
   `(b1f == 3) + 1`, so `0x21`/`0x25` need a two-human match; `0x21` also needs
-  eight tramples of a specific effects entry and `0x25` a mirror-ARMADON camera
-  sequence; `0x0E` needs a lost match plus a credit. A poked 1P scenario cannot
+  eight tramples of a specific effects entry and `0x25` a mirror-ARMADON bowling
+  trigger; `0x0E` needs a lost match plus a credit. A poked 1P scenario cannot
   open either gate — do not build one.
 - [ ] **Step 3: Declare in the docs.** Add the three modes to the named-gap
   list with the measured gates and the census rows; note that `0x0B` (the
