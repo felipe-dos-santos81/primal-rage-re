@@ -284,13 +284,14 @@ revert.
 ## §F2 — the 5120 band (Task 2)
 
 **Outcome: Part A done (no holder); Step 2's one capture ran and the decision
-is PASS-A (§F2.5; the capture-side analysis is §F2.5–§F2.6).** The
+is PASS-A (§F2.5; the analysis is §F2.5–§F2.6).** The
 per-pixel holder search over the whole U13 dump finds no port frame that holds
 the capture-5120 band (F2.1); the fade source and the DAC-injection write list
 are derived (F2.2/F2.3), the `gp-u13-band-dac` scenario and its S fields are
-prepared and unit-tested (F2.4), and the one capture is **not run in this
-part**. No capture, pin or allowance changed; the band allowance
-`(5120, 1, 5, 56b900b1…)` stays.
+prepared and unit-tested (F2.4), and the one authorised capture
+(`data/k11-captures/gp-u13-band-dac`) was analysed in §F2.5. No pin or
+allowance changed; the band allowance `(5120, 1, 5, 56b900b1…)` stays, and the
+capture is the evidence for the PASS-A decision.
 
 ### F2.1 The holder search (Step 1, no capture)
 
@@ -458,7 +459,7 @@ seeds a decoy at the base-relative address.
 BAND_DAC_WRITES))` and `('after_entry', 0x15, 1, 84, ('end',))`; time_limit 240
 and memsize 64 are U13's, and the scenario joins `STOP_AT_END`.
 
-**The mode-0x15 entry is run-dependent by one frame.** The committed captures
+**The mode-0x15 entry is run-dependent by one frame.** The published captures
 of this route disagree: `gp-u13-ending2`'s poll.log has its first mode-0x15 S
 at **f=0x17D4** (its S at 0x17D3 is mode 0x17), while `gp-u13-band`'s has it at
 **f=0x17D5** (its S at 0x17D4 is mode 0x17) — the two runs' boot S sequences
@@ -523,7 +524,7 @@ frame derived from them, raced/late/missing writes) on synthetic sides.
   drop, a one-channel difference, the frame's own DAC, the control apart), the
   four `decide_dac` outcomes, the six derived writes, the scenario/field shape
   and the entry-relative schedule (both measured entries 0x17D4/0x17D5, and
-  the committed poll.logs' first-mode-0x15 frame pinned), and the whole
+  the published poll.logs' first-mode-0x15 frame pinned), and the whole
   `--dac` path on a synthetic poll.log that carries a prior U13 win-path W row
   (the round-1 Critical: the six-address filter and `race`/`late` rejection).
   Mutation-checked while writing: swapping the band comparison for a single
@@ -556,9 +557,9 @@ has; it is the capture's ONLY frame with the exact sentinel set, so the
 identification is by the pixels, not the clock). Frame 05129 (raw 8858)
 precedes it with `000000`×8 / `100000` / `00000c`×4 at the 13 offsets (the
 port's f=0x1825/0x1826 band colours); 05132/05133 show `ef00ef`/`00efef`/
-`efefef` and 05135 `e700e7`/`00e7e7`/`e7e7e7` — the natural bodies at 0x1828
-and 0x182B darkening the sentinel by 8 each (0xF7 -> 0xEF -> 0xE7), exactly
-the port dry run's phase.
+`efefef` and 05135 `e700e7`/`00e7e7`/`e7e7e7` — the sentinel darkening by 8 per
+natural body in the sequence `0xF7 -> 0xEF -> 0xE7`, matching the port dry
+run's values (the exact game-frame phase of those bodies is not claimed).
 
 **The S record at f=0x1826** (`bbp0=00084410`, `bbp1=002FB038`, `effn=11`):
 
@@ -572,10 +573,13 @@ The effect links are the original's *relocated* data-object addresses: with the
 data object at base 0x266000, subtract 0x266000 and add `DATA_BASE_VA` 0x80000
 gives **0xF842C** (active head), **0xF1B28** (active tail = the entry-2 record
 the W rows target) and **0xF0B00** (free head) — the port's own measured values
-(F2.2). The capture therefore confirms the injection's record mapping in the
-original, not only in the port's model. `effn=11` (one fewer than the port's
-pre-injection 12; one record had retired by this frame — the entry-2 record is
-still the active tail and its body uploaded the sentinels, as the pixels show).
+(F2.2). The capture therefore confirms the **entry-2** record's mapping in the
+original (the active tail whose body uploaded the band sentinels), not only in
+the port's model; the entry-5 record and the 0x65 colour were **not observed**
+— the control's own index is 0x03, so the 0x65 sentinel has no pixel to show.
+`effn=11` (one fewer than the port's pre-injection 12; one record had retired by
+this frame — the entry-2 record is still the active tail and its body uploaded
+the band sentinels, as the pixels show).
 
 **The corrected control index.** The original's back buffer at (1,100) holds
 **index 0x03**, not the port's 0x65. The design's control premise was the
@@ -600,10 +604,10 @@ control (1,100) 000000
 i.e. every one of the 13 pixels shows the sentinel for its own back-buffer
 index (0x32 magenta, 0x2E cyan, 0x4D white) — not the old capture's blue
 `00001c` and not a fade colour. Corroboration: the frame holds **101** magenta
-pixels, exactly the port frame 4316's 101 index-0x32 pixels (the whole static
-background matches); the frame-wide 0x2E/0x4D counts (74/27 vs the port's
-96/54) differ only at some lower-row pixels outside the 13, which are not part
-of the claim. No frame of this capture holds `00001c` at the eight band
+pixels, exactly the port frame 4316's 101 index-0x32 pixels — the **0x32 set
+matches 101/101**; the frame-wide 0x2E/0x4D counts (74/27 vs the port's 96/54)
+differ at some lower-row pixels outside the 13, which are not part of the
+claim. No frame of this capture holds `00001c` at the eight band
 offsets (the old capture's blue band is absent in this run — a run-specific
 scan-out state, consistent with the class below).
 
@@ -628,9 +632,10 @@ The measured 0x03 control forced a minimal, test-covered change (no pin moved):
 
 * `gp_band.decide_dac`: the control is a gate only when **its own** back-buffer
   index is one of the four injected indices; a `None` sentinel there (index
-  0x03) is reported, not gated. A band offset without an injected index and an
-  injected control that does not turn are still INCONCLUSIVE; the back-buffer /
-  port-index divergence is still PASS-B first.
+  0x03) is reported, not gated. An injected control that does not turn is still
+  INCONCLUSIVE. The back-buffer / port-index divergence is checked **first**
+  (PASS-B), before the sentinel requirement: a band `Q` outside the four has no
+  sentinel, so the old order would have hidden PASS-B behind INCONCLUSIVE.
 * `gp_band.dac_main`: the expected sentinel at each offset comes from the
   **back buffer's** index (the game's), not the port's, and the sentinel frames
   are located by any injected offset (the band offsets included) — a
@@ -639,9 +644,12 @@ The measured 0x03 control forced a minimal, test-covered change (no pin moved):
   filter and the `race`/`late` checks stay.
 * Tests: `TestDecideDac.test_a_non_injected_control_is_not_a_gate` (the 0x03
   case, PASS-A) replaces the old None-control INCONCLUSIVE test (the injected
-  control that does not turn stays INCONCLUSIVE), and
+  control that does not turn stays INCONCLUSIVE);
   `TestDacMain.test_dac_main_accepts_a_non_injected_control` runs the whole
   `--dac` path with `bbc=0x03` and a black control over the synthetic
-  sentinel-band frame. `python3 -m unittest tools.tests.test_gp_band` (24
+  sentinel-band frame; `test_dac_main_pass_b_for_a_band_backbuffer_outside_the_four`
+  runs the whole path with a band `Q = 0x15` (no sentinel at that offset) and
+  pins PASS-B; `test_dac_main_absent_band_sentinels_are_inconclusive` pins the
+  no-frame INCONCLUSIVE. `python3 -m unittest tools.tests.test_gp_band` (26
   tests) and `tools.tests.test_gp_session` pass; the other `gp_band` tests are
   unchanged.

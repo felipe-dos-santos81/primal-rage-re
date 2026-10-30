@@ -154,19 +154,23 @@ def holder_search_main(a):
 # ---- the DAC-injection decision (record §F2.2) ---------------------------
 
 def decide_dac(bb, port_idx, cap_rgb, sentinel_rgb, control, injected):
-    """The design's four outcomes for one capture frame whose control pixel is
-    the yellow sentinel (final truth design §3.4; record §F2.2).
+    """The design's four outcomes for one capture frame that shows an injected
+    sentinel at a band offset (final truth design §3.4; record §F2.5).
 
     bb: the S record's 14 back-buffer bytes (the just-presented buffer, 0xE87A0)
       in BAND_APERTURE order; port_idx: the port's own indices at the same 14
-      offsets (the U13 replay's frame at f=0x1826); cap_rgb / sentinel_rgb: the
-      capture's RGB and the derived sentinel RGB at each offset (None where the
-      index is not one of the four injected ones); injected: the caller's checks
-      (an S record at f=0x1826 with the diagnostic fields, the six W writes
-      unraced, the control's back-buffer byte 0x65).
+      offsets (the U13 replay's frame at the band frame); cap_rgb /
+      sentinel_rgb: the capture's RGB and the derived sentinel RGB at each
+      offset (sentinel_rgb[k] is None where the back-buffer index is not one of
+      the four injected ones); injected: the caller's checks (an S record at the
+      diagnostic W frame + 1 with the fields, the six W writes at one frame,
+      unraced and unladen, effn > 0) -- the control's index/colour is not part
+      of it.
 
     PASS-B: a band offset's back buffer is not the port's index -- the game's
-      own renderer wrote Q there, a content divergence to name and fix.
+      own renderer wrote Q there, a content divergence to name and fix. Checked
+      FIRST: Q may not be one of the four, so it would have no sentinel and the
+      later sentinel test could not see it.
     PASS-A: every back-buffer byte matches the port's AND the eight index-0x32
       pixels show their sentinel -- the capture's pixels follow the game's
       current DAC, so the earlier blue is the capture/present model's, not
@@ -175,21 +179,21 @@ def decide_dac(bb, port_idx, cap_rgb, sentinel_rgb, control, injected):
       the aperture held a state the present never wrote (the undumped-present
       class; terminal with the S record).
     INCONCLUSIVE: the injection is not proven (no S/fields, a race/late write),
-      a band offset's index is not one of the four, or the control's own index
-      was injected but its pixel did not show the sentinel (the DAC did not
-      reach the present). A control whose index is NOT one of the four (the
-      measured gp-u13-band-dac control is index 0x03, the port's 0x65) cannot
-      turn any sentinel; it is reported, not a gate -- the band sentinels are
-      the injection proof."""
+      a band offset's index is not one of the four (with bb == port_idx there),
+      or the control's own index was injected but its pixel did not show the
+      sentinel (the DAC did not reach the present). A control whose index is
+      NOT one of the four (the measured gp-u13-band-dac control is index 0x03,
+      the port's 0x65) cannot turn a sentinel; it is reported, not a gate --
+      the band sentinels are the injection proof."""
     if not injected:
         return 'INCONCLUSIVE'
     band = [k for k in range(len(bb)) if k != control]
+    if any(bb[k] != port_idx[k] for k in band):
+        return 'PASS-B'
     if any(sentinel_rgb[k] is None for k in band):
         return 'INCONCLUSIVE'
     if sentinel_rgb[control] is not None and cap_rgb[control] != sentinel_rgb[control]:
         return 'INCONCLUSIVE'
-    if any(bb[k] != port_idx[k] for k in band):
-        return 'PASS-B'
     eight = [k for k in band if port_idx[k] == 0x32]
     if eight and all(cap_rgb[k] == sentinel_rgb[k] for k in eight):
         return 'PASS-A'
@@ -302,7 +306,7 @@ def dac_main(a):
         print('  %s: %s' % (n, ' '.join(c.hex() for c in cap[:CONTROL])))
         print('       control=%s verdict=%s' % (cap[CONTROL].hex(), v))
     if not frames:
-        print('verdict: INCONCLUSIVE (no capture frame shows the control sentinel)')
+        print('verdict: INCONCLUSIVE (no capture frame shows an injected sentinel)')
     elif len(set(verdicts)) == 1:
         print('verdict: %s' % verdicts[0])
     else:

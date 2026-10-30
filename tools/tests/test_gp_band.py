@@ -245,13 +245,18 @@ def _s_line(f, indices=None, control_bb=None):
     return gs.format_s(0, vals, 0, 0x1E, 0x1E, fields=fields)
 
 
-def _cap_frame(path, indices=None, control_rgb=None):
+def _cap_frame(path, indices=None, control_rgb=None, band_rgb=None):
     """A synthetic capture frame whose 14 offsets carry the sentinel colours.
     `control_rgb` overrides the control pixel (the measured capture's index 0x03
-    renders black there)."""
+    renders black there); `band_rgb` overrides every band pixel (the absent-band
+    case)."""
     rgb = bytearray(320 * 200 * 3)
     for k, (r, x) in enumerate(OFFS):
         rgb[3 * (r * 320 + x):3 * (r * 320 + x) + 3] = gs.BAND_DAC_SENTINEL_RGB[(indices or PORT_IDX)[k]]
+    if band_rgb is not None:
+        for k in range(CONTROL):
+            r, x = OFFS[k]
+            rgb[3 * (r * 320 + x):3 * (r * 320 + x) + 3] = band_rgb
     if control_rgb is not None:
         r, x = OFFS[CONTROL]
         rgb[3 * (r * 320 + x):3 * (r * 320 + x) + 3] = control_rgb
@@ -266,7 +271,7 @@ class TestDacMain(unittest.TestCase):
     from the diagnostic rows' f + 1 (the entry frame is run-dependent)."""
 
     def _run(self, diag_rows, prior_rows=(), s_f=0x1827, control_bb=None,
-             control_rgb=None):
+             control_rgb=None, band=None, band_rgb=None):
         with tempfile.TemporaryDirectory() as d:
             poll = os.path.join(d, 'poll.log')
             with open(poll, 'w') as f:
@@ -274,10 +279,11 @@ class TestDacMain(unittest.TestCase):
                     f.write(line + '\n')
                 for line in diag_rows:
                     f.write(line + '\n')
-                f.write(_s_line(s_f, control_bb=control_bb) + '\n')
+                f.write(_s_line(s_f, indices=band, control_bb=control_bb) + '\n')
             cap = os.path.join(d, 'cap')
             os.makedirs(cap)
-            _cap_frame(os.path.join(cap, 'frame_00000.raw.gz'), control_rgb=control_rgb)
+            _cap_frame(os.path.join(cap, 'frame_00000.raw.gz'), control_rgb=control_rgb,
+                       band_rgb=band_rgb)
             pf = os.path.join(d, 'frame_04316.ipx')
             _port_frame_file(pf)
             buf = io.StringIO()
@@ -317,6 +323,25 @@ class TestDacMain(unittest.TestCase):
         self.assertIn('control (1,100): bb=03 port_idx=65 sentinel=none', out)
         self.assertIn('capture frames showing an injected sentinel: 1', out)
         self.assertIn('verdict: PASS-A', out)
+
+    def test_dac_main_pass_b_for_a_band_backbuffer_outside_the_four(self):
+        # the design's PASS-B: a band back-buffer Q outside the four has no
+        # sentinel, so the divergence must be checked before the sentinel gate
+        # (record §F2.6)
+        band = list(PORT_IDX)
+        band[0] = 0x15
+        rc, out = self._run(self._diag(), band=band)
+        self.assertIn('bb=15', out)
+        self.assertIn('verdict: PASS-B', out)
+
+    def test_dac_main_absent_band_sentinels_are_inconclusive(self):
+        # the band pixels stay black: no injected sentinel is presented, so no
+        # frame is located and the verdict is INCONCLUSIVE
+        rc, out = self._run(self._diag(), control_bb=0x03,
+                            control_rgb=bytes.fromhex('000000'),
+                            band_rgb=bytes.fromhex('000000'))
+        self.assertIn('capture frames showing an injected sentinel: 0', out)
+        self.assertIn('verdict: INCONCLUSIVE (no capture frame shows an injected sentinel)', out)
 
     def test_dac_main_rejects_a_raced_diagnostic_write(self):
         rc, out = self._run(self._diag(race=1))
