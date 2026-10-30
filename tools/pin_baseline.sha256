@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: live truth final review: add the trace-prefix-pins region
-cadd4ec68740a7839847bc4ed1375af4a8f970564bc06181789fb49249308f88
+# reason: final truth Task 4: measured gp-u29-continue-taken pins (N 4380, trace/moves 5569, start 100, reach 3649, 12 missing) and the capture-346 two-segment scan-out allowance
+b5cc953efeb550ca03404cee7b183f386f447865f0a914cb551e46c8fb1e243a

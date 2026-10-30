@@ -83,6 +83,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-draw \
 	$(K11_CAPTURES)/gp-draw-timeout \
 	$(K11_CAPTURES)/gp-u28-continue \
+	$(K11_CAPTURES)/gp-u29-continue-taken \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -137,6 +138,7 @@ chunk ?= 0
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
         gp-u26-oracle gp-u27-oracle gp-draw-oracle gp-draw-timeout-oracle gp-u28-continue-oracle \
+        gp-u29-continue-taken-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -683,6 +685,7 @@ GP_U27_MAX_MISSING = 38
 GP_DRAW_MAX_MISSING = 11
 GP_DRAW_TIMEOUT_MAX_MISSING = 5
 GP_U28_MAX_MISSING = 17
+GP_U29_MAX_MISSING = 12
 # <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
@@ -1481,6 +1484,55 @@ gp-u28-continue-oracle: build ## Live truth Task 5 oracle: gp-u28-continue's pro
 		$(PYTHON) tools/gp_continue.py path --scenario gp-u28-continue --capture $(K11_CAPTURES)/gp-u28-continue \
 			--port $(GP_DUMP)/gp-u28-continue --capture-sha256 "$(GP_U28_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u28-continue; exit $$rc; fi
+
+# Final truth Task 4 oracle (design §3.6, record §F4): the taken-continue branch
+# gp-u28-continue deliberately did not reach. The route is gp-u28-continue's (U10's
+# ARCADE through the two match-1 KOs and the labelled incumbent 0x10780A=0x78 poke)
+# plus one p1.start at the PRESS START prompt: the prompt arm is cnt < 0x0E (0x27B59),
+# cnt=0x0D from f=0x1540, the press is injected in the spin of f=0x155F (iteration
+# 0x1560 samples the key down) and 0x500C4's debounce makes the newly-pressed bit
+# reach 0x4F644 at f=0x1561. The measured take: 0x42F60 spends one credit (cred 4 -> 3,
+# 0x2CA9C debits only while b1f is 0), 0x27A40 sets b1f=(w10d != 0)+1=1, 0x2791C
+# clears the prompt/countdown cells, restores both snapshots, 0x1D764 clears the
+# incumbent +0x5A 0x78 -> 0 and stores mode 0x0C. `gp_continue.py check --taken` proves
+# w10d=0, the countdown 0F -> 0E -> 0D to the prompt arm, the take/spend/b1f/+0x5A,
+# 155 post-take mode-0x0C records with cnt frozen at 0x0D, and that the W rows are the
+# route's four existing harness writes only: no credit write and no poke at or after
+# the screen opens (the KOs are harness writes, not a fought-KO or win claim). `path
+# --taken` reproduces 4/4 milestones on fields the port trace carries.
+# N=4380 is the first unexplained capture frame (raw 7984), in the harness's STOP_TAIL
+# after the shared script end (X f=0x15C0=5568; SIGTERM f=0x15FC=5628; the replay has
+# no frames for the 60 tail captures), so the whole prompt/countdown/take and the
+# post-take round are below it. Capture 346 (raw 2823) is the round-1 mode-8 entry's
+# two-segment scan-out in SCAN3_ALLOWED (rows 0..1 port 218; rows 2..199 port 221
+# through the vacuous pair 220/221; ports 219/220 unexhibited). The trace and moves
+# agree through 5568 (zero differences to the script's end); 12 canonical non-black
+# classes are missing through the reach. The window start 100 (raw 1737) and the reach
+# 3649 (the dump's last presented frame) are measured; an absent capture skips.
+# >>> PIN-BASELINE-BEGIN gp-u29-continue-taken
+GP_U29_MIN_FIRST = 4380
+GP_U29_TRACE_MIN_FIRST = 5569
+GP_U29_MOVES_MIN_FIRST = 5569
+GP_U29_MAX_START = 100
+GP_U29_MIN_REACH = 3649
+GP_U29_CAPTURE_SHA256 = cb0347c50cd257408b1c447c23b667991dedbf2c9ee4ce64fb9638dcc1136b9c
+GP_U29_CAPTURE_FRAMES = 4446
+# <<< PIN-BASELINE-END gp-u29-continue-taken
+gp-u29-continue-taken-oracle: build ## Final truth Task 4 oracle: gp-u29-continue-taken's take of the continue screen (skips without its capture)
+	@echo "== final truth Task 4: the taken continue (0x0E -> 0x2791C -> mode 0x0C; skips without its capture) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_continue
+	@if [ ! -d $(K11_CAPTURES)/gp-u29-continue-taken ]; then echo "gp-u29-continue-taken-oracle: no capture at $(K11_CAPTURES)/gp-u29-continue-taken (skipped)"; else \
+		$(PYTHON) tools/gp_continue.py check --taken --scenario gp-u29-continue-taken --capture $(K11_CAPTURES)/gp-u29-continue-taken \
+			--capture-sha256 "$(GP_U29_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u29-continue-taken GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u29-continue-taken --capture $(K11_CAPTURES)/gp-u29-continue-taken \
+			--port $(GP_DUMP)/gp-u29-continue-taken --min-first "$(GP_U29_MIN_FIRST)" \
+			--trace-min-first "$(GP_U29_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U29_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_U29_MAX_START)" --min-reach "$(GP_U29_MIN_REACH)" --max-missing "$(GP_U29_MAX_MISSING)" \
+			--capture-sha256 "$(GP_U29_CAPTURE_SHA256)" --capture-frames "$(GP_U29_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_continue.py path --taken --scenario gp-u29-continue-taken --capture $(K11_CAPTURES)/gp-u29-continue-taken \
+			--port $(GP_DUMP)/gp-u29-continue-taken --capture-sha256 "$(GP_U29_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u29-continue-taken; exit $$rc; fi
 
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
@@ -2606,6 +2658,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-draw-timeout-oracle
 	@echo "== live truth Task 5: the continue screen, countdown and expiry (skips without its capture; record §L5) =="
 	@$(MAKE) --no-print-directory gp-u28-continue-oracle
+	@echo "== final truth Task 4: the taken continue (0x0E -> 0x2791C; skips without its capture; record §F4) =="
+	@$(MAKE) --no-print-directory gp-u29-continue-taken-oracle
 	@echo "== live truth Task 2: the KO-branch drawn match (0x0A/0x0B; skips without its capture; record §L2) =="
 	@$(MAKE) --no-print-directory gp-draw-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="

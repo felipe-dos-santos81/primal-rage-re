@@ -547,6 +547,16 @@ SCAN3_ALLOWED = {
         # 217 is unexhibited. The byte recipe covers this capture frame only.
         (336, 2, 10, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
     ),
+    'gp-u29-continue-taken': (
+        # Final truth Task 4 (record §F4): capture 346 (raw 2823), the same
+        # round-1 mode-8 entry's scan-out on the taken-continue route (the raw
+        # window starts at 1373, ten capture frames before gp-u28's 1387, so
+        # the frame index differs). Rows 0..1 are port 218's, the only earlier
+        # holder; the two-segment shape (the U9/gp-draw one) binds rows 2..199
+        # to port 221 through the vacuous middle pair (220, 221), port 219/220
+        # unexhibited. The top-2-row bytes are U28's, hence the same sha.
+        (346, 2, 2, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
+    ),
 }
 # <<< PIN-BASELINE-END scan3
 
