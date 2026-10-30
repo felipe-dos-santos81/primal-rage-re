@@ -357,10 +357,11 @@ true original, and ported the divergence. Two pieces:
   bowling easter egg, entered at `0x4E11C`; the game's decoder returns string
   `0x61` = "BOWLING!") stay declared (state-coverage record
   `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2).
-  Live truth Task 6 made exactly one real-input `gp-bowling` attempt: both
-  ARMADONs applied reaction `0x22`, but `DS_00108892` reached only 2 of the
-  required 6 and mode `0x25` never opened. Its artifact is
-  `gp-bowling.failed`, with no replay, oracle, pin or second capture (record
+  Live truth Task 6 made two real-input attempts with no pokes: the one-attempt
+  route reached `DS_00108892 = 2`, and the review-corrected three-attempt route
+  reached 5 (+1/+2/+2), below the required 6, so mode `0x25` never opened. The
+  artifacts are `gp-bowling.failed` and `gp-bowling-fix.failed`, with no replay,
+  oracle, pin or third capture (record
   `../docs/superpowers/plans/2026-10-29-live-truth-derivations.md` §L6).
   Both read `DS_00104ABC >= 2`, and
   `DS_00104ABC = (DS_00104B1F == 3) + 1` (`flow.c:1632`/`2416`), so a poked 1P

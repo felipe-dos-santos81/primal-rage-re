@@ -4,10 +4,13 @@ the mode-0x25 bowling entry, reached by real two-player input. Stdlib only.
 
   gp_bowling.py check --capture DIR
 
-The checker requires both human sides on character 4 (ARMADON), reaction 0x22
-on both sides, DS_00108892 reaching six, and fight_mode25_enter's stores at the
-first mode-0x25 snapshot (0x4E11C). Any W record rejects the run: a poke is not
-this trigger. The S/T formats carry no text row, so the decoded string 0x61
+The checker requires both human sides on character 4 (ARMADON), three reaction-
+0x22 entries per side, monotone DS_00108892 growth to a visible 4, and
+fight_mode25_enter's stores at the first mode-0x25 snapshot (0x4E11C). The raw
+counter reaches 6 in the same iteration that enters the mode and resets it, so
+the boundary snapshot cannot show that peak; the entry stores, not an impossible
+sampled 6, close the gate claim. Any W record rejects the run: a poke is not this
+trigger. The S/T formats carry no text row, so the decoded string 0x61
 ("BOWLING!") and the banner's pixels are the port decoder's and gp_compare's
 claims, not something this state checker invents from the poll log.
 
@@ -24,7 +27,8 @@ import gp_session as gs
 SCENARIO = 'gp-bowling'
 MODE25 = 0x25
 REACTION = 0x22
-TRIGGER_MIN = 6
+VISIBLE_MIN = 4               # the third pair's +2 is reset in the entry iteration
+REACTION_ENTRIES = 3
 FIELDS = ('b892', 'b8c4', 'b8a6', 'b8bd', 'b415', 'b8c0')
 ENTRY_VALUES = {
     'b1f': 3, 'c0': 4, 'c1': 4, 'b25': 0,
@@ -58,15 +62,27 @@ def evidence(name, lines, out=print):
         return _fail(name, out, 'mode 0x25 at f=%X has no preceding snapshot' % entry_f)
 
     reactions = {}
-    for field in ('r0', 'r1'):
+    for side, field in enumerate(('r0', 'r1')):
         reactions[field] = next((f for f in before
                                  if snaps[f]['mode'] == 6 and snaps[f].get(field) == REACTION), None)
         if reactions[field] is None:
             return _fail(name, out, '%s never applied reaction 0x22 in the fight before f=%X'
                          % (field, entry_f))
-    armed = max((snaps[f]['b892'] for f in before), default=0)
-    if armed < TRIGGER_MIN:
-        return _fail(name, out, 'b892 reached %d, not >= 6 (0x263D0..0x263DC)' % armed)
+        state = 's%d_52' % side
+        entries = [f for f in before if snaps[f]['mode'] == 6
+                   and snaps[f].get(field) == REACTION and snaps[f].get(state) == 9
+                   and f - 1 in snaps and snaps[f - 1].get(state) != 9]
+        if len(entries) < REACTION_ENTRIES:
+            return _fail(name, out, '%s/%s shows %d reaction-0x22 entries, not three '
+                         '(each attempt must re-enter the move)' % (field, state, len(entries)))
+    series = [(f, snaps[f]['b892']) for f in before if snaps[f]['mode'] == 6]
+    for (f0, v0), (f1, v1) in zip(series, series[1:]):
+        if v1 < v0:
+            return _fail(name, out, 'b892 is not monotone: %d -> %d at f=%X' % (v0, v1, f1))
+    armed = max((v for _, v in series), default=0)
+    if armed < VISIBLE_MIN:
+        return _fail(name, out, 'b892 reached %d, not >= 4 (the entry/reset hides the '
+                         'third pair\'s increment to 6)' % armed)
     if (not any(snaps[f]['b8c4'] == 0 for f in before)
             or any(snaps[f]['b8c4'] != 0 for f in before)):
         return _fail(name, out, 'b8c4 is not the required 0 -> 1 transition at f=%X' % entry_f)
@@ -86,7 +102,8 @@ def evidence(name, lines, out=print):
             return _fail(name, out, '%s=%X at the mode-0x25 entry f=%X, want %X (0x4E11C)'
                          % (field, got, entry_f, want))
 
-    out('gp_bowling: %s: evidence: trigger b892=%d >= 6, r0=r1=0x22 at f=%X/%X, '
+    out('gp_bowling: %s: evidence: trigger b892=%d (monotone; the peak 6 is not '
+        'sampled), r0=r1=0x22 at f=%X/%X, three reaction entries per side, '
         'real pad input on both sides, no poke ok'
         % (name, armed, reactions['r0'], reactions['r1']))
     out('gp_bowling: %s: evidence: mode 0x25 at f=%X: b1f=3, b1d not 2/3, '

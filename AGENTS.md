@@ -554,10 +554,13 @@ consolidation gate).
   `0x4E11C` behind `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's `+0x53 == 0`,
   `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
   both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. Live-truth Task 6 made
-  exactly one real-input `gp-bowling` attempt: both sides selected ARMADON and
-  applied reaction `0x22`, but `DS_00108892` reached only 2, mode `0x25` never
-  opened, and the run is preserved as `gp-bowling.failed` with no replay, oracle,
-  pin or second attempt (record §L6). `0x0E` opens only in
+  two real-input attempts with no pokes: the one-attempt route reached `b892=2`,
+  and the review-corrected three-attempt route reached 5 (+1/+2/+2), so mode
+  `0x25` never opened. They are preserved as `gp-bowling.failed` and
+  `gp-bowling-fix.failed`, with no replay, oracle, pin or third attempt (record
+  §L6). The counter's increment guard skips `hit_geometry` (flag 5) and reads
+  the AF8 latch, the other record's `+0x74/+0x76`, and its `+0x42` bit 3; the
+  camera/`0x104AD8`/`0x104ABC`/`0x107803` inputs were not sampled. `0x0E` opens only in
   mode `0x0C` when the KO is on `DS_0010810D`'s side; the other side's KO takes
   the `0x0D` winner pose. Its countdown `DS_00108110` starts `0x0F`, decrements
   every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.

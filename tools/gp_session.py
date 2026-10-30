@@ -270,14 +270,32 @@ SCENARIOS = {
 }
 
 # Live truth Task 6 (record §L6): the mode-0x25 bowling entry, with no poke.
-# gp-twop's LEFT PLAYER ARCADE and P2 join, then P1 walks cell 0 -> 5 (five
-# rights; 0xC8882[5] = class 4 ARMADON) while P2 keeps its default cell 5. Both
-# confirm, then both perform character 4's keyboard move 0 (reaction 0x22,
-# callback 0x455A0) from tools/gp_moves.py: facing 0 is right + b0/b2, down,
-# left; facing 1 is its left/right mirror. The two attempts run together so
-# fighter_45158 sees the other slot's +0x5F == 0x22 and DS_00108892 reaches 6.
-# Harness values: gp-twop's 5/4/12-frame holds and 60/30-frame gaps, and a
-# 300-frame tail for the BOWLING! banner and the captured scoreboard window.
+# gp-twop's LEFT PLAYER ARCADE, P2 join and 30-frame fight walk-in, then P1
+# walks cell 0 -> 5 (five rights; 0xC8882[5] = class 4 ARMADON) while P2 keeps
+# its default cell 5. Both confirm. Character 4's keyboard move 0 (reaction
+# 0x22, callback 0x455A0) then runs THREE times on both sides from
+# tools/gp_moves.py: facing 0 is right + b0/b2, down, left; facing 1 is its
+# left/right mirror. The failed one-attempt run measured b892 = 2, one per side
+# in one frame; three attempts are needed for 6. Its S records showed both
+# slots back at +0x52 = 0 at f=0x636, 139 frames after the first move's spin at
+# f=0x5AB, so the corrected attempts start 150 frames apart (142 after the last
+# direction step), the next 30-frame harness gap. The third pair's increment
+# and the mode entry/reset share an iteration. The 300-frame tail records the
+# BOWLING! banner; the scoreboard beyond it is not claimed.
+BOWLING_MOVE0_ATTEMPTS = (
+    ('after', 60, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+)
 SCENARIOS['gp-bowling'] = dict(time_limit=90, steps=(
     SCENARIOS['gp-twop']['steps'][:4] + (
         ('after', 60, ('pad', ('p1.right',), 5)),      # P1 cell 0 -> 1
@@ -287,12 +305,13 @@ SCENARIOS['gp-bowling'] = dict(time_limit=90, steps=(
         ('after', 30, ('pad', ('p1.right',), 5)),      # 4 -> 5 (class 4)
         ('after', 30, ('pad', ('p1.b0',), 5)),         # P1 confirms
         ('after', 30, ('pad', ('p2.b0',), 5)),         # P2 confirms cell 5
-        ('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 4)),
-        ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
-        ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
-        ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+        ('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 30)),
+    ) + BOWLING_MOVE0_ATTEMPTS + (
         ('until_mode', 0x25, 300),
     )))
+# The corrected capture has its own name; gp-bowling.failed preserves the
+# one-attempt run. The steps tuple is immutable and shared, not rebuilt.
+SCENARIOS['gp-bowling-fix'] = dict(SCENARIOS['gp-bowling'])
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
 # Plan gameplay-u6b (record gameplay-u6 §U6.12): P1 (Sauron, character 0, the
@@ -1427,7 +1446,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
-                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue', 'gp-bowling'})
+                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue', 'gp-bowling', 'gp-bowling-fix'})
 
 
 class ScriptError(Exception):

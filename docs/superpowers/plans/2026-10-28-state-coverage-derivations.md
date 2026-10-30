@@ -609,8 +609,8 @@ fighters' midpoint, both with `+0x36 = 0x1A4`.
 
 **Label correction (live-truth §L6):** the game's decoder returns string
 `0x61` = "BOWLING!"; the earlier "both-characters-4 camera" label was wrong.
-The later one-capture real-input attempt remained below the trigger and did not
-change this section's declared-status evidence.
+The two later real-input attempts remained below the trigger (2, then 5) and
+did not change this section's declared-status evidence.
 
 The mode store is `fight_mode25_enter` (`0x4E11C`), called once, from
 `game_mode_04_step` (`0x26254`, `flow.c:3231`, `0x263EA`). Two gate layers:

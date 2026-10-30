@@ -601,14 +601,13 @@ path. The affected Python suites (`test_gp_continue`, `test_gp_compare`,
 No game or port implementation file changed, no other capture or oracle pin
 moved, and the full `make verify` remains Task 13.
 
-## §L6 The mode-0x25 bowling attempt: BLOCKED at the real-input trigger (Task 6)
+## §L6 The mode-0x25 bowling route: two measured failures, still declared (Task 6)
 
-**Decision: no `gp-bowling` capture, oracle, pin or census claim is published.**
-Exactly one guarded original ran; its artifact is preserved as
-`data/k11-captures/gp-bowling.failed`. The planned simultaneous move-0 route
-selected mirror ARMADON and applied reaction `0x22` on both sides, but the
-trigger word reached only **2**, below the raw gate's 6, and mode `0x25` never
-opened. No second capture was run.
+**Decision: no bowling capture, oracle, pin or census claim is published.** The
+first one-attempt route reached `b892 = 2`; the review-corrected three-attempt
+route reached **5**, still below the raw gate's 6. Neither opened mode `0x25`.
+The artifacts are preserved as `data/k11-captures/gp-bowling.failed` and
+`data/k11-captures/gp-bowling-fix.failed`. No third capture was run.
 
 ### L6.1 The decoded banner, gates and move sequence
 
@@ -628,10 +627,22 @@ The complete entry gates are `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's
 `+0x53 == 0` (`flow.c:3228-3231`), then `DS_00104B1D` not 2/3, signed camera
 `DS_000F0AF0` within `[-0x3300,0x3300]`, signed `DS_00104AD8 <= 0`, unsigned
 `DS_00104ABC >= 2`, `DS_0010782A == DS_001078BE == 4`, and
-`DS_001088C4 == 0` (`fight.c:5581-5597`). `fighter_45158` increments the word
-only when its collision result is zero, the mode is not already `0x25`, and the
-other slot is character 4 with `+0x5F == 0x22` (`fighter.c:9839-9842`). The
-reaction callback is character 4's `0x455A0` (`fighter.c:10004-10032`).
+`DS_001088C4 == 0` (`fight.c:5581-5597`). `fighter_45158` calls `0x18C14`
+with flag 0 = 1, flags 1 and 8 = 0, and every other flag 2; flag 5's
+`hit_geometry` is therefore **skipped**, not part of this trigger. The zero
+result requires the `DS_00100AF8[side]` latch above zero (flag 0's inverted
+form), the other record's `+0x74 == 0` and unsigned `+0x76 <= 1`, and its
+`+0x42` bit 3 clear (`fighter.c:8211-8226`, `8271-8276`). `fighter_19020`
+writes that latch to 1 after a zero hook result (`fighter.c:8338-8351`). Only
+then, outside mode `0x25` and with the other slot at character 4 /
+`+0x5F == 0x22`, does `fighter_45158` increment the word
+(`fighter.c:9839-9842`). The reaction callback is character 4's `0x455A0`
+(`fighter.c:10004-10032`).
+
+The S fields do not include camera `DS_000F0AF0`, `DS_00104AD8`,
+`DS_00104ABC`, or slot 0's `DS_00107803`. Those inner-gate values stay
+unmeasured while the counter grows; the mode entry proves that the raw passed
+them when the count reached 6, not what the bytes were on earlier frames.
 
 `gp_moves.py list --char 4` decodes move 0 as reaction `0x22`, callback
 `0x455A0`, phases `20000/08000/00000/3`, the repeated
@@ -641,18 +652,28 @@ facing-0 presses are right (hold 4), b0+b2 (hold 12), down (4), left (4); P2's
 facing-1 mirror is left, b0+b2, down, right. The scenario clones only
 `gp-twop`'s route object by tuple prefix (it does not mutate `gp-twop`), joins
 P2, moves P1 right five times from cell 0 to cell 5, leaves P2 on default cell
-5, confirms both class-4 fighters, and plays those moves simultaneously.
+5, and confirms both class-4 fighters. The corrected route restores `gp-twop`'s
+separate 30-frame walk-in, then plays the complete move three times on both
+sides. The first failed attempt showed both `+0x52` bytes back at 0 at
+`f=0x636`, 139 frames after its move's spin at `f=0x5AB`; attempts therefore
+start 150 frames apart (142 frames after each attempt's last direction step),
+the next 30-frame harness gap.
 
 `SNAP_FIELDS` and the port test's T record append `b892` (`0x108892`, word),
 `b8c4` (`0x1088C4`), `b8a6` (`0x1088A6`, word), `b8bd` (`0x1088BD`), `b415`
-(`0x104B15`) and `b8c0` (`0x1088C0`), in that order. The checker requires the
-pre-entry counter >= 6 and reactions, then the entry's `b1f=3`, `b1d` not 2/3,
-`c0=c1=4`, `b25=0`, `b8c4` 0 -> 1, `b8a6=0xB4`, `b8bd=b415=0`, and `b8c0=1`;
-any `W` record rejects the trigger. S/T carry no text row, so the string is the
-decoder evidence above and the banner would have been a frame claim, not an
-invented poll field.
+(`0x104B15`) and `b8c0` (`0x1088C0`), in that order. `game_mode_04_step` runs
+`fighter_pass_a` before `fight_mode25_enter`; the third pair's increment to 6
+and the entry's `b892 = 0` reset (`0x4E1CB`) share one iteration, so a
+frame-boundary snapshot cannot show the peak. The corrected checker requires
+three reaction-`0x22` state-9 re-entries per side, monotone visible counter
+growth to 4, then the entry's `b892 = 0`, `b1f=3`, `b1d` not 2/3, `c0=c1=4`,
+`b25=0`, `b8c4` 0 -> 1, `b8a6=0xB4`, `b8bd=b415=0`, and `b8c0=1`. The raw gate
+is evidenced by the entry stores plus that growth, never by requiring an
+impossible sampled 6. Any `W` record rejects the trigger. S/T carry no text row,
+so the string is the decoder evidence above and the banner is a frame claim,
+not an invented poll field.
 
-### L6.2 The one failed capture and its exact checks
+### L6.2 The first failed capture and its exact checks
 
 `make gp-capture scenario=gp-bowling` ran once for 90.7 s. It wrote **3,512
 frames** and **4,161 S records** (`f=0x0005..0x104A`) to
@@ -681,14 +702,57 @@ checker exits 1 with the exact line
 gp_bowling: gp-bowling.failed: evidence: FAIL: mode 0x25 never observed
 ```
 
-There is no X record, so there was no replay, miss-set measurement, frame or
-trace ratchet, `k_miss_gp_bowling`, `GP_BOWLING_*` pin, `CAPTURE_DIRS` entry,
-manifest regeneration, pin-baseline change, or audio-inventory addition. The
-failed run's `.dro` has no measured section and no audio claim. The census was
-not re-run: this artifact supplies no accepted port replay and no measured
-improved set for Task 12. No game or port implementation code changed; the only
-C change is the test driver's appended T-record fields. The decoder correction
-and the failed trigger are recorded; mode `0x25` remains a named content gap.
+There is no X record and no accepted replay from this attempt. The initial
+commit's subject was amended to `gameplay: measure the 0x25 bowling route`
+before the review-fix work, so the history does not claim a capture that never
+happened.
+
+### L6.3 Review fixes and the corrected failed capture
+
+The review identified two independent defects: the one-attempt scenario could
+not supply three qualifying frames, and the checker required a sampled 6 that
+the entry/reset makes unobservable. The corrected scenario and checker above
+were test-driven: the new success fixture has only visible `b892 = 4` and passes;
+a drop below 4, non-monotone growth, or fewer than three state-9 re-entries on
+either side fails. `gp-bowling-fix` shares the corrected immutable steps tuple;
+`gp-bowling.failed` remains the original evidence.
+
+`make gp-capture scenario=gp-bowling-fix` then ran **once**, for 90.6 s. It
+wrote **3,434 frames** and **4,159 S records** (`f=0x0005..0x104A`) to
+`gp-bowling-fix.failed`. All 24 actions fired, with no poke and no unscripted
+input. Both reactions appeared at `f=0x05F4`; the counter measured
+
+```
+f=05F9 b892=1    f=069C b892=3    f=0732 b892=5
+```
+
+Thus the three qualifying frames contributed +1, +2 and +2. The final count
+was **5**, not 6; this is not merely an invisible-peak success. `b8c4` stayed
+0 and the mode set remained `{03,05,06,10,11,17,1A,1B,27}`. The inner camera,
+`DS_00104AD8`, `DS_00104ABC` and `DS_00107803` values were not sampled, as
+§L6.1 declares. The checker exits 1 with
+
+```
+gp_bowling: gp-bowling-fix.failed: evidence: FAIL: mode 0x25 never observed
+```
+
+The session checks again failed only the end-dependent trio:
+
+```
+check=FAIL end frame reached
+check=FAIL port script v2 (the scenario end (X record) was not reached)
+check=FAIL stopped at the end (SIGTERM at f=-, rc=0)
+```
+
+Base, all 24/24 steps, the mode-`0x27` arm, `kb == raw`, 3434/3434 frames, no
+unscripted input, 0/0 pokes with no race, and zero skipped BIOS words passed;
+the independent input audit also passes. There was no replay, miss-set
+measurement, ratchet, `k_miss_gp_bowling*`, `GP_BOWLING*` pin, `CAPTURE_DIRS`
+entry, manifest or pin-baseline change, audio-inventory addition, or census
+improvement. Neither failed `.dro` has a measured section or audio claim. No
+game or port implementation code changed; the only C change remains the test
+driver's appended T-record fields. Mode `0x25` stays declared, and no third
+attempt was made.
 
 ## §L7 The name-entry gated oracle (Task 7)
 

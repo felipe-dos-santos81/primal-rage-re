@@ -22,19 +22,23 @@ def _s(f, mode=6, **kw):
 
 
 def _log():
-    """Real pad input takes both ARMADONs through reaction 0x22, the counter to
-    six, then fight_mode25_enter's stores (0x4E11C)."""
+    """Three reaction-0x22 entries per side grow b892 0 -> 2 -> 4. The third
+    pair's +2 and the mode entry/reset share an iteration, so no snapshot shows 6."""
     return [
         _s(0x500),
         'I ms=0 f=0500 step=12 press=p1.right scan=2E lin=00000000 old=80 bios=2E63 ring=1 late=0',
         'I ms=0 f=0500 step=12 press=p2.left scan=4B lin=00000000 old=80 bios=4BE0 ring=1 late=0',
-        _s(0x501, r0=0x22, r1=0x22, b892=1),
+        _s(0x501, r0=0x22, r1=0x22, s0_52=9, s1_52=9),
         'I ms=0 f=0501 step=13 press=p1.b0 scan=16 lin=00000000 old=80 bios=1675 ring=1 late=0',
         'I ms=0 f=0501 step=13 press=p2.b2 scan=4F lin=00000000 old=80 bios=4F00 ring=1 late=0',
-        _s(0x502, r0=0x22, r1=0x22, b892=6),
-        _s(0x503, mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1),
-        _s(0x504, mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1),
-        'X ms=0 f=0620 step=15 end',
+        _s(0x502, r0=0x22, r1=0x22, b892=2),
+        _s(0x503, r0=0x22, r1=0x22, b892=2, s0_52=9, s1_52=9),
+        _s(0x504, r0=0x22, r1=0x22, b892=4),
+        _s(0x505, r0=0x22, r1=0x22, b892=4, s0_52=9, s1_52=9),
+        _s(0x506, r0=0x22, r1=0x22, b892=4),
+        _s(0x507, mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1),
+        _s(0x508, mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1),
+        'X ms=0 f=0620 step=24 end',
     ]
 
 
@@ -70,9 +74,9 @@ class TestSnapshotFields(unittest.TestCase):
 
 
 class TestScenario(unittest.TestCase):
-    def test_the_route_selects_mirror_armadon_and_plays_move_zero(self):
-        # Mutating gp-twop, dropping one of the five rights, or mirroring only
-        # one side leaves the raw gates unsatisfied.
+    def test_the_corrected_route_walks_in_and_plays_move_zero_three_times(self):
+        # Dropping the 30-frame walk-in, an attempt, or the measured 150-frame
+        # attempt spacing leaves the counter/re-entry guard unsatisfied.
         self.assertIn('gp-bowling', gs.SCENARIOS)
         scn = gs.SCENARIOS['gp-bowling']
         steps = scn['steps']
@@ -82,27 +86,38 @@ class TestScenario(unittest.TestCase):
         self.assertEqual([st[-1] for st in steps[4:9]],
                          [('pad', ('p1.right',), 5)] * 5)
         self.assertEqual([st[1] for st in steps[4:9]], [60, 30, 30, 30, 30])
-        self.assertEqual(steps[9:11], (
+        self.assertEqual(steps[9:12], (
             ('after', 30, ('pad', ('p1.b0',), 5)),
-            ('after', 30, ('pad', ('p2.b0',), 5))))
-        self.assertEqual(steps[11:-1], (
-            ('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 4)),
-            ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
-            ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
-            ('after', 4, ('pad', ('p1.left', 'p2.right'), 4))))
+            ('after', 30, ('pad', ('p2.b0',), 5)),
+            ('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 30))))
+        attempts = steps[12:-1]
+        self.assertEqual(len(attempts), 12)
+        for k in range(3):
+            first = 0 if k == 0 else 142
+            self.assertEqual(attempts[k * 4:(k + 1) * 4], (
+                ('after', 60 if k == 0 else first, ('pad', ('p1.right', 'p2.left'), 4)),
+                ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+                ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+                ('after', 4, ('pad', ('p1.left', 'p2.right'), 4))))
         self.assertEqual(steps[-1], ('until_mode', 0x25, 300))
-        self.assertIn('gp-bowling', gs.STOP_AT_END)
-        self.assertFalse(any(st[-1][0] == 'poke' for st in steps[:-1]))
+        self.assertIn('gp-bowling-fix', gs.SCENARIOS)
+        self.assertEqual(gs.SCENARIOS['gp-bowling-fix']['steps'], steps)
+        for name in ('gp-bowling', 'gp-bowling-fix'):
+            self.assertIn(name, gs.STOP_AT_END)
+            self.assertFalse(any(st[-1][0] == 'poke' for st in steps[:-1]))
 
 
 class TestEvidence(unittest.TestCase):
-    def test_the_real_input_trigger_and_entry_stores_pass(self):
+    def test_a_success_without_a_visible_six_passes(self):
+        # The third pair's increment and 0x4E11C's entry/reset share an
+        # iteration. Requiring a sampled 6 rejects every real success.
+        self.assertNotIn('b892=0006', '\n'.join(_log()))
         rc, text = _check(_log())
         self.assertEqual(rc, 0, text)
-        self.assertIn('b892=6', text)
+        self.assertIn('b892=4', text)
         self.assertIn('r0=r1=0x22', text)
         self.assertIn('mode 0x25', text)
-        self.assertIn('f=503', text)
+        self.assertIn('f=507', text)
 
     def test_the_entry_predicates_are_all_required(self):
         # One table-driven mutation per raw predicate: accepting any of these
@@ -126,11 +141,28 @@ class TestEvidence(unittest.TestCase):
                 self.assertEqual(rc, 1, text)
                 self.assertIn(field, text)
 
-    def test_the_counter_must_reach_six_before_the_entry_resets_it(self):
-        rc, text = _check([l.replace('b892=0006', 'b892=0005') for l in _log()])
+    def test_the_sampled_counter_must_reach_four(self):
+        rc, text = _check([l.replace('b892=0004', 'b892=0002') for l in _log()])
         self.assertEqual(rc, 1)
         self.assertIn('b892', text)
-        self.assertIn('>= 6', text)
+        self.assertIn('>= 4', text)
+
+    def test_the_sampled_counter_must_be_monotone(self):
+        lines = [l.replace('b892=0004', 'b892=0002') if ' f=0505 ' in l else l
+                 for l in _log()]
+        rc, text = _check(lines)
+        self.assertEqual(rc, 1)
+        self.assertIn('monotone', text)
+
+    def test_each_side_must_reenter_the_reaction_three_times(self):
+        for field in ('s0_52', 's1_52'):
+            with self.subTest(field=field):
+                lines = [l.replace(field + '=09', field + '=00') if ' f=0503 ' in l else l
+                         for l in _log()]
+                rc, text = _check(lines)
+                self.assertEqual(rc, 1)
+                self.assertIn(field, text)
+                self.assertIn('three', text)
 
     def test_the_entry_must_be_the_zero_to_one_transition(self):
         lines = [l.replace('b8c4=00', 'b8c4=01') for l in _log()]
@@ -169,7 +201,7 @@ class TestEvidence(unittest.TestCase):
             with mock.patch.object(sys, 'argv', ['gp_bowling.py', 'check', '--capture', d]):
                 self.assertEqual(gb.main(), 0)
             with open(os.path.join(d, 'poll.log'), 'w') as f:
-                f.write('\n'.join(_log()).replace('b892=0006', 'b892=0005') + '\n')
+                f.write('\n'.join(_log()).replace('b892=0004', 'b892=0002') + '\n')
             with mock.patch.object(sys, 'argv', ['gp_bowling.py', 'check', '--capture', d]):
                 self.assertEqual(gb.main(), 1)
 
