@@ -555,12 +555,19 @@ consolidation gate).
   `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
   both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. Live-truth Task 6 made
   two real-input attempts with no pokes: the one-attempt route reached `b892=2`,
-  and the review-corrected three-attempt route reached 5 (+1/+2/+2), so mode
-  `0x25` never opened. They are preserved as `gp-bowling.failed` and
-  `gp-bowling-fix.failed`, with no replay, oracle, pin or third attempt (record
-  §L6). The counter's increment guard skips `hit_geometry` (flag 5) and reads
-  the AF8 latch, the other record's `+0x74/+0x76`, and its `+0x42` bit 3; the
-  camera/`0x104AD8`/`0x104ABC`/`0x107803` inputs were not sampled. `0x0E` opens only in
+  and the review-corrected three-attempt route's last sample was 5 (+1/+2/+2);
+  the trace cannot distinguish stopping at 5 from reaching 6 and taking the
+  same-iteration rejection decrement. Mode `0x25` never opened, and the symmetric
+  route is structurally blocked: the reaction-`0x22` callback installs the
+  increment hook and sets slot `+0x53=7` (`0x455C3`), the caller requires slot 0's
+  `+0x53==0` (`0x263DE`), and states 9/10 are no-ops, so it stays 7 on every
+  increment frame. The artifacts are preserved as `gp-bowling.failed` and
+  `gp-bowling-fix.failed`, with no replay, oracle or pin; no fourth execution of
+  the current route is authorized and no more captures are to be run. A staggered
+  route would be a new, unmeasured task (record §L6). The counter's increment
+  guard skips `hit_geometry` (flag 5) and reads the AF8 latch, the other record's
+  `+0x74/+0x76`, and its `+0x42` bit 3; the camera `0xF0AF0`, `0x104AD8`,
+  `0x107803` and `0x104ABC` inputs were not sampled. `0x0E` opens only in
   mode `0x0C` when the KO is on `DS_0010810D`'s side; the other side's KO takes
   the `0x0D` winner pose. Its countdown `DS_00108110` starts `0x0F`, decrements
   every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.

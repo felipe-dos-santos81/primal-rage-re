@@ -358,10 +358,16 @@ true original, and ported the divergence. Two pieces:
   `0x61` = "BOWLING!") stay declared (state-coverage record
   `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2).
   Live truth Task 6 made two real-input attempts with no pokes: the one-attempt
-  route reached `DS_00108892 = 2`, and the review-corrected three-attempt route
-  reached 5 (+1/+2/+2), below the required 6, so mode `0x25` never opened. The
-  artifacts are `gp-bowling.failed` and `gp-bowling-fix.failed`, with no replay,
-  oracle, pin or third capture (record
+  route reached `DS_00108892 = 2`, and the review-corrected three-attempt route's
+  last sample was 5 (+1/+2/+2); the trace cannot distinguish stopping at 5 from
+  reaching 6 and taking the same-iteration rejection decrement. Mode `0x25` never
+  opened. The current symmetric route is structurally blocked: the reaction-`0x22`
+  callback installs the increment hook and sets slot `+0x53=7` (`0x455C3`), while
+  the caller requires slot 0's `+0x53==0` (`0x263DE`) and states 9/10 are no-ops,
+  so `+0x53` stays 7 on every increment frame. The artifacts are
+  `gp-bowling.failed` and `gp-bowling-fix.failed`, with no replay, oracle or pin.
+  No fourth execution of the current route is authorized and no more captures are
+  to be run; a staggered route would be a new, unmeasured task (record
   `../docs/superpowers/plans/2026-10-29-live-truth-derivations.md` §L6).
   Both read `DS_00104ABC >= 2`, and
   `DS_00104ABC = (DS_00104B1F == 3) + 1` (`flow.c:1632`/`2416`), so a poked 1P

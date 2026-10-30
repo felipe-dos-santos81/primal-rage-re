@@ -22,8 +22,9 @@ def _s(f, mode=6, **kw):
 
 
 def _log():
-    """Three reaction-0x22 entries per side grow b892 0 -> 2 -> 4. The third
-    pair's +2 and the mode entry/reset share an iteration, so no snapshot shows 6."""
+    """Three s*_52=9 rising edges per side grow b892 0 -> 2 -> 4. The third
+    pair's increments are visible; only the crossing increment can be hidden by
+    the mode entry/reset, so no snapshot needs to show 6."""
     return [
         _s(0x500),
         'I ms=0 f=0500 step=12 press=p1.right scan=2E lin=00000000 old=80 bios=2E63 ring=1 late=0',
@@ -76,7 +77,7 @@ class TestSnapshotFields(unittest.TestCase):
 class TestScenario(unittest.TestCase):
     def test_the_corrected_route_walks_in_and_plays_move_zero_three_times(self):
         # Dropping the 30-frame walk-in, an attempt, or the measured 150-frame
-        # attempt spacing leaves the counter/re-entry guard unsatisfied.
+        # attempt spacing changes the route's counter/state-9 evidence.
         self.assertIn('gp-bowling', gs.SCENARIOS)
         scn = gs.SCENARIOS['gp-bowling']
         steps = scn['steps']
@@ -109,8 +110,8 @@ class TestScenario(unittest.TestCase):
 
 class TestEvidence(unittest.TestCase):
     def test_a_success_without_a_visible_six_passes(self):
-        # The third pair's increment and 0x4E11C's entry/reset share an
-        # iteration. Requiring a sampled 6 rejects every real success.
+        # Only the increment crossing 6 and 0x4E11C's entry/reset can share an
+        # iteration. Requiring a sampled 6 can reject a real success.
         self.assertNotIn('b892=0006', '\n'.join(_log()))
         rc, text = _check(_log())
         self.assertEqual(rc, 0, text)
@@ -147,14 +148,45 @@ class TestEvidence(unittest.TestCase):
         self.assertIn('b892', text)
         self.assertIn('>= 4', text)
 
-    def test_the_sampled_counter_must_be_monotone(self):
+    def test_the_sampled_counter_must_be_non_decreasing_apart_from_one_rejection(self):
         lines = [l.replace('b892=0004', 'b892=0002') if ' f=0505 ' in l else l
                  for l in _log()]
         rc, text = _check(lines)
         self.assertEqual(rc, 1)
-        self.assertIn('monotone', text)
+        self.assertIn('non-decreasing', text)
 
-    def test_each_side_must_reenter_the_reaction_three_times(self):
+    def test_one_rejection_decrement_is_allowed_but_mode25_is_still_required(self):
+        # A strict-monotonicity check rejects the raw's same-iteration 6 -> 5
+        # rejection arm (0x4E131/0x4E189), even when the capture never enters.
+        values = {0x502: 1, 0x503: 3, 0x504: 5, 0x505: 6, 0x506: 5}
+        lines = []
+        for line in _log():
+            if line.startswith('S ') and gs.parse(line)['f'] in values:
+                value = values[gs.parse(line)['f']]
+                line = ' '.join('b892=%04X' % value if p.startswith('b892=') else p
+                                for p in line.split())
+            lines.append(line)
+        rc, text = _check(lines)
+        self.assertEqual(rc, 0, text)
+        rc, text = _check([l.replace('mode=0025', 'mode=0006') for l in lines])
+        self.assertEqual(rc, 1)
+        self.assertIn('mode 0x25 never observed', text)
+
+    def test_state9_edge_uses_the_last_snapshot_not_the_previous_frame(self):
+        # Restoring the f-1 lookup loses the f=0504 edge across the f=0503 gap.
+        lines = []
+        for line in _log():
+            if ' f=0503 ' in line:
+                continue
+            if ' f=0504 ' in line or ' f=0506 ' in line:
+                line = line.replace('s0_52=00', 's0_52=09').replace('s1_52=00', 's1_52=09')
+            elif ' f=0505 ' in line:
+                line = line.replace('s0_52=09', 's0_52=00').replace('s1_52=09', 's1_52=00')
+            lines.append(line)
+        rc, text = _check(lines)
+        self.assertEqual(rc, 0, text)
+
+    def test_each_side_must_reach_callback_animation_state9_three_times(self):
         for field in ('s0_52', 's1_52'):
             with self.subTest(field=field):
                 lines = [l.replace(field + '=09', field + '=00') if ' f=0503 ' in l else l
@@ -162,6 +194,7 @@ class TestEvidence(unittest.TestCase):
                 rc, text = _check(lines)
                 self.assertEqual(rc, 1)
                 self.assertIn(field, text)
+                self.assertIn('state-9', text)
                 self.assertIn('three', text)
 
     def test_the_entry_must_be_the_zero_to_one_transition(self):

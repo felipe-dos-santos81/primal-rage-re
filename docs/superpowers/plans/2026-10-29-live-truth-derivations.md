@@ -601,13 +601,16 @@ path. The affected Python suites (`test_gp_continue`, `test_gp_compare`,
 No game or port implementation file changed, no other capture or oracle pin
 moved, and the full `make verify` remains Task 13.
 
-## §L6 The mode-0x25 bowling route: two measured failures, still declared (Task 6)
+## §L6 The mode-0x25 bowling route: measured failures and a structural blocker (Task 6)
 
 **Decision: no bowling capture, oracle, pin or census claim is published.** The
 first one-attempt route reached `b892 = 2`; the review-corrected three-attempt
-route reached **5**, still below the raw gate's 6. Neither opened mode `0x25`.
-The artifacts are preserved as `data/k11-captures/gp-bowling.failed` and
-`data/k11-captures/gp-bowling-fix.failed`. No third capture was run.
+route's last sampled value was **5**. Neither opened mode `0x25`. The artifacts
+are preserved as `data/k11-captures/gp-bowling.failed` and
+`data/k11-captures/gp-bowling-fix.failed`. The current symmetric route is
+structurally blocked by slot 0's `+0x53`, as derived below. **No fourth execution
+of that route is authorized and no more captures are to be run.** A staggered
+route would be a new, unmeasured task, not a continuation of this one.
 
 ### L6.1 The decoded banner, gates and move sequence
 
@@ -639,10 +642,22 @@ then, outside mode `0x25` and with the other slot at character 4 /
 (`fighter.c:9839-9842`). The reaction callback is character 4's `0x455A0`
 (`fighter.c:10004-10032`).
 
-The S fields do not include camera `DS_000F0AF0`, `DS_00104AD8`,
-`DS_00104ABC`, or slot 0's `DS_00107803`. Those inner-gate values stay
-unmeasured while the counter grows; the mode entry proves that the raw passed
-them when the count reached 6, not what the bytes were on earlier frames.
+That callback also creates the structural blocker. It installs the increment
+hook at slot `+0x18 = 0x45158` and, in the same activation, writes slot `+0x53 =
+7` at `0x455C3` and `+0x52 = 9` at `0x455C7` (`fighter.c:10010-10028`). The
+caller gate requires slot 0's `+0x53 == 0` (`flow.c:3228-3231`, `0x263DE`), but
+fighter states 9 and 10 are epilogue no-ops (`fight.c:2258-2260`), so they do not
+clear `+0x53`. It therefore stays 7 on every frame on which the reaction-`0x22`
+increment hook is active. The symmetric route cannot open `0x25`, regardless of
+whether the sampled counter stopped at 5 or reached 6 and was rejected. A
+staggered route would change the state coupling and is a new, unmeasured task.
+
+The S fields do not include the four remaining unmeasured gate inputs: camera
+`DS_000F0AF0`, `DS_00104AD8`, slot 0's `DS_00107803` (`+0x53`), or
+`DS_00104ABC`. They were not added to `SNAP_FIELDS`. The `+0x53` blocker above
+is a raw store/control-flow derivation, not a claim that its value was sampled;
+the mode entry would prove that the raw passed all four gates when the count
+reached 6, not what the bytes were on earlier frames.
 
 `gp_moves.py list --char 4` decodes move 0 as reaction `0x22`, callback
 `0x455A0`, phases `20000/08000/00000/3`, the repeated
@@ -662,16 +677,19 @@ the next 30-frame harness gap.
 `SNAP_FIELDS` and the port test's T record append `b892` (`0x108892`, word),
 `b8c4` (`0x1088C4`), `b8a6` (`0x1088A6`, word), `b8bd` (`0x1088BD`), `b415`
 (`0x104B15`) and `b8c0` (`0x1088C0`), in that order. `game_mode_04_step` runs
-`fighter_pass_a` before `fight_mode25_enter`; the third pair's increment to 6
-and the entry's `b892 = 0` reset (`0x4E1CB`) share one iteration, so a
-frame-boundary snapshot cannot show the peak. The corrected checker requires
-three reaction-`0x22` state-9 re-entries per side, monotone visible counter
-growth to 4, then the entry's `b892 = 0`, `b1f=3`, `b1d` not 2/3, `c0=c1=4`,
-`b25=0`, `b8c4` 0 -> 1, `b8a6=0xB4`, `b8bd=b415=0`, and `b8c0=1`. The raw gate
-is evidenced by the entry stores plus that growth, never by requiring an
-impossible sampled 6. Any `W` record rejects the trigger. S/T carry no text row,
-so the string is the decoder evidence above and the banner is a frame claim,
-not an invented poll field.
+`fighter_pass_a` before `fight_mode25_enter`; an increment crossing 6 and the
+entry's `b892 = 0` reset (`0x4E1CB`) can share one iteration, so a frame-boundary
+snapshot need not show that peak. The third pair's increments themselves remain
+visible. The corrected checker requires at least three rising edges into the
+callback animation state `s*_52 = 9` per side (not an attempt count),
+non-decreasing visible counter growth to 4 except for one `-1` immediately after
+a value >=6
+(the `0x4E131`/`0x4E189` rejection arm), then the entry's `b892 = 0`, `b1f=3`,
+`b1d` not 2/3, `c0=c1=4`, `b25=0`, `b8c4` 0 -> 1, `b8a6=0xB4`, `b8bd=b415=0`,
+and `b8c0=1`. The raw gate is evidenced by the entry stores plus that growth,
+never by requiring an impossible sampled 6. Any `W` record rejects the trigger.
+S/T carry no text row, so the string is the decoder evidence above and the banner
+is a frame claim, not an invented poll field.
 
 ### L6.2 The first failed capture and its exact checks
 
@@ -680,8 +698,10 @@ frames** and **4,161 S records** (`f=0x0005..0x104A`) to
 `gp-bowling.failed`; all 15 scripted actions fired. The route reached the fight
 with `b1f=3`, `b1d=0`, `c0=c1=4`, and both `r0/r1` applied `0x22` from
 `f=0x05B5`. But `b892` changed only at `f=0x05C2`, from 0 to **2**, and stayed
-2 through the last record; `b8c4` stayed 0. The mode set is
-`{03,05,06,10,11,17,1A,1B,27}` — no `0x25`.
+2 through the last record; `b8c4` stayed 0. The last-snapshot rising-edge count
+is **2 per side** for `s0_52`/`s1_52` reaching 9. This is callback-animation
+state evidence (about two edges per move execution), not an attempt count. The
+mode set is `{03,05,06,10,11,17,1A,1B,27}` — no `0x25`.
 
 The capture's session verdicts are:
 
@@ -713,24 +733,32 @@ The review identified two independent defects: the one-attempt scenario could
 not supply three qualifying frames, and the checker required a sampled 6 that
 the entry/reset makes unobservable. The corrected scenario and checker above
 were test-driven: the new success fixture has only visible `b892 = 4` and passes;
-a drop below 4, non-monotone growth, or fewer than three state-9 re-entries on
-either side fails. `gp-bowling-fix` shares the corrected immutable steps tuple;
-`gp-bowling.failed` remains the original evidence.
+a drop below 4, a decrease other than the one permitted rejection, or fewer than
+three state-9 rising edges on either side fails. The edge detector uses the last
+snapshot before the current frame, not necessarily `f-1`. `gp-bowling-fix` shares
+the corrected immutable steps tuple; `gp-bowling.failed` remains the original
+evidence.
 
 `make gp-capture scenario=gp-bowling-fix` then ran **once**, for 90.6 s. It
 wrote **3,434 frames** and **4,159 S records** (`f=0x0005..0x104A`) to
 `gp-bowling-fix.failed`. All 24 actions fired, with no poke and no unscripted
-input. Both reactions appeared at `f=0x05F4`; the counter measured
+input. Both reactions appeared at `f=0x05F4`. The last-snapshot rising-edge count
+is **6 per side** for `s0_52`/`s1_52` reaching 9, again about two per move
+execution and not an attempt count. The counter measured
 
 ```
 f=05F9 b892=1    f=069C b892=3    f=0732 b892=5
 ```
 
-Thus the three qualifying frames contributed +1, +2 and +2. The final count
-was **5**, not 6; this is not merely an invisible-peak success. `b8c4` stayed
-0 and the mode set remained `{03,05,06,10,11,17,1A,1B,27}`. The inner camera,
-`DS_00104AD8`, `DS_00104ABC` and `DS_00107803` values were not sampled, as
-§L6.1 declares. The checker exits 1 with
+Thus the three qualifying frames contributed +1, +2 and +2, with **5 the last
+sampled value**. The trace cannot distinguish "stopped at 5" from "reached 6 and
+was rejected": the `0x4E131`/`0x4E189` rejection arm decrements in the same
+iteration, so either history has the same frame-boundary samples. No mode entry
+occurred in either case. Independently, the `+0x53 = 7` coupling makes the entry
+gate structurally closed on this symmetric route. `b8c4` stayed 0 and the mode
+set remained `{03,05,06,10,11,17,1A,1B,27}`. The inner camera `DS_000F0AF0`,
+`DS_00104AD8`, `DS_00104ABC` and `DS_00107803` values were not sampled, as §L6.1
+declares. The checker exits 1 with
 
 ```
 gp_bowling: gp-bowling-fix.failed: evidence: FAIL: mode 0x25 never observed
@@ -751,8 +779,24 @@ measurement, ratchet, `k_miss_gp_bowling*`, `GP_BOWLING*` pin, `CAPTURE_DIRS`
 entry, manifest or pin-baseline change, audio-inventory addition, or census
 improvement. Neither failed `.dro` has a measured section or audio claim. No
 game or port implementation code changed; the only C change remains the test
-driver's appended T-record fields. Mode `0x25` stays declared, and no third
-attempt was made.
+driver's appended T-record fields. Mode `0x25` stays declared. No further capture
+was made, and no fourth execution of the current symmetric route is authorized.
+
+### L6.4 Structural-blocker review-fix report (2026-10-30)
+
+The review withdrew any inference that the symmetric route was one execution
+short. The checker now permits exactly one `-1` immediately after a counter value
+>=6, labels the `s*_52 = 9` rising edges as callback-animation state rather than
+attempts, detects those edges against the last earlier snapshot, and retains all
+entry-store, real-input and no-`W` checks. A real-capture-shaped `0,1,3,5,6,5`
+fixture passes with a valid entry and still fails with `mode 0x25 never observed`
+when the entry is removed; a sparse-snapshot fixture catches the old `f-1`
+lookup. The new tests failed before the checker fix, then `test_gp_bowling`
+passed **14 tests** and the combined `test_gp_bowling`/`test_gp_session` run
+passed **102 tests**. Both preserved artifacts still exit 1 with the exact
+`evidence: FAIL: mode 0x25 never observed` verdict. No capture, replay, oracle,
+pin, `CAPTURE_DIRS` or manifest entry, `SNAP_FIELDS` field or port code was added;
+both `.failed` artifacts remain untouched.
 
 ## §L7 The name-entry gated oracle (Task 7)
 
