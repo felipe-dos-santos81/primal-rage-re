@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: gp-twop-ko publication; measured no-poke KO window and scan-out allowances
-ba28a6ba3defb9ceebbc3441046c05924de944fb4e62cdb9c17ca7f8fd51bd04
+# reason: twop-ko scan-out occurrence correction; measured pair 176/177 and seven missing classes
+095baa1a398032d98895858e9eb840f5410f846efb6ab13237e24b1386a03f17

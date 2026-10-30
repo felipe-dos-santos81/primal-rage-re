@@ -263,10 +263,10 @@ marked pin region or pin value changed.
 
 **Decision: `gp-twop-ko` is published and gated by `gp-twop-ko-oracle`.** The
 capture is a two-human match and the KO is the game's own damage path: there
-are no `W` records and no KO/death pokes. The claim is the measured KO window,
-including its round-result screen, not a fought match win or later result
-naming. U14's fought-live-win gap is unchanged. No port code or game byte
-changed.
+are no `W` records and no KO/death pokes. The oracle asserts the KO and round
+result in the measured window; it does not claim a fought match win or that the
+result naming is a fought win. U14's fought-live-win gap is unchanged. No port
+code or game byte changed.
 
 ### L3.1 One guarded capture and the game-dealt KO
 
@@ -306,11 +306,12 @@ only the not-yet-registered miss-set assertion. Its measured log was
 `k_miss_gp_twop_ko` pins the latter pair and its `k_gp_sets` row is exact-name
 (prefix 0). The oracle replay then passes with the same four rows.
 
-The 2,104-frame port dump (indices 0..2103) ends at the capture's X frame
-`f=0x0C50`. It reaches the mode-8 KO/result transition and the following
-mode-`0x16` screen, so the KO and result window are both inside the replay.
-Trace and moves each compare 2,870 frames (22 without a capture snapshot are
-not compared) and have zero differences through `f=0x0C50` (3152).
+The 2,104-frame port dump (indices 0..2103) has its last presented frame at
+`f=0x0C4F`; `f=0x0C50` is the trace/X record. It reaches the mode-8 KO/result
+transition and the following mode-`0x16` screen, so the KO and result window
+are both inside the replay. Trace and moves each compare 2,870 frames (22
+without a capture snapshot are not compared) and have zero differences through
+`f=0x0C50` (3152).
 
 ### L3.3 Measured scan-outs and frame window
 
@@ -319,13 +320,17 @@ raw report was not a publishable KO window. Byte analysis identified four
 scan-out frames; each allowance binds its bytes to the current dump rather
 than widening the general two-frame model:
 
-- **272 (raw 2422):** rows 0..13 port 31, rows 14..57 port 32 and rows
-  58..199 port 33. The wipe repeats the pair at 176/177 and 223/224, so the
-  existing unique-pair rule cannot choose one. A fifth, optional
-  `SCAN3_ALLOWED` field now pins measured occurrence **B=32**; the pair must
-  still bind the same rows, and ordinary four-field entries keep their
-  unique-pair requirement. The new unit test failed first on the missing
-  five-field support, then passed, including rejection of a non-binding pin.
+- **272 (raw 2422):** the byte layout also matches ports 31/32/33, but that is
+  the earlier occurrence, exhibited cleanly by captures 106/107/108. The
+  timeline instead has capture 271 clean at port 172, capture 273 a
+  `(177,178)` splice and capture 274 clean at 178, placing this scan-out at
+  **175/176/177** (rows 0..13/14..57/58..199; the top's earlier holders are
+  31 and 175). The layout repeats again at 222/223/224, so the existing
+  unique-pair rule cannot choose one. A fifth, optional `SCAN3_ALLOWED` field
+  pins measured occurrence **B=176**; the pair must still bind the same rows,
+  and ordinary four-field entries keep their unique-pair requirement. The new
+  unit test failed first on the missing five-field support, then passed,
+  including rejection of a non-binding pin.
 - **1286 (raw 3881):** rows 0..163 port 1042, rows 166..199 port 1043, with
   rows 164..165 the capture-pinned band; (1042,1043) is unique.
 - **1291 (raw 3886):** rows 0..109 port 1046, rows 133..199 port 1047, with
@@ -337,11 +342,12 @@ than widening the general two-frame model:
 The two bands have no whole-present binding and their causes are not isolated;
 their named bytes and bound segments are the allowance's limit. With those
 recipes, the first unexplained capture is **2525 (raw 5184)**. Capture
-2525..2564 is the harness's post-X `STOP_AT_END` tail: the port script and dump
-end at `f=0x0C50`, while the original polls on to `f=0x0C8C`. Nothing in that
-tail is claimed. Captures 76..2524 include the KO and result window. The window
-start is **76 (raw 1727)**, reach is **2103**, and the eight canonical non-black
-missing classes are `[9, 11, 175, 176, 216, 260, 1897, 1898]`.
+2525..2564 is the harness's post-X `STOP_AT_END` tail: the port script and
+trace end at `f=0x0C50` (the last presented frame is `f=0x0C4F`), while the
+original polls on to `f=0x0C8C`. Nothing in that tail is claimed. Captures
+76..2524 include the KO and result window. The window start is **76 (raw
+1727)**, reach is **2103**, and the seven canonical non-black missing classes
+are `[9, 11, 216, 222, 260, 1897, 1898]`.
 
 | Pin | Measured value |
 |---|---:|
@@ -350,7 +356,7 @@ missing classes are `[9, 11, 175, 176, 216, 260, 1897, 1898]`.
 | `GP_TWOP_KO_MOVES_MIN_FIRST` | 3153 |
 | `GP_TWOP_KO_MAX_START` | 76 |
 | `GP_TWOP_KO_MIN_REACH` | 2103 |
-| `GP_TWOP_KO_MAX_MISSING` | 8 |
+| `GP_TWOP_KO_MAX_MISSING` | 7 |
 | `GP_TWOP_KO_CAPTURE_FRAMES` | 2565 |
 | `GP_TWOP_KO_CAPTURE_SHA256` | `15705a3f95c9c9333abcc8ca3c751a2fb0d5525b1556132bdee740eb2807a0ee` |
 
@@ -372,13 +378,15 @@ its measured value. The restored oracle is green.
 | `MOVES_MIN_FIRST 3153 -> 3154` | the same moves-side unreachable-N failure |
 | `MAX_START 76 -> 75` | `window starts at capture 76 ... > pinned start 75` |
 | `MIN_REACH 2103 -> 2104` | `window reach port 2103 < pinned reach 2104` |
-| `MAX_MISSING 8 -> 7` | `8 missing class(es) > pinned 7` |
+| `MAX_MISSING 7 -> 6` | `7 missing class(es) > pinned 6` |
+| `MAX_MISSING 7 -> 8` with `PR_PINS_EXACT=1` | `7 missing class(es) < pinned 8; re-pin to 7` |
 | capture SHA's final hex digit `e -> f` | capture identity mismatch (2,565 frames) |
 | `CAPTURE_FRAMES 2565 -> 2564` | capture identity mismatch (2,565 actual frames) |
 
 `tools.tests.test_gp_compare` passes all 92 tests, and
-`tools.tests.test_gp_twop` passes all 54 in the oracle. The full
-`make gp-twop-ko-oracle` passes with the exact miss set and all eight pins.
+`tools.tests.test_gp_twop` passes all 54 in the oracle.
+`PR_PINS_EXACT=1 make gp-twop-ko-oracle` passes with the exact miss set and all
+eight pins.
 
 ### L3.5 Audio, manifest and gate
 
@@ -387,9 +395,9 @@ its measured value. The restored oracle is green.
 audio claim or section pin is fabricated. The regenerated manifest has 41
 entries. `make gate-check` reads **40/41 captures present, one missing**, with
 40 present checked and the same declared U14 absence. The measured pin-baseline
-reason is `gp-twop-ko publication; measured no-poke KO window and scan-out
-allowances`, digest
-`ba28a6ba3defb9ceebbc3441046c05924de944fb4e62cdb9c17ca7f8fd51bd04`.
+reason is `twop-ko scan-out occurrence correction; measured pair 176/177 and
+seven missing classes`, digest
+`095baa1a398032d98895858e9eb840f5410f846efb6ab13237e24b1386a03f17`.
 
 ## §L4 U16 R2: the measured gate operand (Task 4)
 

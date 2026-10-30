@@ -324,9 +324,10 @@ true original, and ported the divergence. Two pieces:
    The two-human KO itself is now published by `gp-twop-ko-oracle` (live truth
    Task 3, record §L3): the no-`W`, no-poke capture reaches side 0's hand-dealt
    KO at `f=0x0B63`, with P2's `s1_5a` moving from live `0x73` to `0x78`, and
-   the replay covers the KO and round-result window through `f=0x0C50` (frame
-   pin 2525, trace/moves 3153). The claim is that KO window, not result naming
-   or a fought match win; U14's fought live win stays the declared gap.
+   the replay covers the KO and round-result window through the trace/X record
+   `f=0x0C50` (frame pin 2525, trace/moves 3153). The oracle asserts the KO and
+   round result; it does not claim a fought match win or that the result naming
+   is a fought win. U14's fought live win stays the declared gap.
 - The differential audit (proof-completion phase, record
   `2026-10-24-proof-completion-derivations.md` §P5–§P8; the state-coverage
   proof-debt declaration §D7): `make diff-verify`

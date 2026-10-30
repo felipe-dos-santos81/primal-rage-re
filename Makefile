@@ -656,7 +656,7 @@ GP_CHARSEL_MAX_MISSING = 4
 GP_MOVES_MAX_MISSING = 7
 GP_KEYS_MAX_MISSING = 9
 GP_TWOP_MAX_MISSING = 5
-GP_TWOP_KO_MAX_MISSING = 8
+GP_TWOP_KO_MAX_MISSING = 7
 GP_MODES_RA_MAX_MISSING = 7
 GP_MODES_LT_MAX_MISSING = 8
 GP_MODES_RT_MAX_MISSING = 5
@@ -999,8 +999,9 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 
 # Live truth Task 3 (record §L3): gp-twop-ko's hand-dealt two-human KO, with no
 # KO/death pokes. The replay reaches the capture's X record (f=0xC50), beyond
-# the KO/round-result record (f=0xB63) and the result window. The claim is the
-# measured KO window, not result naming; U14's fought live win stays a gap.
+# the KO/round-result record (f=0xB63) and the result window. The oracle asserts
+# the KO and round result; it does not claim a fought match win or that the
+# result naming is a fought win. U14's fought live win stays a gap.
 # >>> PIN-BASELINE-BEGIN gp-twop-ko
 # First unexplained capture 2525 (raw 5184), the STOP_AT_END tail after the
 # shared script end; captures 76..2524 are explained, with the four named
@@ -1014,7 +1015,8 @@ GP_TWOP_KO_MOVES_MIN_FIRST = 3153
 GP_TWOP_KO_MAX_START = 76
 GP_TWOP_KO_CAPTURE_SHA256 = 15705a3f95c9c9333abcc8ca3c751a2fb0d5525b1556132bdee740eb2807a0ee
 GP_TWOP_KO_CAPTURE_FRAMES = 2565
-# The highest exhibited port frame is the replay's last, f=0xC50.
+# The highest exhibited port frame is index 2103, the last presented frame
+# (f=0xC4F); f=0xC50 is the trace/X record.
 GP_TWOP_KO_MIN_REACH = 2103
 # <<< PIN-BASELINE-END gp-twop-ko
 gp-twop-ko-oracle: build ## Live truth Task 3 oracle: the no-poke two-human KO window on gp-twop-ko (skips without its capture)

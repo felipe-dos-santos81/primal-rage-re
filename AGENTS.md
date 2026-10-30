@@ -633,12 +633,13 @@ consolidation gate).
   `gp-twop-ko` reaches the game's hand-dealt side-0 KO at `f=0x0B63`: P2's `s1_5a`
   rises from live `0x73` to `0x78`, with `w2=1`/`w3=0`, `ad4=0xFFFFFFFF`, no `W`
   records and no KO/death pokes. `gp-twop-ko-oracle` is in `make verify` and the
-  capture is in `CAPTURE_DIRS`; its replay reaches `f=0x0C50`, covering the KO and
-  round-result window. The measured pins are frame 2525 (the post-script tail),
-  trace/moves 3153, start 76, reach 2103, eight missing classes and capture sha
-  `15705a3f…`/2,565 frames, with `k_miss_gp_twop_ko` and four byte-bound scan-out
-  allowances (the repeated wipe's pair is occurrence-pinned). The claim is the KO
-  window, not result naming or a fought match win; U14's fought live win stays
+  capture is in `CAPTURE_DIRS`; its replay reaches the trace/X record `f=0x0C50`,
+  covering the KO and round-result window. The measured pins are frame 2525 (the
+  post-script tail), trace/moves 3153, start 76, reach 2103, seven missing classes
+  and capture sha `15705a3f…`/2,565 frames, with `k_miss_gp_twop_ko` and four
+  byte-bound scan-out allowances (the repeated wipe's later pair is occurrence-pinned
+  at 176). The oracle asserts the KO and round result; it does not claim a fought
+  match win or that the result naming is a fought win. U14's fought live win stays
   declared. The `.dro` stays outside the 29-trace audio inventory, and the gate
   reads 40/41 present with the same one declared U14 absence.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.

@@ -511,14 +511,16 @@ SCAN3_ALLOWED = {
     ),
     'gp-twop-ko': (
         # Live truth Task 3 (record §L3): capture 272 (raw 2422), the wipe's
-        # three-present scan-out. Rows 0..13 are port 31's, rows 14..57 port
-        # 32's and rows 58..199 port 33's. The wipe repeats the byte-identical
-        # pair at 176/177 and 223/224, so the fifth field pins the measured
-        # occurrence (32, 33); all three pairs bind, and the ordinary unique-
-        # pair rule cannot name one. Capture 2286 (raw 4906): rows 0..50 port
-        # 1896's, rows 51..193 port 1899's and rows 194..199 port 1900's;
+        # three-present scan-out. Captures 106/107/108 exhibit the earlier
+        # 31/32/33 layout cleanly; capture 271 is clean 172 and capture 273 a
+        # (177,178) splice, so this frame's timeline occurrence is ports
+        # 175/176/177 (rows 0..13/14..57/58..199), not the byte-identical
+        # 31/32/33. The layout repeats again at 222/223/224; all three pairs
+        # bind, so the fifth field pins B=176 where the ordinary unique-pair
+        # rule cannot choose. Capture 2286 (raw 4906): rows 0..50 port 1896's,
+        # rows 51..193 port 1899's and rows 194..199 port 1900's;
         # (1899, 1900) is the unique pair and port 1896 the only earlier top.
-        (272, 14, 58, 'd6d2b8293a6abc261a545b31f7dc8ccedd3050b345a471122d066a27c22b4184', 32),
+        (272, 14, 58, 'd6d2b8293a6abc261a545b31f7dc8ccedd3050b345a471122d066a27c22b4184', 176),
         (2286, 51, 194, 'f598b5d6c06a8334ebfb4ea3ec39d6cf99f052217a5dfa692d6bf285d9709da3'),
     ),
     'gp-draw': (
