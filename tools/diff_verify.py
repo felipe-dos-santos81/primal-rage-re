@@ -404,7 +404,7 @@ def compare(orig, port, mask=0xFFFFFFFF):
 # stock divisor 0x1088D0 is never zero; its zero-divisor deviation (the port returns where the raw's
 # idiv would fault) is named separately in record 2026-10-22-pixel-and-proof-closure §P8.3,
 # not a weaker row.
-WEAKER = frozenset({0x2CADC, 0x255CC, 0x1AFE8, 0x1B084, 0x1C740,
+WEAKER = frozenset({0x255CC, 0x1AFE8, 0x1B084, 0x1C740,
                     0x249F0, 0x24C5C, 0x2EA78, 0x2EA74, 0x2EA68, 0x1B544, 0x2EA30,
                     0x1D0BC})
 # The 8 ported functions with no differential row at all (record §J1:26; AGENTS.md's
@@ -32946,29 +32946,34 @@ D6A_SPECS += [
 ]
 
 # ---- 0x2CADC: the configuration defaults ----------------------------------------------------------------
-# A partial row under three code pokes (the form of game_loop's two pins): the port leaves out three of
-# the raw's ten calls by design (config.c, PORT: the message draw, the 180-tick wait that would present
-# frames inside game_init, the cell release), so `call 0x2f198` 0x2CAF3, `call 0x2ea78` 0x2CB5F and `call
-# 0x2f280` 0x2CB69 are five nops each in every case. Nothing the remaining instructions read comes from
-# them (0x2CAF8 loads EAX; `pop edx; pop ecx; pop ebx; ret` follow 0x2CB69). The row is blind to those
-# three calls and to their arguments (0x2CADF..0x2CAEE, 0x2CB55..0x2CB64 and the EBX/ECX of 0x2CB3A/0x2CB46).
-# Unpoked and with every callee a stub the original makes the ten calls (measured, record section 4).
-D6A_NOP5 = b"\x90" * 5
-D6A_DEFAULTS_PINS = {0x0002CAF3: D6A_NOP5, 0x0002CB5F: D6A_NOP5, 0x0002CB69: D6A_NOP5}
+# The full ten-call row (final truth Task 1, record §F1). The three calls the port once omitted are
+# stubbed and recorded like the other seven: the message draw 0x2F198(-1, 0xE, 0x809C8, 0xB000), the
+# wait 0x2EA78(0xB4) and the release 0x2F280(-1, 0xE, 0x809F0, 0xB000). Their own rows prove the
+# callees; the port's seams record the same arguments the original's registers hold.
 D6A_MENU_BITS = E.Call(0x2CCD0, ("eax",))                                   # config_menu_default_bits, seamed here
 D6A_KEYS_DEFAULT = E.Call(0x1AE20, ())            # config_keys_apply_defaults, seamed here (diff_emu fix)
+D6A_MSG_DRAW = E.Call(0x2F198, ("eax", "edx", "[ebx]", "[ebx+4]", "[ebx+8]", "[ebx+12]", "ecx"),
+                      clobbers=("ebx", "ecx", "edx"))
+D6A_MSG_RELEASE = E.Call(0x2F280, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+D6A_MSG_WAIT = E.Call(0x2EA78, ("eax",), clobbers=("edi", "ebp"))
 
 D6A_SPECS += [
-    # 0x2CADC config_set_defaults: no argument. 0x2CCD0(0xA2EB4), whose EAX goes whole to 0x2DA0C(0x29, ..)
-    # (`mov edx,eax` 0x2CB02: t1 has 0xFFFF1234); 0x2DA0C(0x35, 0xA0); 0x2DA0C(0x37, 0xA0); 0x2D974(0x2A),
-    # whose EAX with AL & 0xFC | 3 (`and al,0xfc; or al,3` 0x2CB36/0x2CB38: the upper three bytes kept, t1
-    # has 0x12345678 and t2 0x100) goes to 0x2DA0C(0x2A, ..); 0x1AE20(). All five callees are stubs. Mask 0:
-    # `xor eax,eax` 0x2D88B follows the one call site (0x2D886).
+    # 0x2CADC config_set_defaults: no argument. 0x2F198(-1, 0xE, 0x809C8, 0xB000) (0x2CAEE..0x2CAF3: EAX, EDX,
+    # EBX and ECX; the message is the data object's string, so the draw stub passes `[ebx]`..`[ebx+12]` by
+    # value as its row does); 0x2CCD0(0xA2EB4), whose EAX goes whole to 0x2DA0C(0x29, ..) (`mov edx,eax`
+    # 0x2CB02: t1 has 0xFFFF1234); 0x2DA0C(0x35, 0xA0); 0x2DA0C(0x37, 0xA0); 0x2D974(0x2A), whose EAX with
+    # AL & 0xFC | 3 (`and al,0xfc; or al,3` 0x2CB36/0x2CB38: the upper three bytes kept, t1 has 0x12345678
+    # and t2 0x100) goes to 0x2DA0C(0x2A, ..); 0x1AE20(); 0x2EA78(0xB4) (0x2CB55 EAX; 0x2CB5A EDX = 0xE is
+    # loaded for the release and survives the wait, which pushes and pops EDX); 0x2F280(-1, 0xE, 0x809F0,
+    # 0xB000) (0x2CB64 EAX = -1; EDX 0xE; EBX = 0x809F0 set at 0x2CB46 and ECX = 0xB000 at 0x2CB3A, both
+    # preserved by 0x2DA0C/0x1AE20/0x2EA78). All eight callees are stubs. Mask 0: `xor eax,eax` 0x2D88B
+    # follows the one call site (0x2D886).
     Spec("config_set_defaults", 0x2CADC, [
-        Case("t0", {}, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0x00000015, 0x2D974: 0x000000A4}),
-        Case("t1", D2E_DIRTY, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0xFFFF1234, 0x2D974: 0x12345678, 0x2DA0C: 0xFFFFFFFF}),
-        Case("t2", {}, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0, 0x2D974: 0x00000100, 0x2DA0C: 1}),
-    ], calls=(D6A_MENU_BITS, D5D_FIELD_SET, D4C_DIP, D6A_KEYS_DEFAULT), eax_mask=0,
+        Case("t0", {}, {}, {0x2CCD0: 0x00000015, 0x2D974: 0x000000A4}),
+        Case("t1", D2E_DIRTY, {}, {0x2CCD0: 0xFFFF1234, 0x2D974: 0x12345678, 0x2DA0C: 0xFFFFFFFF}),
+        Case("t2", {}, {}, {0x2CCD0: 0, 0x2D974: 0x00000100, 0x2DA0C: 1}),
+    ], calls=(D6A_MSG_DRAW, D6A_MENU_BITS, D5D_FIELD_SET, D4C_DIP, D6A_KEYS_DEFAULT, D6A_MSG_WAIT,
+              D6A_MSG_RELEASE), eax_mask=0,
        mutants=tuple("@" + m for m in "table f29 v29 order a0 get al mask or f2a nokeys keysfirst".split())),
 ]
 

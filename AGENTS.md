@@ -590,11 +590,11 @@ consolidation gate).
 - **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
   counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;
   14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none);
-  809/845 closed on full rows; 8 ported functions with no row`. **20 open rows over 19 distinct
+  810/845 closed on full rows; 8 ported functions with no row`. **20 open rows over 19 distinct
   addresses** (`TERMINAL_CENSUS`: 15 AIL runtime thunks, `sound_buffers_alloc` `0x1D0BC`,
   `input_sampler` `0x1BBAC`, and the three runtime exit-flush rows `config_file_load`/`config_file_save`/
   `menu_fatal_error` on the unrowed `0x6C4CF`; `attract_config_volumes_unscaled` and
-  `attract_config_volumes` are two specs at `0x2C8F0`), **13 rows are `WEAKER`**, and **8 portable
+  `attract_config_volumes` are two specs at `0x2C8F0`), **12 rows are `WEAKER`**, and **8 portable
   functions are `UNROWED`** — the three lists are the harness's `TERMINAL_CENSUS`/`WEAKER_CENSUS`/
   `UNROWED_CENSUS` tables in `tools/tests/test_diff_verify.py`, keyed to the counter by their tests.
   The span census is **417 slots / 392 distinct / 385 writer slots (384 reachable + dead `0x57E3C`)
@@ -785,8 +785,9 @@ consolidation gate).
    `config_file_load`, `config_file_save` and `menu_fatal_error` (all on the unrowed `0x6C4CF`
    flush; `config_file_save` reopened by the short-write case). The 20 rows are 19 distinct
    addresses — `attract_config_volumes_unscaled` and `attract_config_volumes` are two specs at
-   `0x2C8F0`. `WEAKER` reads **13** (the proof-completion phase's 15 minus `0x51ED8` and `0x1BE30`,
-   which claim-coverage Task 6 closed, record §C1.10) and `UNROWED` stays **8**: `diff-verify` prints
+   `0x2C8F0`. `WEAKER` reads **12** (the proof-completion phase's 15 minus `0x51ED8` and `0x1BE30`,
+   which claim-coverage Task 6 closed, record §C1.10, and minus `0x2CADC`, whose three calls final
+   truth Task 1 wired so its row is full, record §F1) and `UNROWED` stays **8**: `diff-verify` prints
    0 named gaps, not 8. The phase's second
    proof is the **span-writer census** (§P2-§P4): 417 slots, 392 distinct targets (six renderers, one
    bare `ret`, 385 writer slots) plus the reachable out-of-table `0x81110[128] = 0x81310[0] =
@@ -798,7 +799,7 @@ consolidation gate).
    the residual `0x5D004` (`0x81110[127]`), named in the supplement because it is `>= RUNTIME_BASE`
    (claim-coverage §C1.5.1); `0x24B54` is live, `0x24B08` dead.
    The two new clauses count the explicit frozensets `tools/diff_verify.py`
-   keeps: `WEAKER` (13 — the rowed functions whose row is not full: a code poke, a reachable block left out,
+   keeps: `WEAKER` (12 — the rowed functions whose row is not full: a code poke, a reachable block left out,
    a declared terminal difference, or a declared byte difference; §P6.3/§P7.4) and `UNROWED` (8 — the ported functions with no differential row at
    all, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
    g4 (`game_loop`'s recorded RNG stub, `@rng`). The counter's unrowed clause no longer prints only
@@ -823,18 +824,19 @@ consolidation gate).
    the rule would have closed them on a row that can exist (716→774, +58). The 2026-10-22 plan gave
    all four E2-class entries rows (`0x28D68`, `0x3E484`, `0x29D04`, `0x3E4C4`), so no open row
    blocks on a port-code implementation now. The
-   counter does not tell a full row from a weaker one: **13** of the portable rowed functions have a row
+   counter does not tell a full row from a weaker one: **12** of the portable rowed functions have a row
    that runs the original under code pokes, leaves reachable blocks out, declares a terminal
    difference, or declares a byte difference on some or all of its cases (which then compare nothing
-   on the port's side, §G1's skip): the eleven the 2026-10-22 plan named that remain (`0x2CADC`, `game_loop`,
+   on the port's side, §G1's skip): the ten the 2026-10-22 plan named that remain (`game_loop`,
    `0x1AFE8`, `0x1B084`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
    `0x1B544`, `0x2EA30`), plus the two the phase added — `0x249F0` (its `0x24A9C` restart arm
    unexercised after the longjmp became scan-only, §P6.3) and `0x1D0BC` (its `0x1D10E`/`0x1D183`
    buffer-failure arms unhit, §P7.4). `0x1BE30` (of the twelve) and `0x51ED8` (the aperture row's
    declared renderer node-scratch `+0x14`/`+0x38` byte difference, §P7.4; the counter had counted it
-   full) left `WEAKER` when claim-coverage Task 6 closed them (record §C1.10). The one-line reason for
-   each of the 13 is the `WEAKER_CENSUS` table in `tools/tests/test_diff_verify.py` (the record's
-   §P8.3 table predates the two closures). A closed row may rest on a weaker callee row
+   full) left `WEAKER` when claim-coverage Task 6 closed them (record §C1.10); `0x2CADC` left when
+   final truth Task 1 wired its three omitted calls and its row became full (record §F1). The
+   one-line reason for each of the 12 is the `WEAKER_CENSUS` table in `tools/tests/test_diff_verify.py`
+   (the record's §P8.3 table predates the two closures). A closed row may rest on a weaker callee row
    (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
    The still-open rows are measured, not asserted: after the closure rule **20 of the 845 rows stay
    open**, and every one is a declared terminal with a per-row reason (`TERMINAL_CENSUS`, record

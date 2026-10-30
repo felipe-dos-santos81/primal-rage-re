@@ -27,12 +27,12 @@ u32 config_field_set(u32 field, u32 value);
  * (the default selection), placed at that record's shift. */
 u32 config_menu_default_bits(u32 table);
 
-/* 0x2CADC. Writes the default config fields: 0x29 from the menu table, 0x35 and
- * 0x37 = 0xA0, 0x2A's low two bits = 3, then the key-config default apply
- * (0x1AE20, config_keys_apply_defaults, record §50-C). PORT: the message draw
- * (0x2F198), the screen wait (0x2EA78(0xB4); ported as config_screen_wait,
- * record §49-Y) and the cell release (0x2F280) are omitted here: see the
- * function's comment in config.c. */
+/* 0x2CADC. Draws the data object's defaults message at 0x809C8
+ * (0x2F198(-1, 0xE, ..., 0xB000)), writes the default config fields: 0x29 from
+ * the menu table, 0x35 and 0x37 = 0xA0, 0x2A's low two bits = 3, applies the
+ * key-config defaults (0x1AE20, config_keys_apply_defaults, record §50-C),
+ * waits 0xB4 (0x2EA78, config_screen_wait, record §49-Y) and releases the
+ * message cells through the 0x809F0 copy (0x2F280). Record §F1. */
 void config_set_defaults(void);
 
 /* 0x2D638. The reader of an older image layout (a 0x51-byte record at cell 0
@@ -208,8 +208,8 @@ void audit_characters(u32 c0, u32 c1);
  * n + 2 ticks (none for n == -1) while draining the BIOS key queue into the
  * latch DS_00105F30. Callers: 0x24C5C, 0x249F0, 0x2CADC, 0x1A38C, 0x31FBF, and
  * 0x2EA74 by falling through (record §K5). Wired from 0x24C5C and 0x249F0
- * (EAX = -1) and through 0x2EA74; config_set_defaults (0x2CADC) leaves it
- * out, since it runs in game_init. */
+ * (EAX = -1), through 0x2EA74, and from config_set_defaults (0x2CADC,
+ * n = 0xB4, record §F1). */
 void config_screen_wait(s32 n);
 
 /* Record §K5, 0x2EA74: `xor eax,eax; mov eax,eax` with no `ret`, falling

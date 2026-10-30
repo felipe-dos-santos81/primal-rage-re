@@ -29260,18 +29260,18 @@ D6A_KINDS = {
     "config_code_row@nostep": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory'},
     "config_code_row_rr@flagcache": {'byte', 'call #6'},
     "config_code_row_rr@countcache": {'call #2', 'call #3', 'call #4', 'call #5'},
-    "config_set_defaults@table": {'call #0'},
-    "config_set_defaults@f29": {'call #1'},
-    "config_set_defaults@v29": {'call #1'},
-    "config_set_defaults@order": {'call #2', 'call #3'},
-    "config_set_defaults@a0": {'call #2'},
-    "config_set_defaults@get": {'call #4'},
-    "config_set_defaults@al": {'call #5'},
-    "config_set_defaults@mask": {'call #5'},
-    "config_set_defaults@or": {'call #5'},
-    "config_set_defaults@f2a": {'call #5'},
-    "config_set_defaults@nokeys": {'call #6'},
-    "config_set_defaults@keysfirst": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "config_set_defaults@table": {'call #1'},
+    "config_set_defaults@f29": {'call #2'},
+    "config_set_defaults@v29": {'call #2'},
+    "config_set_defaults@order": {'call #3', 'call #4'},
+    "config_set_defaults@a0": {'call #3'},
+    "config_set_defaults@get": {'call #5'},
+    "config_set_defaults@al": {'call #6'},
+    "config_set_defaults@mask": {'call #6'},
+    "config_set_defaults@or": {'call #6'},
+    "config_set_defaults@f2a": {'call #6'},
+    "config_set_defaults@nokeys": {'call #7', 'call #8', 'call #9'},
+    "config_set_defaults@keysfirst": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7'},
     "config_screen_wait@nolatch": {'byte', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
     "config_screen_wait@latchw": {'byte', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
     "config_screen_wait@noupdate": {'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
@@ -30912,8 +30912,6 @@ WEAKER_CENSUS = {
               "reverse-h §H.2"),
     0x255CC: ("The loop row leaves the spin block 0x256D4 unhit (19/20); the full copy 0x25680 runs in k4.",
               "reverse-g §G4; claim-coverage Task 6"),
-    0x2CADC: ("Three raw calls the port deliberately omits are nop pokes; only the seven calls the port makes are compared.",
-              "reverse-d6a §4"),
     0x2EA30: ("The SET-lock clear block 0x2EA49 is named unhit (7/8 blocks).",
               "reverse-g §G3"),
     0x2EA68: ("Every case declares exit-versus-return, so the row proves the original but compares no port side.",
@@ -32303,10 +32301,10 @@ class RealFunctionTests(unittest.TestCase):
                 self.assertTrue(entry["class"] and entry["reason"] and entry["record"])
 
     def test_the_weaker_and_unrowed_census_sets_match_the_harness(self):
-        # The 13 weaker and 8 portable-unrowed declarations are sets in the harness, not counts in
+        # The 12 weaker and 8 portable-unrowed declarations are sets in the harness, not counts in
         # prose. Their census keys must be exact, and every real row's weaker flag must agree with
         # the same WEAKER set (including rows that share an entry with another spec).
-        self.assertEqual(len(WEAKER_CENSUS), 13)
+        self.assertEqual(len(WEAKER_CENSUS), 12)
         self.assertEqual(frozenset(WEAKER_CENSUS), V.WEAKER)
         for row in self.real.values():
             self.assertEqual(row.weaker, row.entry in V.WEAKER, row.name)
@@ -32422,10 +32420,11 @@ class RealFunctionTests(unittest.TestCase):
         # 0x1BE30 (its three restores run through the int386 chain); 0x1D0BC's two unhit buffer-failure
         # arms keep it out, 0x249F0 joined in task 5, and 0x255CC keeps its 0x256D4 spin unhit. The
         # figure is derived from the set (V.full_rows), not counted by hand.
-        self.assertEqual(len(V.WEAKER), 13)
+        self.assertEqual(len(V.WEAKER), 12)
         self.assertTrue({0x1D0BC, 0x249F0} <= V.WEAKER)
         self.assertFalse(self.real["sprite_blit_aperture"].weaker)
         self.assertFalse(self.real["game_shutdown"].weaker)
+        self.assertFalse(self.real["config_set_defaults"].weaker)
         self.assertTrue(self.real["sound_buffers_alloc"].weaker)
 
     def test_a_call_set_callee_without_a_port_seam_is_a_mismatch(self):
@@ -32581,9 +32580,11 @@ class RealFunctionTests(unittest.TestCase):
         # its three 0x1ADE4 restores through the int386 chain (allow-mode, Machine.bios answers int
         # 0x10/0x31) so its poke and WEAKER entry go: full 807 -> 809, the weaker entries 15 -> 13
         # (game_loop keeps its 0x256D4 spin unhit; 0x25680 now runs in k4). Functions and mutants are
-        # unchanged.
+        # unchanged. Final truth Task 1 (record §F1): 0x2CADC's three calls are no longer nop pokes, so
+        # its row is full: full 809 -> 810, the weaker entries 13 -> 12; functions, mutants and the
+        # callee-less rows are unchanged.
         self.assertIn("diff-verify: 1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; "
-                      "825/845 rows with callees closed (188 have none); 809/845 closed on full rows; "
+                      "825/845 rows with callees closed (188 have none); 810/845 closed on full rows; "
                       "8 ported functions with no row (45 FN_ ported-unrowed: 8 portable "
                       "[5 registry-visible + 3 header-shape exceptions] + 37 runtime; "
                       "the scan-visible subset is 42 = 5 + 37). "
