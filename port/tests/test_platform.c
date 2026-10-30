@@ -164,6 +164,15 @@ static const fnm_pair k_miss_gp_twop[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-twop-ko (live truth Task 3, record §L3), measured on the full replay to
+ * its X record (f = 0xC50): the global 0x5D812 actor_spawn/set_dead pair plus
+ * the two wipe hooks, 0x29D60 (the bare ret) and 0x5D812 (the runtime stub),
+ * one hit each from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_twop_ko[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* Gameplay U8 (record 2026-10-01-gameplay-u8-derivations.md §U8.16): one set
  * per U8 scenario (an exact name), each pair measured on the full replay of its
  * capture and classified from the raw in the record.
@@ -447,6 +456,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u6-moves", 1, k_miss_gp_u6_moves, FNM_N(k_miss_gp_u6_moves) },
     { "gp-keys-fight", 0, k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight) },
     { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
+    { "gp-twop-ko", 0, k_miss_gp_twop_ko, FNM_N(k_miss_gp_twop_ko) },
     { "gp-u8-right-arcade", 0, k_miss_gp_u8_right_arcade, FNM_N(k_miss_gp_u8_right_arcade) },
     { "gp-u8-left-training", 0, k_miss_gp_u8_left_training, FNM_N(k_miss_gp_u8_left_training) },
     { "gp-u8-right-training", 0, k_miss_gp_u8_right_training, FNM_N(k_miss_gp_u8_right_training) },

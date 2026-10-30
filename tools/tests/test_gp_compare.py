@@ -1086,6 +1086,21 @@ class Scan3Allowance(Dirs):
         self.assertEqual((rc, first), (1, 1), out)
         self.assertTrue(any('no unique adjacent port pair' in l for l in out), out)
 
+    def test_an_occurrence_pinned_pair_selects_a_repeated_layout(self):
+        # gp-twop-ko's wipe repeats the same byte layout three times. The fifth
+        # tuple field names the measured occurrence without weakening the
+        # ordinary four-field recipe's unique-pair rule above; a pin that does
+        # not bind the rows must still refuse the frame.
+        port = [rgb(1), rgb(2), rgb(3), rgb(2), rgb(3)]
+        try:
+            ex, why = gc.scan3_explain(self.c, port, self.entry + (1,))
+        except ValueError as e:
+            self.fail('occurrence-pinned recipe was rejected: %s' % e)
+        self.assertEqual((ex, why), ([0, 1, 2], None))
+        ex, why = gc.scan3_explain(self.c, port, self.entry + (0,))
+        self.assertIsNone(ex)
+        self.assertIn('pinned adjacent port pair 0/1 does not bind', why)
+
     def test_the_vacuous_middle_shape_is_explained(self):
         # the U9 two-segment shape (r1 == r2): top rows 0..4 of rgb(1) plus the
         # bottom rows 5..199 of rgb(3); the pair (2, 3) binds the bottom alone

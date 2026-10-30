@@ -57,6 +57,17 @@
       "last_s_frame": 1565
     },
     {
+      "path": "data/k11-captures/gp-twop-ko",
+      "kind": "k11",
+      "poll_log_sha256": "15705a3f95c9c9333abcc8ca3c751a2fb0d5525b1556132bdee740eb2807a0ee",
+      "frame_count": 2565,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 3211
+    },
+    {
       "path": "data/k11-captures/gp-u8-attract-start",
       "kind": "k11",
       "poll_log_sha256": "d6b0cf6b210992de4e7cda211f02cbe5653e21a22d3fbec3dd02e7e30e0351fd",

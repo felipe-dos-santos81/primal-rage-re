@@ -31,6 +31,7 @@ make gp-keys-oracle        # in-match keys: gp-keys-fight evidence + effects rat
 make gp-win-oracle         # U9: the win path under pokes, data/k11-captures/gp-u9-win: evidence (tools/gp_win.py check), frame/trace/milestone/win ratchets (GP_WIN_* in the Makefile); in make verify; skips without the capture
 make gp-ending-oracle      # U10: the ending under pokes, data/k11-captures/gp-u10-ending (GP_ENDING_*); in make verify; skips without the capture
 make gp-twop-oracle        # two-human gameplay oracle: gp-twop must be a two-human match (tools/gp_twop.py), then frame + trace + moves ratchets (N 612, F 1506 and moves N 1506 = the port script's end, the poll.log sha256 pinned in the Makefile); in make verify; skips without the capture
+make gp-twop-ko-oracle     # live truth Task 3: gp-twop-ko's no-poke, hand-dealt two-human KO window (gp_twop.py check --ko, then frame/trace/moves ratchets; record §L3); in make verify; skips without the capture
 make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
 make gp-u12-oracle         # Gameplay U12: gp-u12-endurance's team pass and fight; in make verify; skips without data/k11-captures/gp-u12-endurance
 make gp-u13-oracle         # Gameplay U13: gp-u13-ending2's non-character-0 ending; in make verify; skips without data/k11-captures/gp-u13-ending2
@@ -497,25 +498,27 @@ consolidation gate).
   `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened) and also failed its harness checks, so it
   is preserved as `data/k11-captures/gp-u14-win-live.failed`; the published target is absent and
   all nine `GP_U14_*` pins (the eight plus `MAX_MISSING`) are empty, so `gp-u14-oracle` skips and
-  `GATE_NAMED_GAPS` keeps the path declared (the gate reads 34/35). **The two-human KO is
-  game-evidence-only:** the first run and its CPU-confined recovery each produced the game's
+  `GATE_NAMED_GAPS` keeps the path declared (the phase gate read 34/35). **The two-human KO was
+  game-evidence-only in this phase:** the first run and its CPU-confined recovery each produced the game's
   hand-dealt KO (`gp_twop.py check --ko`: `ko f=B9A` then `f=B91`, P1's round result
   `ad4=0xFFFFFFFF`, no pokes, `w2=1`/`w3=0`), but both failed the port-script pin under host
   starvation; the recovery's publish path replaced the first `.failed` artifact (the fix round's
   `publish()` now keeps a later failure under a numbered `.failed.N` suffix instead), so only the
   recovery's `data/k11-captures/gp-twop-ko.failed` survives and the first run's rows are the
-  record's §F4.3–§F4.5. There is no published `gp-twop-ko`, no `gp-twop-ko-oracle`, no
-  `GP_TWOP_KO_*` pin, no miss set and no gate entry. **U16 R2 stays open:** the recovery measured
+  record's §F4.3–§F4.5. The phase therefore left `gp-twop-ko` unpublished, with no
+  `gp-twop-ko-oracle`, `GP_TWOP_KO_*` pin, miss set or gate entry; live truth Task 3 later
+  published it (§L3, below). **U16 R2 stays open:** the recovery measured
   the `0x4844C` case-3 exit at the old marker's exit frame, `f=0x1533` (inferred: the `s0_54=2`
   set record is missing), as `s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400`
   gate, against the port's set `0x202E` at `0x1532` and exit `0x1180` at `0x155C`. The deciding
   gate input is now measured by the `t9-r5` diagnostic (set `f=0x1531`, `y = 0x0EAE < 0x1400`; the
   clear is strict, `y < 0x1400`; claim-coverage §C5, live-truth §L4), and the `.failed` artifact is
   not that measurement. No fix, no
-  oracle/miss set, no third capture. `gp-harness-smoke`, `gp-twop-ko`, `gp-u14-win-live.failed`,
-  `gp-u24-u16-state` and its two failed runs are
-  not in `CAPTURE_DIRS` and their `.dro` files are not in `tools/audio_compare.py`'s 29-trace
-  inventory (unattributed; no audio claim). The phase adds no oracle, no capture path and no
+  oracle/miss set, no third capture. At that phase `gp-harness-smoke`, `gp-twop-ko`,
+  `gp-u14-win-live.failed`, `gp-u24-u16-state` and its two failed runs were not in
+  `CAPTURE_DIRS`; `gp-twop-ko` later joined (§L3), while its `.dro` and the other listed traces
+  stay outside `tools/audio_compare.py`'s 29-trace inventory (unattributed; no audio claim).
+  The phase adds no oracle, no capture path and no
   measured pin (the nine `GP_U14_*` are empty);
   `port_progress.py` stays `799 1203 66` / `759 759 100` and `make diff-verify` stays
   `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps`. The phase's full
@@ -609,8 +612,9 @@ consolidation gate).
   is **INCONCLUSIVE** (§D4): the DOSBox-X memory file excludes the VGA aperture,
   so the diagnostic's 14 bytes read `0xFF` and the band stays a declared gap.
   **The OPL pitch test** (§D6) renders 439.9915 Hz (measured 439.0000 Hz)
-  within the 1.7586 Hz derived tolerance. The two-human KO stays
-  game-evidence-only. `gp-u27-name-entry` is now pinned by `gp-u27-oracle`
+  within the 1.7586 Hz derived tolerance. The two-human KO stayed
+  game-evidence-only in that phase and is now published by live truth Task 3 (§L3).
+  `gp-u27-name-entry` is now pinned by `gp-u27-oracle`
   (in `make verify`; live truth Task 7, record §L7): the capture checker pins
   the sub-states, three letters, finaliser and score, the path checker compares
   the six `b25` records, and the replay keeps the pinned miss set
@@ -625,6 +629,18 @@ consolidation gate).
   `d99571d3…`/2,132 frames, with `k_miss_gp_draw` using prefix 0. Both draw modes are
   inside the compared window. The `.dro` stays outside the 29-trace audio inventory
   (no measured section or audio claim), and U14's fought live win stays declared.
+- **The no-poke two-human KO is captured and gated** (live truth Task 3, record §L3).
+  `gp-twop-ko` reaches the game's hand-dealt side-0 KO at `f=0x0B63`: P2's `s1_5a`
+  rises from live `0x73` to `0x78`, with `w2=1`/`w3=0`, `ad4=0xFFFFFFFF`, no `W`
+  records and no KO/death pokes. `gp-twop-ko-oracle` is in `make verify` and the
+  capture is in `CAPTURE_DIRS`; its replay reaches `f=0x0C50`, covering the KO and
+  round-result window. The measured pins are frame 2525 (the post-script tail),
+  trace/moves 3153, start 76, reach 2103, eight missing classes and capture sha
+  `15705a3f…`/2,565 frames, with `k_miss_gp_twop_ko` and four byte-bound scan-out
+  allowances (the repeated wipe's pair is occurrence-pinned). The claim is the KO
+  window, not result naming or a fought match win; U14's fought live win stays
+  declared. The `.dro` stays outside the 29-trace audio inventory, and the gate
+  reads 40/41 present with the same one declared U14 absence.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`

@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: gp-draw tail attribution correction; comment only
-b4b2d3b19322a9d24646820825c6e9cea8bfab6db21eac502b1de8a2fc602013
+# reason: gp-twop-ko publication; measured no-poke KO window and scan-out allowances
+ba28a6ba3defb9ceebbc3441046c05924de944fb4e62cdb9c17ca7f8fd51bd04

@@ -321,6 +321,12 @@ true original, and ported the divergence. Two pieces:
   trace/WIN = 10069 (R3, §J5; record `2026-10-23-endgame-truth-derivations.md`
   §E9). The game-set `b0c` is U10's (`GP_ENDING_WIN_MIN_FIRST=9954`), not a
   gap; only the fought no-poke win is open (§E1.3).
+   The two-human KO itself is now published by `gp-twop-ko-oracle` (live truth
+   Task 3, record §L3): the no-`W`, no-poke capture reaches side 0's hand-dealt
+   KO at `f=0x0B63`, with P2's `s1_5a` moving from live `0x73` to `0x78`, and
+   the replay covers the KO and round-result window through `f=0x0C50` (frame
+   pin 2525, trace/moves 3153). The claim is that KO window, not result naming
+   or a fought match win; U14's fought live win stays the declared gap.
 - The differential audit (proof-completion phase, record
   `2026-10-24-proof-completion-derivations.md` §P5–§P8; the state-coverage
   proof-debt declaration §D7): `make diff-verify`

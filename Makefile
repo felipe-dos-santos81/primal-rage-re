@@ -55,6 +55,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u6-moves-b \
 	$(K11_CAPTURES)/gp-keys-fight \
 	$(K11_CAPTURES)/gp-twop \
+	$(K11_CAPTURES)/gp-twop-ko \
 	$(K11_CAPTURES)/gp-u8-attract-start \
 	$(K11_CAPTURES)/gp-u8-endurance \
 	$(K11_CAPTURES)/gp-u8-handicap \
@@ -131,7 +132,7 @@ chunk ?= 0
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report \
         save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
-        gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
+        gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-twop-ko-oracle gp-modes-oracle gp-modes-one \
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
         gp-u26-oracle gp-u27-oracle gp-draw-oracle gp-draw-timeout-oracle \
@@ -655,6 +656,7 @@ GP_CHARSEL_MAX_MISSING = 4
 GP_MOVES_MAX_MISSING = 7
 GP_KEYS_MAX_MISSING = 9
 GP_TWOP_MAX_MISSING = 5
+GP_TWOP_KO_MAX_MISSING = 8
 GP_MODES_RA_MAX_MISSING = 7
 GP_MODES_LT_MAX_MISSING = 8
 GP_MODES_RT_MAX_MISSING = 5
@@ -994,6 +996,39 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 		--moves-min-first "$(GP_TWOP_MOVES_MIN_FIRST)" \
 		--min-reach "$(GP_TWOP_MIN_REACH)" --max-missing "$(GP_TWOP_MAX_MISSING)" \
 		--capture-sha256 "$(GP_TWOP_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_CAPTURE_FRAMES)"
+
+# Live truth Task 3 (record §L3): gp-twop-ko's hand-dealt two-human KO, with no
+# KO/death pokes. The replay reaches the capture's X record (f=0xC50), beyond
+# the KO/round-result record (f=0xB63) and the result window. The claim is the
+# measured KO window, not result naming; U14's fought live win stays a gap.
+# >>> PIN-BASELINE-BEGIN gp-twop-ko
+# First unexplained capture 2525 (raw 5184), the STOP_AT_END tail after the
+# shared script end; captures 76..2524 are explained, with the four named
+# scan-out recipes in gp_compare. The KO window is below this pin.
+GP_TWOP_KO_MIN_FIRST = 2525
+# Trace and moves have no differing frame through f=0xC50 (3152); 22 frames
+# without a capture snapshot are not compared. N=end+1 is the exact pin.
+GP_TWOP_KO_TRACE_MIN_FIRST = 3153
+GP_TWOP_KO_MOVES_MIN_FIRST = 3153
+# The window starts at capture 76 (raw 1727), the first exhibition of port 0.
+GP_TWOP_KO_MAX_START = 76
+GP_TWOP_KO_CAPTURE_SHA256 = 15705a3f95c9c9333abcc8ca3c751a2fb0d5525b1556132bdee740eb2807a0ee
+GP_TWOP_KO_CAPTURE_FRAMES = 2565
+# The highest exhibited port frame is the replay's last, f=0xC50.
+GP_TWOP_KO_MIN_REACH = 2103
+# <<< PIN-BASELINE-END gp-twop-ko
+gp-twop-ko-oracle: build ## Live truth Task 3 oracle: the no-poke two-human KO window on gp-twop-ko (skips without its capture)
+	@echo "== gameplay oracle: gp-twop-ko (hand-dealt two-human KO; frame, trace and moves ratchets; record L3) =="
+	$(PYTHON) -m unittest tools.tests.test_gp_twop
+	@if [ -d $(K11_CAPTURES)/gp-twop-ko ]; then $(PYTHON) tools/gp_twop.py check --ko --capture $(K11_CAPTURES)/gp-twop-ko; \
+		else echo "gp-twop-ko-oracle: no capture at $(K11_CAPTURES)/gp-twop-ko (skipped)"; fi
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-twop-ko GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_compare.py --scenario gp-twop-ko --capture $(K11_CAPTURES)/gp-twop-ko \
+		--port $(GP_DUMP)/gp-twop-ko --min-first "$(GP_TWOP_KO_MIN_FIRST)" \
+		--trace-min-first "$(GP_TWOP_KO_TRACE_MIN_FIRST)" --max-start "$(GP_TWOP_KO_MAX_START)" \
+		--moves-min-first "$(GP_TWOP_KO_MOVES_MIN_FIRST)" \
+		--min-reach "$(GP_TWOP_KO_MIN_REACH)" --max-missing "$(GP_TWOP_KO_MAX_MISSING)" \
+		--capture-sha256 "$(GP_TWOP_KO_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_KO_CAPTURE_FRAMES)"
 
 # Gameplay U8 (plan 2026-10-01-gameplay-u8-other-modes.md, record 2026-10-01-gameplay-u8-
 # derivations.md): the other START MENU rows and the attract start, one capture each. For every
@@ -1761,10 +1796,10 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed artifact is
 # preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays absent); the
 # run also failed the port-script/unscripted-input/end-frame checks after a BIOS-ring burst. The
-# phase's other two scenarios (gp-twop-ko's two-human KO and gp-u24-u16-state's U16 state) are
-# diagnostic: neither is in CAPTURE_DIRS, both failed the same harness pin, and neither their .dro
-# traces nor the failed U14 run's (data/k11-captures/gp-u14-win-live.failed) are in
-# tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
+# phase's gp-u24-u16-state scenario stays diagnostic and outside CAPTURE_DIRS. gp-twop-ko
+# failed that phase's harness pin but is now published by live truth Task 3 above; both
+# scenarios' .dro traces and the failed U14 run's (data/k11-captures/gp-u14-win-live.failed)
+# stay outside tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
 # skips on the absent directory; a later authorized capture fills the nine pins from
 # tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the
 # report's missing-class count; coverage_check fails closed without it).
@@ -2504,6 +2539,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-moves-oracle
 	@$(MAKE) --no-print-directory gp-keys-oracle
 	@$(MAKE) --no-print-directory gp-twop-oracle
+	@echo "== live truth Task 3: the no-poke two-human KO window (skips without its capture; record §L3) =="
+	@$(MAKE) --no-print-directory gp-twop-ko-oracle
 	@$(MAKE) --no-print-directory gp-modes-oracle
 	@echo "== gameplay oracle: gp-u12-endurance (the team pass and fight; skips without its capture; record §J4) =="
 	@$(MAKE) --no-print-directory gp-u12-oracle
