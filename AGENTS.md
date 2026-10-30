@@ -557,8 +557,8 @@ consolidation gate).
   chain is re-derived in live-truth §L9 and stays declared: `b1d` is a
   mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; 1 in 7
   on the two-human pick, `flow.c:1350`), the entry's `+0x1F` count resets on spawn and landing
-  (`fight.c:1482`, `4942`), no capture's poll.log records that count, and state-coverage §9 forbids a
-  poked 1P exhibit.
+  (`fight.c:1482`, `4942`), no capture's poll.log records that count, and state-coverage §9 is a stop rule
+  ("Do not build one; declare the modes with their gates"), so no poked 1P exhibit is built.
 - **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
   counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;
   14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none);

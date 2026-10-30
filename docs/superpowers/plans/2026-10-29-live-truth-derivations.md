@@ -333,9 +333,12 @@ memory order, so `0x20444241` is the bytes `41 42 44 20`, or `"ABD "`):
 | score | `sc0=005217A0` on every checked row |
 | return | `mode=3`, `b25=0`, final name and score at `f=0x24B9` |
 
-The `06` and `07` rows are mode-`0x1E` re-entry samples, not the first writes of those
-`b25` values (those writes occur during mode `0x15`). The checker therefore pins the exact
-records rather than inventing a global first-transition rule. `path` compares only the six
+The `06` and `07` rows are mode-`0x1E` re-entry samples, not the name entry's first writes of
+those `b25` values. The name entry's writes are not a global first-transition claim: the
+capture's first `b25=06` and `b25=07` records are `f=0x0CA0` and `f=0x0CA1`, both in mode
+`0x12`, before the name entry opens (`poll.log` lines 3250-3251), and the entry's own `06`
+and `07` writes occur during mode `0x15`. The checker therefore pins the exact records rather
+than inventing a global first-transition rule. `path` compares only the six
 `b25` values at the same capture frames; the port trace does not carry `ncnt`, `cell0` or
 `name`. On the real capture/replay both commands exit 0: all capture rows pass and all
 `6/6` port sub-states reproduce. `tools/tests/test_gp_u27.py` runs six tests covering the
@@ -380,12 +383,20 @@ order failures.
 | `GP_U27_CAPTURE_FRAMES` | **5885** | stored capture frames |
 | `GP_U27_CAPTURE_SHA256` | **`5e2c5824...b79d04`** | full value above |
 
-The frame window includes mode `0x1E` and the finaliser. The recon's **258** byte-identical
-frames reproduce with a more precise split: in the name-entry/finaliser scene, **155
-mode-`0x1E` port occurrences plus 103 finaliser mode-`0x15` occurrences = 258 distinct port
-frames** each have a byte-identical capture frame (and there are 258 such capture frames).
-The whole capture 5311..5616 scene has 303 content-bearing frames, all explained (255
-classified clean and 48 splice), plus three all-black frames. The remaining byte-identical
+The frame window includes mode `0x1E` and the finaliser. **Recon correction:** the recon's
+"258 mode-`0x1E`" count was impossible: the replay dump holds **178** mode-`0x1E` port frames.
+Re-measured by exact byte identity against the 5,885 capture frames (a scratch script over the
+dump's `frames.txt` modes and the capture's `frame_*.raw.gz`): **155** mode-`0x1E` port frames
+(**154** distinct, one all-black) each have a byte-identical capture frame. The mode-`0x15`
+figure does **not** reproduce: the Task 7 record's 103 finaliser occurrences are not what the
+same count gives (189 occurrences over the whole capture, 80 distinct; 131 occurrences and 22
+distinct among port frames whose capture match falls in 5311..5616). The Task 7 record's
+"258 distinct port frames" (155 + 103) therefore has no measured derivation here, and the
+255-content / 3-black split of the scene is not re-derived. Open: the 258 scene total and its
+mode split stay the Task 7 record's figures, not re-measured here. Confirmed: scene
+5311..5616 holds three all-black capture frames. The remaining byte-identical port occurrences
+are not claimed: the oracle keeps the usual narrow existential/splice and bounded-missing
+claims, not full port-frame order or coverage. The remaining byte-identical
 port occurrences are not claimed: the oracle keeps the usual narrow existential/splice and
 bounded-missing claims, not full port-frame order or coverage.
 

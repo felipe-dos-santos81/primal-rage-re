@@ -24,8 +24,12 @@ record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
                                      time out, and whose result names side N (default 0)
   gp_twop.py check --ko --arcade --capture DIR
                                       the same KO claim for a one-human arcade round
-                                      (b1f 1, no join; record §L8), the game-evidence-only
-                                      check of the U14 .failed artifact
+                                      (b1f 1, no join; record §L8). It replaces the
+                                      two-human clause with b1f == 1 and changes nothing
+                                      else. Its ok on the U14 .failed artifact is game
+                                      evidence only, not a capture pass: that artifact
+                                      failed four session checks (end frame, port script,
+                                      unscripted input, stopped at the end)
   gp_twop.py check --trace FILE     the same over a port trace.txt (its T records
                                     are read as S records; any file whose records
                                     are T lines is a trace)
@@ -508,7 +512,8 @@ def main():
     ap.add_argument('--winner', type=int, choices=(0, 1),
                     help='with --ko, the winning side (default 0)')
     ap.add_argument('--arcade', action='store_true',
-                    help='with --ko, a one-human arcade round (b1f 1) instead of a two-human match')
+                    help='with --ko, a one-human arcade round (b1f 1) replacing the two-human clause; '
+                         'its ok on a .failed artifact is game evidence, not a capture pass')
     a = ap.parse_args()
     if a.allow_missing_reaction and not a.finisher:
         ap.error('--allow-missing-reaction requires --finisher')

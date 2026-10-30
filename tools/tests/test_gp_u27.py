@@ -101,6 +101,13 @@ class TestPath(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn('f=23FC', text)
 
+    def test_a_record_without_b25_prints_a_dash_not_minus_one(self):
+        cap = [l.replace(' b25=00', '', 1) if ' f=217E ' in l else l for l in _log()]
+        rc, text = self.run_path(cap, _log(kind='T'))
+        self.assertEqual(rc, 1)
+        self.assertIn('f=217E b25=00 capture -- port 00: FAIL', text)
+        self.assertNotIn('-1', text)
+
 
 if __name__ == '__main__':
     unittest.main()

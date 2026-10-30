@@ -120,6 +120,10 @@ def evidence(name, lines, out=print):
     return 1 if failures else 0
 
 
+def _b25(snap):
+    return '--' if 'b25' not in snap else '%02X' % snap['b25']
+
+
 def path(name, cl, pl, out=print):
     """The port path claim, deliberately b25-only. Returns 0 ok, 1 FAIL."""
     cap, port = snaps_from(cl), trace_from(pl)
@@ -131,8 +135,8 @@ def path(name, cl, pl, out=print):
         count += ok
         out('gp_u27: %s: path: f=%X b25=%02X capture %s port %s: %s'
             % (name, f, value,
-               'missing' if c is None else '%02X' % c.get('b25', -1),
-               'missing' if p is None else '%02X' % p.get('b25', -1),
+               'missing' if c is None else _b25(c),
+               'missing' if p is None else _b25(p),
                'ok' if ok else 'FAIL'))
     out('gp_u27: %s: path: %d/6 sub-states reproduced' % (name, count))
     return 0 if count == len(SUBSTATES) else 1

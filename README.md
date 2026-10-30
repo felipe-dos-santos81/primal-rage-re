@@ -71,12 +71,11 @@ Named gaps: the U14 fought live win (R1), the 5120 band's unisolated cause
 audibility, the 20 terminal differential rows (19 addresses) with 13 `WEAKER`
 and 8 `UNROWED`, the declared two-human-only modes `0x21`/`0x25` and the
 continue screen `0x0E`, the 4 `UNINSTRUMENTED` census addresses (`0x29D60`,
-`0x2EA30`, `0x2EA64`, `0x500BB`), the unexhibited `0x0B` drawn winner pose,
-U14's `live_death` rule mismatch, the host/product items (SDL pad hot-plug, CI,
+`0x2EA30`, `0x2EA64`, `0x500BB`), U14's `live_death` rule mismatch, the host/product items (SDL pad hot-plug, CI,
 packaging, save-path docs), and the bounded-missing limits. The
 state-coverage phase (2026-10-28) added the measured function census, the
 ENDURANCE team end, the side-1 tour, the timeout draw, the U16 reaction fix and
-the OPL pitch test; `gp-u27-name-entry` is an exhibit, not a gated oracle. The
+the OPL pitch test; the KO-branch `0x0A`/`0x0B` drawn-match pose is pinned by `gp-draw` (live-truth §L2) and `gp-u27-name-entry` by `gp-u27-oracle`, in `make verify` (live-truth §L7). The
 fought-match truth phase measured the harness and two game-side results (U14's
 one authorized live win lost, the two-human KO as game evidence only, the U16
 case-3 exit) **without adding a claim**. The running detail and every

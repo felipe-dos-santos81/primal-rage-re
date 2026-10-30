@@ -142,8 +142,9 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   `b1f==3` join route satisfies `DS_00104ABC>=2`. The real blockers are the
   eight-trample chain (the counter resets on landing; no capture has
   `+0x1F>=2`) and the 1-in-7 stage RNG. A poke can force `+0x1F=8`, but the
-  state-coverage design §9 forbids a poked 1P scenario; reversing that is an
-  operator decision, not this phase's call.
+  state-coverage design §9 is a stop rule for a poked 1P scenario ("Do not build
+  one; declare the modes with their gates"); reversing that is an operator
+  decision, not this phase's call.
 - **Decision:** keep `0x21` declared with the measured blockers; if the
   operator reverses §9, a later poked exhibit is the route. The citations
   (`fight.c`, `flow.c` lines) and the evidence for each blocker are in the record's

@@ -418,6 +418,7 @@ repeating its capture-first risk.
    "ABD". It is an **exhibit, not a gated oracle**: its replay has a pinned miss
    set (`k_miss_gp_u27_name_entry`), but there is no `gp-u27-oracle` and it is
    **not in `make verify`**.
+   *Promoted to a gated oracle by live-truth Task 7 (record §L7): `gp-u27-oracle` is in `make verify`.*
 
 ### 7.3 Stage 3 — the known divergence (code truth)
 
@@ -611,6 +612,7 @@ the gate (`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` plus
   three letters and the finaliser committing "ABD", with a pinned replay miss
   set (`k_miss_gp_u27_name_entry`) but **no `gp-u27-oracle` and no `verify`
   entry**.
+  *Promoted to a gated oracle by live-truth Task 7 (record §L7): `gp-u27-oracle` is in `make verify`.*
 - **5120 (record §D4):** **INCONCLUSIVE** — the DOSBox-X memory file excludes
   the VGA aperture, so the 14 diagnostic bytes read `0xFF` and the band stays a
   declared gap.
