@@ -1344,8 +1344,10 @@ gp-u27-oracle: build ## Live truth U27 oracle: the high-score name-entry letters
 # so 0x27BA4 stores ad4=2 and flow_round_over reaches modes 0x0A then 0x0B. The poked
 # KOs are harness writes, not a fought-match claim. Capture 346 is the mode-8 entry's
 # byte-bound two-segment scan-out in SCAN3_ALLOWED. N=2064 is the first unexplained
-# capture frame, the post-script tail: the capture stops at f=0xB9E while the replay's
-# script ends at f=0xB62 (2914). The compared window covers both modes (port 1589 is
+# capture frame, in the harness's STOP_TAIL=60 poll after the shared script end: the
+# capture's X record and the replay's script both end at f=0xB62 (2914); f=0x0B9E is
+# the later SIGTERM, and the replay has no frames for the 68 tail captures. The window
+# covers both modes (port 1589 is
 # mode 0x0A, port 1681 mode 0x0B; captures 2058..2063 exhibit ports 1681..1685), and
 # reach 1685 is the dump's last frame. Trace and moves agree through 2914; 11 canonical
 # non-black classes are missing through the reach. An absent capture skips; a present

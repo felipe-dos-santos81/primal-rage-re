@@ -192,9 +192,11 @@ two-segment scan-out, not a port content divergence:
 
 `SCAN3_ALLOWED['gp-draw']` pins exactly `(346,3,3,top_sha)`. With that measured
 recipe, the first unexplained frame is **2064 (raw 4871)**. Capture 2064..2131
-is the post-script tail: the original continues to its X record at `f=0x0B9E`,
-whereas the port script ends at `f=0x0B62`; those 68 frames are not claimed.
-Captures 2058..2063 exhibit ports 1681..1685, so the window below 2064 includes
+is the harness's 60-game-frame `STOP_TAIL` poll after the shared script end:
+the capture's X record and the generated port script both end at `f=0x0B62`
+(2914), and `f=0x0B9E` is the later SIGTERM. The replay has no frames for those
+68 capture frames; they are not claimed. Captures 2058..2063 exhibit ports
+1681..1685, so the window below 2064 includes
 both mode `0x0A` and mode `0x0B`, and reach **1685** is the port dump's last
 frame. The 11 canonical non-black missing classes through that reach are
 `[9, 11, 92, 129, 132, 219, 220, 809, 1019, 1083, 1526]`.
@@ -212,8 +214,16 @@ frame. The 11 canonical non-black missing classes through that reach are
 
 The frame claim remains narrow: no content-bearing capture frame below 2064 is
 unexplained, with capture 346 admitted only by its byte recipe; port-frame order
-and complete interior coverage are not claimed, and nothing in the post-script
-tail is claimed.
+and complete interior coverage are not claimed, and nothing in the harness tail
+is claimed.
+
+`ad4`, `w2`, `w3` and `b1e` are not in `gp_session.TRACE_FIELDS`, so the trace
+ratchet does not compare the port's draw result; only the capture-side
+`gp_draw.py check` reads that result. The out-of-band port trace at
+`f=0x0B02`/`f=0x0B26` also shows `ad4=2`, `w2=w3=1` and `b1e=3`, but that is
+outside the enforced claim. The two captures' `0x0B` screens share the
+winner-pose content, so the new claim is the KO branch (`ad4=2` from `0x27BA4`),
+not new pixels.
 
 ### L2.4 Failing-direction proofs
 
@@ -243,9 +253,11 @@ three-frame scan-out` and `first unexplained 346 < ratchet N 2064`.
 `tools/audio_compare.py`'s 29-trace inventory: no section was measured and no
 audio claim or section pin is fabricated. The regenerated manifest has 40
 entries. `make gate-check` reads **39/40 captures present, one missing**, with
-39 present checked and the same declared U14 absence. The measured pin-baseline
-reason is `live truth Task 2: measured gp-draw KO-draw oracle and capture-346
-scan-out`, digest `b4b2d3b19322a9d24646820825c6e9cea8bfab6db21eac502b1de8a2fc602013`.
+39 present checked and the same declared U14 absence. The comment-only
+attribution correction re-pinned the reason as `gp-draw tail attribution
+correction; comment only`; the digest remains
+`b4b2d3b19322a9d24646820825c6e9cea8bfab6db21eac502b1de8a2fc602013` because no
+marked pin region or pin value changed.
 
 ## §L4 U16 R2: the measured gate operand (Task 4)
 
