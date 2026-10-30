@@ -19,7 +19,11 @@
                     back-buffer bytes and the capture frames whose control pixel
                     is the derived yellow sentinel are the evidence; the
                     thresholds are the design's named outcomes (PASS-A,
-                    PASS-B, PRESENT-LAYER, INCONCLUSIVE), not tolerances.
+                    PASS-B, PRESENT-LAYER, INCONCLUSIVE), not tolerances. The W
+                    rows are filtered to the six BAND_DAC_WRITES addresses (the
+                    capture also carries its route's 17 win-path W rows) and the
+                    S frame defaults to the diagnostic rows' f + 1 (the
+                    iteration that presents the forced body).
 
   (default)         State coverage Task 11's aperture decision (record §D4),
                     kept for the gp-u13-band capture's S record.
@@ -199,6 +203,18 @@ def _w_rows(lines):
     return [r for r in (gs.parse(l) for l in lines) if r and r['kind'] == 'W']
 
 
+DIAG_W_ADDRS = frozenset(addr for addr, _ in gs.BAND_DAC_WRITES)
+
+
+def _diag_w_rows(lines):
+    """The diagnostic W rows: the six addresses of BAND_DAC_WRITES. The capture
+    inherits its route's W rows (gp-u13-band-dac reaches the ending through
+    gp-u13-ending2's 17 win-path pokes), so a whole-log count is not the
+    diagnostic's; the six addresses are disjoint from every route poke
+    (0x108106/0x10789E/0x104B0C)."""
+    return [w for w in _w_rows(lines) if w['addr'] in DIAG_W_ADDRS]
+
+
 def _capture_sentinel_frames(cap_dir, offsets, control, wanted):
     """Capture frames whose control pixel is `wanted` (the derived yellow
     sentinel), with their 14 colours."""
@@ -217,37 +233,53 @@ def _capture_sentinel_frames(cap_dir, offsets, control, wanted):
 def dac_main(a):
     with open(a.poll_log) as f:
         lines = f.read().splitlines()
-    s = _s_record(lines, a.f)
+    diag = _diag_w_rows(lines)
+    # The S record that carries the sentinel's presented frame is the one after
+    # the diagnostic W rows' spin (the poke lands in the spin of f and the
+    # iteration f+1 runs the forced case-4 body and presents it). The mode-0x15
+    # entry frame is run-dependent by one frame (0x17D4 in gp-u13-ending2,
+    # 0x17D5 in gp-u13-band), so the frame is derived, not pinned.
+    f = a.f if a.f is not None else (diag[0]['f'] + 1 if diag else None)
+    if f is None:
+        print('no diagnostic W rows (BAND_DAC_WRITES) in the poll log')
+        print('verdict: INCONCLUSIVE')
+        return 0
+    s = _s_record(lines, f)
     if s is None:
-        print('no S record at f=%X' % a.f)
+        print('no S record at f=%X (the diagnostic W frame + 1)' % f)
+        print('verdict: INCONCLUSIVE')
         return 0
     missing = [n for n, _, _ in gs.BACKBUFFER_FIELDS + gs.BAND_EFF_FIELDS if n not in s]
     if missing:
         print('the S record at f=%X lacks the band-dac fields (%s); not a gp-u13-band-dac capture'
-              % (a.f, ' '.join(missing)))
+              % (f, ' '.join(missing)))
+        print('verdict: INCONCLUSIVE')
         return 0
     bb = [s[n] for n, _, _ in gs.BACKBUFFER_FIELDS]
     if a.port_frame:
-        port_idx, _port_rgb = port_colours(open(a.port_frame, 'rb').read(), gs.BAND_APERTURE)
+        with open(a.port_frame, 'rb') as pf:
+            port_idx, _port_rgb = port_colours(pf.read(), gs.BAND_APERTURE)
     else:
-        print('--port-frame is required (the U13 replay frame at f=%X)' % a.f)
+        print('--port-frame is required (the U13 replay frame at the band frame)')
         return 2
     sentinel = [gs.BAND_DAC_SENTINEL_RGB.get(i) for i in port_idx]
-    ws = _w_rows(lines)
-    want = set((addr, bytes(data)) for addr, data in gs.BAND_DAC_WRITES)
-    got = set((w['addr'], bytes.fromhex(w['now'])) for w in ws)
-    injected = (bool(ws) and len(ws) == len(gs.BAND_DAC_WRITES)
-                and not any(w['race'] for w in ws) and got == want
+    want = sorted((addr, bytes(data)) for addr, data in gs.BAND_DAC_WRITES)
+    got = sorted((w['addr'], bytes.fromhex(w['now'])) for w in diag)
+    injected = (len(diag) == len(want) and got == want
+                and all(w['f'] == diag[0]['f'] for w in diag)
+                and not any(w['race'] or w['late'] for w in diag)
                 and s['bbc'] == 0x65 and s['effn'] > 0)
     print('S at f=%X: mode=0x%04X bbp0=%08X bbp1=%08X eff0=%08X eff1=%08X efffree=%08X effn=%d'
-          % (a.f, s['mode'], s['bbp0'], s['bbp1'], s['eff0'], s['eff1'], s['efffree'], s['effn']))
+          % (f, s['mode'], s['bbp0'], s['bbp1'], s['eff0'], s['eff1'], s['efffree'], s['effn']))
     for k, (r, x) in enumerate(gs.BAND_APERTURE):
         tag = 'control' if k == CONTROL else 'band'
         print('  %s (%d,%3d): bb=%02X port_idx=%02X sentinel=%s'
               % (tag, r, x, bb[k], port_idx[k],
                  'none' if sentinel[k] is None else sentinel[k].hex()))
-    print('W rows: %d (want %d, raced %d, payloads %s)'
-          % (len(ws), len(gs.BAND_DAC_WRITES), sum(1 for w in ws if w['race']),
+    print('W rows: %d diagnostic (of %d total), frame(s) %s; want %d, raced %d, late %d, payloads %s'
+          % (len(diag), len(_w_rows(lines)),
+             ' '.join('%X' % f for f in sorted(set(w['f'] for w in diag))) or '-',
+             len(want), sum(1 for w in diag if w['race']), sum(1 for w in diag if w['late']),
              'match' if got == want else 'MISMATCH'))
     frames = _capture_sentinel_frames(a.capture, gs.BAND_APERTURE, CONTROL,
                                       gs.BAND_DAC_SENTINEL_RGB[0x65])
@@ -304,7 +336,8 @@ def main():
     ap.add_argument('--limit', type=int)
     ap.add_argument('--poll-log')
     ap.add_argument('--capture', help='the gp-u13-band-dac capture directory')
-    ap.add_argument('--f', type=lambda s: int(s, 0), default=0x1826)
+    ap.add_argument('--f', type=lambda s: int(s, 0), default=None,
+                    help='the S record frame; --dac defaults to the diagnostic W rows\' f + 1')
     ap.add_argument('--port-frame')
     ap.add_argument('--capture-frame')
     a = ap.parse_args()
@@ -319,6 +352,8 @@ def main():
         return dac_main(a)
     if not (a.poll_log and a.port_frame and a.capture_frame):
         ap.error('the aperture decision needs --poll-log, --port-frame and --capture-frame')
+    if a.f is None:
+        ap.error('the aperture decision needs --f')
     return aperture_main(a)
 
 

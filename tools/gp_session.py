@@ -165,15 +165,20 @@ BAND_DAC_EXTRA = BACKBUFFER_PTR_FIELDS + BACKBUFFER_FIELDS + BAND_EFF_FIELDS
 # 0x134C0 case-4 body subtracts 8 per channel every third frame and re-enqueues
 # them through 0x33734; 0x1C470 then uploads them to the DAC (six-bit truncation,
 # 8-bit expansion). Measured on the U13 replay at the spin before iteration
-# 0x1826 (gdb on build/run_tests): the active list holds 12 records, all with
-# +0x0E = 3; the four band indices are covered by exactly two of them, the
-# table entry 2 record (first 0x20, len 0x30: 0x32/0x2E/0x4D) and the entry 5
-# record (first 0x52, len 0x3C: 0x65). The free-list pop order is the table
-# order (the record for entry 0 is 0xF0B00, the pristine head), so the record
-# addresses are 0xF0B00 + table index * 0x814.
+# 0x1826, i.e. the band's phase frame under gp-u13-ending2's entry 0x17D4 (gdb
+# on build/run_tests): the active list holds 12 records, all with +0x0E = 3;
+# the four band indices are covered by exactly two of them, the table entry 2
+# record (first 0x20, len 0x30: 0x32/0x2E/0x4D) and the entry 5 record (first
+# 0x52, len 0x3C: 0x65). The free-list pop order is the table order (the record
+# for entry 0 is 0xF0B00, the pristine head), so the record addresses are
+# 0xF0B00 + table index * 0x814.
 #
-# At iteration 0x1826 the natural case-4 body does NOT run (+0x0E 3 -> 2), so a
-# colour-only write would never be presented; the injection writes +0x0E = 1 too,
+# The band's frame is entry-relative: entry + 0x52 (0x1826 under the older
+# capture's 0x17D4; 0x1827 under gp-u13-band's 0x17D5 — the two existing runs
+# of this route differ by one frame at the mode-0x15 entry). 0x52 mod 3 = 1,
+# so the band's frame follows a natural case-4 body by one frame in either run:
+# the body does NOT run there (+0x0E 3 -> 2), so a colour-only write would not be
+# uploaded by that record at the band's frame; the injection writes +0x0E = 1 too,
 # which makes that iteration's body run once. The body darkens first, so each
 # sentinel word is pre-darkened (channel 0xFF -> 0xF7); after 0x1C470's
 # conversion (v = channel >> 2, display = (v << 2) | (v >> 4)) the presented
@@ -806,15 +811,20 @@ SCENARIOS['gp-u13-band'] = dict(
 
 # Final truth Task 2 (design §3.4, record §F2): gp-u13-band-dac, the band's
 # DAC-injection diagnostic. gp-u13-ending2's script through the ending, with the
-# last `until_mode 3` replaced by the injection and a stop two frames later: the
-# W writes at the spin of f=0x1825 (iteration 0x1826, the band's S record) are
-# BAND_DAC_WRITES (two record state bytes + four sentinel colours, record §F2),
-# and the end is `after_entry 0x15, k=1, n=84` = f=0x1828 (the mode-0x15 entry is
-# f=0x17D4 in gp-u13-ending2's capture, so the stop is the plan's n=84 and the
-# poke is the same step's n=82). The S record gains the back-buffer reads and the
-# effect-list fields (BAND_DAC_EXTRA); time_limit 240 and memsize 64 are U13's.
-# No pin and no oracle hang off this capture (a failure is preserved as
-# .failed.N); the W writes are harness writes, not a game claim.
+# last `until_mode 3` replaced by the injection and a stop two frames later. The
+# mode-0x15 entry is run-dependent by one frame: 0x17D4 in gp-u13-ending2's
+# capture, 0x17D5 in gp-u13-band's (the two existing runs of this route; the
+# boot's S sequence differs by one frame). The frames below are therefore
+# entry-relative, which is what after_entry is: n=82 targets entry+82, the
+# band's phase frame (0x1826 = 0x17D4+82; 0x1827 = 0x17D5+82), by firing at the
+# spin entry+81 (the W rows), and n=84 stops at entry+84 (0x1828 / 0x1829).
+# The W writes are BAND_DAC_WRITES (two record state bytes + four sentinel
+# colours, record §F2); the S record gains the back-buffer reads and the
+# effect-list fields (BAND_DAC_EXTRA). `gp_band.py --dac` derives its S frame
+# from the diagnostic W rows' f + 1, so neither run's absolute frame is baked
+# into the analysis. time_limit 240 and memsize 64 are U13's. No pin and no
+# oracle hang off this capture (a failure is preserved as .failed.N); the W
+# writes are harness writes, not a game claim.
 SCENARIOS['gp-u13-band-dac'] = dict(
     time_limit=240, extra=WIN_EXTRA + BAND_DAC_EXTRA, memsize=64,
     steps=SCENARIOS['gp-u13-ending2']['steps'][:-1] + (

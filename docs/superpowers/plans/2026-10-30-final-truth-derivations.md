@@ -414,7 +414,7 @@ not 56. The derived injection is **6 W writes** (below); the "56" is not used
 and no two-record record set is widened. This is the record's correction; the
 task's brief inherits it.
 
-**The injection (6 writes at f=0x1825).** For each of the two records, write
+**The injection (6 writes at the spin entry+81).** For each of the two records, write
 `+0x0E = 1`, and for each of the four indices write the record's `+0x10` dword
 at `4*(index - first)` with a sentinel word. The case-4 body darkens the block
 before the upload, so each word is pre-darkened (channel 0xFF -> 0xF7); after
@@ -431,10 +431,11 @@ before the upload, so each word is pre-darkened (channel 0xFF -> 0xF7); after
 
 These are `gp_session.BAND_DAC_RECORDS`/`BAND_DAC_SENTINEL_WORDS`/
 `BAND_DAC_WRITES`; the tests pin the six addresses and the four colours. The
-port dry run (the U13 script with `poke 6182 …` = 0x1826 decimal, the port
-driver's `F = W.f+1` convention) lands them correctly: frame 04316 (f=0x1826)
-and 04317 (f=0x1827) present the four sentinels at all 14 offsets, and frame
-04319 (f=0x1829) shows the natural darken 0xEF (0xF7-8), as derived.
+port dry run (gp-u13-ending2's script, whose entry is 0x17D4, with
+`poke 6182 …` = 0x1826 decimal — the target F = entry+82, the port driver's
+`F = W.f+1` convention) lands them correctly: frame 04316 (f=0x1826) and 04317
+(f=0x1827) present the four sentinels at all 14 offsets, and frame 04319
+(f=0x1829) shows the natural darken 0xEF (0xF7-8), as derived.
 
 The S fields read at the same spin in the dry run are
 `bbp0=02A6A550 bbp1=02A5AB50 eff0=000F842C eff1=000F1B28 efffree=000F0B00
@@ -454,13 +455,32 @@ seeds a decoy at the base-relative address.
 `SCENARIOS['gp-u13-band-dac']` is `gp-u13-ending2`'s script with its last
 `until_mode 3` replaced by `('after_entry', 0x15, 1, 82, ('poke',
 BAND_DAC_WRITES))` and `('after_entry', 0x15, 1, 84, ('end',))`; time_limit 240
-and memsize 64 are U13's, and the scenario joins `STOP_AT_END` (so the harness
-SIGTERMs `STOP_TAIL` frames after f=0x1828). The mode-0x15 entry is f=0x17D4
-in the existing capture's S records (and the port's `frontend_darken_all` call
-is at the same frame), so n=82 targets f=0x1826 (the W rows at the spin of
-f=0x1825) and n=84 stops at f=0x1828. No pin, oracle, manifest entry,
-`CAPTURE_DIRS` member or audio trace hangs off it (a diagnostic, like
-`gp-u13-band`); a failed run is preserved as `.failed`.
+and memsize 64 are U13's, and the scenario joins `STOP_AT_END`.
+
+**The mode-0x15 entry is run-dependent by one frame.** The committed captures
+of this route disagree: `gp-u13-ending2`'s poll.log has its first mode-0x15 S
+at **f=0x17D4** (its S at 0x17D3 is mode 0x17), while `gp-u13-band`'s has it at
+**f=0x17D5** (its S at 0x17D4 is mode 0x17) — the two runs' boot S sequences
+are offset by one frame (first S 0x5 vs 0x4; every later mode entry shifts the
+same way). `after_entry` is relative, so the schedule must be read relative to
+the entry, which is also the fade's own clock:
+
+| step | target F | W rows' spin (F-1) | presented / stopped |
+|---|---|---|---|
+| `after_entry 0x15 1 82` | entry+82 | entry+81 | entry+82 (the band's phase frame) |
+| `after_entry 0x15 1 84` | entry+84 | — | entry+84 (two frames later) |
+
+for the two measured entries that is (0x1825/0x1826/0x1828) under 0x17D4 and
+(0x1826/0x1827/0x1829) under 0x17D5. The new capture is expected to be the
+latter (gp-u13-band's fresh run of the same route): W rows at f=0x1826, the
+sentinel's S record at 0x1827, the stop at 0x1829. `gp_band.py --dac` therefore
+defaults its S frame to the **diagnostic W rows' f + 1** (the iteration that
+runs the forced body and presents it), so neither run's absolute frame is baked
+into the analysis; `--f` overrides it. The poller logs the S record before
+applying the poke, so the S at the W rows' f is the pre-poke snapshot and the
+S at W.f+1 is the post-poke one; the sentinel is presented at the latter.
+No pin, oracle, manifest entry, `CAPTURE_DIRS` member or audio trace hangs off
+it (a diagnostic, like `gp-u13-band`); a failed run is preserved as `.failed`.
 
 **The pending capture (not run in this part).**
 
@@ -468,11 +488,14 @@ f=0x1825) and n=84 stops at f=0x1828. No pin, oracle, manifest entry,
 $ make gp-capture scenario=gp-u13-band-dac
 ```
 
-Expected: a new `data/k11-captures/gp-u13-band-dac` whose poll.log's W rows are
-the six writes at f=0x1825 (all `race=0`), whose S record at f=0x1826 carries
-the fields above with `effn=12` and `bbc=0x65`, and whose frames around 5120
+Expected: a new `data/k11-captures/gp-u13-band-dac` whose poll.log's six
+diagnostic W rows are at f=0x1826 (the entry-0x17D5 run; all `race=0` and
+`late=0`; the log also holds the route's 17 win-path W rows, which the analysis
+filters out by address), whose S record at f=0x1827 carries the fields above
+with `effn=12` and `bbc=0x65`, and whose frames around the band's phase frame
 show the four sentinel colours. The controller runs it after Gate-0 and resumes
-this task to apply `tools/gp_band.py --dac`:
+this task to apply `tools/gp_band.py --dac` (the tool derives f=0x1827 from the
+W rows):
 
 ```
 $ python3 tools/gp_band.py --dac --poll-log data/k11-captures/gp-u13-band-dac/poll.log \
@@ -486,17 +509,24 @@ allowance stays and the class is declared); no sentinel with the back buffer
 `0x32` -> the **present-layer** class (undumped present/aperture residue,
 terminal with the S record); a back-buffer `Q` at a band offset -> **PASS-B**
 (content divergence; the record names the renderer from Q and re-pins only if a
-fix is measured); no S at f=0x1826, a race, or a control that does not turn
-yellow -> **INCONCLUSIVE** (keep `(5120,1,5,56b900b1…)`, no second capture).
-The tool's tests cover the four verdicts on synthetic sides.
+fix is measured); no S at the W frame+1, a race or late write, or a control
+that does not turn yellow -> **INCONCLUSIVE** (keep `(5120,1,5,56b900b1…)`,
+no second capture). The tool's tests cover the four verdicts and the whole
+`--dac` path (the six-address filter with the route's W rows present, the S
+frame derived from them, raced/late/missing writes) on synthetic sides.
 
 ### F2.4 Tests
 
 * `tools/tests/test_gp_band.py`: the holder search (whole band, a one-pixel
-  drop, a one-channel difference, the frame's own DAC, the control apart) and
-  the four `decide_dac` outcomes, the six derived writes and the scenario/field
-  shape. Mutation-checked while writing: swapping the band comparison for a
-  single channel or dropping the control changes the expected counts.
+  drop, a one-channel difference, the frame's own DAC, the control apart), the
+  four `decide_dac` outcomes, the six derived writes, the scenario/field shape
+  and the entry-relative schedule (both measured entries 0x17D4/0x17D5, and
+  the committed poll.logs' first-mode-0x15 frame pinned), and the whole
+  `--dac` path on a synthetic poll.log that carries a prior U13 win-path W row
+  (the round-1 Critical: the six-address filter and `race`/`late` rejection).
+  Mutation-checked while writing: swapping the band comparison for a single
+  channel or dropping the control changes the expected counts; a whole-log W
+  count would fail the `--dac` test.
 * `tools/tests/test_gp_capture.py`: `read_snap` follows the `bbp0` pointer,
   with a decoy at the base-relative address and the next buffer as a second
   pointer; the S record round-trips the fields. `TestMemsize` adds the new

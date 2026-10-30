@@ -2,8 +2,13 @@
 """Final truth Task 2 (record §F2): the holder search and the DAC-injection
 decision. Both are read-only comparisons whose thresholds are the measured
 values, so the tests seed every side and mutate one at a time."""
+import contextlib
+import gzip
+import io
 import os
 import sys
+import tempfile
+import types
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -168,14 +173,150 @@ class TestDerivedValues(unittest.TestCase):
         self.assertFalse(set(n for n, _, _ in gs.BAND_DAC_EXTRA) & gs.APERTURE_FIELD_NAMES)
         self.assertIn('gp-u13-band-dac', gs.STOP_AT_END)
 
-    def test_the_frame_reaches_the_band_s_record(self):
-        # the relative steps are pinned to the mode-0x15 entry (f=0x17D4 in the
-        # U13 capture): 82 -> the poke's spin at f=0x1825, 84 -> the stop at
-        # f=0x1828 (record §F2.3)
+    def test_the_poke_and_stop_are_entry_relative(self):
+        # The mode-0x15 entry is run-dependent by one frame (0x17D4 in
+        # gp-u13-ending2's capture, 0x17D5 in gp-u13-band's); after_entry is
+        # relative, so n=82 always targets entry+82 (the band's phase frame) by
+        # firing at the spin entry+81 (the W rows), and n=84 stops at entry+84.
         sc = gs.SCENARIOS['gp-u13-band-dac']
-        entry = 0x17D4
-        self.assertEqual(entry + sc['steps'][-2][3], 0x1826)     # the iteration that samples it
-        self.assertEqual(entry + sc['steps'][-1][3], 0x1828)
+        for entry, poke_f, s_f, stop_f in ((0x17D4, 0x1825, 0x1826, 0x1828),
+                                           (0x17D5, 0x1826, 0x1827, 0x1829)):
+            F = entry + sc['steps'][-2][3]
+            self.assertEqual(F, s_f, hex(entry))           # the iteration that samples it
+            self.assertEqual(F - 1, poke_f, hex(entry))    # the W rows' spin
+            self.assertEqual(entry + sc['steps'][-1][3], stop_f, hex(entry))
+
+    def test_the_relative_schedule_fires_on_both_measured_entries(self):
+        steps = gs.SCENARIOS['gp-u13-band-dac']['steps'][-2:]
+        for entry, F, stop in ((0x17D4, 0x1826, 0x1828), (0x17D5, 0x1827, 0x1829)):
+            s = gs.Schedule(steps)
+            s.entry_frame[(0x15, 1)] = entry
+            self.assertEqual(s.due(entry + 81), [(0, ('poke', gs.BAND_DAC_WRITES))])
+            self.assertEqual(s.frame_of[0], F)
+            self.assertNotIn(1, s.frame_of)                 # the stop is not due yet
+            self.assertEqual(s.due(entry + 83), [])         # the end step, not a fired action
+            self.assertEqual(s.frame_of[1], stop)
+
+    def test_the_measured_mode_15_entry_frames(self):
+        # The review measured 0x17D5 in gp-u13-band; gp-u13-ending2's capture is
+        # 0x17D4. Pin both from the committed poll.logs (skip without the data).
+        base = os.path.join(ROOT, 'data', 'k11-captures')
+        want = {'gp-u13-ending2': 0x17D4, 'gp-u13-band': 0x17D5}
+        for cap, f in want.items():
+            path = os.path.join(base, cap, 'poll.log')
+            if not os.path.isfile(path):
+                self.skipTest('no %s capture' % cap)
+            first = None
+            with open(path) as fh:
+                for line in fh:
+                    r = gs.parse(line)
+                    if r and r['kind'] == 'S' and r['mode'] == 0x15:
+                        first = r['f']
+                        break
+            self.assertEqual(first, f, cap)
+
+
+def _port_frame_file(path, indices=None):
+    """A synthetic U13-dump .ipx: the 14 offsets' indices (the DAC is not read
+    by --dac's port side, only the indices)."""
+    idx = bytearray(64000)
+    for k, (r, x) in enumerate(OFFS):
+        idx[r * 320 + x] = (indices or PORT_IDX)[k]
+    with open(path, 'wb') as f:
+        f.write(bytes(idx) + bytes(768))
+
+
+def _s_line(f, indices=None):
+    """A synthetic band-dac S record: every field present, the band values from
+    the measured port frame. No WIN field matters to --dac; they are zero."""
+    fields = gs.SNAP_FIELDS + gs.WIN_EXTRA + gs.BAND_DAC_EXTRA
+    vals = {n: 0 for n, _, _ in fields}
+    vals.update(f=f, mode=0x15)
+    for k in range(CONTROL):
+        vals['bb%02d' % k] = (indices or PORT_IDX)[k]
+    vals['bbc'] = (indices or PORT_IDX)[CONTROL]
+    vals.update(bbp0=0x2A6A550, bbp1=0x02A5AB50, eff0=0x000F842C,
+                eff1=0x000F1B28, efffree=0x000F0B00, effn=12)
+    return gs.format_s(0, vals, 0, 0x1E, 0x1E, fields=fields)
+
+
+def _cap_frame(path, indices=None):
+    """A synthetic capture frame whose 14 offsets carry the sentinel colours."""
+    rgb = bytearray(320 * 200 * 3)
+    for k, (r, x) in enumerate(OFFS):
+        rgb[3 * (r * 320 + x):3 * (r * 320 + x) + 3] = gs.BAND_DAC_SENTINEL_RGB[(indices or PORT_IDX)[k]]
+    with gzip.open(path, 'wb') as f:
+        f.write(bytes(rgb))
+
+
+class TestDacMain(unittest.TestCase):
+    """The whole --dac path, not only decide_dac (review round 1, Critical 1):
+    the capture also carries its route's win-path W rows, so the injected gate
+    must filter to the six BAND_DAC_WRITES addresses, and the S frame is derived
+    from the diagnostic rows' f + 1 (the entry frame is run-dependent)."""
+
+    def _run(self, diag_rows, prior_rows=(), s_f=0x1827):
+        with tempfile.TemporaryDirectory() as d:
+            poll = os.path.join(d, 'poll.log')
+            with open(poll, 'w') as f:
+                for line in prior_rows:
+                    f.write(line + '\n')
+                for line in diag_rows:
+                    f.write(line + '\n')
+                f.write(_s_line(s_f) + '\n')
+            cap = os.path.join(d, 'cap')
+            os.makedirs(cap)
+            _cap_frame(os.path.join(cap, 'frame_00000.raw.gz'))
+            pf = os.path.join(d, 'frame_04316.ipx')
+            _port_frame_file(pf)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = gb.dac_main(types.SimpleNamespace(
+                    poll_log=poll, capture=cap, port_frame=pf, f=None))
+            return rc, buf.getvalue()
+
+    def _diag(self, frame=0x1826, **kw):
+        return [gs.format_w(0, frame, 0, addr, b'\x00' * len(data), data,
+                            kw.get('late', 0), kw.get('race', 0))
+                for addr, data in gs.BAND_DAC_WRITES]
+
+    def test_dac_main_filters_the_route_w_rows(self):
+        # the exact Critical 1 case: a prior U13 win-path W row before the six
+        for prior in (gs.format_w(0, 0x4D9, 0, 0x108106, b'\x00' * 7, b'\x81' * 7, 0, 0),
+                      gs.format_w(0, 0x1502, 0, 0x104B0C, b'\x00', b'\x01', 0, 0)):
+            rc, out = self._run(self._diag(), prior_rows=[prior])
+            self.assertEqual(rc, 0)
+            self.assertIn('W rows: 6 diagnostic (of 7 total)', out)
+            self.assertIn('frame(s) 1826', out)
+            self.assertIn('S at f=1827', out)
+            self.assertIn('verdict: PASS-A', out)
+
+    def test_dac_main_derives_the_s_frame_from_the_w_frame(self):
+        # the older-entry run's frame (W 0x1825 -> S 0x1826)
+        rc, out = self._run(self._diag(frame=0x1825), s_f=0x1826)
+        self.assertIn('S at f=1826', out)
+        self.assertIn('verdict: PASS-A', out)
+
+    def test_dac_main_rejects_a_raced_diagnostic_write(self):
+        rc, out = self._run(self._diag(race=1))
+        self.assertIn('raced 6', out)
+        self.assertIn('verdict: INCONCLUSIVE', out)
+
+    def test_dac_main_rejects_a_late_diagnostic_write(self):
+        rc, out = self._run(self._diag(late=1))
+        self.assertIn('late 6', out)
+        self.assertIn('verdict: INCONCLUSIVE', out)
+
+    def test_dac_main_rejects_a_missing_diagnostic_write(self):
+        rows = self._diag()[:-1]
+        rc, out = self._run(rows)
+        self.assertIn('W rows: 5 diagnostic (of 5 total)', out)
+        self.assertIn('verdict: INCONCLUSIVE', out)
+
+    def test_dac_main_reports_a_missing_s_record(self):
+        rc, out = self._run(self._diag(), s_f=0x1830)
+        self.assertIn('no S record at f=1827', out)
+        self.assertIn('verdict: INCONCLUSIVE', out)
 
 
 if __name__ == '__main__':
