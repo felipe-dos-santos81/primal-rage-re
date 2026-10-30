@@ -150,6 +150,12 @@ class TestPinBaseline(unittest.TestCase):
             self.assertFalse(ok)
             self.assertTrue(any('missing' in x for x in problems))
 
+    def test_trace_prefix_pins_are_inside_the_pin_baseline(self):
+        regions = cm.pin_regions([os.path.join(ROOT, 'tools', 'audio_compare.py')])
+        by_name = {name: body for _path, name, body in regions}
+        self.assertIn('trace-prefix-pins', by_name)
+        self.assertIn('TRACE_PREFIX_PINS = {', by_name['trace-prefix-pins'])
+
     def test_unbalanced_markers_are_errors(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, 'pins.txt')

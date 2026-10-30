@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: live truth Task 5: measured gp-u28-continue oracle and capture-336 scan-out
-adffb4c97366215f2e4e3ed0e5a07b56c3eb275f156c7c492f7a3b94cc2a9bf7
+# reason: live truth final review: add the trace-prefix-pins region
+cadd4ec68740a7839847bc4ed1375af4a8f970564bc06181789fb49249308f88

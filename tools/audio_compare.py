@@ -53,8 +53,8 @@ leading matched tick groups are still claimed, bounded by the per-section
 other unanchored or differing section fails. A capture with no `.dro` at all is
 skipped by name (exit 3); the caller prints it.
 
-Exit codes: 0 = every required section compared and matched, every diff-allowed
-prefix meets its pin (and the whole-section claimed tick total is at least its
+Exit codes: 0 = every required section compared and matched, every pinned matched
+prefix meets its minimum (and the whole-section claimed tick total is at least its
 pinned minimum); 1 = a first difference, an unallowed unanchored/differing
 section, or a short/lost claim; 2 = usage/parse error; 3 = the capture is absent
 (the caller prints the skip by name).
@@ -148,7 +148,9 @@ TRACE_PINS = {
 # the unmatched remainder stays a named gap. These pins are separate from
 # TRACE_PINS' whole-section tick totals, which do not move. A later full match is
 # a stronger claim and is accepted; a short prefix, a lost prefix, or a new
-# diff-allowed section without a pin fails.
+# diff-allowed section without a pin fails. A fully matched section must still
+# meet its minimum.
+# >>> PIN-BASELINE-BEGIN trace-prefix-pins
 TRACE_PREFIX_PINS = {
     'gp-idle-loss': {3: 30, 9: 960, 10: 301},
     'gp-idle-loss-run2': {3: 30, 5: 5, 6: 20, 9: 960, 10: 303},
@@ -168,6 +170,7 @@ TRACE_PREFIX_PINS = {
     'gp-u8-right-training': {2: 21},
     'gp-u9-win': {5: 5, 9: 170},
 }
+# <<< PIN-BASELINE-END trace-prefix-pins
 
 # The expected per-scenario section identity/status inventory (the whole-song
 # guard, record §M4.5). Each entry is (bank hash, kind) in the port dump's
@@ -944,12 +947,17 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
             r = compare_section(s, i, captures, allow, allow_d, search_from)
             if r.capture_end is not None:
                 search_from = r.capture_end
-        if r.status == 'diff-allowed' and prefix_pins is not None:
+        if r.status in ('anchored', 'diff-allowed') and prefix_pins is not None:
             r.prefix_min = prefix_pins.get(r.index)
         results.append(r)
         print('  ' + summarize_section(r, index_names))
         if r.status == 'anchored':
             total += r.claimed
+            if (prefix_pins is not None and r.prefix_min is not None
+                    and r.claimed < r.prefix_min):
+                failed.append('section %d bank %08X: claimed matched prefix '
+                              '%d ticks, pinned minimum %d'
+                              % (r.index, s.bank, r.claimed, r.prefix_min))
         elif r.status == 'diff':
             failed.append('section %s first difference (%s) at relative tick %d'
                           % (resource_name(s.dc, index_names), r.first_diff_kind,

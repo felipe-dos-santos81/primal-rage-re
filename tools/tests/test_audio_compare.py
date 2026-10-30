@@ -481,6 +481,13 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('claimed matched prefix 5 ticks, pinned minimum 6', r.stdout)
 
+    def test_anchored_section_shorter_than_prefix_pin_fails(self):
+        # A full match does not make a short section stronger than its pin:
+        # base_case claims ticks 0..6, so the minimum of 8 must fail.
+        r = self.case(*base_case(), '--prefix-pin', '0:8')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('claimed matched prefix 7 ticks, pinned minimum 8', r.stdout)
+
     def test_diff_allowed_prefix_difference_at_tick_zero_claims_zero(self):
         # Bypass anchor selection to isolate the already-computed alignment
         # prefix: a capture that differs in its first group has no prefix to
