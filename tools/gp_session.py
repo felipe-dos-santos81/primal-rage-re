@@ -741,6 +741,36 @@ SCENARIOS['gp-u28-continue'] = dict(
         ('after_entry', 0x0C, 1, 10, KO_P1),
     ))
 
+# Final truth Task 4 (design §3.6, record §F4): gp-u29-continue-taken, the
+# taken-continue branch the expiry capture deliberately did not reach. The same
+# route as gp-u28-continue (U10's LEFT PLAYER ARCADE through the two match-1 KOs
+# and the labelled incumbent 0x10780A=0x78 poke that opens mode 0x0E), plus one
+# p1.start at the PRESS START prompt: 0x27B59 draws the prompt only while the
+# signed count is below 0x0E, and the count is 0x0D from f=0x1540, so a press in
+# the spin of f=0x155F (the 0xA0th frame after the mode-0x0E entry 0x14C0;
+# iteration 0x1560 samples the key down) is the prompt path. 0x500C4's one-frame
+# debounce makes 0x4F644 report the newly pressed bit at iteration 0x1561, where
+# flow_continue_poll (0x42F60) spends one credit (0x2CA9C debits only while b1f
+# is 0, which it still is: 0x27A40 stores b1f after the poll) and
+# flow_continue_take (0x2791C) clears the prompt/countdown cells, restores both
+# snapshots, resets the incumbent's +0x5A (0x1D764) and stores mode 0x0C.
+# The frame-keyed end is 0x100 frames after the mode-0x0E entry (f=0x15C0), so
+# 0x5F frames of the restarted round are in the replayed window; nothing past it
+# is compared. No new poke: the route's four existing harness writes (the lands
+# pair and two KO P2 pokes in match 1, then the incumbent KO) are the same as
+# U28's and none lands at or after the continue screen's open. p1.start is the
+# F1 key slot (scan 0x3B) whose P1 byte bit 0 is the start mask 0x9ACBC[0] =
+# 0x01000000 (the table's first dword; the second is P2's 0x00000100). The
+# 6-frame hold and the 240 s limit are gp-u5-charsel's and gp-u28-continue's
+# harness values.
+CONTINUE_TAKEN_PRESS = ('after_entry', 0x0E, 1, 0xA0, ('pad', ('p1.start',), 6))
+SCENARIOS['gp-u29-continue-taken'] = dict(
+    time_limit=240, extra=WIN_EXTRA,
+    steps=SCENARIOS['gp-u28-continue']['steps'] + (
+        CONTINUE_TAKEN_PRESS,
+        ('after_entry', 0x0E, 1, 0x100, ('end',)),
+    ))
+
 # The fields the draw check (gp_draw.py) reads. adc (the best-of rounds, DS_00104ADC,
 # 0x25A14..0x25A28, §W.1) is the one WIN_EXTRA lacks; ad4/w2/w3/b1e are WIN_EXTRA's (§W.2)
 # and mode/s0_5a/s1_5a are SNAP_FIELDS'. The scenario logs WIN_EXTRA + adc.
@@ -1586,6 +1616,10 @@ class Schedule:
 # gp-u13-band-dac (final truth Task 2) stops too: its end is two frames after the
 # band's S record (after_entry 0x15 k=1 n=84), so the capture holds the sentinel
 # window and no post-ending content.
+# gp-u29-continue-taken (final truth Task 4) stops too: its end is 0x100 frames
+# after the mode-0x0E entry, 0x5F frames past the 0x2791C take in mode 0x0C, so
+# the take and the round restart are in the replayed window and nothing past it
+# is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1598,6 +1632,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-twop-ko', 'gp-u14-twop-win', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
                          'gp-u13-band', 'gp-u13-band-dac', 'gp-u27-name-entry', 'gp-u28-continue',
+                         'gp-u29-continue-taken',
                          'gp-bowling', 'gp-bowling-fix'})
 
 
