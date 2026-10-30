@@ -274,17 +274,18 @@ class TestEvidence(unittest.TestCase):
 MATCH_FRAMES = [0x141, 0x201, 0x2F5, 0x301, 0x3F5, 0x401]
 
 
-def _fought_match(b0c=0, live=0x10, result=(0, 2, 0), timeout=False):
+def _fought_match(b0c=0, live=0x10, result=(0, 2, 0), timeout=False, round1=(1, 0)):
     """A fought 2-0 match-1 win with no poke: the mode-6 entries carry a live damage
-    value and the mode-8/9 results carry 0x78. `result` = (ad4, w2, w3)."""
+    value and the mode-8/9 results carry 0x78. `result` = (ad4, w2, w3); `round1` =
+    (w2, w3) at the round result."""
     ad4, w2, w3 = result
     tail_mode = 0x07 if timeout else 0x06
     return _log([
         (0x100, 0x140, 0x03, {}),
         (0x141, 0x200, 0x27, {}),
         (0x201, 0x2F4, 0x06, dict(b1f=3, c0=0, b1e=1, s1_5a=live)),
-        (0x2F5, 0x300, 0x08, dict(b1f=3, c0=0, b1e=1, s1_5a=0x78, w2=1, w3=0,
-                                  ad4=gw.NO_RESULT)),
+        (0x2F5, 0x300, 0x08, dict(b1f=3, c0=0, b1e=1, s1_5a=0x78,
+                                  w2=round1[0], w3=round1[1], ad4=gw.NO_RESULT)),
         (0x301, 0x3EF, 0x06, dict(b1f=3, b1e=2, s1_5a=live, w2=1)),
         (0x3F0, 0x3F4, tail_mode, dict(b1f=3, b1e=2, s1_5a=live, w2=1)),
         (0x3F5, 0x400, 0x09, dict(b1f=3, s1_5a=0x78, w2=w2, w3=w3, ad4=ad4, b0c=b0c)),
@@ -334,6 +335,13 @@ class TestLiveMatch(unittest.TestCase):
         rc, text = self.run_match(_fought_match(result=(0, 1, 0)))
         self.assertEqual(rc, 1)
         self.assertIn('not a 2-0 match win for side 0', text)
+
+    def test_the_round_result_must_name_the_winner(self):
+        # the match result still names side 0, but the first round went to side 1:
+        # the round/match result clause is not satisfied
+        rc, text = self.run_match(_fought_match(round1=(0, 1)))
+        self.assertEqual(rc, 1)
+        self.assertIn('the round result at f=2F5 does not name side 0', text)
 
     def test_a_timeout_before_the_match_result_fails(self):
         rc, text = self.run_match(_fought_match(timeout=True))

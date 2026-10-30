@@ -710,14 +710,15 @@ the match result is mode 9 at `f=0xF9F`, then `0x17/0x15/0x13/0x1E/0x03`).
   final write (all seven final KOs are poked, record §E1.3) and is **not** a
   fought-final exhibit.
 
-`evidence()` dispatches on the set membership. The match rule does not check the
-round-1 result (the milestone rows do: `_MATCH1`'s mode-8 predicate is
-`s1_5a=0x78, w2=1, w3=0, ad4=NO_RESULT`); it anchors the win on the decisive
-match result.
+`evidence()` dispatches on the set membership. The match rule also checks the
+round result row (mode 8, k 1): `ad4 = NO_RESULT`, the winner's counter `>= 1`
+and above the loser's (the milestone row's `_MATCH1` predicate carries the same
+`s1_5a=0x78, w2=1, w3=0`), and then anchors the win on the decisive match
+result.
 
 ### F3.3 The rule tests (RED then GREEN)
 
-`tools/tests/test_gp_win.py`'s `TestLiveWin` became `TestLiveMatch` (seven
+`tools/tests/test_gp_win.py`'s `TestLiveWin` became `TestLiveMatch` (eight
 tests) and `TestLiveFinal` (three). The synthetic match fixture is a fought 2-0
 path: mode-6 entries with `s1_5a=0x10`, the mode-8 result `s1_5a=0x78`,
 `w2=1`, `ad4=0xFFFFFFFF`, the second mode-6 entry with `s1_5a=0x10`, and the
@@ -725,7 +726,8 @@ mode-9 result `s1_5a=0x78`, `w2=2`, `w3=0`, `ad4=0`; **b0c is 0 throughout**.
 The tests pin: the match rule passes with no `b0c`; the U9 fixture (all
 milestones, poked KO shape) fails the live-value rule; a match result naming
 side 1 (`ad4=1`, `w2=0`, `w3=2`, the artifact's shape) fails; a 1-0 result
-fails; a mode-7 record before the result fails; a KO poke and a `DEATH_DONE`
+fails; a round result naming side 1 fails even when the match result is a 2-0;
+a mode-7 record before the result fails; a KO poke and a `DEATH_DONE`
 poke fail; the final rule requires `b0c=1` at/after the mode-`0x0F` entry, a
 pre-entry `b0c` does not count, and a `DEATH_DONE` poke fails. The artifact
 test loads the git-ignored `.failed` artifact: `gp_twop.ko(arcade=True,
@@ -735,7 +737,8 @@ at the match result (`f=0xF9F` names side 1, `w3 = 2 > w2 = 0`).
 RED (before the split): `python3 -m unittest tools.tests.test_gp_win -v` ran
 59 tests, `FAILED (errors=12)` — every `live_match`/`live_final` call was an
 `AttributeError` (the two old `live_death` calls and the absent final rule
-included). GREEN after the split: `Ran 59 tests ... OK`.
+included). GREEN after the split (with the round-result test added): `Ran 60
+tests ... OK`.
 
 ### F3.4 The checker (`tools/gp_twop.py check --win`)
 
@@ -767,7 +770,7 @@ two-human clause; the CLI passes/rejects and `--win --ko` is an argparse
 conflict. RED before `match_win`: `Ran 67 tests`, `FAILED (errors=12,
 failures=1)`; GREEN: `Ran 67 tests ... OK`. The wider focused set
 (`test_gp_twop test_gp_win test_gp_session test_gp_capture test_gp_compare`)
-ran 362 tests, `OK`.
+ran 363 tests, `OK`.
 
 ### F3.5 The one capture: `gp-u14-twop-win`
 
@@ -871,11 +874,11 @@ match rule is correct and closed, but no arcade fought-win capture is claimed.
 
 ### F3.8 The commands and the tree
 
-* `python3 -m unittest tools.tests.test_gp_win` — 59 tests, OK.
+* `python3 -m unittest tools.tests.test_gp_win` — 60 tests, OK.
 * `python3 -m unittest tools.tests.test_gp_twop` — 67 tests, OK.
 * `python3 -m unittest tools.tests.test_gp_twop tools.tests.test_gp_win
   tools.tests.test_gp_session tools.tests.test_gp_capture
-  tools.tests.test_gp_compare` — 362 tests, OK.
+  tools.tests.test_gp_compare` — 363 tests, OK.
 * `python3 tools/gp_twop.py check --win --capture
   data/k11-captures/gp-u14-twop-win.failed` — game evidence, ok (not a
   capture pass).

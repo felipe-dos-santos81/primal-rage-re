@@ -417,10 +417,11 @@ def live_match(name, frames, lines, snaps, out=print):
     1 FAIL. `frames` is milestone_frames(name, ...). Fails when a W record wrote a
     KO/death field (the DEATH_DONE poke included), when no match-result row (mode 9,
     k 1) exists, when that record is not a 2-0 win for MATCH_WINNER[name] (ad4, the
-    w2/w3 counters and the KO'd side's +0x5A at 0x78), when a mode-7 time-up record
-    precedes it, or when the mode-6 entry before the result has no live
-    0 < +0x5A < 0x78 value (the damage path adds to a live value, so a 0 -> 0x78 jump
-    is poked)."""
+    w2/w3 counters and the KO'd side's +0x5A at 0x78), when the round-result row
+    (mode 8, k 1) does not name the winner at 1-0 with ad4 = NO_RESULT, when a mode-7
+    time-up record precedes it, or when the mode-6 entry before the result has no
+    live 0 < +0x5A < 0x78 value (the damage path adds to a live value, so a
+    0 -> 0x78 jump is poked)."""
     hit = _poke_on(lines, KO_DEATH_POKES)
     if hit is not None:
         out("gp_win: %s: evidence: FAIL: a poke at f=%X covers %08X, a KO/death field: "
@@ -453,6 +454,20 @@ def live_match(name, frames, lines, snaps, out=print):
     if tout is not None:
         out('gp_win: %s: evidence: FAIL: time-out: mode 7 at f=%X before the match result at '
             'f=%X: the match ended on the timer' % (name, tout, res['f']))
+        return 1
+    i8 = _row_index(name, 0x08, 1)
+    if i8 is None or i8 >= len(frames) or frames[i8] is None:
+        out('gp_win: %s: evidence: FAIL: no round-result row (mode 8, k 1) to anchor the '
+            'first round on' % name)
+        return 1
+    rr = snaps.get(frames[i8])
+    if (rr is None or rr['ad4'] != NO_RESULT
+            or rr[wf] < 1 or rr[wf] <= rr[lf]):
+        out("gp_win: %s: evidence: FAIL: the round result at f=%s does not name side %d "
+            '(ad4 = %s, w2 = %s, w3 = %s)'
+            % (name, '-' if rr is None else '%X' % rr['f'], winner,
+               '-' if rr is None else '%X' % rr['ad4'],
+               '-' if rr is None else rr['w2'], '-' if rr is None else rr['w3']))
         return 1
     run = []
     for f in reversed([f for f in sorted(snaps) if f < res['f']]):
