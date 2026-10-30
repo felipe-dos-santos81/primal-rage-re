@@ -1238,6 +1238,36 @@ SCENARIOS['gp-twop-ko'] = dict(
 )
 
 
+# Final truth Task 3 (plan 2026-10-30-final-truth.md; record §F3.2): the two-human
+# fought match win. U14's fought arcade win (R1) is terminal: the arcade AI's damage
+# race outruns the script (the .failed artifact: 10 sampled AI increments/113 -> 120
+# damage vs the script's 2/25 in round 1; 8/99 -> 120 vs 8/92 in round 2), and the
+# `live_death` b0c clause cannot pass on a match-1 win. Two humans, however, are a
+# controllable route with no pokes: gp-twop-ko's own start and 140-attempt 1A/1B
+# round KO the idle P2, and the same round is played again after the round result.
+# P2 is idle, so P1's health stays full and both rounds are KO wins inside the
+# round timer; the win is side 0's 2-0.
+#
+# The steps are gp-twop-ko's through round 1 (`[:9]` keeps the walk-in, whose
+# p2.left is the second side's fight press two_human requires), then the same
+# 140-attempt round anchored to the second mode-6 entry. skip_on_mode=(0x07, 0x08,
+# 0x09) drops a round's queued presses at its round/match/time-up result and resumes
+# at the next after_entry (the U14 builder's rule; without it the round-1 leftovers
+# fire onto the result screen). stop_mode=0x12 stops on the conquered-lands screen
+# after mode 9's hold (0x4142C), so the match result and the won land are recorded
+# and nothing past the stop is compared. time_limit 240 is gp-twop-ko's: boot to
+# the round-1 entry is ~1,250 frames, each KO ~1,670 frames, the round transition
+# ~365 and the mode-9 -> 0x12 hold ~840 (~107 s total), with margin. No poke:
+# `gp_twop.py check --win` judges the game's own writes.
+SCENARIOS['gp-u14-twop-win'] = dict(
+    time_limit=240, extra=WIN_EXTRA,
+    stop_mode=0x12, stop_delay=0, skip_on_mode=(0x07, 0x08, 0x09),
+    steps=steps_before_end(SCENARIOS['gp-twop']['steps'])[:9]
+    + _u16_round(140, 30)
+    + _u16_round(140, 30, anchor=(0x06, 2)),
+)
+
+
 # Host input truth U17 (plan 2026-10-21-host-input-truth Task 6; record §H6.6,
 # §H6.9): the K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first
 # 24 keys -- the mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the
@@ -1521,6 +1551,9 @@ class Schedule:
 # gp-twop-ko (fought-match truth Task 4) stops too: its end is 240 frames into the
 # first result mode (0x08/0x09, stop_mode/stop_delay), the KO's result window, and
 # nothing past it is compared.
+# gp-u14-twop-win (final truth Task 3) stops on the conquered-lands screen (mode
+# 0x12, stop_mode/stop_delay 0) after the two-round fought win, so the match result
+# and the won land are the last compared content.
 # gp-u24-u16-state (fought-match truth Task 5) stops too: its end is the
 # conquered-lands screen (mode 0x12, stop_mode, stop_delay 0), the marker the state
 # comparison anchors on; it is a diagnostic, not a gate-inventoried capture.
@@ -1554,7 +1587,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
-                         'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
+                         'gp-twop-ko', 'gp-u14-twop-win', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
                          'gp-u13-band', 'gp-u13-band-dac', 'gp-u27-name-entry', 'gp-u28-continue',
                          'gp-bowling', 'gp-bowling-fix'})

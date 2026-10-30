@@ -1821,27 +1821,36 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # end, record §E2; mode 7 is the fix round's addition, since a timed-out round is a failed
 # run but its presses must not overrun the end either).
 # Its claim is the poked wins' narrow one plus what a poke could not claim: the game itself
-# raises P2's +0x5A to 0x78, reaches the same mode-8/mode-9 entries and the land mark, and
-# gp_win.py check requires an S record with the death-done byte b0c = 1 at or after the
-# round-2 KO (mode 9) with no DEATH_DONE poke — the game's own 0x37EA0 -> 0x37FF6 write that
-# U9/U10 poked (spec W5). The byte is not cleared between rounds (only mode 0x17's setup
-# 0x271E0 and the final's consumers clear it), so the rule proves a game death animation
-# ended by the match-end screen, not that round 2's specifically did; the frames and the WIN
-# trace carry which animation ran. spec W5's shared-code limit still applies — the same path's
+# raises P2's +0x5A to 0x78, reaches the same mode-8/mode-9 entries and the land mark. Final
+# truth Task 3 corrected the rule (record 2026-10-30-final-truth-derivations.md §F3): a
+# match-1 win has NO b0c clause, because the byte's only consumer is the final's
+# 0x0C -> 0x0D chain (game_mode_0d_step 0x274FC; flow_arena_ko_check 0x272DC /
+# game_mode_0c_step 0x27380), and a 0x09 -> 0x17 -> 0x12 match win never enters it (mode
+# 0x17's setup clears the byte at 0x27200). gp_win.live_match
+# requires the live KO and the 2-0 match result with no poke and no time-out; the final-only
+# rule (gp_win.live_final) keeps b0c = 1 at/after mode 0x0F and has no scenario yet. The
+# U9/U10 DEATH_DONE pokes stay the poked wins' writes. spec W5's shared-code limit still
+# applies — the same path's
 # gp-u9-win (first mode-6 S f=0x480) and gp-u10-ending (f=0x479) captures have c1 = 6 (CHAOS),
 # afc = 5, while the failed 2026-10-26 run measured c0 = 0, c1 = 3 (VERTIGO), afc = 3 (record
 # 2026-10-26-fought-match-truth §F2.6): the KO'd fighter's death stream is not U10's final
 # SAURON's, and a later capture's own S fields decide it.
-# The pins are EMPTY: Task 2's one authorized run (2026-10-26) failed the game's win — P1 was
-# KO'd in both rounds and b0c never became 1 (record 2026-10-26-fought-match-truth §F2) — so no
-# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed artifact is
-# preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays absent); the
-# run also failed the port-script/unscripted-input/end-frame checks after a BIOS-ring burst. The
+# The pins are EMPTY: the 2026-10-26 arcade run lost 0-2 (P1 KO'd in both rounds, mode 0x12
+# never opened; record 2026-10-26-fought-match-truth §F2), and final truth Task 3's one
+# authorized two-human gp-u14-twop-win run reached the game's 2-0 win (round-1 KO f=0xB1B,
+# match result f=0x13A8, mode 0x12 f=0x1693, no W, b0c=0) but failed port script v2 at f=0xB1B
+# (a missed S(0xB1A); 15 missed frames), so it is preserved as
+# data/k11-captures/gp-u14-twop-win.failed with no oracle/pin/CAPTURE_DIRS path (record
+# 2026-10-30-final-truth-derivations.md §F3.5). R1 (the arcade fought win) is terminal, so no
+# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed arcade
+# artifact is preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays
+# absent); the run also failed the port-script/unscripted-input/end-frame checks after a
+# BIOS-ring burst. The
 # phase's gp-u24-u16-state scenario stays diagnostic and outside CAPTURE_DIRS. gp-twop-ko
 # failed that phase's harness pin but is now published by live truth Task 3 above; both
 # scenarios' .dro traces and the failed U14 run's (data/k11-captures/gp-u14-win-live.failed)
 # stay outside tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
-# skips on the absent directory; a later authorized capture fills the nine pins from
+# skips on the absent directory; a later authorized match capture (not R1) would fill the nine pins from
 # tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the
 # report's missing-class count; coverage_check fails closed without it).
 # MIN_FIRST the first unexplained capture frame,

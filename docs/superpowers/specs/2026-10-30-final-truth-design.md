@@ -65,6 +65,21 @@ round-2 extension is the practical route — and (c) declare U14's arcade
 fought win (R1) terminal with the measured damage race (the AI landed 10 hits
 to the script's 2 in round 1; 9 to 8 in round 2) and the `0x0C→0x0D` chain.
 
+**Task 3 outcome (2026-10-30, record §F3).** The split is implemented:
+`gp_win.MATCH_WIN`/`live_match` has no `b0c` clause (the match result must be a
+2-0 win for its side and the KO'd side's `+0x5A` must have been live), and
+`gp_win.FINAL_WIN`/`live_final` requires `b0c=1` at or after the mode-`0x0F`
+entry (the final path); no scenario is in `FINAL_WIN` yet. `gp_twop.py check
+--win` adds the two-human fought match win (both rounds' live-to-`0x78`, the
+round and match results, no time-out, an X record). The one authorized
+`gp-u14-twop-win` run reached the game's two-round 2-0 win (`b1f=3`, no `W`,
+round 1 `f=0xB1B`, match result `f=0x13A8`, mode `0x12` at `f=0x1693`) but
+failed the `port script v2` check at `f=0xB1B` (`pad change ... unpinned`, no
+`S(0xB1A)`; 15 missed frames). It is preserved as
+`data/k11-captures/gp-u14-twop-win.failed`; per the capture discipline it
+publishes no oracle, pin, miss set, manifest entry or `CAPTURE_DIRS` path, and
+R1 stays declared. The claim is game evidence only, not a published capture.
+
 ### 3.2 0x21 — the eight-trample chain and the `+0x1C` re-hit question
 
 The "worshipper trample" is an **effects entry** (type 0, `fight_dust_build`

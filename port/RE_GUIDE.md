@@ -320,14 +320,22 @@ true original, and ported the divergence. Two pieces:
   is port 4951 — `GP_U13_MIN_FIRST` = 5904, `GP_U13_MIN_REACH` = 4951,
   trace/WIN = 10069 (R3, §J5; record `2026-10-23-endgame-truth-derivations.md`
   §E9). The game-set `b0c` is U10's (`GP_ENDING_WIN_MIN_FIRST=9954`), not a
-  gap; only the fought no-poke win is open (§E1.3).
+  gap; the fought no-poke win is terminal R1 (final truth Task 3, record
+  `2026-10-30-final-truth-derivations.md` §F3): `gp_win.live_match` has no
+  `b0c` clause (the setter is the final's `0x0C→0x0D` chain, not match 1),
+  `gp_win.live_final` keeps `b0c=1` at/after mode `0x0F`, and the one
+  authorized two-human `gp-u14-twop-win` run reached the game's 2-0 win but
+  failed its port-script check (`f=0xB1B`, a missed `S(0xB1A)`) and stays
+  `.failed` with no oracle or pin.
    The two-human KO itself is now published by `gp-twop-ko-oracle` (live truth
    Task 3, record §L3): the no-`W`, no-poke capture reaches side 0's hand-dealt
    KO at `f=0x0B63`, with P2's `s1_5a` moving from live `0x73` to `0x78`, and
    the replay covers the KO and round-result window through the trace/X record
    `f=0x0C50` (frame pin 2525, trace/moves 3153). The oracle asserts the KO and
    round result; it does not claim a fought match win or that the result naming
-   is a fought win. U14's fought live win stays the declared gap. The current
+   is a fought win. U14's fought live win is the declared terminal gap (final
+   truth Task 3, record §F3; the rule split and the failed two-human capture
+   are below). The current
    live-truth inventory is **42 explicit capture paths, 41/42 present**, with
    only that U14 path absent. The failed U14 artifact is separately game
    evidence for a fought arcade KO, not a capture, oracle or pin (live truth

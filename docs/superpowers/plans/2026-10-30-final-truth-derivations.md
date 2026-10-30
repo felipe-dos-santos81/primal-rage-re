@@ -653,3 +653,236 @@ The measured 0x03 control forced a minimal, test-covered change (no pin moved):
   no-frame INCONCLUSIVE. `python3 -m unittest tools.tests.test_gp_band` (26
   tests) and `tools.tests.test_gp_session` pass; the other `gp_band` tests are
   unchanged.
+
+## §F3 U14: the rule split, the two-human fought win, and R1 terminal (Task 3)
+
+**Decision: the `b0c` clause is the final's, not the match's; the two-human
+fought match win is captured as game evidence but failed its session check and
+publishes nothing; U14's fought arcade win (R1) is terminal.** No port code
+changed. The one authorized `gp-u14-twop-win` run reached the game's own 2-0
+two-human win (`b1f=3`, both rounds live-to-`0x78`, no `W`, mode `0x12`) but
+failed `port script v2` at `f=0xB1B` (a missed `S(0xB1A)`); it is preserved as
+`data/k11-captures/gp-u14-twop-win.failed`, with no oracle, pin, miss set,
+manifest entry or `CAPTURE_DIRS` path.
+
+### F3.1 The raw correction: `b0c` is the final's `0x0C -> 0x0D` chain
+
+`DS_00104B0C` has one non-zero writer: `0x37FF6` in `0x37EA0`
+(`fighter_37ea0`, the `0xD100` opcode `0x11` target of the seven characters'
+streams; `port/src/game/fighter.c:14391-14439`). Its only consumer is
+`game_mode_0d_step` (`0x274FC`, `port/src/game/flow.c:2026-2067`), which returns
+while the byte is 0 and otherwise clears it and increments `DS_00104B21`; the
+seventh increment enters mode `0x0F` (`0x27590`). Mode `0x0D` is entered from
+the **final's** seven-opponent arena (`flow_arena_ko_check` `0x272DC` via
+`game_mode_0c_step` `0x27380`, `port/src/game/flow.c:1802-1886`;
+`port/spec/game_flow.md:601-604`), never from match 1's win, which runs
+`0x09 -> 0x17 -> 0x12`. The earlier wording "the ending path" is therefore a
+plan-vs-raw correction: the byte's chain is the final's `0x0C -> 0x0D` one, not
+an ending path (the game-set `b0c` is U10's, in mode `0x0F`, and its seven KOs
+are poked). A match-1 win never *consumes* `b0c`: mode `0x17`'s setup clears it
+(`0x271E0`'s `0x27200`), the match result never enters `0x0D`, and the measured
+artifact holds `b0c=0` throughout. The old `live_death` rule required `b0c=1`
+at/after the match-1 mode-9 row, i.e. the final-path signal on a path that
+cannot produce it; it was unsatisfiable as a match-1 claim. Measured
+corroboration: `gp-u14-win-live.failed` has `b0c=0` in all 9,471 S
+rows and no mode `0x0C/0x0D/0x0F` (record `2026-10-26-fought-match-truth` §F2.6:
+the match result is mode 9 at `f=0xF9F`, then `0x17/0x15/0x13/0x1E/0x03`).
+
+### F3.2 The rule split (`tools/gp_win.py`)
+
+`LIVE_WIN`/`live_death` are gone. Two rules replace them:
+
+* **The match rule** (`MATCH_WIN`, `live_match(name, frames, lines, snaps)`):
+  no `W` record may cover a KO/death field (`KO_DEATH_POKES`: the two `+0x5A`
+  damage bytes, `w2`/`w3`, `ad4`, `b0c` and the seven land marks); the match
+  result row (mode 9, k 1) must exist and be a **2-0 win** for
+  `MATCH_WINNER[name]` (`ad4 = winner`, `w[winner] = 2`, `w[loser] = 0`, the
+  loser's `+0x5A = 0x78`, the winner's `< 0x78`); no mode-7 time-up record may
+  precede it; and the mode-6 entry immediately before it must hold a live
+  `0 < loser +0x5A < 0x78` value (the damage path adds to a live value, so a
+  `0 -> 0x78` jump is a poke shape). **No `b0c` clause.** `gp-u14-win-live`
+  is its only member, with winner side 0.
+* **The final-only rule** (`FINAL_WIN`, `live_final(name, frames, lines,
+  snaps)`): the same no-poke check, and a `b0c = 1` S record at or after the
+  mode-`0x0F` entry (the final path). `FINAL_WIN` is empty: no fought final is
+  captured; the rule is pinned synthetically until one is. The U10 game-set
+  `b0c` (`f=0x1602`, 190 frames after the `0x0F` entry `f=0x1544`) is a poked-
+  final write (all seven final KOs are poked, record §E1.3) and is **not** a
+  fought-final exhibit.
+
+`evidence()` dispatches on the set membership. The match rule does not check the
+round-1 result (the milestone rows do: `_MATCH1`'s mode-8 predicate is
+`s1_5a=0x78, w2=1, w3=0, ad4=NO_RESULT`); it anchors the win on the decisive
+match result.
+
+### F3.3 The rule tests (RED then GREEN)
+
+`tools/tests/test_gp_win.py`'s `TestLiveWin` became `TestLiveMatch` (seven
+tests) and `TestLiveFinal` (three). The synthetic match fixture is a fought 2-0
+path: mode-6 entries with `s1_5a=0x10`, the mode-8 result `s1_5a=0x78`,
+`w2=1`, `ad4=0xFFFFFFFF`, the second mode-6 entry with `s1_5a=0x10`, and the
+mode-9 result `s1_5a=0x78`, `w2=2`, `w3=0`, `ad4=0`; **b0c is 0 throughout**.
+The tests pin: the match rule passes with no `b0c`; the U9 fixture (all
+milestones, poked KO shape) fails the live-value rule; a match result naming
+side 1 (`ad4=1`, `w2=0`, `w3=2`, the artifact's shape) fails; a 1-0 result
+fails; a mode-7 record before the result fails; a KO poke and a `DEATH_DONE`
+poke fail; the final rule requires `b0c=1` at/after the mode-`0x0F` entry, a
+pre-entry `b0c` does not count, and a `DEATH_DONE` poke fails. The artifact
+test loads the git-ignored `.failed` artifact: `gp_twop.ko(arcade=True,
+winner=1)` passes (its KO/result clauses), while `live_match` for side 0 fails
+at the match result (`f=0xF9F` names side 1, `w3 = 2 > w2 = 0`).
+
+RED (before the split): `python3 -m unittest tools.tests.test_gp_win -v` ran
+59 tests, `FAILED (errors=12)` — every `live_match`/`live_final` call was an
+`AttributeError` (the two old `live_death` calls and the absent final rule
+included). GREEN after the split: `Ran 59 tests ... OK`.
+
+### F3.4 The checker (`tools/gp_twop.py check --win`)
+
+`match_win(lines, winner=0)` extends `ko()` with the match claims:
+
+1. the `ko` predicate (two-human `b1f=3`, no KO/death poke, the first live KO,
+   no time-out at its result, the round result naming the winner);
+2. an **X record** (a capture, not the `.failed` artifact);
+3. no mode-7 record anywhere before the X (a time-up round is not a fought
+   win);
+4. the round result (mode 8) at `1-0` with `ad4=NO_RESULT` and the loser at
+   `0x78`;
+5. the match result (mode 9) at **2-0** for the winner (`ad4=winner`,
+   `w[winner]=2`, `w[loser]=0`), the loser at `0x78`, the winner below it;
+6. **both rounds'** loser `+0x5A` transitions to `0x78` from a live
+   `0 < value < 0x78` in a mode-6 entry (two transitions, one per round), and
+   the winner's `+0x5A` never reaches `0x78`.
+
+A one-round win has no match result and fails; the arcade `.failed` artifact
+fails the two-human clause (`b1f never reaches 3`). The CLI has `--win` in the
+same mutually exclusive group as `--join`/`--finisher`/`--ko`; `--winner`
+applies to `--ko` or `--win`, `--arcade` stays `--ko`-only.
+
+Tests (`tools/tests/test_gp_twop.py`, `TestMatchWin`, 11 tests): a two-round
+2-0 pass; a one-round win fails; a mode-7 fails; a KO poke and a `DEATH_DONE`
+poke fail; a 1-0/0-2 match result fails; a winner-side KO fails; a missing X
+fails; a poked second KO fails the live rule; the `.failed` artifact fails the
+two-human clause; the CLI passes/rejects and `--win --ko` is an argparse
+conflict. RED before `match_win`: `Ran 67 tests`, `FAILED (errors=12,
+failures=1)`; GREEN: `Ran 67 tests ... OK`. The wider focused set
+(`test_gp_twop test_gp_win test_gp_session test_gp_capture test_gp_compare`)
+ran 362 tests, `OK`.
+
+### F3.5 The one capture: `gp-u14-twop-win`
+
+The scenario is `gp_session.SCENARIOS['gp-u14-twop-win']` (added; also in
+`STOP_AT_END`): gp-twop-ko's start and 140-attempt 1A/1B round, then the same
+140-attempt round anchored to the second mode-6 entry, `extra=WIN_EXTRA`,
+`skip_on_mode=(0x07,0x08,0x09)`, `stop_mode=0x12`, `stop_delay=0`,
+`time_limit=240`. No poke; the route is the two-human one (P2 idle). The one
+authorized run (`make gp-capture scenario=gp-u14-twop-win`, 2026-10-30) ran
+118.8 s and logged 5,820 S records, f 5..0x16CF, 15 frames missed (spec
+§3.7), 5,074 frames. Ten of the eleven session checks passed; one failed:
+
+```
+CHECK steps fired 194/323 (129 skipped); stopped on mode 0x12; last skip on mode 0x09: ok
+CHECK end frame reached: ok
+CHECK port script v2 (pad change at f=B1B unpinned (no S record at f=B1A)): FAIL
+CHECK no unscripted input: ok     CHECK pokes written 0/0, 0 raced: ok
+CHECK capture pins: 0 BIOS words skipped (backlog over the 14-entry cap): ok
+CHECK stopped at the end (SIGTERM at f=16CF, rc=0): ok
+```
+
+The game's own verdict (S rows, measured):
+
+| row | frame | mode | `s0_5a` | `s1_5a` | `w2` | `w3` | `ad4` | `b0c` |
+|---|---|---|---|---|---|---|---|---|
+| round 1, mode-6 last sample | `0xAD2` | 6 | 0 | `0x73` | 0 | 0 | `FFFFFFFF` | 0 |
+| round 1 KO (round result) | `0x0B1B` | 8 | 0 | **`0x78`** | **1** | 0 | `FFFFFFFF` | 0 |
+| round 2, mode-6 last sample | `0x1375` | 6 | 0 | `0x73` | 1 | 0 | `FFFFFFFF` | 0 |
+| round 2 KO (match result) | `0x13A8` | 9 | 0 | **`0x78`** | **2** | **0** | **0** | 0 |
+| conquered lands | `0x1693` | `0x12` | 0 | `0x78` | 2 | 0 | 0 | 0 |
+
+`b1f=3` from the join (`f=0x2CA`) to the X; zero `W` records; P1's `s0_5a=0`
+throughout. The KO and the result share the iteration (record §F3.2 of the
+2026-10-26 record): the mode-6 samples hold the live `0x73`, the result records
+the `0x78`. `gp_twop.py check --win --capture
+data/k11-captures/gp-u14-twop-win.failed` prints `ko f=B1B; round result
+f=B1B; match result f=13A8; death-done f=-; X f=1693 ... match win: ok`
+(exit 0) — **game evidence only**, not a capture pass (the session check
+failed). The `.failed` artifact's `poll.log` sha256 is
+`a96ca6f5de662159f43d61ae939c65be64d01dbed5441b324a12e8bfcfe728d9`, 5,074
+frames.
+
+### F3.6 The failure branch (no publication)
+
+Per the brief and the capture discipline, the run failed a session check, so:
+`data/k11-captures/gp-u14-twop-win.failed` is preserved; the requested
+`gp-u14-twop-win` path is absent; there is no `gp-u14-twop-win-oracle`, no
+`GP_U14_TWOP_WIN_*` pin, no `k_miss_gp_u14_twop_win`, no manifest entry and no
+`CAPTURE_DIRS` line. The scenario stays in `gp_session.py` (the route and its
+session check are the measured evidence; a future phase may retry it), but
+this phase's one capture is spent. `make gate-check` reads **41/42 present, 1
+declared gap** (`data/k11-captures/gp-u14-win-live`), and
+`capture_manifest.py --check-pins` reads the unchanged baseline
+`cadd4ec68740a7839847bc4ed1375af4a8f970564bc06181789fb49249308f88`. No pin
+moved.
+
+### F3.7 R1 terminal: the arcade fought win
+
+**The arcade fought win is terminal.** The damage race in
+`gp-u14-win-live.failed` (a one-human arcade match, P1 = SAURON `c0=0`,
+P2 = VERTIGO `c1=3`, `afc=3`) is measured from the S records' damage
+increments:
+
+| round | side | increments | damage at the result | source |
+|---|---|---|---|---|
+| 1 | P1 (SAURON, script) | 2 | `0x19` = 25 | `f=0x73F` `0x12`, `f=0x77C` `0x19` |
+| 1 | P2 AI | 10 | `0x71` = 113 + the result's KO 7 = **120** | `f=0x470..0x86C` |
+| 2 | P1 (SAURON, script) | 8 | `0x5C` = 92 | `f=0xBC1..0xE85` |
+| 2 | P2 AI | 8 | `0x63` = 99 + the match result's KO 21 = **120** | `f=0xB85..0xEE5` |
+
+The plan's summary (round 1 AI 10 hits/120 vs script 2/25; round 2 AI 9/120 vs
+script 8/92) is the same measurement with the KO increments counted in the
+damage totals (round 2's 8 mode-6 increments plus the result's KO = 9). The
+scripted P1 attacks are the U16 builder's 1A/1B (`U14_PUNCH`/`U14_KICK`,
+reactions `0x10`/`0x11`); the `r0`/`r1` latch changes are recorded in the S
+rows, but the landed damage is the increments above. P1 is SAURON (`c0=0`), so
+its own `r0` latch is the 1A/1B reaction id it applied (0x10 at `f=0x468`,
+`0x544`, `0x598`, `0x5D0`, `0x844`; 0x11 at `f=0x728`, `0x781`, `0x888` in
+round 1) and `r1` is the VERTIGO AI's applied reaction; only the damage
+increments say which applications landed. The Sauron reaction data therefore
+agrees with the plan's reading: the script's input is delivered (the latch
+changes), but the arcade AI's damage race is what decides the round. Three
+historical attempts
+won no arcade round: gameplay truth II's two (the first timed out with no
+artifact; the second ran 9,761 snapshots and never reached its X or the win,
+record `2026-10-20-gameplay-truth-ii` §J6) and the fought-match-truth phase's
+one authorized attempt (P1 KO'd in both rounds 0-2, `b0c=0`, mode `0x12`
+never opened; artifact `.failed`, four session failures: end frame, port
+script, unscripted input, stopped at the end; record `2026-10-26-fought-match-
+truth` §F2/§L8). The AI's damage path is the measured blocker: the script
+landed 2/25 and 8/92 while the AI landed 120 in each round, and the arcade AI's
+attack rate is not something the port's fixed script controls.
+
+The `b0c` final chain does not rescue R1: `0x37FF6` sets it only in the
+final's `0x0D` (the seventh arena KO), the U10 game-set byte is on the poked
+final (all seven final KOs poked, record §E1.3), and a match-1 arcade win never
+enters `0x0D`. The two-human fought win above is **not** an arcade win: it is a
+second human's idle slot against the script, it does not exercise the arcade
+AI, and its capture failed its session check. **R1 stays declared**; the
+match rule is correct and closed, but no arcade fought-win capture is claimed.
+
+### F3.8 The commands and the tree
+
+* `python3 -m unittest tools.tests.test_gp_win` — 59 tests, OK.
+* `python3 -m unittest tools.tests.test_gp_twop` — 67 tests, OK.
+* `python3 -m unittest tools.tests.test_gp_twop tools.tests.test_gp_win
+  tools.tests.test_gp_session tools.tests.test_gp_capture
+  tools.tests.test_gp_compare` — 362 tests, OK.
+* `python3 tools/gp_twop.py check --win --capture
+  data/k11-captures/gp-u14-twop-win.failed` — game evidence, ok (not a
+  capture pass).
+* `python3 tools/gp_twop.py check --ko --arcade --winner 1 --capture
+  data/k11-captures/gp-u14-win-live.failed` — ok (record §L8's game evidence).
+* `make gate-check` — 41/42 present, the declared U14 gap; exit 0.
+* `python3 tools/capture_manifest.py --check-pins` — baseline `cadd4ec6…`
+  unchanged.
+* No `make verify` (the task's scope); no port code, no game byte, no
+  existing pin, no manifest entry and no `CAPTURE_DIRS` line changed.

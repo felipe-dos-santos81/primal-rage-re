@@ -35,7 +35,7 @@ make gp-twop-ko-oracle     # live truth Task 3: gp-twop-ko's no-poke, hand-dealt
 make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
 make gp-u12-oracle         # Gameplay U12: gp-u12-endurance's team pass and fight; in make verify; skips without data/k11-captures/gp-u12-endurance
 make gp-u13-oracle         # Gameplay U13: gp-u13-ending2's non-character-0 ending; in make verify; skips without data/k11-captures/gp-u13-ending2
-make gp-u14-oracle         # Gameplay U14: gp-u14-win-live's fought win; in make verify; skips without data/k11-captures/gp-u14-win-live
+make gp-u14-oracle         # Gameplay U14: gp-u14-win-live's fought win (the match rule has no b0c; R1 terminal; final truth §F3); in make verify; skips without data/k11-captures/gp-u14-win-live
 make gp-u15-oracle         # Gameplay U15: gp-u15-join's mid-round join; in make verify; skips without data/k11-captures/gp-u15-join
 make gp-u16-oracle         # Gameplay U16: gp-u16-twop2's extended two-human match and frame evidence (finisher gap; §J8); in make verify; skips without data/k11-captures/gp-u16-twop2
 make gp-u17-oracle         # host input truth U17: gp-u17-device2 must reach MODIFY CONTROLS and select device 2 with no pad (tools/gp_u17.py check: the S-record clear, the label band's screen proof, the poll.log sha256 and frame count); in make verify; skips without the capture; the frame/trace ratchets are empty (the wall-paced walk has no replay, record §H6.9)
@@ -391,7 +391,8 @@ consolidation gate).
   **The claims are the ending content and the finisher reaction, not the fight**: the WIN_MENU
   path, the seven land marks, the `0x10789E` damage and the `DEATH_DONE` pokes are harness writes,
   so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) is
-  a named gap: the fought-match-truth phase's one authorized attempt (2026-10-26) lost the game's
+  a named gap, now **terminal** (final truth Task 3, record `2026-10-30-final-truth-derivations.md`
+  §F3): the fought-match-truth phase's one authorized attempt (2026-10-26) lost the game's
   match (P1 KO'd in both rounds, P2 VERTIGO `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened)
   and also failed its harness checks, so its artifact is preserved as
   `data/k11-captures/gp-u14-win-live.failed`; the published target is absent, all nine `GP_U14_*`
@@ -404,8 +405,17 @@ consolidation gate).
   and `GP_U13_MIN_FIRST`/`MIN_REACH`/`TRACE`/`WIN` read 5904/4951/10069/10069. The game-set `b0c`
   is **not** a gap and needs no new capture: it is U10's `GP_ENDING_WIN_MIN_FIRST=9954` (the write
   at f=0x1602 in mode 0x0F, 190 frames after the mode-0x0F entry (`f=0x1544`) and 200 after the
-  seventh poked final KO's `S` — record §E1.3); only the
-  fought (no-poke) win is open (`live_death`'s `(0x09,1)` rule). The INT 8 tick item is done
+  seventh poked final KO's `S` — record §E1.3). The rule is split (final truth §F3.1-F3.3):
+  `gp_win.live_match` (the match rule) has no `b0c` clause — a match-1 win cannot reach the
+  final's `0x0C→0x0D` chain — and `gp_win.live_final` requires `b0c=1` at/after the mode-`0x0F`
+  entry, with no scenario in `FINAL_WIN` yet. The one authorized two-human `gp-u14-twop-win` run
+  reached the game's 2-0 fought win (`b1f=3`, no `W`, round-1 KO `f=0xB1B`, match result
+  `f=0x13A8`, mode `0x12` at `f=0x1693`) but failed `port script v2` at `f=0xB1B` (a missed
+  `S(0xB1A)`; 15 missed frames), so it is preserved as
+  `data/k11-captures/gp-u14-twop-win.failed` and publishes no oracle, pin, miss set, manifest
+  entry or `CAPTURE_DIRS` path. The claim is game evidence only, not an arcade win; R1 stays
+  declared terminal with the measured arcade damage race (AI 120 damage in each round vs the
+  script's 25/92). The INT 8 tick item is done
   (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
   is 19,887 (59.998 Hz), and `0x2D62C` is the counter the AIL callback `0x1BDF4` calls — the
   installer stays host-owned. Named gaps left by the phase: U14 R1, the 5120 band (a byte-pinned
@@ -537,8 +547,10 @@ consolidation gate).
   session checks (end frame, port script, unscripted input, stopped at the end), so it is not a
   capture: it adds no oracle, no pin and no capture path, and `GP_U14_*` stays empty. The claim is that
   the game's own damage path KO'd a fighter in a played arcade round; it does not claim the fought win.
-  Option (b), moving the rule to the final, is rejected: its `b0c=1` appears with all seven final KOs poked
-  (§E1.3), so it does not discriminate a fought KO.
+  Option (b), moving R1's claim to the final, is rejected: its `b0c=1` appears with all seven final KOs
+  poked (§E1.3), so it does not discriminate a fought KO. Final truth Task 3 records the split instead
+  (record §F3): the match rule has no `b0c`, the final-only rule requires it, the two-human fought win
+  is game evidence in `gp-u14-twop-win.failed` (its port-script check failed), and R1 is terminal.
 - **The out-of-scope content modes `0x21` (volleyball) and `0x25`
   (the bowling easter egg, decoded string `0x61` = "BOWLING!") stay declared;
   the continue screen `0x0E` is now captured** (state-coverage record
@@ -602,11 +614,18 @@ consolidation gate).
   the E2 triage has **388 `span-writer` rows plus the supplement `0x5D004`** (`0x81110[127]`, the one
   writer slot `>= RUNTIME_BASE`, named in the supplement). **U17** (the wall-paced walk, no
   tick-keyed replay; its screens already covered by the K11 captures) and **U14** (the fought live
-  win) are declared, neither run; U14's `live_death` rule anchors on the match-1 round-2 KO but
-  `b0c`'s only setter (`0x37FF6` in `0x37EA0`) runs on the ending path, and the two re-scope options
-  are (a) drop the `b0c` clause and claim "fought KOs, no pokes", or (b) move to the final — with the
-  measured correction that `b0c`'s ending write is **not universal** (BLIZZARD U13 and ARMADON U21
-  keep `b0c = 0`). The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
+  win) are declared; final truth Task 3 split U14's old `live_death` rule (record §F3): `b0c`'s
+  only non-zero writer is `0x37FF6` in `0x37EA0` (a death-animation end), and the byte's only
+  consumer is the **final's** `0x0C→0x0D` chain (`game_mode_0d_step` `0x274FC`,
+  `flow_arena_ko_check` `0x272DC`/`game_mode_0c_step` `0x27380`); a match-1 win
+  (`0x09→0x17→0x12`) never enters `0x0D` and mode `0x17`'s setup clears the byte (`0x27200`).
+  The match rule
+  (`gp_win.live_match`) drops the `b0c` clause; the final-only rule (`gp_win.live_final`) keeps
+  `b0c=1` at/after the mode-`0x0F` entry, and no scenario is in `FINAL_WIN`. The two-human
+  `gp-u14-twop-win` run reached the game's 2-0 win but failed its port-script check and stays
+  `.failed`; R1 is terminal. The earlier `b0c` reading's measured correction stands: the game-set
+  `b0c` is **not universal** (BLIZZARD U13 and ARMADON U21 keep `b0c = 0`), and the U10
+  game-set byte is on a poked final. The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
   measured NOT-HIT set (**98** addresses, §D7.5, §D8.3 and live-truth §L12; Task 3's original pin
   was 110) and the declared modes; the census baseline is a
   separate pin (its own `tools/coverage_baseline.txt`, not the `tools/pin_baseline.sha256`
