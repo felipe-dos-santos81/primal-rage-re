@@ -47,14 +47,17 @@ measured `TRACE_PINS` table (or `--allow-unanchored HASH[,HASH]`) names the
 sections a trace's capture cannot carry (the driver's voice cursor advanced by
 the boundary's extra capture note). A section that anchors but differs on a
 measured capture-side artifact (a tick split plus a carrier-TL write-on-change
-state, §M4.4) is a named gap too, through `--allow-diff HASH[,HASH]`. Any other
-unanchored or differing section fails. A capture with no `.dro` at all is
+state, §M4.4) is a named gap too, through `--allow-diff HASH[,HASH]`; its
+leading matched tick groups are still claimed, bounded by the per-section
+`TRACE_PREFIX_PINS` minimum, and only the unmatched remainder is the gap. Any
+other unanchored or differing section fails. A capture with no `.dro` at all is
 skipped by name (exit 3); the caller prints it.
 
-Exit codes: 0 = every required section compared and matched (and the claimed
-tick total is at least the pinned minimum); 1 = a first difference, an
-unallowed unanchored/differing section, or a short claim; 2 = usage/parse
-error; 3 = the capture is absent (the caller prints the skip by name).
+Exit codes: 0 = every required section compared and matched, every diff-allowed
+prefix meets its pin (and the whole-section claimed tick total is at least its
+pinned minimum); 1 = a first difference, an unallowed unanchored/differing
+section, or a short/lost claim; 2 = usage/parse error; 3 = the capture is absent
+(the caller prints the skip by name).
 
 Stdlib only.
 """
@@ -138,6 +141,33 @@ TRACE_PINS = {
 
 
 # <<< PIN-BASELINE-END trace-pins
+
+# The measured matched-prefix minimum of each diff-allowed section (record
+# 2026-10-29-live-truth-derivations §L11), keyed by the port dump's section
+# index. `al.claimed` counts the leading tick groups before the first difference;
+# the unmatched remainder stays a named gap. These pins are separate from
+# TRACE_PINS' whole-section tick totals, which do not move. A later full match is
+# a stronger claim and is accepted; a short prefix, a lost prefix, or a new
+# diff-allowed section without a pin fails.
+TRACE_PREFIX_PINS = {
+    'gp-idle-loss': {3: 30, 9: 960, 10: 301},
+    'gp-idle-loss-run2': {3: 30, 5: 5, 6: 20, 9: 960, 10: 303},
+    'gp-keys-fight': {3: 30},
+    'gp-u10-ending': {5: 5, 8: 932, 12: 120, 13: 1437, 14: 826, 15: 118},
+    'gp-u12-endurance': {3: 180},
+    'gp-u13-ending2': {5: 5, 8: 932, 12: 120, 13: 1435, 14: 827, 15: 301},
+    'gp-u16-twop2': {5: 5, 8: 5},
+    'gp-u18-talon-ending': {5: 5, 6: 28, 8: 933, 9: 581, 12: 120, 13: 1435, 14: 827, 15: 302},
+    'gp-u19-vertigo-ending': {3: 180, 5: 5, 6: 180, 8: 930, 9: 14, 12: 120, 13: 1436, 14: 828, 15: 303},
+    'gp-u20-chaos-ending': {5: 5, 6: 180, 8: 932, 9: 581, 12: 120, 13: 1437, 14: 57, 15: 302},
+    'gp-u21-armadon-ending': {5: 5, 6: 204, 9: 581, 12: 120, 13: 1437, 14: 828, 15: 302},
+    'gp-u22-diablo-ending': {3: 30, 5: 5, 6: 30, 8: 931, 12: 120, 13: 1435, 14: 828, 15: 118},
+    'gp-u23-u16-finisher': {1: 25, 2: 21, 5: 5, 7: 425, 8: 177},
+    'gp-u6-moves': {3: 20},
+    'gp-u8-attract-start': {3: 85},
+    'gp-u8-right-training': {2: 21},
+    'gp-u9-win': {5: 5, 9: 170},
+}
 
 # The expected per-scenario section identity/status inventory (the whole-song
 # guard, record §M4.5). Each entry is (bank hash, kind) in the port dump's
@@ -661,6 +691,7 @@ class SectionResult:
         self.anchor_event = None
         self.capture_end = None      # (capture file index, next event index)
         self.claimed = 0
+        self.prefix_min = None
         self.boundary_rel = None
         self.boundary_equal = None
         self.first_diff = None
@@ -844,12 +875,17 @@ def summarize_section(res, index_names):
                   % (res.boundary_rel, 'equal' if res.boundary_equal else 'differs'))
         return head + ': ' + extra
     if res.status in ('diff', 'diff-allowed'):
+        prefix = ''
+        if res.status == 'diff-allowed':
+            prefix = '; claimed matched prefix %d ticks' % res.claimed
+            if res.prefix_min is not None:
+                prefix += ' (pinned minimum %d)' % res.prefix_min
         return (head + ': FIRST DIFFERENCE (%s) at port relative tick %d: '
-                'port [%s] vs capture [%s]%s'
+                'port [%s] vs capture [%s]%s%s'
                 % (res.first_diff_kind, res.first_diff,
                    _fmt_tick(res.first_diff_port), _fmt_tick(res.first_diff_cap),
                    ' (DIFF ALLOWED named gap: ' + res.reason + ')'
-                   if res.status == 'diff-allowed' else ''))
+                   if res.status == 'diff-allowed' else '', prefix))
     if res.status == 'unanchored-allowed':
         return head + ': UNANCHORED named gap (' + res.reason + ')'
     return head + ': ' + res.status.replace('-', ' ') + ' (' + str(res.reason) + ')'
@@ -857,8 +893,11 @@ def summarize_section(res, index_names):
 
 def compare_trace(name, port_path, capture_paths, min_ticks=0,
                   allow_unanchored=(), allow_diff=(), game_dir=None,
-                  verbose=False, json_out=None, expect_sections=None):
+                  verbose=False, json_out=None, expect_sections=None,
+                  prefix_pins=None):
     sections, _s_lines = parse_port(port_path)
+    if prefix_pins is None and name in TRACE_PINS:
+        prefix_pins = TRACE_PREFIX_PINS.get(name, {})
     missing = [p for p in capture_paths if not os.path.exists(p)]
     if missing:
         dirs = {os.path.dirname(p) for p in capture_paths}
@@ -887,6 +926,7 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
         expected = TRACE_SECTIONS.get(name)
     results = []
     total = 0
+    prefix_total = 0
     failed = []
     named_gaps = []
     search_from = (0, 0)
@@ -904,6 +944,8 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
             r = compare_section(s, i, captures, allow, allow_d, search_from)
             if r.capture_end is not None:
                 search_from = r.capture_end
+        if r.status == 'diff-allowed' and prefix_pins is not None:
+            r.prefix_min = prefix_pins.get(r.index)
         results.append(r)
         print('  ' + summarize_section(r, index_names))
         if r.status == 'anchored':
@@ -914,6 +956,17 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
                              r.first_diff))
         elif r.status in ('unanchored-allowed', 'diff-allowed'):
             named_gaps.append('%08X' % s.bank)
+            if r.status == 'diff-allowed':
+                prefix_total += r.claimed
+                if prefix_pins is not None:
+                    if r.prefix_min is None:
+                        failed.append('section %d bank %08X: diff-allowed matched '
+                                      'prefix has no per-section pin'
+                                      % (r.index, s.bank))
+                    elif r.claimed < r.prefix_min:
+                        failed.append('section %d bank %08X: claimed matched prefix '
+                                      '%d ticks, pinned minimum %d'
+                                      % (r.index, s.bank, r.claimed, r.prefix_min))
         elif r.status in ('no-claim', 'no-key-on'):
             # A one-tick section (the replay ends at the next song's start), or
             # a section with no key-on to anchor (the sample-queue hand-off
@@ -943,9 +996,25 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
                         'unanchored', 'diff', 'unattributed'):
                     failed.append('section %d bank %08X: expected a named gap, '
                                   'got %s' % (r.index, bank, r.status))
+    if prefix_pins:
+        by_index = {r.index: r for r in results}
+        for index, minimum in sorted(prefix_pins.items()):
+            r = by_index.get(index)
+            if r is None:
+                failed.append('section %d: pinned matched prefix %d ticks is '
+                              'absent from the port dump' % (index, minimum))
+            elif r.status not in ('anchored', 'diff-allowed'):
+                failed.append('section %d bank %08X: matched-prefix claim lost '
+                              '(%s), pinned minimum %d'
+                              % (index, r.section.bank, r.status, minimum))
     print('audio-compare: %s: %d compared ticks over %d section(s); %d named gap(s) %s'
           % (name, total, sum(1 for r in results if r.status == 'anchored'),
              len(named_gaps), ('[' + ' '.join(named_gaps) + ']') if named_gaps else ''))
+    if prefix_total:
+        print('audio-compare: %s: %d claimed matched-prefix ticks over %d '
+              'diff-allowed section(s); the unmatched remainders stay named gaps'
+              % (name, prefix_total,
+                 sum(1 for r in results if r.status == 'diff-allowed')))
     if total < min_ticks:
         failed.append('claimed %d ticks, pinned minimum %d' % (total, min_ticks))
     ok = not failed
@@ -958,12 +1027,17 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
             'ok': ok,
             'total_ticks': total,
             'min_ticks': min_ticks,
+            'prefix_ticks': prefix_total,
+            'prefix_sections': sum(1 for r in results if r.status == 'diff-allowed'),
             'sections': len(results),
             'compared': sum(1 for r in results if r.status == 'anchored'),
             'named_gaps': named_gaps,
             'captures': [os.path.basename(p) for p, _, _ in captures],
-            'section_detail': [{'bank': '%08X' % r.section.bank,
-                                'status': r.status} for r in results],
+            'section_detail': [{'index': r.index,
+                                'bank': '%08X' % r.section.bank,
+                                'status': r.status,
+                                'claimed_ticks': r.claimed,
+                                'prefix_min': r.prefix_min} for r in results],
             'failed': failed,
         }
         parent = os.path.dirname(json_out)
@@ -985,6 +1059,12 @@ def cmd_compare(a):
             min_ticks = pin[0]
         allow = list(pin[1]) + allow
         allow_diff = list(pin[2]) + allow_diff
+    prefix_pins = None
+    if a.prefix_pin:
+        prefix_pins = dict(TRACE_PREFIX_PINS.get(name, {}))
+        for part in a.prefix_pin:
+            index, minimum = part.split(':')
+            prefix_pins[int(index, 0)] = int(minimum, 0)
     expect = None
     if a.expect_sections:
         expect = []
@@ -994,7 +1074,7 @@ def cmd_compare(a):
             bank, kind = part.split(':')
             expect.append((int(bank, 16), kind))
     return compare_trace(name, a.port, a.capture, min_ticks, allow, allow_diff,
-                         a.game_dir, a.verbose, a.json_out, expect)
+                         a.game_dir, a.verbose, a.json_out, expect, prefix_pins)
 
 
 def cmd_capture_end(a):
@@ -1137,6 +1217,8 @@ def main(argv):
     c.add_argument('--min-ticks', type=int, default=0)
     c.add_argument('--allow-unanchored', default='')
     c.add_argument('--allow-diff', default='')
+    c.add_argument('--prefix-pin', action='append', default=[],
+                   help='override one section\'s matched-prefix minimum: INDEX:TICKS')
     c.add_argument('--game-dir')
     c.add_argument('--expect-sections', default='',
                    help='override the scenario inventory: hash:matched,hash:named')

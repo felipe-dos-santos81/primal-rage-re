@@ -467,6 +467,29 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('DIFF ALLOWED named gap', r.stdout)
 
+    def test_diff_allowed_matched_prefix_pin_fails_one_tick_short(self):
+        # The capture differs at tick 5, so ticks 0..4 are the measured matched
+        # prefix. A minimum of 5 passes; raising that same section's pin to 6
+        # must fail rather than letting the named remainder erase the prefix.
+        port, cap = base_case()
+        cap = [(rel, reg, 0x09 if rel == 5 else val) for rel, reg, val in cap]
+        args = ('--allow-diff', '%08X' % BANK)
+        r = self.case(port, cap, *args, '--prefix-pin', '0:5')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('claimed matched prefix 5 ticks', r.stdout)
+        r = self.case(port, cap, *args, '--prefix-pin', '0:6')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('claimed matched prefix 5 ticks, pinned minimum 6', r.stdout)
+
+    def test_diff_allowed_prefix_difference_at_tick_zero_claims_zero(self):
+        # Bypass anchor selection to isolate the already-computed alignment
+        # prefix: a capture that differs in its first group has no prefix to
+        # claim, not a one-tick claim and not the named section's whole length.
+        r = audio_compare.align_groups([[(0x21, 0x03)]], [[(0x22, 0x04)]])
+        self.assertFalse(r.ok)
+        self.assertEqual(r.first_tick, 0)
+        self.assertEqual(r.claimed, 0)
+
     def test_capture_end_reads_the_x_record(self):
         cap = os.path.join(self.d, 'cap')
         os.makedirs(cap)

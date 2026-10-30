@@ -580,3 +580,95 @@ design §9 bullet "The two-human-only gates cannot be poked open" states the sto
 - A real two-human chain needs a measured sequence this phase does not have: eight
   hits on one airborne entry, the stage word 0, `b1d` 0 or 1, `b1f == 3`,
   `DS_00104AD8 <= 0` and `fight_13134` false.
+
+## §L11 The diff-allowed audio matched prefixes (Task 11)
+
+**Decision: all 74 diff-allowed sections in the existing 27 reports have a
+falsifiable matched prefix, so all 74 are pinned.** This is tool-only: no capture,
+port code or Makefile change. The claim is the leading run of matched tick groups
+already computed as `al.claimed`, not the whole differing section. The first
+difference and everything after it stay a named gap.
+
+### L11.1 The measured per-section minima
+
+The inputs were the existing `/tmp/pr_audio_dump/<scenario>/audio.txt` dumps and
+their `.dro` captures, with no replay. Re-running the comparator over those dumps
+measured **74 prefixes / 29,656 ticks**. `TRACE_PREFIX_PINS` in
+`tools/audio_compare.py` records each minimum by scenario and the port dump's
+original section index. Each row below is `section/bank=measured ticks`; the shipped
+pin equals that measurement in every row.
+
+| scenario | section/bank=matched-prefix ticks |
+|---|---|
+| `gp-idle-loss` | 3/BF1C78E2=30; 9/8FE546D4=960; 10/19AB8B2B=301 |
+| `gp-idle-loss-run2` | 3/BF1C78E2=30; 5/E3533961=5; 6/BF1C78E2=20; 9/8FE546D4=960; 10/19AB8B2B=303 |
+| `gp-keys-fight` | 3/BF1C78E2=30 |
+| `gp-u10-ending` | 5/E3533961=5; 8/42BECD5B=932; 12/B40FF4A6=120; 13/15B3F30E=1437; 14/15B3F30E=826; 15/19AB8B2B=118 |
+| `gp-u12-endurance` | 3/3D536DDE=180 |
+| `gp-u13-ending2` | 5/E3533961=5; 8/42BECD5B=932; 12/B40FF4A6=120; 13/15B3F30E=1435; 14/15B3F30E=827; 15/19AB8B2B=301 |
+| `gp-u16-twop2` | 5/E3533961=5; 8/E3533961=5 |
+| `gp-u18-talon-ending` | 5/E3533961=5; 6/87E7C2DE=28; 8/42BECD5B=933; 9/94C63685=581; 12/B40FF4A6=120; 13/15B3F30E=1435; 14/15B3F30E=827; 15/19AB8B2B=302 |
+| `gp-u19-vertigo-ending` | 3/3D536DDE=180; 5/E3533961=5; 6/3D536DDE=180; 8/42BECD5B=930; 9/94C63685=14; 12/B40FF4A6=120; 13/15B3F30E=1436; 14/15B3F30E=828; 15/19AB8B2B=303 |
+| `gp-u20-chaos-ending` | 5/E3533961=5; 6/86946EB7=180; 8/42BECD5B=932; 9/94C63685=581; 12/B40FF4A6=120; 13/15B3F30E=1437; 14/15B3F30E=57; 15/19AB8B2B=302 |
+| `gp-u21-armadon-ending` | 5/E3533961=5; 6/BC44EF50=204; 9/94C63685=581; 12/B40FF4A6=120; 13/15B3F30E=1437; 14/15B3F30E=828; 15/19AB8B2B=302 |
+| `gp-u22-diablo-ending` | 3/BF1C78E2=30; 5/E3533961=5; 6/BF1C78E2=30; 8/42BECD5B=931; 12/B40FF4A6=120; 13/15B3F30E=1435; 14/15B3F30E=828; 15/19AB8B2B=118 |
+| `gp-u23-u16-finisher` | 1/286ED662=25; 2/F1774E70=21; 5/E3533961=5; 7/3EA76262=425; 8/1895A942=177 |
+| `gp-u6-moves` | 3/BF1C78E2=20 |
+| `gp-u8-attract-start` | 3/86946EB7=85 |
+| `gp-u8-right-training` | 2/F1774E70=21 |
+| `gp-u9-win` | 5/E3533961=5; 9/86946EB7=170 |
+
+A diff-allowed result shorter than its section's minimum fails. A capture differing
+at tick 0 has `claimed = 0`. A pinned prefix that becomes unanchored or otherwise
+loses its comparison fails rather than silently becoming only a named gap; a later
+full-section match is a stronger claim and is accepted. A new diff-allowed section
+in a measured scenario needs its own measured pin. The existing `TRACE_PINS`
+whole-section totals, minima, allowances and section inventories are unchanged;
+`prefix_ticks` is reported separately and is not added to `total_ticks`.
+
+### L11.2 RED/GREEN, nulls and the 27-report rerun
+
+The new public-comparator test was RED before the option/guard existed:
+`test_diff_allowed_matched_prefix_pin_fails_one_tick_short` returned usage error 2
+for `--prefix-pin`, instead of accepting the measured five-tick prefix. After the
+change, pin 5 passes and pin 6 fails with `claimed matched prefix 5 ticks, pinned
+minimum 6`. `test_diff_allowed_prefix_difference_at_tick_zero_claims_zero` isolates
+`align_groups`: different tick-0 groups return `first_tick = 0`, `claimed = 0`.
+The existing rotation nulls remain in the same suite and pass:
+`test_rotation_anchor_rejects_a_wrongly_rotated_copy` (the shifted copy) and
+`test_rotation_anchor_rejects_a_shuffled_capture`; the full module is **43 tests OK**.
+
+On the real `gp-u23-u16-finisher` dump, section 1 measures 25 ticks and passes pin
+25. The otherwise identical command with `--prefix-pin 1:26` exits 1 and names
+`section 1 bank 286ED662: claimed matched prefix 25 ticks, pinned minimum 26`.
+The final report-only comparison of all 27 dumps then passed; the summary reads
+**29/29 files, 26 with music, summary ok** (plus the declared U17 wall-paced skip).
+A JSON cross-check reproduced all **74/74** values exactly, total **29,656**, and
+confirmed every pre-existing whole-section total/minimum against the old reports.
+No Makefile pin or command was needed.
+
+### L11.3 The bank inventory re-measured from those reports
+
+The 27 reports request **22 distinct banks** of the code-reachable 26. The categories
+below are **whole-section** categories; a bounded prefix claim does not reclassify a
+bank as a whole-section match.
+
+- **12 claimed by at least one whole-section match:** title+0x36102, selmo+0x25C,
+  selmo+0x08, beach+0x08, caves+0x08, jungl+0x08, stone+0x08, snd2+0x21BFA,
+  sound+0x6EC8, sound+0x08, grave+0x1A10 and grave+0x05E4.
+- **10 requested but unclaimed as whole sections:** citys+0x08, conti+0x08,
+  hghsc+0x08, himal+0x08, sound+0x335E, sound+0x39F4, sound+0x3E64,
+  sound+0x5B88, sound+0x6CA8 and sound+0x72D4. Eight of these have at least one
+  of the bounded diff-allowed prefix claims above; citys+0x08 and sound+0x5B88
+  remain unanchored.
+- **4 never requested:** **grave+0x0A8C, grave+0x08, sound+0x7714 and
+  konsd+0x1CCB0**. These need new captures that request them. No such capture was
+  made, and no coverage is claimed for them.
+
+### L11.4 Claim limits
+
+The new claim is exactly the per-section matched register-tick prefix under the
+existing reduction/alignment model. It is not a whole-section match, not a claim
+about the unmatched remainder or capture tail, and not rendered audibility (the OPL
+core/mixer remains an invented model; the PCM pin remains determinism). The U14 gap,
+all gameplay pins and every pre-existing audio pin stay unchanged.

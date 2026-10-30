@@ -465,13 +465,17 @@ consolidation gate).
   group must be empty and every port write matched once), skipping absent traces by name;
   the selmo section is per-tick exact in 24 of the 26 music traces
   (`gp-u8-attract-start`'s tick-57 jitter and `gp-u23-u16-finisher`'s capture tick split;
-  `gp-u22-diablo-ending`'s title is a separate label-slack/stop named gap). The nine ending
+  `gp-u22-diablo-ending`'s title is a separate label-slack/stop named gap). Live-truth
+  §L11's `TRACE_PREFIX_PINS` separately pins the measured **74 diff-allowed sections'
+  29,656 leading matched ticks**; a one-tick-short prefix fails, the unmatched remainder
+  stays named, and the existing `TRACE_PINS` totals do not move. The nine ending
   captures' loader `OVERLAY_ALLOWED` entries retired as clean matches and their
   `MAX_MISSING`/`MIN_REACH` pins were re-measured (record §M2.7). **Named gaps:** rendered
-  audibility (the OPL core/mixer is an invented model); 16 of the 26 code-reachable banks
-  are not requested or attributed in the measured cut windows, and 5 more (citys, himal,
-  caves, sound+0x5B88, sound+0x3E64) are requested-only named gaps — only title,
-  selmo+0x25C, selmo+0x08, beach+0x08 and jungl+0x08 are capture-matched; the later
+  audibility (the OPL core/mixer is an invented model); across the 27 reports, **12 of
+  the 26 code-reachable banks are claimed by whole-section matches, 10 are requested
+  but unclaimed as whole sections** (some have the bounded prefix claim), and **4 are
+  never requested** — grave+0x0A8C, grave+0x08, sound+0x7714 and konsd+0x1CCB0 — and
+  need new captures; the unmatched diff-allowed remainders and the later
   `0x31`/match sections the capture's cursor advanced past; and `0x1C930`/`0x1CF40` stay
   `UNROWED` (a row would fabricate the AIL handle and could not compare the hand-off). The
   PCM pin is **determinism, not audibility**: `make audio-render` renders the selected
