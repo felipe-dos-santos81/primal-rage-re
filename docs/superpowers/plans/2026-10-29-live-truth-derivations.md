@@ -384,6 +384,19 @@ its measured value. The restored oracle is green.
 | capture SHA's final hex digit `e -> f` | capture identity mismatch (2,565 frames) |
 | `CAPTURE_FRAMES 2565 -> 2564` | capture identity mismatch (2,565 actual frames) |
 
+The final whole-branch review also mutation-tested each of the four allowances
+against full scratch copies of the retained capture and replay dump. Each run
+flipped one real decompressed capture byte with `^= 1`, restored that scratch
+frame from the retained capture afterwards, and exited 1. No capture or pin
+changed; SHA-256 checks of the four retained compressed frames stayed OK.
+
+| Allowance mutation | Measured failure |
+|---|---|
+| capture 1286, offset 157440 (band row 164) | `allowed capture 1286 ... not its named band splice`: band hash `6ebddb8a9a15..`, not `1aa2036067e1..`; first unexplained 1286 |
+| capture 1291, offset 105600 (band row 110) | `allowed capture 1291 ... not its named band splice`: band hash `26c60181e0de..`, not `d17fe0cfb943..`; first unexplained 1291 |
+| capture 272, offset 0 (top row 0) | `allowed capture 272 ... not its named three-frame scan-out`: top hash `1ffe203986f4..`, not `d6d2b8293a6a..`; first unexplained 272 |
+| capture 2286, offset 0 (top row 0) | `allowed capture 2286 ... not its named three-frame scan-out`: top hash `3749a5b7986d..`, not `f598b5d6c06a..`; first unexplained 2286 |
+
 `tools.tests.test_gp_compare` passes all 92 tests, and
 `tools.tests.test_gp_twop` passes all 54 in the oracle.
 `PR_PINS_EXACT=1 make gp-twop-ko-oracle` passes with the exact miss set and all
@@ -488,7 +501,7 @@ The checker and the capture's S/W records measure:
 | credits unchanged | `cred=4` throughout the screen and at expiry; no credit write |
 | complete countdown | `cnt=0x0F` at `f=0x14C0`, then `0x0E@0x1500`, `0x0D@0x1540`, …, `0x01@0x1840`, `0x00@0x1880`: every value 15→0, 64 master frames apart |
 | PRESS START path | first at `cnt=0x0D`, `f=0x1540`: the raw gate is `cnt < 0x0E` (`flow.c:2016`), and `cred=4` selects `prompt_press_start_blink` (`0x2C0F4`), not INSERT COIN |
-| expiry | `f=0x18C2 mode=0x15 b25=0 cnt=0xFF` (`0x27AE5..0x27B1C`) |
+| first sampled expiry | transition `f=0x18C0`; first sampled mode-`0x15` record `f=0x18C2 mode=0x15 b25=0 cnt=0xFF` (`0x27AE5..0x27B1C`) |
 
 The first PRESS START value is **13, not 14**: `0x27B59 cmp eax,0xE; jge` skips
 the prompt at 14. A test asserting the raw threshold failed against the initial
@@ -602,16 +615,17 @@ path. The affected Python suites (`test_gp_continue`, `test_gp_compare`,
 No game or port implementation file changed, no other capture or oracle pin
 moved, and the full `make verify` remains Task 13.
 
-## §L6 The mode-0x25 bowling route: measured failures and a structural blocker (Task 6)
+## §L6 The mode-0x25 bowling route: measured failures and an unresolved blocker (Task 6)
 
 **Decision: no bowling capture, oracle, pin or census claim is published.** The
 first one-attempt route reached `b892 = 2`; the review-corrected three-attempt
 route's last sampled value was **5**. Neither opened mode `0x25`. The artifacts
 are preserved as `data/k11-captures/gp-bowling.failed` and
-`data/k11-captures/gp-bowling-fix.failed`. The current symmetric route is
-structurally blocked by slot 0's `+0x53`, as derived below. **No fourth execution
-of that route is authorized and no more captures are to be run.** A staggered
-route would be a new, unmeasured task, not a continuation of this one.
+`data/k11-captures/gp-bowling-fix.failed`. The precise remaining blocker is
+unresolved; the case-7 clear branch below means the earlier structural-blocker
+wording was not derived. Mode `0x25` stays declared. **No fourth execution of
+that route is authorized and no more captures are to be run.** A staggered route
+would be a new, unmeasured task, not a continuation of this one.
 
 ### L6.1 The decoded banner, gates and move sequence
 
@@ -643,22 +657,29 @@ then, outside mode `0x25` and with the other slot at character 4 /
 (`fighter.c:9839-9842`). The reaction callback is character 4's `0x455A0`
 (`fighter.c:10004-10032`).
 
-That callback also creates the structural blocker. It installs the increment
-hook at slot `+0x18 = 0x45158` and, in the same activation, writes slot `+0x53 =
-7` at `0x455C3` and `+0x52 = 9` at `0x455C7` (`fighter.c:10010-10028`). The
-caller gate requires slot 0's `+0x53 == 0` (`flow.c:3228-3231`, `0x263DE`), but
-fighter states 9 and 10 are epilogue no-ops (`fight.c:2258-2260`), so they do not
-clear `+0x53`. It therefore stays 7 on every frame on which the reaction-`0x22`
-increment hook is active. The symmetric route cannot open `0x25`, regardless of
-whether the sampled counter stopped at 5 or reached 6 and was rejected. A
-staggered route would change the state coupling and is a new, unmeasured task.
+That callback complicates the route but does not derive a structural block. It
+installs the increment hook at slot `+0x18 = 0x45158` and, in the same
+activation, writes slot `+0x53 = 7` at `0x455C3` and `+0x52 = 9` at `0x455C7`
+(`fighter.c:10010-10028`). The caller gate requires slot 0's `+0x53 == 0`
+(`flow.c:3228-3231`, `0x263DE`), and fighter states 9 and 10 are epilogue no-ops
+(`fight.c:2258-2260`), so they do not clear `+0x53`. However, the `+0x53`
+dispatcher's case 7 can call `fighter_state_367dc` when character 4, reaction
+`0x21`/`0x22` and the `+0x86` threshold pass (`fighter.c:3680-3693`), and that
+callee clears `+0x52`/`+0x53` (`fighter.c:2690-2691`). Whether that clear can
+pass on every relevant increment frame is not derived. The two real-input
+attempts therefore remain measured failures (`b892=2`, then a last sample of 5),
+the precise remaining blocker is unresolved, and structural impossibility is not
+claimed regardless of whether the sampled counter stopped at 5 or reached 6 and
+was rejected. A staggered route would change the state coupling and is a new,
+unmeasured task.
 
 The S fields do not include the four remaining unmeasured gate inputs: camera
 `DS_000F0AF0`, `DS_00104AD8`, slot 0's `DS_00107803` (`+0x53`), or
-`DS_00104ABC`. They were not added to `SNAP_FIELDS`. The `+0x53` blocker above
-is a raw store/control-flow derivation, not a claim that its value was sampled;
-the mode entry would prove that the raw passed all four gates when the count
-reached 6, not what the bytes were on earlier frames.
+`DS_00104ABC`. They were not added to `SNAP_FIELDS`. The `+0x53` control flow
+above is a raw store/control-flow derivation, not a claim that its value was
+sampled, and it does not resolve the remaining blocker; the mode entry would
+prove that the raw passed all four gates when the count reached 6, not what the
+bytes were on earlier frames.
 
 `gp_moves.py list --char 4` decodes move 0 as reaction `0x22`, callback
 `0x455A0`, phases `20000/08000/00000/3`, the repeated
@@ -755,8 +776,9 @@ Thus the three qualifying frames contributed +1, +2 and +2, with **5 the last
 sampled value**. The trace cannot distinguish "stopped at 5" from "reached 6 and
 was rejected": the `0x4E131`/`0x4E189` rejection arm decrements in the same
 iteration, so either history has the same frame-boundary samples. No mode entry
-occurred in either case. Independently, the `+0x53 = 7` coupling makes the entry
-gate structurally closed on this symmetric route. `b8c4` stayed 0 and the mode
+occurred in either case. The `+0x53 = 7` coupling does not prove the entry gate
+structurally closed because the case-7 clear branch in §L6.1 remains to be
+reasoned through; the precise blocker is unresolved. `b8c4` stayed 0 and the mode
 set remained `{03,05,06,10,11,17,1A,1B,27}`. The inner camera `DS_000F0AF0`,
 `DS_00104AD8`, `DS_00104ABC` and `DS_00107803` values were not sampled, as §L6.1
 declares. The checker exits 1 with
@@ -1172,6 +1194,18 @@ malformed `--prefix-pin`. Removing each corresponding guard makes its test fail
 exit 1); malformed input now exits 2 through argparse without a traceback. The
 module is now **47 tests OK**.
 
+The final whole-branch review adds the anchored-short regression: the fully
+matched synthetic `base_case()` claims 7 ticks and returned `synthetic: ok` under
+`--prefix-pin 0:8` before the fix (RED); afterwards it exits 1 with `claimed
+matched prefix 7 ticks, pinned minimum 8` (GREEN). The per-section minimum now
+applies to both `anchored` and `diff-allowed` results, and the module is **48
+tests OK**. `TRACE_PREFIX_PINS` is wrapped in its own
+`PIN-BASELINE-BEGIN/END trace-prefix-pins` region, with a `capture_manifest`
+guard that the region exists and contains the table. The measured re-pin reason
+is `live truth final review: add the trace-prefix-pins region`, digest
+`cadd4ec68740a7839847bc4ed1375af4a8f970564bc06181789fb49249308f88`. No prefix
+or other measured pin value changed.
+
 ### L11.3 The bank inventory re-measured from those reports
 
 The 27 reports request **22 distinct banks** of the code-reachable 26. The categories
@@ -1213,8 +1247,8 @@ present**, with only `gp-u14-win-live` declared absent. The KO-branch `0x0B`
 pose and `0x0E` continue screen/countdown/expiry are exhibited; U27 is gated.
 U16 R2's gate operand is measured as §L4 records, without deciding the wider
 finisher-gap question. U14's failed artifact remains game evidence only.
-`0x21` and `0x25` stay declared, the latter with §L6's structural blocker and
-two `.failed` artifacts. The audio claim is §L11's **74 prefixes / 29,656
+`0x21` and `0x25` stay declared, the latter after two failed real-input attempts
+with its precise blocker unresolved and two `.failed` artifacts. The audio claim is §L11's **74 prefixes / 29,656
 ticks**, not whole-section coverage or audibility.
 
 The unreproducible U27 258 scene total and mode split are withdrawn in §L7,
@@ -1251,8 +1285,8 @@ ported 798 (759 portable + 39 runtime)  host-owned 41  deferred 12  replaced 37 
 
 No capture, census, `diff-verify` or full `make verify` was run. Task 12a did
 not modify `tools/coverage_baseline.txt`, `tools/capture_manifest.json` or
-`tools/pin_baseline.sha256`; Task 12b owns those measured results and Task 13
-owns the full gate.
+`tools/pin_baseline.sha256`; Task 12b later produced those measured results
+(§L12.1), and Task 13 owns the full gate.
 
 ### L12.1 Task 12b measured re-pin and counters
 

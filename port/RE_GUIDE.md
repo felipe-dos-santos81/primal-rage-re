@@ -366,10 +366,14 @@ true original, and ported the divergence. Two pieces:
   route reached `DS_00108892 = 2`, and the review-corrected three-attempt route's
   last sample was 5 (+1/+2/+2); the trace cannot distinguish stopping at 5 from
   reaching 6 and taking the same-iteration rejection decrement. Mode `0x25` never
-  opened. The current symmetric route is structurally blocked: the reaction-`0x22`
+  opened, and the precise remaining blocker is unresolved. The reaction-`0x22`
   callback installs the increment hook and sets slot `+0x53=7` (`0x455C3`), while
-  the caller requires slot 0's `+0x53==0` (`0x263DE`) and states 9/10 are no-ops,
-  so `+0x53` stays 7 on every increment frame. The artifacts are
+  the caller requires slot 0's `+0x53==0` (`0x263DE`) and states 9/10 are no-ops;
+  however, the `+0x53` dispatcher's case 7 can call `fighter_state_367dc` for
+  character 4, reaction `0x21`/`0x22` and a passing `+0x86` threshold
+  (`fighter.c:3680-3693`), and that callee clears `+0x52`/`+0x53`
+  (`fighter.c:2690-2691`). Whether that clear can pass on every relevant increment
+  frame is not derived, so structural impossibility is not claimed. The artifacts are
   `gp-bowling.failed` and `gp-bowling-fix.failed`, with no replay, oracle or pin.
   No fourth execution of the current route is authorized and no more captures are
   to be run; a staggered route would be a new, unmeasured task (record
@@ -382,7 +386,7 @@ true original, and ported the divergence. Two pieces:
   verifies `w10d=0`, unchanged `cred=4`, `b1f=0`, the complete 15→0 countdown,
   PRESS START at 13 (`cnt < 0x0E`) and the mode-`0x15`/`b25=0` expiry; it does
   not claim a fought KO or the taken-continue `0x2791C` path. The pre-L5 census
-  rows (`0x4BD98`/`0x4E11C`/`0x27A2C`) are `NOT-HIT`; Task 12 re-measures them.
+  rows (`0x4BD98`/`0x4E11C`/`0x27A2C`) are `NOT-HIT`; Task 12b re-measured them.
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live truth Task 2, record §L2), a distinct claim from the timeout branch's
   `gp-draw-timeout`.

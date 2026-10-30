@@ -131,9 +131,11 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   mode `0x25`. This was the proposed route to the family's first execution
   evidence; the census rows were all `NOT-HIT` at design time.
 - **Execution outcome (Task 6; declared gap, record §L6):** mode `0x25` never
-  opened in either real-input attempt. The symmetric route is structurally
-  blocked by slot `+0x53`; the two `.failed` artifacts have no replay, oracle
-  or pins, and no further execution of the current route is authorized.
+  opened in either real-input attempt (`b892=2`, then a last sample of 5). The
+  precise remaining blocker is unresolved: the `+0x53` dispatcher's case-7 clear
+  branch means the earlier structural-impossibility wording is not derived. The
+  two `.failed` artifacts have no replay, oracle or pins, and no further execution
+  of the current route is authorized.
 
 ### 2.6 `0x21` — volleyball stays declared
 
@@ -144,8 +146,9 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   spawns `0xBAB88`/`0xBAB9C` and sets `DS_001088AA=0x1E`.
 - The `b1d` byte is a **mode** byte (arcade 0), not a player count; the
   `b1f==3` join route satisfies `DS_00104ABC>=2`. The real blockers are the
-  eight-trample chain (the counter resets on landing; no capture has
-  `+0x1F>=2`) and the 1-in-7 stage RNG. A poke can force `+0x1F=8`, but the
+  eight-trample chain (the counter resets on landing; no capture measures that
+  count, and no capture evidences a count of two or more) and the 1-in-7 stage
+  RNG. A poke can force `+0x1F=8`, but the
   state-coverage design §9 is a stop rule for a poked 1P scenario ("Do not build
   one; declare the modes with their gates"); reversing that is an operator
   decision, not this phase's call.
@@ -275,7 +278,7 @@ KOs named); the two-human KO window (`gp-twop-ko`, the KO is the game's own
 damage path, no KO pokes); the continue screen and its 15→expiry countdown
 (`gp-u28-continue`, the KO poked); the name-entry entry/finaliser (`gp-u27`);
 the measured U16 gate value; the U14 fought-KO game evidence; and the decoded
-`0x25` banner plus its measured structural blocker.
+`0x25` banner plus the two measured failed attempts and unresolved blocker.
 
 **Will not claim:** the fought win; the volleyball or bowling mode content;
 the 5120 cause unless the injection decides it; rendered audibility; the

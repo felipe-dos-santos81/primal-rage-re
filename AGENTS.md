@@ -557,11 +557,15 @@ consolidation gate).
   two real-input attempts with no pokes: the one-attempt route reached `b892=2`,
   and the review-corrected three-attempt route's last sample was 5 (+1/+2/+2);
   the trace cannot distinguish stopping at 5 from reaching 6 and taking the
-  same-iteration rejection decrement. Mode `0x25` never opened, and the symmetric
-  route is structurally blocked: the reaction-`0x22` callback installs the
+  same-iteration rejection decrement. Mode `0x25` never opened, and the precise
+  remaining blocker is unresolved: the reaction-`0x22` callback installs the
   increment hook and sets slot `+0x53=7` (`0x455C3`), the caller requires slot 0's
-  `+0x53==0` (`0x263DE`), and states 9/10 are no-ops, so it stays 7 on every
-  increment frame. The artifacts are preserved as `gp-bowling.failed` and
+  `+0x53==0` (`0x263DE`), and states 9/10 are no-ops, but the `+0x53` dispatcher's
+  case 7 can call `fighter_state_367dc` for character 4, reaction `0x21`/`0x22`
+  and a passing `+0x86` threshold (`fighter.c:3680-3693`), whose callee clears
+  `+0x52`/`+0x53` (`fighter.c:2690-2691`). Whether that clear can pass on every
+  relevant increment frame is not derived, so structural impossibility is not
+  claimed. The artifacts are preserved as `gp-bowling.failed` and
   `gp-bowling-fix.failed`, with no replay, oracle or pin; no fourth execution of
   the current route is authorized and no more captures are to be run. A staggered
   route would be a new, unmeasured task (record §L6). The counter's increment
@@ -574,7 +578,7 @@ consolidation gate).
   A poked 1P scenario cannot open `0x21`/`0x25` (no poke writes
   `b1f`/`DS_00104ABC`), so none is built. The pre-L5 census rows
   `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the
-  trample `0x4B470` is `HIT`); Task 12 re-measures them. The L5 expiry capture
+  trample `0x4B470` is `HIT`); Task 12b re-measured them. The L5 expiry capture
   reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`.
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`
@@ -673,8 +677,9 @@ consolidation gate).
   Task 5, record §L5). `gp-u28-continue` reuses U10's route through match 1, then
   pokes the incumbent (`0x10780A=0x78`) at the first mode-`0x0C` entry; the
   capture verifies `w10d=0`, `cred=4`, `b1f=0`, all sixteen countdown values
-  15→0 (64 frames apart), the PRESS START arm at 13 (`cnt < 0x0E`) and expiry
-  `f=0x18C2 mode=0x15 b25=0`. The three KOs (four writes) are labelled harness
+  15→0 (64 frames apart), the PRESS START arm at 13 (`cnt < 0x0E`) and the first
+  sampled expiry at `f=0x18C2 mode=0x15 b25=0` (the transition is `f=0x18C0`).
+  The three KOs (four writes) are labelled harness
   writes; neither a fought KO nor the taken-continue `0x2791C` path is claimed.
   `gp-u28-continue-oracle` is in `make verify` and `CAPTURE_DIRS`, with
   `k_miss_gp_u28_continue`, a 17/17 trace-carried-field path and capture 336's

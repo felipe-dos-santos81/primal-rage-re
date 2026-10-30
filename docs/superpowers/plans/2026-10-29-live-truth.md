@@ -484,7 +484,8 @@ no capture, oracle or pin.
   two spawns, the `0x1E` timer, and the two-human gate `DS_00104ABC>=2`.
 - [ ] **Step 2: Record the blockers.** The `b1d` byte is a mode byte, not a
   player count; the stage RNG is 1-in-7; the trample counter resets on
-  landing; no capture has `+0x1F>=2`; a poke can force `+0x1F=8`, but the
+  landing; no capture measures that count, and no capture evidences a count of
+  two or more; a poke can force `+0x1F=8`, but the
   state-coverage design §9 stop rule says "Do not build one; declare the modes
   with their gates".
 - [ ] **Step 3: State the decision.** Keep `0x21` declared; a later poked
@@ -605,8 +606,8 @@ gap declared.
 
 - [ ] **Step 1: Update the narrative.** Add the new oracles/commands, the
   capture inventory, and the corrected named gaps: `0x0B` exhibited (KO draw),
-  `0x0E` exhibited, `0x25` declared after Task 6's structurally blocked
-  attempts, `gp-u27` gated, U16 R2 measured, U14 game-evidence-only, `0x21`
+  `0x0E` exhibited, `0x25` declared after Task 6's two failed attempts with its
+  precise blocker unresolved, `gp-u27` gated, U16 R2 measured, U14 game-evidence-only, `0x21`
   declared, 5120 outcome, audio prefix. Keep the U14 fought win declared.
 - [ ] **Step 2: Re-measure the counters.** `python3 tools/port_progress.py`
   (expect `798 1203 66` / `759 759 100`); `make diff-verify` (expect the
@@ -678,8 +679,9 @@ pin ±1-proved; no existing pin weakens; the U14 gap remains declared.
 - U14's fought win (R1) — unless a new explicit go-ahead names a capture.
 - The `0x21` volleyball content — unless the operator reverses state-coverage
   design §9 for a poked exhibit.
-- The `0x25` bowling content — Task 6's symmetric route is structurally
-  blocked; two `.failed` artifacts, no oracle or pins.
+- The `0x25` bowling content — Task 6's two real-input attempts failed
+  (`b892=2`, then a last sample of 5), the precise remaining blocker is
+  unresolved, and the two `.failed` artifacts have no oracle or pins.
 - The 5120 band's cause — Task 10 was not taken; the instrument gap stays
   declared and the band INCONCLUSIVE.
 - Rendered audibility; the 4 never-requested audio banks; the terminal

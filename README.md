@@ -83,7 +83,8 @@ ENDURANCE team end, the side-1 tour, the timeout draw, the U16 reaction
 fix and the OPL pitch test. Live truth gates the KO-branch `0x0A`/`0x0B`
 draw, the no-poke two-human KO, the `0x0E` continue countdown/expiry and the
 name-entry path. The `0x25` bowling route stays declared after two failed
-real-input attempts and its structural slot-`+0x53` blocker. U16 R2's gate
+real-input attempts (`b892=2`, then a last sample of 5); its precise remaining
+blocker is unresolved. U16 R2's gate
 operand is measured. U14's failed artifact is game evidence for a fought
 arcade KO only.
 The fought-match truth phase measured the harness and two game-side results
