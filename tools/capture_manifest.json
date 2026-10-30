@@ -349,6 +349,17 @@
       "last_s_frame": 2973
     },
     {
+      "path": "data/k11-captures/gp-u28-continue",
+      "kind": "k11",
+      "poll_log_sha256": "96645e99a3718f5c387c6613d2faddaa8221ad936ea8c80f82a3dd602e51246e",
+      "frame_count": 4621,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 6395
+    },
+    {
       "path": "data/k11-captures/walk",
       "kind": "k11",
       "poll_log_sha256": "aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f",

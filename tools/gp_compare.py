@@ -539,6 +539,14 @@ SCAN3_ALLOWED = {
         # dump's unique adjacent-pair bind. Port 220 (f=0x47D) is unexhibited.
         (334, 3, 63, 'f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b'),
     ),
+    'gp-u28-continue': (
+        # Live truth Task 5 (record §L5): capture 336 (raw 2825), the round-1
+        # mode-8 entry's three-present scan-out. Rows 0..1 are port 216's alone
+        # before the bind, rows 2..9 are port 218's and rows 10..199 port 219's;
+        # (218, 219) is the 3844-frame dump's unique adjacent-pair bind. Port
+        # 217 is unexhibited. The byte recipe covers this capture frame only.
+        (336, 2, 10, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
+    ),
 }
 # <<< PIN-BASELINE-END scan3
 

@@ -411,6 +411,15 @@ static const fnm_pair k_miss_gp_draw_timeout[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u28-continue (live truth Task 5, record §L5), measured on the full replay
+ * to its X record (f=0x18C2): the two wipe hooks of §G.24, 0x29D60 (bare `ret`,
+ * hits=1) and 0x5D812 (runtime stub, hits=3), both from frontend_mode_1b_step;
+ * the global actor_spawn/set_dead 0x5D812 rows are the fight's, as gp-u10-ending's. */
+static const fnm_pair k_miss_gp_u28_continue[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -481,6 +490,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u27-name-entry", 0, k_miss_gp_u27_name_entry, FNM_N(k_miss_gp_u27_name_entry) },
     { "gp-draw", 0, k_miss_gp_draw, FNM_N(k_miss_gp_draw) },
     { "gp-draw-timeout", 0, k_miss_gp_draw_timeout, FNM_N(k_miss_gp_draw_timeout) },
+    { "gp-u28-continue", 0, k_miss_gp_u28_continue, FNM_N(k_miss_gp_u28_continue) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

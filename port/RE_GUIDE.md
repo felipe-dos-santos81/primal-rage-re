@@ -352,18 +352,23 @@ true original, and ported the divergence. Two pieces:
   `0x663D4`; `0x2D62C` is the counter, not the ISR). AIL's own dispatch from
   `0x6627E` to the registered callback `0x1BDF4` is not traced byte by byte
   (record `2026-10-23-endgame-truth-derivations.md` §E1.6).
-- The out-of-scope content modes are declared, not captured (state-coverage
-  record `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md`
-  §D2): `0x21` (the volleyball easter egg, entered at `0x4BD98` after the
-  eighth worshipper trample `+0x1F > 7`) and `0x25` (the both-characters-4
-  mirror-ARMADON camera sequence, entered at `0x4E11C`) both read
-  `DS_00104ABC >= 2`, and `DS_00104ABC = (DS_00104B1F == 3) + 1`
-  (`flow.c:1632`/`2416`), so they are two-human-only; `0x0E` (the continue
-  screen `0x27A2C`) needs a lost match plus a credit. A poked 1P scenario
-  cannot open `0x21`/`0x25`. Their census rows (`0x4BD98`/`0x4E11C`/`0x27A2C`)
-  are `NOT-HIT`. The KO-branch `0x0B` drawn winner pose is exhibited and pinned
-  by `gp-draw` (live truth Task 2, record §L2), a distinct claim from the
-  timeout branch's `gp-draw-timeout`.
+- The out-of-scope content modes `0x21` (the volleyball easter egg, entered at
+  `0x4BD98` after the eighth worshipper trample `+0x1F > 7`) and `0x25` (the
+  both-characters-4 mirror-ARMADON camera sequence, entered at `0x4E11C`) stay
+  declared, not captured (state-coverage record
+  `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2).
+  Both read `DS_00104ABC >= 2`, and
+  `DS_00104ABC = (DS_00104B1F == 3) + 1` (`flow.c:1632`/`2416`), so a poked 1P
+  scenario cannot open them. The continue screen `0x0E` is now published by
+  `gp-u28-continue-oracle` (live truth Task 5, record §L5): mode `0x0C` opens it
+  only when the incumbent `DS_0010810D` side is KO'd. The labelled-poke capture
+  verifies `w10d=0`, unchanged `cred=4`, `b1f=0`, the complete 15→0 countdown,
+  PRESS START at 13 (`cnt < 0x0E`) and the mode-`0x15`/`b25=0` expiry; it does
+  not claim a fought KO or the taken-continue `0x2791C` path. The pre-L5 census
+  rows (`0x4BD98`/`0x4E11C`/`0x27A2C`) are `NOT-HIT`; Task 12 re-measures them.
+  The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
+  (live truth Task 2, record §L2), a distinct claim from the timeout branch's
+  `gp-draw-timeout`.
 - The proof-debt declaration (state-coverage §D7) declares what stays open:
   **U17** (the `gp-u17-device2` wall-paced walk has no tick-keyed replay — its
   screens are already covered by the K11 captures, record §H6.9) and **U14**
@@ -392,7 +397,9 @@ true original, and ported the divergence. Two pieces:
   `gp-u21`**), the KO-branch drawn match (`gp-draw`, `ad4=2`/`b1e=adc=3`/
   `w2=w3=1`, three labelled poked KOs; live truth Task 2, record §L2), the
   timeout draw (`gp-draw-timeout`, `clock=0` from the `W` record, `b16` not
-  asserted) and the name-entry path (`gp-u27-name-entry`, sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — now the
+  asserted), the continue screen (`gp-u28-continue`, 15→0, PRESS START at 13,
+  mode-`0x15` expiry; live truth Task 5, record §L5) and the name-entry path
+  (`gp-u27-name-entry`, sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — now the
   gated `gp-u27-oracle` in `make verify`; live truth Task 7, record §L7). The
   U16 fix (§D3): the reaction's record-motion
   gap is a null table base (the stream reads the IVT at linear 0), fixed by

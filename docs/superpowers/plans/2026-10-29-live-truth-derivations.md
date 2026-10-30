@@ -451,6 +451,156 @@ The deciding gate input is measured and is below the gate. The original's clear 
 the gate, read on the strict inequality. No port change follows, no pin moves, and
 no capture is taken. Whether the finisher gap R2 is closed is not decided here.
 
+## §L5 The continue screen, countdown and expiry (Task 5)
+
+**Decision: `gp-u28-continue` is published and `gp-u28-continue-oracle` is in
+`make verify`.** One guarded capture passed every session check and the new
+`tools/gp_continue.py check`. The claim is the continue screen's credit-ready
+PRESS START prompt, its complete countdown and its expiry. The three KOs are
+labelled harness pokes; neither a fought KO nor a taken continue is claimed.
+
+### L5.1 Raw route, the side rule and the measured countdown
+
+`flow_arena_ko_check` (`0x272DC`, `flow.c:1810-1827`) reads the incumbent side
+`w = (s8)DS_0010810D`. If **that side's** `+0x5A` is at least `0x78`, it calls
+`flow_continue_open` (`0x278B0`) and opens mode `0x0E`; if only the other side is
+KO'd, it takes the mode-`0x0D` winner-pose arm. This is the side rule the
+state-coverage declaration's "opens on a KO" omitted. The capture verifies
+`w10d=0`; it does not assume the brief's side.
+
+`SCENARIOS['gp-u28-continue']` reuses a new tuple sliced from
+`gp-u10-ending`'s LEFT PLAYER ARCADE route through the two match-1 KOs, then
+applies `KO_P1` (`0x10780A=0x78`) ten frames into the first mode-`0x0C` entry.
+`WIN_MENU`, `KO_P1` and `gp-u10-ending` are not mutated. Boot's five credits leave
+four after the arcade start, so there is no credit poke. The default 16 MB guest
+memory is sufficient: the scenario stops before the fourth-final OOM that
+justifies U10's `memsize=64` (§W.13), and the harness's memsize whitelist stays
+unchanged. `stop_mode=0x15`, `stop_delay=0` puts the whole countdown in the
+replay script.
+
+The checker and the capture's S/W records measure:
+
+| Claim | Capture evidence |
+|---|---|
+| labelled incumbent KO | `W f=0x14BF addr=0010780A now=78`; mode `0x0E` opens at `f=0x14C0` with `w10d=0` |
+| no taken continue | `b1f=0` throughout mode `0x0E`; `flow_continue_take` (`0x2791C`) is not called |
+| credits unchanged | `cred=4` throughout the screen and at expiry; no credit write |
+| complete countdown | `cnt=0x0F` at `f=0x14C0`, then `0x0E@0x1500`, `0x0D@0x1540`, …, `0x01@0x1840`, `0x00@0x1880`: every value 15→0, 64 master frames apart |
+| PRESS START path | first at `cnt=0x0D`, `f=0x1540`: the raw gate is `cnt < 0x0E` (`flow.c:2016`), and `cred=4` selects `prompt_press_start_blink` (`0x2C0F4`), not INSERT COIN |
+| expiry | `f=0x18C2 mode=0x15 b25=0 cnt=0xFF` (`0x27AE5..0x27B1C`) |
+
+The first PRESS START value is **13, not 14**: `0x27B59 cmp eax,0xE; jge` skips
+the prompt at 14. A test asserting the raw threshold failed against the initial
+checker and passed after the correction. `gp_continue.py path` compares only
+`gp_trace_line` fields (`mode`, `w10d`, `cnt`, `cred`, `b1f`, `b25`) and reproduces
+**17/17 milestones** at the capture's frames. The prompt's pixels are the frame
+oracle's claim, not a state-field invention.
+
+The task brief predicted that `0x2791C` should improve in the census. The raw
+call graph says otherwise: `0x2791C` is `flow_continue_take`, and this capture
+deliberately expires without taking the continue. Only `0x27A2C` and `0x278B0`
+should become HIT in Task 12's re-measurement; `0x2791C` stays NOT-HIT with its
+reason named here. No coverage baseline is changed in this task.
+
+### L5.2 The one capture and acceptance
+
+Command, run exactly once with host load 5.82 on 20 CPUs:
+
+```
+make gp-capture scenario=gp-u28-continue
+```
+
+The published capture is `data/k11-captures/gp-u28-continue`: **4,621 frames**
+(raw 1387..8985), 6,369 snapshots (`f=0x0005..0x18FB`, 22 game frames missed by
+the documented poller), wall 128.9 s, and poll.log sha256
+`96645e99a3718f5c387c6613d2faddaa8221ad936ea8c80f82a3dd602e51246e`.
+All session checks passed: base; 7/7 steps fired and stopped on mode `0x15`; end
+frame reached; mode `0x27` after Enter; `kb == raw`; 4,621/4,621 frames written;
+port script v2; no unscripted input; 4/4 pokes written with zero races; zero
+skipped BIOS words; stopped at the end. `check-input` independently prints
+`check=ok no unscripted input`. The X record and generated script end at
+`f=0x18C2` (6338); the later SIGTERM is `f=0x18FC` after the harness's
+`STOP_TAIL=60` poll. No `.failed` artifact and no second capture exists.
+
+### L5.3 Replay and miss set
+
+The first replay reached the script end and failed only the expected
+not-yet-registered miss-set assertion. Its measured rows were the global
+`0x5D812 actor_spawn` (3,863 hits) / `set_dead` (3,258) pair and
+`0x29D60`/`0x5D812` from `frontend_mode_1b_step` (1/3 hits, `distinct=4`).
+`k_miss_gp_u28_continue` and its exact-name `k_gp_sets` row pin the two hook
+pairs; the replay then passes. The dump has **3,844 presented frames**. Port
+3549 is the first mode-`0x0E` frame (`f=0x14C0`); port 3843 is the last
+(`f=0x18C0`, mode `0x15`). Trace and moves have zero differences through 6338.
+
+### L5.4 Frame measurement and pin proofs
+
+The initial frame report stopped at capture **336** (raw 2825). Its bytes are the
+round-1 mode-8 entry's three-present scan-out, not a continue-screen divergence:
+
+- rows 0..1 equal port 216, the only earlier holder;
+- rows 2..9 equal port 218 and rows 10..199 equal port 219;
+- `(218,219)` is the dump's unique adjacent-pair bind; port 217 is unexhibited;
+- top sha256 is
+  `2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd`.
+
+Only `SCAN3_ALLOWED['gp-u28-continue']` gained that measured recipe. With it,
+the first unexplained frame is capture **4596** (raw 8922), in the post-script
+STOP_TAIL; all prompt/countdown/expiry content is below it. The final report has
+window start **96** (raw 1738), reach **3843**, zero order failures over 4,485
+classified frames, and **17** canonical non-black missing classes:
+`[9, 29, 31, 91, 127, 217, 1039, 1040, 1103, 1104, 1525, 1792, 1793, 2005,
+2006, 2093, 3362]`.
+
+Measured pins:
+
+| Pin | Value |
+|---|---:|
+| `GP_U28_MIN_FIRST` | 4596 |
+| `GP_U28_TRACE_MIN_FIRST` / `GP_U28_MOVES_MIN_FIRST` | 6339 / 6339 |
+| `GP_U28_MAX_START` | 96 |
+| `GP_U28_MIN_REACH` | 3843 |
+| `GP_U28_MAX_MISSING` | 17 |
+| `GP_U28_CAPTURE_FRAMES` | 4621 |
+| `GP_U28_CAPTURE_SHA256` | `96645e99a3718f5c387c6613d2faddaa8221ad936ea8c80f82a3dd602e51246e` |
+
+Every pin was moved one step in its failing direction and restored:
+
+| Mutation | Observed failure |
+|---|---|
+| `MIN_FIRST 4596 -> 4597` | `first unexplained 4596 < ratchet N 4597` |
+| `TRACE_MIN_FIRST 6339 -> 6340` | `N 6340 > end 6339: N is unreachable` |
+| `MOVES_MIN_FIRST 6339 -> 6340` | the same unreachable-N failure on moves |
+| `MAX_START 96 -> 95` | `window starts at capture 96 (raw 1738) > pinned start 95` |
+| `MIN_REACH 3843 -> 3842` | `window reach port 3843 > pinned reach 3842; re-pin to 3843` |
+| `MAX_MISSING 17 -> 18` with `PR_PINS_EXACT=1` | `17 missing class(es) < pinned 18; re-pin to 17` |
+| capture SHA final digit `e -> f` | capture identity mismatch |
+| `CAPTURE_FRAMES 4621 -> 4620` | capture identity mismatch (4,621 actual frames) |
+
+The real capture-336 top hash was also changed by one hex digit and restored;
+the comparison failed with `allowed capture 336 ... not its named three-frame
+scan-out` and `first unexplained 336 < ratchet N 4596`. The synthetic recipe
+unit test rejects one mutated bound byte. Logs are in the git-ignored ledger as
+`task-5-pin-*.log` and `task-5-scan3-hash-mutation.log`.
+
+### L5.5 Audio, manifest and verification
+
+`prage_000.dro` is deliberately **outside** `tools/audio_compare.py`'s 29-trace
+inventory: no audio section was measured, so no section minimum or audio claim
+is fabricated. `tools/audio_compare.py` is unchanged. The regenerated manifest
+has **42 entries**. `make gate-check` reads **41/42 captures present, one
+missing**, with 41 present checked and the same declared U14 absence. The
+measured pin-baseline reason is `live truth Task 5: measured gp-u28-continue
+oracle and capture-336 scan-out`, digest
+`adffb4c97366215f2e4e3ed0e5a07b56c3eb275f156c7c492f7a3b94cc2a9bf7`.
+
+`PR_PINS_EXACT=1 make gp-u28-continue-oracle` is green, including the evidence
+checker, replay/miss set, frame/order/coverage, trace/moves and the 17-milestone
+path. The affected Python suites (`test_gp_continue`, `test_gp_compare`,
+`test_gp_session`, `test_gp_capture`, `test_capture_manifest`) pass **263 tests**.
+No game or port implementation file changed, no other capture or oracle pin
+moved, and the full `make verify` remains Task 13.
+
 ## §L7 The name-entry gated oracle (Task 7)
 
 **Decision: `gp-u27-name-entry` is now a gated oracle in `make verify`.** No capture or

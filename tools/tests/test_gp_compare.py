@@ -1192,6 +1192,30 @@ class Scan3Allowance(Dirs):
         self.assertTrue(any('FAIL: allowed capture 1' in line and
                             'no unique adjacent port pair' in line for line in out), out)
 
+    def test_u28_recipe_rejects_one_mutated_bound_byte(self):
+        # Live truth Task 5: capture 336 (raw 2825) binds top rows 0..1 to the
+        # earlier port 216, middle rows 2..9 to port 218 and bottom rows 10..199
+        # to port 219, with (218, 219) the unique adjacent pair.
+        self.assertIn('gp-u28-continue', gc.SCAN3_ALLOWED)
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u28-continue'],
+                         ((336, 2, 10,
+                           '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),))
+        R = tc.ROW
+        c = rgb(1)[:2 * R] + rgb(2)[2 * R:10 * R] + rgb(3)[10 * R:]
+        entry = (1, 2, 10, hashlib.sha256(rgb(1)[:2 * R]).hexdigest())
+        self.write([1, 2, 3], [rgb(1), c, rgb(2), rgb(3)])
+        self.assertEqual(self.run_scan3(s3=(entry,))[:2], (0, None))
+        path = os.path.join(self.port, 'frame_00001.ipx')
+        with open(path, 'rb') as f:
+            mutated = bytearray(f.read())
+        mutated[2 * 320 + 17] ^= 1
+        with open(path, 'wb') as f:
+            f.write(mutated)
+        rc, first, out = self.run_scan3(s3=(entry,))
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in line and
+                            'no unique adjacent port pair' in line for line in out), out)
+
     def test_the_table_names_the_measured_scanouts(self):
         # the pinned recipes of record §G6: gp-idle-loss 2064 (ports 1666/1669/
         # 1670), gp-u9-win 346 (218/221, vacuous middle), gp-u10-ending 331

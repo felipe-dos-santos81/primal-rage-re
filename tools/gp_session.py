@@ -584,6 +584,23 @@ SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, memsize=64, s
 # sequence"). The pokes anchor on the k-th mode-6 entry (round 1/2/3), as U9's.
 KO_P1 = ('poke', ((0x10780A, b'\x78'),))             # P1's +0x5A (DS_0010780A): P2 wins the round
 KO_BOTH = ('poke', ((0x10780A, b'\x78'), (0x10789E, b'\x78')))   # the drawn round: A == B (0x27C48)
+
+# Live truth Task 5 (record §L5): the continue screen 0x0E and its expiry. Reuse
+# gp-u10-ending's LEFT PLAYER ARCADE route only through the two match-1 KOs (a new
+# tuple: WIN_MENU and gp-u10-ending are not mutated), then poke the incumbent side's
+# +0x5A at the first final-arena entry. flow_arena_ko_check (0x272DC) opens 0x0E only
+# when that side, DS_0010810D, is KO'd; the other side takes the 0x0D winner-pose arm.
+# Boot's five credits leave four after the arcade start, so no credit write is needed.
+# Stop at the countdown expiry (mode 0x15): the full 15->0 countdown and the b25=0
+# expiry are in the replayed window. The three KOs are harness writes, not a fought-KO
+# or continue-taken claim. time_limit 240 and WIN_EXTRA are gp-u10-ending's; the
+# default guest memory suffices because this stops before the fourth-final OOM (§W.13).
+SCENARIOS['gp-u28-continue'] = dict(
+    time_limit=240, extra=WIN_EXTRA, stop_mode=0x15, stop_delay=0,
+    steps=SCENARIOS['gp-u10-ending']['steps'][:len(WIN_MENU) + 2] + (
+        ('after_entry', 0x0C, 1, 10, KO_P1),
+    ))
+
 # The fields the draw check (gp_draw.py) reads. adc (the best-of rounds, DS_00104ADC,
 # 0x25A14..0x25A28, §W.1) is the one WIN_EXTRA lacks; ad4/w2/w3/b1e are WIN_EXTRA's (§W.2)
 # and mode/s0_5a/s1_5a are SNAP_FIELDS'. The scenario logs WIN_EXTRA + adc.
@@ -1364,6 +1381,8 @@ class Schedule:
 # winner pose; stop_mode/stop_delay), so mode 0xA (the round-over, which precedes it)
 # and the pose are recorded and nothing past them is compared.
 # gp-draw-timeout (state coverage Task 7) stops the same way: mode 0xB 60 frames in.
+# gp-u28-continue (live truth Task 5) stops at the continue countdown's expiry (mode
+# 0x15), so the replay's script includes the entire prompt/countdown window.
 # gp-u27-name-entry (state coverage Task 8) stops too: its end is mode 3 after the
 # letter-driven high-score entry (u10's until_mode), and nothing past it is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
@@ -1377,7 +1396,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
-                         'gp-u13-band', 'gp-u27-name-entry'})
+                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue'})
 
 
 class ScriptError(Exception):

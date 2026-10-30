@@ -50,6 +50,7 @@ make gp-u26-oracle         # state coverage U26: gp-u26-side1-ending's side-1 to
 make gp-u27-oracle         # live truth U27: gp-u27-name-entry's letters and finaliser (record §L7); in make verify; skips without the capture
 make gp-draw-oracle        # live truth Task 2: gp-draw's KO-branch drawn match (0x0A/0x0B under labelled poked KOs; record §L2); in make verify; skips without the capture
 make gp-draw-timeout-oracle # state coverage Task 7: gp-draw-timeout's timeout/health drawn round (record §D7); in make verify; skips without the capture
+make gp-u28-continue-oracle # live truth Task 5: gp-u28-continue's PRESS START prompt, 15→0 countdown and mode-0x15 expiry (record §L5); in make verify; skips without the capture
 make coverage              # the PR_COVERAGE function census (build-cov + every driver with PR_HIT_TAG, then tools/coverage_census.py; NOT in make verify — it re-runs the drivers); COV_REASON="…" re-pins tools/coverage_baseline.txt
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
@@ -538,9 +539,11 @@ consolidation gate).
   the game's own damage path KO'd a fighter in a played arcade round; it does not claim the fought win.
   Option (b), moving the rule to the final, is rejected: its `b0c=1` appears with all seven final KOs poked
   (§E1.3), so it does not discriminate a fought KO.
-- **The out-of-scope content modes `0x21` (volleyball), `0x25` (both-characters-4
-  camera) and `0x0E` (continue screen) are declared, not captured** (state-coverage
-  record `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2). `DS_00104ABC =
+- **The out-of-scope content modes `0x21` (volleyball) and `0x25`
+  (both-characters-4 camera) stay declared; the continue screen `0x0E` is now
+  captured** (state-coverage record
+  `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2; live-truth
+  §L5). `DS_00104ABC =
   (DS_00104B1F == 3) + 1` — written at `flow.c:1632` (`flow_player_join`) and `flow.c:2416`
   (the round-end case-3 arm) — so `DS_00104ABC >= 2` iff `b1f == 3` (a two-human match), and both
   in-match entries read it: `0x21` stores the mode at `0x4BD98` behind `fight_4b470`'s eighth-hit
@@ -550,12 +553,16 @@ consolidation gate).
   the two `0xBAB88`/`0xBAB9C` actor spawns and the `0x1E` timer `DS_001088AA`), and `0x25` at
   `0x4E11C` behind `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's `+0x53 == 0`,
   `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
-  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. `0x0E` opens on a KO and runs the
-  countdown `DS_00108110` (starts `0xF`, reset to `0xA` on a forced tick, decremented every 64
-  master ticks or on a press) and the `config_credit_ready` credit. A poked 1P scenario cannot
-  open `0x21`/`0x25` (no poke writes `b1f`/`DS_00104ABC`), so none is built. The census rows
-  `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the trample `0x4B470` is
-  `HIT`). The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
+  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. `0x0E` opens only in
+  mode `0x0C` when the KO is on `DS_0010810D`'s side; the other side's KO takes
+  the `0x0D` winner pose. Its countdown `DS_00108110` starts `0x0F`, decrements
+  every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.
+  A poked 1P scenario cannot open `0x21`/`0x25` (no poke writes
+  `b1f`/`DS_00104ABC`), so none is built. The pre-L5 census rows
+  `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the
+  trample `0x4B470` is `HIT`); Task 12 re-measures them. The L5 expiry capture
+  reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`.
+  The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`
   chain is re-derived in live-truth §L9 and stays declared: `b1d` is a
   mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; 1 in 7
@@ -642,6 +649,20 @@ consolidation gate).
   match win or that the result naming is a fought win. U14's fought live win stays
   declared. The `.dro` stays outside the 29-trace audio inventory, and the gate
   reads 40/41 present with the same one declared U14 absence.
+- **The continue screen, countdown and expiry are captured and gated** (live truth
+  Task 5, record §L5). `gp-u28-continue` reuses U10's route through match 1, then
+  pokes the incumbent (`0x10780A=0x78`) at the first mode-`0x0C` entry; the
+  capture verifies `w10d=0`, `cred=4`, `b1f=0`, all sixteen countdown values
+  15→0 (64 frames apart), the PRESS START arm at 13 (`cnt < 0x0E`) and expiry
+  `f=0x18C2 mode=0x15 b25=0`. The three KOs (four writes) are labelled harness
+  writes; neither a fought KO nor the taken-continue `0x2791C` path is claimed.
+  `gp-u28-continue-oracle` is in `make verify` and `CAPTURE_DIRS`, with
+  `k_miss_gp_u28_continue`, a 17/17 trace-carried-field path and capture 336's
+  byte-bound scan-out (ports 216/218/219). The measured pins are frame 4596 (the
+  post-script tail), trace/moves 6339, start 96, reach 3843, 17 missing classes
+  and capture sha `96645e99…`/4,621 frames; every pin and the scan-out hash
+  failed its mutation. The `.dro` stays outside the 29-trace audio inventory
+  (no measured section). The gate reads 41/42 present with U14 still declared.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
