@@ -309,11 +309,23 @@ class TestLiveMatch(unittest.TestCase):
                            lines, gs.snapshots(lines), lambda s: out.write(s + '\n'))
         return rc, out.getvalue()
 
-    def test_the_match_rule_passes_a_fought_two_human_win(self):
+    def test_the_ko_death_fields_are_the_shared_session_tuple(self):
+        # gp_session.KO_POKES is the one tuple: gp_win and gp_twop must not diverge
+        self.assertIs(gw.KO_DEATH_POKES, gs.KO_POKES)
+
+    def test_the_match_rule_passes_a_fought_w2w3_win(self):
+        # the rule reads the result/counter rows; the *two-human* gate is
+        # gp_twop.match_win's (b1f = 3), not this rule's
         rc, text = self.run_match(_fought_match())
         self.assertEqual(rc, 0)
         self.assertIn('the match result at f=3F5 names side 0', text)
         self.assertIn('(w2 = 2 > w3 = 0)', text)
+
+    def test_a_two_one_match_is_not_the_claimed_two_zero(self):
+        # the measured/claimed result is 2-0: a 2-1 match names side 0 but is not it
+        rc, text = self.run_match(_fought_match(result=(0, 2, 1)))
+        self.assertEqual(rc, 1)
+        self.assertIn('not a 2-0 match win for side 0', text)
 
     def test_the_milestones_alone_do_not_prove_a_fought_ko(self):
         # the U9 fixture satisfies every gp-u14 milestone row, but its round-2 mode-6
@@ -421,9 +433,11 @@ class TestLiveFinal(unittest.TestCase):
 
     def test_b0c_before_the_mode_0f_entry_does_not_count(self):
         # the game clears b0c on the way in (mode 0x24's 0x2703D / mode 0x17's 0x27200):
-        # a stale pre-entry 1 is not the final path's death-done write
-        L = _log([(0x100, 0x120, 0x0F, dict(b21=7))],
-                 change=lambda f, m, k: dict(k, b0c=1 if f < 0x100 else 0))
+        # a real pre-entry segment holds the stale 1, and the mode-0x0F entry holds 0
+        L = _log([(0xF0, 0xFF, 0x17, dict(b21=6, b0c=1)),
+                  (0x100, 0x120, 0x0F, dict(b21=7, b0c=0))])
+        self.assertEqual(gs.snapshots(L)[0xFF]['b0c'], 1)
+        self.assertEqual(gs.snapshots(L)[0x100]['b0c'], 0)
         rc, text = self.run_final(L)
         self.assertEqual(rc, 1)
         self.assertIn('no S record with b0c = 1 at or after mode 0x0F', text)

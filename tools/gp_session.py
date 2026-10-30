@@ -605,6 +605,12 @@ WIN_EXTRA = (('afc', 0x104AFC, 2), ('ad4', 0x104AD4, 4), ('w2', 0x104AF2, 1), ('
              ('t104', 0x108104, 2), ('m106', 0x108106, 4), ('m10a', 0x10810A, 4),
              ('sc0', 0x1077EC, 4), ('c82', 0x107832, 1))
 WIN_FIELDS = tuple(n for n, _, _ in WIN_EXTRA)
+# The KO/death fields a W record must not cover: the two +0x5A damage bytes,
+# the round wins, the match result, the death-done byte and the seven land
+# marks (gp_twop.KO_POKES and gp_win.KO_DEATH_POKES share this one tuple, so a
+# field cannot silently diverge between the KO predicate and the win rules).
+KO_POKES = (0x10780A, 0x10789E, 0x104AF2, 0x104AF3, 0x104AD4,
+            0x104B0C, 0x108106, 0x10810A, 0x10810C)
 # P2's +0x5A damage byte (DS_0010789E) at 0x78: the KO the round-end checks test
 # (0x27FA8 `cmp 0x78`, 0x272DC's DS_00104B12 side), record §W.3.
 KO_P2 = ('poke', ((0x10789E, b'\x78'),))
@@ -1242,7 +1248,9 @@ SCENARIOS['gp-twop-ko'] = dict(
 # fought match win. U14's fought arcade win (R1) is terminal: the arcade AI's damage
 # race outruns the script (the .failed artifact: 10 sampled AI increments/113 -> 120
 # damage vs the script's 2/25 in round 1; 8/99 -> 120 vs 8/92 in round 2), and the
-# `live_death` b0c clause cannot pass on a match-1 win. Two humans, however, are a
+# old live-win `b0c` clause cannot pass on a match-1 win (the split rules are
+# gp_win.live_match, no b0c, and gp_win.live_final, b0c on the final path). Two
+# humans, however, are a
 # controllable route with no pokes: gp-twop-ko's own start and 140-attempt 1A/1B
 # round KO the idle P2, and the same round is played again after the round result.
 # P2 is idle, so P1's health stays full and both rounds are KO wins inside the

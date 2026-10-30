@@ -78,9 +78,9 @@ NO_RESULT = 0xFFFFFFFF          # DS_00104AD4 = -1 (0x25A0E; the -1 store at 0x2
 # round wins (w2/w3), the match result (ad4), the death-done byte (b0c) and the
 # seven land marks (m106/m10a; gp_session.lands_marked writes them at 0x108106 with
 # len 7). A W record that covers one of these replaced the game's own write
-# (record §W.3, §W.5; gp_session.KO_P2, DEATH_DONE).
-KO_POKES = (0x10780A, 0x10789E, 0x104AF2, 0x104AF3, 0x104AD4,
-            0x104B0C, 0x108106, 0x10810A, 0x10810C)
+# (record §W.3, §W.5; gp_session.KO_P2, DEATH_DONE). The tuple is
+# gp_session.KO_POKES, shared with gp_win.KO_DEATH_POKES (no duplicated literals).
+KO_POKES = gs.KO_POKES
 
 
 def pad_word(new, held, side):
@@ -487,8 +487,10 @@ def match_win(lines, winner=0):
 
     The KO predicate (`ko`) supplies the two-human claim, the no-poke rule, the live
     value for the first KO, the no-time-out check at its result and the result naming.
-    This adds what makes it a *match* win: an X record (the capture reached its
-    scenario end), no mode-7 time-up anywhere, the round result (mode 8) at 1-0 with
+    This adds what makes it a *match* win: an X record (the scenario end was
+    reached; the capture-time session checks, not this checker, decide whether it is
+    a published capture — the two-human `.failed` artifact is X-terminated and its
+    game rows pass), no mode-7 time-up anywhere, the round result (mode 8) at 1-0 with
     ad4 = NO_RESULT, the match result (mode 9) at 2-0 for the winner with ad4 = the
     winner, both rounds' loser +0x5A reaching 0x78 from a live 0 < value < 0x78 in a
     mode-6 entry, and the winner's +0x5A never at 0x78. A one-round win has no match
@@ -509,8 +511,9 @@ def match_win(lines, winner=0):
     x = next((r['f'] for r in parsed if r['kind'] == 'X'), None)
     out['x'] = x
     if x is None:
-        out['fail'].append('no X record: the capture did not reach the scenario end (a '
-                           'match win is the X-terminated capture, not the .failed artifact)')
+        out['fail'].append('no X record: the scenario end was not reached. The X clause '
+                           'proves the scenario end, not a session-passing or published '
+                           'capture; the capture-time session checks are separate')
         return out
     snaps = {f: r for f, r in gs.snapshots(lines).items() if f <= x}
     recs = sorted(snaps.values(), key=lambda r: r['f'])
@@ -625,7 +628,8 @@ def main():
                        help="check the hand-dealt KO of one side and the result that names it (--winner)")
     check.add_argument('--win', action='store_true',
                        help="check a two-human fought match win: both rounds' live KO, the round and "
-                            'match results, no time-out, an X record (--winner)')
+                            'match results, no time-out, an X record (the scenario end; the '
+                            'capture-time session checks are separate) (--winner)')
     ap.add_argument('--allow-missing-reaction', action='store_true',
                     help='with --finisher, allow no sampled finisher reaction while still checking end modes')
     ap.add_argument('--winner', type=int, choices=(0, 1),

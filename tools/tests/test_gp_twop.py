@@ -328,6 +328,10 @@ class TestKO(unittest.TestCase):
     entry that no poke wrote and that did not time out, and the result naming
     the winner."""
 
+    def test_the_ko_fields_are_the_shared_session_tuple(self):
+        # gp_session.KO_POKES is the one tuple: gp_twop and gp_win must not diverge
+        self.assertIs(gt.KO_POKES, gs.KO_POKES)
+
     def test_a_hand_dealt_ko_passes_and_reports_death_done(self):
         r = gt.ko(_ko_log(), winner=0)
         self.assertEqual(r['fail'], [])

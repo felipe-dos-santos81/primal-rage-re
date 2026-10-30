@@ -1850,9 +1850,11 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # failed that phase's harness pin but is now published by live truth Task 3 above; both
 # scenarios' .dro traces and the failed U14 run's (data/k11-captures/gp-u14-win-live.failed)
 # stay outside tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
-# skips on the absent directory; a later authorized match capture (not R1) would fill the nine pins from
-# tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the
-# report's missing-class count; coverage_check fails closed without it).
+# skips on the absent directory. The nine GP_U14_* pins belong to this gp-u14-win-live
+# scenario; R1 is terminal, and a two-human gp-u14-twop-win capture is a different scenario
+# with its own target/pins. A later authorized capture of this scenario would fill the nine
+# from tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING
+# is the report's missing-class count; coverage_check fails closed without it).
 # MIN_FIRST the first unexplained capture frame,
 # TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
 # MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's

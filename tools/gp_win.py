@@ -381,10 +381,10 @@ MATCH_WIN = frozenset({'gp-u14-win-live'})
 FINAL_WIN = frozenset()                 # no fought final is captured; a future one joins here
 MATCH_WINNER = {'gp-u14-win-live': 0}   # the match-1 path: P1 (side 0) wins
 
-# The KO/death fields a W record must not cover (gp_twop.KO_POKES): the two +0x5A damage
-# bytes, w2/w3, ad4, b0c (DS_00104B0C), and the seven land marks.
-KO_DEATH_POKES = (0x10780A, 0x10789E, 0x104AF2, 0x104AF3, 0x104AD4,
-                  0x104B0C, 0x108106, 0x10810A, 0x10810C)
+# The KO/death fields a W record must not cover: the two +0x5A damage bytes, w2/w3,
+# ad4, b0c (DS_00104B0C), and the seven land marks. gp_session.KO_POKES is the one
+# tuple, shared with gp_twop.KO_POKES (no duplicated literals).
+KO_DEATH_POKES = gs.KO_POKES
 
 
 def _poke_on(lines, addrs):
@@ -421,7 +421,9 @@ def live_match(name, frames, lines, snaps, out=print):
     (mode 8, k 1) does not name the winner at 1-0 with ad4 = NO_RESULT, when a mode-7
     time-up record precedes it, or when the mode-6 entry before the result has no
     live 0 < +0x5A < 0x78 value (the damage path adds to a live value, so a
-    0 -> 0x78 jump is poked)."""
+    0 -> 0x78 jump is poked). The rule reads the result/counter/damage rows, not the
+    input's b1f: the *two-human* gate is gp_twop.match_win's (it runs gp_twop.ko's
+    b1f = 3 check first)."""
     hit = _poke_on(lines, KO_DEATH_POKES)
     if hit is not None:
         out("gp_win: %s: evidence: FAIL: a poke at f=%X covers %08X, a KO/death field: "
@@ -441,7 +443,7 @@ def live_match(name, frames, lines, snaps, out=print):
     loser = 1 - winner
     wf, lf = ('w2', 'w3') if winner == 0 else ('w3', 'w2')
     w5, l5 = 's%d_5a' % winner, 's%d_5a' % loser
-    if (res['ad4'] != winner or res[wf] != 2 or res[lf] >= 2
+    if (res['ad4'] != winner or res[wf] != 2 or res[lf] != 0
             or res[l5] != 0x78 or res[w5] >= 0x78):
         named = _named_side(res)
         what = ('names side %d (w2 = %d, w3 = %d)' % (named, res['w2'], res['w3'])

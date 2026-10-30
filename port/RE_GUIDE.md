@@ -400,13 +400,16 @@ true original, and ported the divergence. Two pieces:
   `gp-draw-timeout`.
 - The proof-debt declaration (state-coverage §D7) declares what stays open:
   **U17** (the `gp-u17-device2` wall-paced walk has no tick-keyed replay — its
-  screens are already covered by the K11 captures, record §H6.9) and **U14**
-  (the fought live win) are declared, neither run; U14's `live_death` rule
-  anchors on the match-1 round-2 KO but `b0c`'s only setter (`0x37FF6` in
-  `0x37EA0`) runs on the ending path, so the two re-scope options are (a) drop
-  the `b0c` clause ("fought KOs, no pokes") or (b) move to the final — with the
-  measured correction that `b0c`'s ending write is **not universal** (BLIZZARD
-  U13 and ARMADON U21 keep `b0c = 0`). The claim-coverage design's undefined
+  screens are already covered by the K11 captures, record §H6.9) is declared;
+  **U14**'s fought live win (R1) is terminal (final truth Task 3, record §F3):
+  `0x37FF6` in `0x37EA0` is the byte's only non-zero writer (a death-animation
+  end), its only consumer is the **final's** `0x0C→0x0D` chain
+  (`game_mode_0d_step` `0x274FC`), and a match-1 win (`0x09→0x17→0x12`) never
+  enters that chain; mode `0x17`'s setup clears the byte (`0x27200`). The rule
+  is split: `gp_win.live_match` has no `b0c`, `gp_win.live_final` requires
+  `b0c=1` at/after the mode-`0x0F` entry (no scenario in `FINAL_WIN` yet), and
+  the game-set `b0c` is **not universal** (BLIZZARD U13 and ARMADON U21 keep
+  `b0c = 0`); the U10 game-set byte is a poked final. The claim-coverage design's undefined
   **B2–B8 labels** are replaced by the census's measured NOT-HIT set (98
   addresses, §D7.5, §D8.3 and live-truth §L12) and the declared modes; the census baseline is a separate
   pin (its own `tools/coverage_baseline.txt`, not `tools/pin_baseline.sha256`).
