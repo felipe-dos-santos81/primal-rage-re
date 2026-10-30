@@ -684,7 +684,7 @@ consolidation gate).
   failed its mutation. The `.dro` stays outside the 29-trace audio inventory
   (no measured section). The current inventory is **42 explicit capture paths,
   41/42 present**, with only U14's fought live win declared absent. Live-truth
-  Task 12a is docs-only; Task 12b owns the measured re-pin and Task 13 the full
+  Task 12a is docs-only; Task 12b re-pinned the census; Task 13 runs the full
   gate.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image

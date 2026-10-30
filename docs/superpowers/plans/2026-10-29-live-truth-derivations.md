@@ -1205,8 +1205,8 @@ pre-existing audio pin stay unchanged.
 
 ## §L12 Documentation and measured reconciliation (Tasks 12a–12b)
 
-**Decision: the narrative now matches the landed claims; Task 12b and the full
-gate remain separate.** `gp-draw-oracle`, `gp-twop-ko-oracle`,
+**Decision: the narrative now matches the landed claims. Task 12a reconciles the
+narrative; Task 12b's re-pin is §L12.1; the full gate is Task 13.** `gp-draw-oracle`, `gp-twop-ko-oracle`,
 `gp-u28-continue-oracle` and `gp-u27-oracle` are the four live-truth additions
 to `make verify`. The measured inventory is **42 explicit capture paths, 41/42
 present**, with only `gp-u14-win-live` declared absent. The KO-branch `0x0B`
@@ -1260,9 +1260,14 @@ The already-completed `make coverage` run left the measured split **HIT 657 /
 NOT-HIT 98 / UNINSTRUMENTED 4** (was 653/102/4). Task 12b reused its existing
 hit dumps and did not re-run the 38-minute build. `gp-u27-name-entry` improves
 `0x20860`; `gp-u28-continue` improves `0x27254`, `0x278B0` and `0x27A2C`.
+The four new HITs come from those two new drivers (`gp_u27.py` and
+`gp_continue.py`, added in this phase; no `port/src` commit between `0b458148`
+and `3f9e00b7`), not from a port change.
 `0x2791C` stays NOT-HIT as §L5 predicted. The four UNINSTRUMENTED addresses stay
-`0x29D60`, `0x2EA30`, `0x2EA64` and `0x500BB`. The baseline reason now names the
-four improvements and their drivers. `coverage_census.py --check-instrumented`
+`0x29D60`, `0x2EA30`, `0x2EA64` and `0x500BB`. The baseline's reason line now
+names the two live-truth improvements and their drivers, replacing Task 14's
+reason; the eight earlier improvements stay recorded in AGENTS.md,
+`port/RE_GUIDE.md` and state-coverage §D8.3. `coverage_census.py --check-instrumented`
 and `--check` pass; `--check` reports `coverage: no change (HIT=657 NOT-HIT=98
 UNINSTRUMENTED=4)`.
 

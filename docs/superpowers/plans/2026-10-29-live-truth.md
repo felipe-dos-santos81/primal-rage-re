@@ -597,9 +597,9 @@ banks named; no new capture; no audibility claim.
 - Consumes: the new captures/oracles and the measured pins.
 - Produces: docs and counters that match the measured state; no port code.
 
-**Execution split:** Task 12a is docs-only. Task 12b owns the measured census,
-`tools/coverage_baseline.txt`, `tools/capture_manifest.json` and
-`tools/pin_baseline.sha256`; Task 12a does not modify them or run the census.
+**Execution split:** Task 12a is docs-only. Task 12b re-pinned the measured census in
+`tools/coverage_baseline.txt` (`tools/capture_manifest.json` and
+`tools/pin_baseline.sha256` are its other measured owners); Task 12a did not modify them or run the census.
 The current inventory is 42 explicit capture paths, 41/42 present with the U14
 gap declared.
 

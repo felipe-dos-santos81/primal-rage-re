@@ -331,8 +331,8 @@ true original, and ported the divergence. Two pieces:
    live-truth inventory is **42 explicit capture paths, 41/42 present**, with
    only that U14 path absent. The failed U14 artifact is separately game
    evidence for a fought arcade KO, not a capture, oracle or pin (live truth
-   Task 8, record §L8). Task 12a is docs-only; Task 12b owns the measured
-   re-pin and Task 13 the full gate.
+   Task 8, record §L8). Task 12a is docs-only; Task 12b re-pinned the census;
+   Task 13 runs the full gate.
 - The differential audit (proof-completion phase, record
   `2026-10-24-proof-completion-derivations.md` §P5–§P8; the state-coverage
   proof-debt declaration §D7): `make diff-verify`

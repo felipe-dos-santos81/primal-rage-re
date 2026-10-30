@@ -355,9 +355,9 @@ gate is last.
 - Task 10 was not taken; the 5120 instrument gap and INCONCLUSIVE band are
   unchanged. Task 11 pins **74 diff-allowed audio prefixes / 29,656 ticks**;
   the unmatched remainders and rendered audibility stay named.
-- Task 12a reconciles the documents only. Task 12b owns the measured census,
-  manifest and pin-baseline results; Task 13 owns the full gate. No full-gate
-  claim is made here.
+- Task 12a reconciles the documents only. Task 12b re-pinned the census (§11);
+  its manifest and pin-baseline results are recorded there. Task 13 runs the full
+  gate. No full-gate claim is made here.
 
 ## 11. Measured re-pin and counter reconciliation (Task 12b)
 
