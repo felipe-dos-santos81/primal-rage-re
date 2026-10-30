@@ -1,15 +1,16 @@
 # Live Truth — derivation record
 
 **Phase:** Live Truth. **Design:** `docs/superpowers/specs/2026-10-29-live-truth-design.md`
-(status Proposed). **Plan:** `docs/superpowers/plans/2026-10-29-live-truth.md`.
+(status implemented through Task 12a; Task 12b and the Task 13 full gate pending).
+**Plan:** `docs/superpowers/plans/2026-10-29-live-truth.md`.
 **Baseline:** `main` at `0b458148` (`Merge branch 'state-coverage'`), full SHA
 `0b45814842650de0b8f70fceeeab55a8d761fda4`. Branch `live-truth`.
 
 **Phase rules.** No port code changes: the phase is capture and record, and no
 new portable function is in scope. A capture that proves a port divergence is
-recorded at its first unexplained frame and stops; it is not patched. The design
-is proposed; §L1 is the baseline at which nothing of it had been built, captured
-or pinned. The later sections record the phase's measured changes.
+recorded at its first unexplained frame and stops; it is not patched. §L1 is the
+baseline at which nothing of the phase had been built, captured or pinned. The
+later sections record the phase's measured changes and declarations.
 
 ## §L1 Baseline
 
@@ -870,22 +871,13 @@ order failures.
 | `GP_U27_CAPTURE_FRAMES` | **5885** | stored capture frames |
 | `GP_U27_CAPTURE_SHA256` | **`5e2c5824...b79d04`** | full value above |
 
-The frame window includes mode `0x1E` and the finaliser. **Recon correction:** the recon's
-"258 mode-`0x1E`" count was impossible: the replay dump holds **178** mode-`0x1E` port frames.
-Re-measured by exact byte identity against the 5,885 capture frames (a scratch script over the
-dump's `frames.txt` modes and the capture's `frame_*.raw.gz`): **155** mode-`0x1E` port frames
-(**154** distinct, one all-black) each have a byte-identical capture frame. The mode-`0x15`
-figure does **not** reproduce: the Task 7 record's 103 finaliser occurrences are not what the
-same count gives (189 occurrences over the whole capture, 80 distinct; 131 occurrences and 22
-distinct among port frames whose capture match falls in 5311..5616). The Task 7 record's
-"258 distinct port frames" (155 + 103) therefore has no measured derivation here, and the
-255-content / 3-black split of the scene is not re-derived. Open: the 258 scene total and its
-mode split stay the Task 7 record's figures, not re-measured here. Confirmed: scene
-5311..5616 holds three all-black capture frames. The remaining byte-identical port occurrences
-are not claimed: the oracle keeps the usual narrow existential/splice and bounded-missing
-claims, not full port-frame order or coverage. The remaining byte-identical
-port occurrences are not claimed: the oracle keeps the usual narrow existential/splice and
-bounded-missing claims, not full port-frame order or coverage.
+The frame window includes mode `0x1E` and the finaliser. The replay dump holds
+**178** mode-`0x1E` port frames. The Task 7 record's **258 scene-total figure and
+its mode split are withdrawn as not re-derivable**. The reproducible finaliser
+claim is the oracle's: all **303 content-bearing capture frames 5311..5616** are
+explained (255 clean and 48 splice). The oracle keeps the usual narrow
+existential/splice and bounded-missing claims, not full port-frame order or
+coverage.
 
 ### L7.4 Failing-direction proofs
 
@@ -1079,6 +1071,16 @@ design §9 bullet "The two-human-only gates cannot be poked open" states the sto
   hits on one airborne entry, the stage word 0, `b1d` 0 or 1, `b1f == 3`,
   `DS_00104AD8 <= 0` and `fight_13134` false.
 
+## §L10 The 5120 DAC-injection instrument gap (Task 10)
+
+**Decision: Task 10 was not taken; the 5120 band stays INCONCLUSIVE.** The fade
+palette source was not funded, so no DAC-injection experiment ran and no new
+capture or diagnostic was made. This is an instrument gap, not evidence for
+either the capture-pipeline or content-divergence hypothesis. No cause is
+fitted. The byte-pinned allowance `(5120, 1, 5, 56b900b1…)`, its bounds and
+every pin are unchanged, as is the state-coverage §D4 finding that the DOSBox-X
+memory file excludes the VGA aperture.
+
 ## §L11 The diff-allowed audio matched prefixes (Task 11)
 
 **Decision: all 74 diff-allowed sections in the existing 27 reports have a
@@ -1200,3 +1202,54 @@ is not a whole-section match, not a claim about the unmatched remainder or captu
 tail, and not rendered audibility (the OPL core/mixer remains an invented model;
 the PCM pin remains determinism). The U14 gap, all gameplay pins and every
 pre-existing audio pin stay unchanged.
+
+## §L12 Documentation reconciliation (Task 12a)
+
+**Decision: the narrative now matches the landed claims; Task 12b and the full
+gate remain separate.** `gp-draw-oracle`, `gp-twop-ko-oracle`,
+`gp-u28-continue-oracle` and `gp-u27-oracle` are the four live-truth additions
+to `make verify`. The measured inventory is **42 explicit capture paths, 41/42
+present**, with only `gp-u14-win-live` declared absent. The KO-branch `0x0B`
+pose and `0x0E` continue screen/countdown/expiry are exhibited; U27 is gated.
+U16 R2's gate operand is measured as §L4 records, without deciding the wider
+finisher-gap question. U14's failed artifact remains game evidence only.
+`0x21` and `0x25` stay declared, the latter with §L6's structural blocker and
+two `.failed` artifacts. The audio claim is §L11's **74 prefixes / 29,656
+ticks**, not whole-section coverage or audibility.
+
+The unreproducible U27 258 scene total and mode split are withdrawn in §L7,
+the design and `docs/PROGRESS.md`; the reproducible facts are the 178
+mode-`0x1E` port frames and the 303 explained content-bearing capture frames.
+The duplicate §L7 trailing clause is removed. The state-coverage design now
+uses past tense for its historical U27 exhibit. The plan's `0x21` wording
+quotes the state-coverage stop rule, and the historical PROGRESS paragraphs
+remain with superseded pointers to §L2/§L7. Task 10's declaration is
+§L10: not taken, instrument gap, INCONCLUSIVE, no fitted cause, unchanged
+bounds and pins.
+
+Task 12a ran only the scoped documentation checks:
+
+```text
+python3 tools/check_docs_claims.py
+check_docs_claims: 10 stale-phrase claim(s) absent
+
+make gate-check
+gate: captures 41/42 present, 1 missing (strict=1, pins_exact=1)
+gate: declared gap (absent): data/k11-captures/gp-u14-win-live
+capture_manifest: 41 present checked, 1 declared skipped, 0 problems
+capture_manifest: pin baseline ok (digest adffb4c97366215f2e4e3ed0e5a07b56c3eb275f156c7c492f7a3b94cc2a9bf7)
+capture_manifest: verify preflight ok
+
+python3 tools/capture_manifest.py --check-pins
+capture_manifest: pin baseline ok (digest adffb4c97366215f2e4e3ed0e5a07b56c3eb275f156c7c492f7a3b94cc2a9bf7)
+
+python3 tools/port_progress.py
+798 1203 66
+759 759 100
+ported 798 (759 portable + 39 runtime)  host-owned 41  deferred 12  replaced 37  runtime 315
+```
+
+No capture, census, `diff-verify` or full `make verify` was run. Task 12a did
+not modify `tools/coverage_baseline.txt`, `tools/capture_manifest.json` or
+`tools/pin_baseline.sha256`; Task 12b owns those measured results and Task 13
+owns the full gate.

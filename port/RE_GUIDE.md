@@ -327,7 +327,12 @@ true original, and ported the divergence. Two pieces:
    the replay covers the KO and round-result window through the trace/X record
    `f=0x0C50` (frame pin 2525, trace/moves 3153). The oracle asserts the KO and
    round result; it does not claim a fought match win or that the result naming
-   is a fought win. U14's fought live win stays the declared gap.
+   is a fought win. U14's fought live win stays the declared gap. The current
+   live-truth inventory is **42 explicit capture paths, 41/42 present**, with
+   only that U14 path absent. The failed U14 artifact is separately game
+   evidence for a fought arcade KO, not a capture, oracle or pin (live truth
+   Task 8, record §L8). Task 12a is docs-only; Task 12b owns the measured
+   re-pin and Task 13 the full gate.
 - The differential audit (proof-completion phase, record
   `2026-10-24-proof-completion-derivations.md` §P5–§P8; the state-coverage
   proof-debt declaration §D7): `make diff-verify`
@@ -417,7 +422,15 @@ true original, and ported the divergence. Two pieces:
   gap is a null table base (the stream reads the IVT at linear 0), fixed by
   `bios_ivt_stand_in()` seeding `mem[1] = 0xCA`/`mem[3] = 0xF0`; only
   `GP_U23_TRACE_MIN_FIRST`/`GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 →
-  6050`). The 5120 band is **INCONCLUSIVE** (§D4): the DOSBox-X memory file
-  excludes the VGA aperture, so the diagnostic's 14 bytes read `0xFF` and the
-  band stays a declared gap. The OPL pitch test (§D6) renders 439.9915 Hz
-  (measured 439.0000 Hz) within the 1.7586 Hz derived tolerance.
+  6050`). Live truth Task 4 measured U16 R2's deciding gate input as
+  `y(0x1531)=0x0EAE < 0x1400` (a strict clear; record §L4), without deciding
+  the wider finisher-gap question. The 5120 band is **INCONCLUSIVE** (§D4):
+  the DOSBox-X memory file excludes the VGA aperture, so the diagnostic's 14
+  bytes read `0xFF` and the
+  band stays a declared gap. Live-truth Task 10 was not taken because the fade
+  palette source was not funded; no DAC injection ran, no cause is fitted, and
+  the bounds and every pin are unchanged (record §L10). The OPL pitch test
+  (§D6) renders 439.9915 Hz (measured 439.0000 Hz) within the 1.7586 Hz
+  derived tolerance. Live truth Task 11 pins **74 diff-allowed audio section
+  prefixes / 29,656 leading matched ticks**; unmatched remainders and rendered
+  audibility stay named (record §L11).

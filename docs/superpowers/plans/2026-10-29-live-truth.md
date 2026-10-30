@@ -418,8 +418,9 @@ mode is no longer NOT-HIT; the state-coverage "camera" label is corrected.
   `gp-u27-oracle` target (clone `gp-u25-oracle`) to `CAPTURE_DIRS`, `.PHONY`
   and `verify`. The capture already exists; no new run.
 - [ ] **Step 4: Prove and record.** ±1 every pin; the `SCAN3` mutation; record
-  the finaliser coverage (258 mode-`0x1E` port frames byte-identical to the
-  capture).
+  that all 303 content-bearing capture frames 5311..5616 are clean/splice
+  explained. The earlier 258 scene-total figure and its mode split are
+  withdrawn as not re-derivable.
 - [ ] **Step 5: Commit (when authorized).** `gameplay: gate the name-entry
   oracle`.
 
@@ -483,8 +484,9 @@ no capture, oracle or pin.
   two spawns, the `0x1E` timer, and the two-human gate `DS_00104ABC>=2`.
 - [ ] **Step 2: Record the blockers.** The `b1d` byte is a mode byte, not a
   player count; the stage RNG is 1-in-7; the trample counter resets on
-  landing; no capture has `+0x1F>=2`; a poke can force `+0x1F=8` but the
-  state-coverage design §9 forbids a poked 1P exhibit.
+  landing; no capture has `+0x1F>=2`; a poke can force `+0x1F=8`, but the
+  state-coverage design §9 stop rule says "Do not build one; declare the modes
+  with their gates".
 - [ ] **Step 3: State the decision.** Keep `0x21` declared; a later poked
   exhibit needs an explicit operator reversal of §9; a real two-human chain
   needs a measured sequence this phase does not have.
@@ -540,6 +542,10 @@ rows stay `NOT-HIT`.
 **Acceptance:** a falsifiable outcome with the control, or a declared gap; no
 claim beyond the measured bytes.
 
+**Execution outcome:** Task 10 was not taken because the fade palette source
+was not funded. No injection or capture ran. The 5120 band stays INCONCLUSIVE,
+with no fitted cause and unchanged bounds and pins (record §L10).
+
 ---
 
 ### Task 11: Audio — the diff-allowed prefix claim (optional)
@@ -591,11 +597,17 @@ banks named; no new capture; no audibility claim.
 - Consumes: the new captures/oracles and the measured pins.
 - Produces: docs and counters that match the measured state; no port code.
 
+**Execution split:** Task 12a is docs-only. Task 12b owns the measured census,
+`tools/coverage_baseline.txt`, `tools/capture_manifest.json` and
+`tools/pin_baseline.sha256`; Task 12a does not modify them or run the census.
+The current inventory is 42 explicit capture paths, 41/42 present with the U14
+gap declared.
+
 - [ ] **Step 1: Update the narrative.** Add the new oracles/commands, the
   capture inventory, and the corrected named gaps: `0x0B` exhibited (KO draw),
-  `0x0E` exhibited, `0x25` exhibited, `0x27` gated, U16 R2 measured, U14
-  game-evidence-only, `0x21` declared, 5120 outcome, audio prefix. Keep the
-  U14 fought win declared.
+  `0x0E` exhibited, `0x25` declared after Task 6's structurally blocked
+  attempts, `gp-u27` gated, U16 R2 measured, U14 game-evidence-only, `0x21`
+  declared, 5120 outcome, audio prefix. Keep the U14 fought win declared.
 - [ ] **Step 2: Re-measure the counters.** `python3 tools/port_progress.py`
   (expect `798 1203 66` / `759 759 100`); `make diff-verify` (expect the
   baseline line); `make entry-triage` (expect unchanged); regenerate
@@ -666,6 +678,9 @@ pin ±1-proved; no existing pin weakens; the U14 gap remains declared.
 - U14's fought win (R1) — unless a new explicit go-ahead names a capture.
 - The `0x21` volleyball content — unless the operator reverses state-coverage
   design §9 for a poked exhibit.
-- The 5120 band's cause — unless Task 10's injection decides it.
+- The `0x25` bowling content — Task 6's symmetric route is structurally
+  blocked; two `.failed` artifacts, no oracle or pins.
+- The 5120 band's cause — Task 10 was not taken; the instrument gap stays
+  declared and the band INCONCLUSIVE.
 - Rendered audibility; the 4 never-requested audio banks; the terminal
   differential rows; the declared storage/config items.

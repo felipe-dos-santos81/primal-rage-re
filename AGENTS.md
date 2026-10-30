@@ -508,7 +508,7 @@ consolidation gate).
   recovery's `data/k11-captures/gp-twop-ko.failed` survives and the first run's rows are the
   record's §F4.3–§F4.5. The phase therefore left `gp-twop-ko` unpublished, with no
   `gp-twop-ko-oracle`, `GP_TWOP_KO_*` pin, miss set or gate entry; live truth Task 3 later
-  published it (§L3, below). **U16 R2 stays open:** the recovery measured
+  published it (§L3, below). **U16 R2 was open in that phase:** the recovery measured
   the `0x4844C` case-3 exit at the old marker's exit frame, `f=0x1533` (inferred: the `s0_54=2`
   set record is missing), as `s0_30=0x1180`, `s0_42=0x8000`, below the `0x1400`
   gate, against the port's set `0x202E` at `0x1532` and exit `0x1180` at `0x155C`. The deciding
@@ -632,6 +632,9 @@ consolidation gate).
   `GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 → 6050`). **The 5120 band**
   is **INCONCLUSIVE** (§D4): the DOSBox-X memory file excludes the VGA aperture,
   so the diagnostic's 14 bytes read `0xFF` and the band stays a declared gap.
+  Live-truth Task 10 was not taken because the fade palette source was not
+  funded; no DAC injection ran, no cause is fitted, and the byte-pinned bounds
+  and every pin are unchanged (record §L10).
   **The OPL pitch test** (§D6) renders 439.9915 Hz (measured 439.0000 Hz)
   within the 1.7586 Hz derived tolerance. The two-human KO stayed
   game-evidence-only in that phase and is now published by live truth Task 3 (§L3).
@@ -676,7 +679,10 @@ consolidation gate).
   post-script tail), trace/moves 6339, start 96, reach 3843, 17 missing classes
   and capture sha `96645e99…`/4,621 frames; every pin and the scan-out hash
   failed its mutation. The `.dro` stays outside the 29-trace audio inventory
-  (no measured section). The gate reads 41/42 present with U14 still declared.
+  (no measured section). The current inventory is **42 explicit capture paths,
+  41/42 present**, with only U14's fought live win declared absent. Live-truth
+  Task 12a is docs-only; Task 12b owns the measured re-pin and Task 13 the full
+  gate.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`

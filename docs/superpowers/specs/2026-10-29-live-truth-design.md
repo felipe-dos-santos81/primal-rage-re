@@ -1,9 +1,9 @@
 # Live Truth — design
 
-**Status:** Proposed; the design gate is open (no capture, code change or pin has
-run for this phase). The implementation plan is
-`docs/superpowers/plans/2026-10-29-live-truth.md`; the derivation record is
-written during execution as
+**Status:** Implemented through Task 12a. Task 6 is a declared gap, Task 10 was
+not taken, and Task 12b's measured re-pin plus the Task 13 full gate remain.
+The implementation plan is `docs/superpowers/plans/2026-10-29-live-truth.md`;
+the derivation record is
 `docs/superpowers/plans/2026-10-29-live-truth-derivations.md`.
 
 **Date:** 2026-10-29
@@ -185,6 +185,9 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
 - **Decision:** optional task T10. If the fade palette source cannot be pinned
   from the raw bytes, the task declares the instrument gap and leaves the band
   where §D4 left it; it does not fit a cause.
+- **Execution outcome:** T10 was not taken because the fade palette source was
+  not funded. No DAC injection ran. The band stays **INCONCLUSIVE**, the cause
+  is not fitted, and the byte-pinned bounds and every pin are unchanged.
 
 ### 2.9 Audio and `gp-u27`
 
@@ -196,12 +199,14 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   diff-allowed section's already-computed matched prefix; the 4
   never-requested banks need new captures and stay out of scope. Optional T11.
 - `gp-u27-name-entry` is a complete capture/replay: the replay passes the miss
-  set, the finaliser's 258 mode-`0x1E` port frames are byte-identical to the
-  stored capture frames, and the measured pins are `MIN_FIRST 5871`,
-  `MAX_START 81`, `MIN_REACH 4990`, `MAX_MISSING 38`, trace/moves `9402`,
-  sha `5e2c5824…`, 5,885 frames. The only frame needing a named allowance is
-  capture 334 (the mode-8 entry three-present scan-out) with a measured
-  recipe. Promoting it is a bounded oracle task (T7), not an exhibit.
+  set and holds **178 mode-`0x1E` port frames**. The oracle explains all **303
+  content-bearing capture frames 5311..5616** (clean/splice). The earlier 258
+  scene-total figure and its mode split are withdrawn as not re-derivable. The
+  measured pins are `MIN_FIRST 5871`, `MAX_START 81`, `MIN_REACH 4990`,
+  `MAX_MISSING 38`, trace/moves `9402`, sha `5e2c5824…`, 5,885 frames. The only
+  frame needing a named allowance is capture 334 (the mode-8 entry
+  three-present scan-out) with a measured recipe. T7 subsequently promoted it
+  to `gp-u27-oracle` in `make verify` (§L7).
 
 ## 3. Approaches
 
@@ -264,15 +269,15 @@ claimed mode whose trigger was never measured.
 **Will claim:** the KO-draw round-over/winner-pose pixels (`gp-draw`, poked
 KOs named); the two-human KO window (`gp-twop-ko`, the KO is the game's own
 damage path, no KO pokes); the continue screen and its 15→expiry countdown
-(`gp-u28-continue`, the KO poked); the `0x25` entry/content (`gp-bowling`, both
-characters 4, the reaction move is real input); the name-entry entry/finaliser
-(`gp-u27`); the measured U16 gate value; the U14 fought-KO game evidence.
+(`gp-u28-continue`, the KO poked); the name-entry entry/finaliser (`gp-u27`);
+the measured U16 gate value; the U14 fought-KO game evidence; and the decoded
+`0x25` banner plus its measured structural blocker.
 
-**Will not claim:** the fought win; the volleyball content; the 5120 cause
-unless the injection decides it; rendered audibility; the final-content
-meaning of string `0x61` beyond the decoded text the task re-reads; any pixel
-outside the new oracles' windows; the two-human KO's result screens if the
-oracle window cannot cover them.
+**Will not claim:** the fought win; the volleyball or bowling mode content;
+the 5120 cause unless the injection decides it; rendered audibility; the
+final-content meaning of string `0x61` beyond the decoded text the task
+re-reads; any pixel outside the new oracles' windows; the two-human KO's
+result screens if the oracle window cannot cover them.
 
 ## 7. Risks and stop rules
 
@@ -328,3 +333,24 @@ oracle window cannot cover them.
 Captures 2, 3, 5, 6 and 10 run **serially** on the DOSBox-X host; the offline
 tasks (4, 7, 8, 9, 11) may run in parallel worktrees and are cherry-picked. The
 gate is last.
+
+## 10. Execution reconciliation (Task 12a)
+
+- `gp-draw-oracle`, `gp-twop-ko-oracle`, `gp-u28-continue-oracle` and
+  `gp-u27-oracle` are in `make verify`. They pin the KO-branch `0x0A`/`0x0B`
+  draw, the no-poke two-human KO and round result, the `0x0E` continue
+  countdown/expiry, and the name-entry/finaliser path respectively. The
+  inventory is **42 explicit capture paths, 41/42 present**, with only U14's
+  fought live win declared absent.
+- U16 R2's deciding operand is measured at `y(0x1531)=0x0EAE < 0x1400`, with a
+  strict clear. U14's failed artifact is game evidence for a fought arcade KO,
+  not a capture, oracle, pin or fought-win claim.
+- `0x21` stays declared under the state-coverage stop rule. `0x25` also stays
+  declared: two real-input attempts failed, the symmetric route is blocked by
+  slot `+0x53`, and the two `.failed` artifacts have no oracle or pins.
+- Task 10 was not taken; the 5120 instrument gap and INCONCLUSIVE band are
+  unchanged. Task 11 pins **74 diff-allowed audio prefixes / 29,656 ticks**;
+  the unmatched remainders and rendered audibility stay named.
+- Task 12a reconciles the documents only. Task 12b owns the measured census,
+  manifest and pin-baseline results; Task 13 owns the full gate. No full-gate
+  claim is made here.
