@@ -130,6 +130,85 @@ APERTURE_FIELDS = tuple(
     for k, (r, x) in enumerate(BAND_APERTURE))
 APERTURE_FIELD_NAMES = frozenset(n for n, _, _ in APERTURE_FIELDS)
 
+# Final truth Task 2 (plan 2026-10-30-final-truth, design §3.4, record §F2): the
+# 5120 band's DAC-injection diagnostic. The Task 11 aperture read was INVALID
+# because the DOSBox-X memory file excludes the VGA aperture (record §D4), so
+# this diagnostic reads the game's own offscreen buffers instead. `0x50188`
+# swaps DS_000E87A0/DS_000E87A4 after the present copy (flow.c:7411), so at the
+# S record (the master loop's end-of-iteration spin) DSD(DS_000E87A0) is the
+# just-presented 0xFA00-byte index buffer and DSD(DS_000E87A4) the next one.
+# The 14 bytes are the 13 band offsets plus the control, at
+# `DSD(DS_000E87A0) + row*320 + x`: the stored buffer pointer is a linear
+# address and the memory file is the guest's physical RAM, the same
+# pointer-as-file-offset convention SLOT_RECORD_FIELDS uses.
+BAND_BACKBUFFER_PTR_DS = 0x000E87A0
+BAND_BACKBUFFER_NEXT_DS = 0x000E87A4
+BACKBUFFER_PTR_FIELDS = (('bbp0', BAND_BACKBUFFER_PTR_DS, 4),
+                         ('bbp1', BAND_BACKBUFFER_NEXT_DS, 4))
+BACKBUFFER_FIELDS = tuple(
+    ('bb%02d' % k, r * 320 + x, 1) for k, (r, x) in enumerate(BAND_APERTURE[:-1])
+) + (('bbc', BAND_APERTURE[-1][0] * 320 + BAND_APERTURE[-1][1], 1),)
+BACKBUFFER_FIELD_NAMES = frozenset(n for n, _, _ in BACKBUFFER_FIELDS)
+
+# The effect pool's two sentinels and the active count (effects.h: 24 records of
+# stride 0x814 from DS_000F0B00; {next@0; prev@4} links). eff0/eff1 read the
+# active list's head/tail, efffree the free list's head, effn the count.
+BAND_EFF_FIELDS = (('eff0', 0x000FCCE0, 4), ('eff1', 0x000FCCE4, 4),
+                   ('efffree', 0x000FCCE8, 4), ('effn', 0x0009AF3D, 1))
+BAND_DAC_EXTRA = BACKBUFFER_PTR_FIELDS + BACKBUFFER_FIELDS + BAND_EFF_FIELDS
+
+# The fade source and the injection (record §F2). `0x29B74` (frontend_darken_all,
+# flow.c:408) runs 0x13DF0 then spawns one 0x13D4C darken (byte_arg 3) per live
+# entry of the 24-slot palette table at DS_00107618 (0x33904's walk): each
+# 0x10-byte entry is {handle; refcount; first; len} (actors.c:1249). The type-4
+# record copies the resolved block's `len` colours into +0x10, and its
+# 0x134C0 case-4 body subtracts 8 per channel every third frame and re-enqueues
+# them through 0x33734; 0x1C470 then uploads them to the DAC (six-bit truncation,
+# 8-bit expansion). Measured on the U13 replay at the spin before iteration
+# 0x1826 (gdb on build/run_tests): the active list holds 12 records, all with
+# +0x0E = 3; the four band indices are covered by exactly two of them, the
+# table entry 2 record (first 0x20, len 0x30: 0x32/0x2E/0x4D) and the entry 5
+# record (first 0x52, len 0x3C: 0x65). The free-list pop order is the table
+# order (the record for entry 0 is 0xF0B00, the pristine head), so the record
+# addresses are 0xF0B00 + table index * 0x814.
+#
+# At iteration 0x1826 the natural case-4 body does NOT run (+0x0E 3 -> 2), so a
+# colour-only write would never be presented; the injection writes +0x0E = 1 too,
+# which makes that iteration's body run once. The body darkens first, so each
+# sentinel word is pre-darkened (channel 0xFF -> 0xF7); after 0x1C470's
+# conversion (v = channel >> 2, display = (v << 2) | (v >> 4)) the presented
+# colour is 0xF7 per written channel: index 0x32 magenta, 0x2E cyan, 0x4D white,
+# 0x65 (the control) yellow.
+BAND_DAC_RECORDS = ((0x00107638, 0x000F1B28, 0x20, 0x30),   # palette entry 2 -> record
+                    (0x00107668, 0x000F3364, 0x52, 0x3C))   # palette entry 5 -> record
+BAND_DAC_SENTINEL_WORDS = ((0x32, 0x00FF00FF),         # magenta
+                           (0x2E, 0x00FFFF00),         # cyan
+                           (0x4D, 0x00FFFFFF),         # white
+                           (0x65, 0x0000FFFF))         # yellow (the control)
+BAND_DAC_WRITES = tuple(
+    (rec + 0x0E, b'\x01') for _src, rec, _first, _len in BAND_DAC_RECORDS
+) + tuple(
+    (rec + 0x10 + 4 * (idx - first), word.to_bytes(4, 'little'))
+    for idx, word in BAND_DAC_SENTINEL_WORDS
+    for _src, rec, first, ln in BAND_DAC_RECORDS if first <= idx < first + ln)
+
+
+def effect_darken_word(word):
+    """0x134C0's case-4 step (effects.c:effect_darken): each 8-bit channel - 8, floor 0."""
+    ch = [max(0, ((word >> s) & 0xFF) - 8) for s in (0, 8, 16)]
+    return ch[0] | (ch[1] << 8) | (ch[2] << 16)
+
+
+def dac_display(word):
+    """0x1C470's upload: r/g/b = bits 2..7/10..15/18..23, then the VGA's 6-bit
+    display expansion (v << 2) | (v >> 4) (gfx.c:gfx_flush_palette)."""
+    return bytes(((v << 2) | (v >> 4)) & 0xFF
+                 for v in ((word >> 2) & 0x3F, (word >> 10) & 0x3F, (word >> 18) & 0x3F))
+
+
+BAND_DAC_SENTINEL_RGB = {idx: dac_display(effect_darken_word(word))
+                         for idx, word in BAND_DAC_SENTINEL_WORDS}
+
 # BIOS keys: (scan, the BIOS word a press queues; record named-gaps-a §A.9).
 KEYS = {'enter': (0x1C, 0x1C0D), 'esc': (0x01, 0x011B)}
 # The service menu's Down arrow: scan 0x50, the word the K11 walk's own `down`
@@ -724,6 +803,24 @@ SCENARIOS['gp-u13-ending2'] = dict(
 SCENARIOS['gp-u13-band'] = dict(
     time_limit=240, extra=WIN_EXTRA + APERTURE_FIELDS, memsize=64,
     steps=SCENARIOS['gp-u13-ending2']['steps'])
+
+# Final truth Task 2 (design §3.4, record §F2): gp-u13-band-dac, the band's
+# DAC-injection diagnostic. gp-u13-ending2's script through the ending, with the
+# last `until_mode 3` replaced by the injection and a stop two frames later: the
+# W writes at the spin of f=0x1825 (iteration 0x1826, the band's S record) are
+# BAND_DAC_WRITES (two record state bytes + four sentinel colours, record §F2),
+# and the end is `after_entry 0x15, k=1, n=84` = f=0x1828 (the mode-0x15 entry is
+# f=0x17D4 in gp-u13-ending2's capture, so the stop is the plan's n=84 and the
+# poke is the same step's n=82). The S record gains the back-buffer reads and the
+# effect-list fields (BAND_DAC_EXTRA); time_limit 240 and memsize 64 are U13's.
+# No pin and no oracle hang off this capture (a failure is preserved as
+# .failed.N); the W writes are harness writes, not a game claim.
+SCENARIOS['gp-u13-band-dac'] = dict(
+    time_limit=240, extra=WIN_EXTRA + BAND_DAC_EXTRA, memsize=64,
+    steps=SCENARIOS['gp-u13-ending2']['steps'][:-1] + (
+        ('after_entry', 0x15, 1, 82, ('poke', BAND_DAC_WRITES)),
+        ('after_entry', 0x15, 1, 84, ('end',)),
+    ))
 
 # Endgame truth Task 3 (record §E1.1): TALON's ending, character 2 on character-select
 # cell 1 (ending_menu(1): one p1.right from cell 0, then the confirm). The land marks are
@@ -1435,6 +1532,9 @@ class Schedule:
 # 0x15), so the replay's script includes the entire prompt/countdown window.
 # gp-u27-name-entry (state coverage Task 8) stops too: its end is mode 3 after the
 # letter-driven high-score entry (u10's until_mode), and nothing past it is compared.
+# gp-u13-band-dac (final truth Task 2) stops too: its end is two frames after the
+# band's S record (after_entry 0x15 k=1 n=84), so the capture holds the sentinel
+# window and no post-ending content.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1446,7 +1546,8 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
-                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue', 'gp-bowling', 'gp-bowling-fix'})
+                         'gp-u13-band', 'gp-u13-band-dac', 'gp-u27-name-entry', 'gp-u28-continue',
+                         'gp-bowling', 'gp-bowling-fix'})
 
 
 class ScriptError(Exception):

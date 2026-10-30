@@ -280,3 +280,228 @@ revert.
   remains reported-only (`gp-oracle`'s first tick difference f=141).
 * The oracle windows and their pins are unchanged; the claim stays the
   documented narrow one, and this task adds no frame pin.
+
+## §F2 — the 5120 band (Task 2)
+
+**Outcome: Part A done (no holder; Step 2 prepared, capture pending).** The
+per-pixel holder search over the whole U13 dump finds no port frame that holds
+the capture-5120 band (F2.1); the fade source and the DAC-injection write list
+are derived (F2.2/F2.3), the `gp-u13-band-dac` scenario and its S fields are
+prepared and unit-tested (F2.4), and the one capture is **not run in this
+part**. No capture, pin or allowance changed; the band allowance
+`(5120, 1, 5, 56b900b1…)` stays.
+
+### F2.1 The holder search (Step 1, no capture)
+
+The dump is a fresh current-tree replay of `gp-u13-ending2` with
+`--end-to-last-s` (`GP_DUMP=/tmp/pr_gp_dump`, copied to
+`/tmp/opencode/t2-gp-dump/gp-u13-ending2`): **4,953** `.ipx` frames,
+`frames.txt` maps `04314 f=1824` … `04318 f=1828` (the §D1.5.2 correction, not
+the design-era one-frame-later numbering). The capture is the existing
+`data/k11-captures/gp-u13-ending2/frame_05120.raw.gz` (RGB 320×200×3). The
+comparison is **rendered RGB** — each port frame's index byte at an offset
+mapped through that frame's own 768-byte DAC — because the capture stores RGB
+and a "holder" means the port can produce those values. The tool is
+`tools/gp_band.py --holder-search` (`holder_search`), tested in
+`tools/tests/test_gp_band.py`.
+
+The capture-5120 values at the 14 offsets (`BAND_APERTURE` order) are
+`00001c` ×8 (offsets 0..6 and 8), `000000` at (3,74) and at the four (4,·)
+offsets, control (1,100) `000000`. The port frame at f=0x1826 (`04316.ipx`)
+holds indices `0x32`×8 / `0x2E` / `0x4D`×4 / control `0x65`, rendering
+`000000`/`100000`/`00000c`/`000000`; its DAC has exactly five entries that
+render `00001c` — `0x15, 0x40, 0x42, 0x43, 0x4F`.
+
+Over all 4,953 frames:
+
+| group | holders |
+|---|---|
+| each of the 8 `00001c` pixels (offsets 0..6, 8) | **0** |
+| (3,74) `000000` | 716 |
+| the four (4,·) `000000` | 658 / 657 / 572 / 572 |
+| row 1 segment (4 offsets) | **0** |
+| row 2 segment (2 offsets) | **0** |
+| row 3 segment (3 offsets) | **0** |
+| row 4 segment (4 offsets, all black) | 569 |
+| control (1,100) `000000` | 711 |
+| whole band (13) | **0** |
+| whole band + control (14) | **0** |
+
+So no port present renders `00001c` at any of the eight blue offsets (a holder
+would need one of the five `00001c` DAC entries' indices at all eight, under
+that frame's own DAC). The five black offsets are trivially held (black is
+common); the blue ones are not, and the row-1/2/3 segments and the whole band
+have no holder. The band is **not** a splice/order artifact of a dumped port
+present: Step 1 decides "no holder", Step 2's capture is needed. (A capture-
+side check agrees the band is not a stale capture present either: no earlier
+capture frame 0..5119 holds the band's rows 1..5; frame 5120 is the only one.)
+
+### F2.2 The fade palette source and the 24 records (raw)
+
+`0x29B74` (`frontend_darken_all`, `port/src/game/flow.c:403-425`; code-object
+file offset `0x7C9C8`) disassembles to:
+
+```
+00029b77  e874a2feff   call 0x13df0        ; effects_clear (0x13DF0)
+00029b7c  31c0         xor eax, eax
+00029b7e  e8819d0000   call 0x33904        ; the palette table walk
+00029b85  85c0         test eax, eax
+00029b87  7419         je 0x29ba2
+00029b89  ba03000000   mov edx, 3          ; the 0x13D4C byte_arg
+00029b8e  89d8         mov eax, ebx        ; the live table entry
+00029b90  e8b7a1feff   call 0x13d4c        ; effects_spawn_darken(entry, 3)
+00029b95  89d8         mov eax, ebx
+00029b97  e8689d0000   call 0x33904
+...
+00029ba2  ba78000000   mov edx, 0x78
+00029ba7  b915000000   mov ecx, 0x15
+00029bac  668915ee880800 mov word [0x888ee], dx   ; DS_001088EE = 0x78
+00029bb3  668915fe4a0800 mov word [0x84afe], dx   ; DS_00104AFE = 0x78
+00029bba  66890d004b0800 mov word [0x84b00], cx   ; DS_00104B00 = 0x15
+```
+
+`0x33904` (`frontend_list_next`, `flow.c:371-383`) walks the fixed 0x10-stride
+table `DS_00107608..DS_00107798`, returning each entry whose `+4` dword
+(refcount) is non-zero: the **first entry is 0x107618** and there are **24
+slots** (`(0x107798-0x107618)/0x10`). `0x33754` (`palette_acquire`,
+`actors.c:1249-1280`) fills each slot `{handle@+0, refcount@+4, first@+8,
+len@+0xC}` and enqueues the range through 0x33734.
+
+`0x13D4C` (`effects_spawn_darken`, `effects.c:171-205`; raw at 0x13D4C:
+`c6 41 0c 04` = `mov byte [ecx+0xC],4`, `88 51 0d` = `mov [ecx+0xD],dl`)
+pops the free-list head, sets type 4, `+0xD = 3`, `+0xE = 1`, copies the
+resolved block's `len` colours into `+0x10` and head-inserts the record on the
+active list (`effn++`). `0x134C0` (`effects_step`, `effects.c:337-423`) ages
+each record: `+0xE--`; at 0 it reloads `+0xD` and runs the case-4 body, which
+subtracts 8 per channel from every `+0x10` dword (floor 0) and calls
+`palette_record(rec+0x10, DSD(src+8), DSD(src+0xC), 0)`. `0x33734`
+(`gfx.c:59-93`) appends `{ptr, first, count, flag}`; `0x1C470`
+(`gfx_flush_palette`, `gfx.c:95-185`) drains it and writes the DAC with the
+raw's 6-bit truncation and the VGA's `(v<<2)|(v>>4)` expansion. `0x50188`
+(`swap_buffers`, `flow.c:183-190`; decomp `prage.c:36769-36772`) exchanges
+`DS_000E87A0`/`DS_000E87A4` after the present copy (`flow.c:7395-7411`), so
+`DSD(DS_000E87A0)` at the S record names the just-presented 0xFA00 buffer.
+
+**The measured state at the band's frame** (gdb on the `build/run_tests` U13
+replay; `game_frame` entry with the counter at 0x1825 = the spin the W writes
+land in, and `gfx_flush_palette` of iterations 0x1825..0x1828):
+
+* The table has **17 live entries** (slots 0..16; slots 17..23 are zero).
+  Entry 2 is `{handle 0x0105FF3C, rc 13, first 0x20, len 0x30}`; entry 5 is
+  `{handle 0x0C039CA0, rc 16, first 0x52, len 0x3C}`.
+* The effect pool holds **12 active records** at the spin, all type 4, all
+  `+0xD = 3`, `+0xE = 3`; the active sentinel is
+  `{next 0x0F842C, prev 0x0F1B28}`, the free head 0x0F0B00, `effn = 12`. (At
+  the earlier spin before 0x1821 it is **14** — entry 0's and entry 16's
+  records have not retired yet; 24 is the pool/table size, not the active
+  count.) The free-list pop order is the table order (entry 0's record is
+  0xF0B00, the pristine head), so entry 2's record is `0xF0B00 + 2*0x814 =
+  0x0F1B28` and entry 5's `0x0F3364`.
+* The four band indices are covered by exactly those two records: entry 2's
+  range `0x20..0x4F` holds `0x32`, `0x2E` and `0x4D`; entry 5's `0x52..0x8D`
+  holds the control `0x65`.
+* The dirty-list flush at iteration 0x1825 holds the 12 fade records; at
+  **0x1826 and 0x1827 it is empty** (no case-4 body runs: `+0xE` 3→2→1), and at
+  0x1828 it holds them again (the 1→0 body + its darken). A colour-only write
+  at the 0x1825 spin would therefore never be presented; the injection writes
+  each record's `+0x0E = 1` too, which makes iteration 0x1826's body run once.
+
+**The plan-vs-raw correction (the design's 56 writes).** The design/plan say
+"56 derived W writes (24 records × 4 sentinel groups)". The raw measurement
+gives a different shape: 24 is the pool/table size (17 live, 12 active at the
+frame), the four indices are covered by exactly two records, and 24×4 is 96,
+not 56. The derived injection is **6 W writes** (below); the "56" is not used
+and no two-record record set is widened. This is the record's correction; the
+task's brief inherits it.
+
+**The injection (6 writes at f=0x1825).** For each of the two records, write
+`+0x0E = 1`, and for each of the four indices write the record's `+0x10` dword
+at `4*(index - first)` with a sentinel word. The case-4 body darkens the block
+before the upload, so each word is pre-darkened (channel 0xFF -> 0xF7); after
+`0x1C470`'s conversion the presented colour is 0xF7 in each written channel:
+
+| index | address | word | presented colour |
+|---|---|---|---|
+| state (entry 2) | `0x0F1B28+0x0E = 0x0F1B36` | `01` | — |
+| state (entry 5) | `0x0F3364+0x0E = 0x0F3372` | `01` | — |
+| `0x32` | `0x0F1B28+0x10+4*(0x32-0x20) = 0x0F1B80` | `0x00FF00FF` | `f700f7` magenta |
+| `0x2E` | `0x0F1B28+0x10+4*(0x2E-0x20) = 0x0F1B70` | `0x00FFFF00` | `00f7f7` cyan |
+| `0x4D` | `0x0F1B28+0x10+4*(0x4D-0x20) = 0x0F1BEC` | `0x00FFFFFF` | `f7f7f7` white |
+| `0x65` | `0x0F3364+0x10+4*(0x65-0x52) = 0x0F33C0` | `0x0000FFFF` | `f7f700` yellow |
+
+These are `gp_session.BAND_DAC_RECORDS`/`BAND_DAC_SENTINEL_WORDS`/
+`BAND_DAC_WRITES`; the tests pin the six addresses and the four colours. The
+port dry run (the U13 script with `poke 6182 …` = 0x1826 decimal, the port
+driver's `F = W.f+1` convention) lands them correctly: frame 04316 (f=0x1826)
+and 04317 (f=0x1827) present the four sentinels at all 14 offsets, and frame
+04319 (f=0x1829) shows the natural darken 0xEF (0xF7-8), as derived.
+
+The S fields read at the same spin in the dry run are
+`bbp0=02A6A550 bbp1=02A5AB50 eff0=000F842C eff1=000F1B28 efffree=000F0B00
+effn=12`, and the just-presented buffer's 14 bytes are
+`32 32 32 32 32 32 32 2E 32 4D 4D 4D 4D 65`.
+
+### F2.3 The scenario and the S fields
+
+`gp_session.BAND_DAC_EXTRA` appends `bbp0`/`bbp1` (DS_000E87A0/DS_000E87A4),
+the 13 band bytes `bb00..bb12`, the control byte `bbc`, and
+`eff0/eff1/efffree/effn` (DS_000FCCE0/4/E8, DS_0009AF3D). `read_snap`
+(`tools/gp_capture.py`) follows the `bbp0` pointer for the 14 bytes (a stored
+linear pointer is the memory file's offset; the same convention
+`SLOT_RECORD_FIELDS` uses) and reads the other fields base-relative; its test
+seeds a decoy at the base-relative address.
+
+`SCENARIOS['gp-u13-band-dac']` is `gp-u13-ending2`'s script with its last
+`until_mode 3` replaced by `('after_entry', 0x15, 1, 82, ('poke',
+BAND_DAC_WRITES))` and `('after_entry', 0x15, 1, 84, ('end',))`; time_limit 240
+and memsize 64 are U13's, and the scenario joins `STOP_AT_END` (so the harness
+SIGTERMs `STOP_TAIL` frames after f=0x1828). The mode-0x15 entry is f=0x17D4
+in the existing capture's S records (and the port's `frontend_darken_all` call
+is at the same frame), so n=82 targets f=0x1826 (the W rows at the spin of
+f=0x1825) and n=84 stops at f=0x1828. No pin, oracle, manifest entry,
+`CAPTURE_DIRS` member or audio trace hangs off it (a diagnostic, like
+`gp-u13-band`); a failed run is preserved as `.failed`.
+
+**The pending capture (not run in this part).**
+
+```
+$ make gp-capture scenario=gp-u13-band-dac
+```
+
+Expected: a new `data/k11-captures/gp-u13-band-dac` whose poll.log's W rows are
+the six writes at f=0x1825 (all `race=0`), whose S record at f=0x1826 carries
+the fields above with `effn=12` and `bbc=0x65`, and whose frames around 5120
+show the four sentinel colours. The controller runs it after Gate-0 and resumes
+this task to apply `tools/gp_band.py --dac`:
+
+```
+$ python3 tools/gp_band.py --dac --poll-log data/k11-captures/gp-u13-band-dac/poll.log \
+    --capture data/k11-captures/gp-u13-band-dac \
+    --port-frame /tmp/opencode/t2-gp-dump/gp-u13-ending2/frame_04316.ipx
+```
+
+The outcomes are the design's (§3.4): sentinel at the eight `0x32` pixels with
+the back buffer `0x32` -> **PASS-A** (capture/pipeline present model; the band
+allowance stays and the class is declared); no sentinel with the back buffer
+`0x32` -> the **present-layer** class (undumped present/aperture residue,
+terminal with the S record); a back-buffer `Q` at a band offset -> **PASS-B**
+(content divergence; the record names the renderer from Q and re-pins only if a
+fix is measured); no S at f=0x1826, a race, or a control that does not turn
+yellow -> **INCONCLUSIVE** (keep `(5120,1,5,56b900b1…)`, no second capture).
+The tool's tests cover the four verdicts on synthetic sides.
+
+### F2.4 Tests
+
+* `tools/tests/test_gp_band.py`: the holder search (whole band, a one-pixel
+  drop, a one-channel difference, the frame's own DAC, the control apart) and
+  the four `decide_dac` outcomes, the six derived writes and the scenario/field
+  shape. Mutation-checked while writing: swapping the band comparison for a
+  single channel or dropping the control changes the expected counts.
+* `tools/tests/test_gp_capture.py`: `read_snap` follows the `bbp0` pointer,
+  with a decoy at the base-relative address and the next buffer as a second
+  pointer; the S record round-trips the fields. `TestMemsize` adds the new
+  scenario to the `memsize=64` set.
+* `tools/tests/test_gp_session.py` (unchanged) still passes; the new module is
+  added to `make verify`'s k11/gp tool unit-test line (the Makefile edit), so
+  the derivation's six addresses and four colours stay gated.
+* No C code, no differential row, no oracle and no pin changed.

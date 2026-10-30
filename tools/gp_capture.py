@@ -43,6 +43,7 @@ def read_snap(mm, base, fields=gs.SNAP_FIELDS, ptr=None):
     its record offset (the DOS4GW runtime relocates stored pointers)."""
     out = {}
     rec = None
+    bbp = None
     for name, ds, size in fields:
         if name in gs.POINTER_FIELDS:
             out[name] = 0 if ptr is None else int.from_bytes(mm[ptr + ds:ptr + ds + size], 'little')
@@ -53,6 +54,18 @@ def read_snap(mm, base, fields=gs.SNAP_FIELDS, ptr=None):
                 rec = int.from_bytes(mm[o:o + 4], 'little')
             o = rec + ds
             out[name] = int.from_bytes(mm[o:o + size], 'little')
+            continue
+        if name in gs.BACKBUFFER_FIELD_NAMES:
+            # Final truth Task 2 (record §F2): the just-presented 0xFA00-byte
+            # index buffer. 0x50188 swaps DS_000E87A0/DS_000E87A4 after the
+            # present copy, so 0xE87A0 names the buffer the S record's frame was
+            # copied from. The stored pointer is a linear address; the memory
+            # file is the guest's physical RAM, so its file offset is the value
+            # (the SLOT_RECORD_FIELDS convention, not the base-relative one).
+            if bbp is None:
+                o = base + gs.BAND_BACKBUFFER_PTR_DS - gs.DATA_BASE_VA
+                bbp = int.from_bytes(mm[o:o + 4], 'little')
+            out[name] = mm[bbp + ds]
             continue
         if name in gs.APERTURE_FIELD_NAMES:
             # State coverage Task 11: the VGA aperture's file offset is the literal
