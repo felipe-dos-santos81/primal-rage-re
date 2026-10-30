@@ -1048,6 +1048,19 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
     return 0 if ok else 1
 
 
+def parse_prefix_pin(text):
+    """An argparse type for a non-negative section-index/tick-minimum pair."""
+    try:
+        index, minimum = text.split(':')
+        value = (int(index, 0), int(minimum, 0))
+        if min(value) < 0:
+            raise ValueError
+        return value
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            'expected INDEX:TICKS with non-negative integer values') from None
+
+
 def cmd_compare(a):
     name = a.name or os.path.basename(a.port)
     min_ticks = a.min_ticks
@@ -1062,9 +1075,8 @@ def cmd_compare(a):
     prefix_pins = None
     if a.prefix_pin:
         prefix_pins = dict(TRACE_PREFIX_PINS.get(name, {}))
-        for part in a.prefix_pin:
-            index, minimum = part.split(':')
-            prefix_pins[int(index, 0)] = int(minimum, 0)
+        for index, minimum in a.prefix_pin:
+            prefix_pins[index] = minimum
     expect = None
     if a.expect_sections:
         expect = []
@@ -1217,7 +1229,7 @@ def main(argv):
     c.add_argument('--min-ticks', type=int, default=0)
     c.add_argument('--allow-unanchored', default='')
     c.add_argument('--allow-diff', default='')
-    c.add_argument('--prefix-pin', action='append', default=[],
+    c.add_argument('--prefix-pin', action='append', default=[], type=parse_prefix_pin,
                    help='override one section\'s matched-prefix minimum: INDEX:TICKS')
     c.add_argument('--game-dir')
     c.add_argument('--expect-sections', default='',

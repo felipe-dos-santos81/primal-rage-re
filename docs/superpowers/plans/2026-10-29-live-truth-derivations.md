@@ -641,11 +641,36 @@ The existing rotation nulls remain in the same suite and pass:
 On the real `gp-u23-u16-finisher` dump, section 1 measures 25 ticks and passes pin
 25. The otherwise identical command with `--prefix-pin 1:26` exits 1 and names
 `section 1 bank 286ED662: claimed matched prefix 25 ticks, pinned minimum 26`.
-The final report-only comparison of all 27 dumps then passed; the summary reads
+The dump run root was **`/tmp/pr_audio_dump`** (the existing dump set; its gp-u23
+`audio.txt` is timestamped 2026-10-29 15:34 -03:00). The report-only rerun at
+2026-10-29 22:58 -03:00 used each existing dump without replay:
+
+```bash
+caps=""; for f in $(python3 tools/audio_compare.py expected-files --scenario "$name"); do
+    caps="$caps --capture data/k11-captures/$name/$f"
+done
+python3 tools/audio_compare.py compare --name "$name" \
+    --port "/tmp/pr_audio_dump/$name/audio.txt" $caps --game-dir data/game/C \
+    --json-out ".superpowers/sdd/2026-10-29-live-truth/reports/$name/report.json"
+python3 tools/audio_compare.py summary --captures data/k11-captures \
+    --audio-captures data/audio-captures \
+    --reports .superpowers/sdd/2026-10-29-live-truth/reports
+```
+
+The audio path is unchanged since those dumps: the later `9716403f` (coverage hit
+dump deduplication) and `f82c73fa` (render free-list drain) commits touch no audio
+code or comparator. The comparison of all 27 dumps passed; the summary reads
 **29/29 files, 26 with music, summary ok** (plus the declared U17 wall-paced skip).
 A JSON cross-check reproduced all **74/74** values exactly, total **29,656**, and
 confirmed every pre-existing whole-section total/minimum against the old reports.
 No Makefile pin or command was needed.
+
+The review fix round adds four synthetic guards: an unpinned diff-allowed section,
+a pinned prefix lost to the named rotation-null gap, an absent pinned index, and a
+malformed `--prefix-pin`. Removing each corresponding guard makes its test fail
+(the three guard-removal mutants return `synthetic: ok` where the test requires
+exit 1); malformed input now exits 2 through argparse without a traceback. The
+module is now **47 tests OK**.
 
 ### L11.3 The bank inventory re-measured from those reports
 
@@ -668,7 +693,12 @@ bank as a whole-section match.
 ### L11.4 Claim limits
 
 The new claim is exactly the per-section matched register-tick prefix under the
-existing reduction/alignment model. It is not a whole-section match, not a claim
-about the unmatched remainder or capture tail, and not rendered audibility (the OPL
-core/mixer remains an invented model; the PCM pin remains determinism). The U14 gap,
-all gameplay pins and every pre-existing audio pin stay unchanged.
+existing reduction/alignment model. The exact minima intentionally inherit the
+documented host-load frame/tick **label-shift flake** (fought-match record §F6.3):
+a replay whose labels shift can shorten or lose a prefix and fail even when its
+register/value data is unchanged. That strictness is deliberate, matching the
+existing whole-section pins; it is not hidden by widening or lowering a pin. This
+is not a whole-section match, not a claim about the unmatched remainder or capture
+tail, and not rendered audibility (the OPL core/mixer remains an invented model;
+the PCM pin remains determinism). The U14 gap, all gameplay pins and every
+pre-existing audio pin stay unchanged.
