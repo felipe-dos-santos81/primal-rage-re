@@ -496,6 +496,14 @@ SCAN3_ALLOWED = {
         # 5034 clean at 4302.
         (5033, 130, 198, '9a5cd9bd7b6dc2c14642eab62211a5d64a5928dec2abb29b2002725ee333c17e'),
     ),
+    'gp-draw': (
+        # Live truth Task 2 (record §L2): capture 346 (raw 2827), the round-1
+        # mode-8 entry's two-segment scan-out. Rows 0..2 are port 218's alone
+        # before the bind and rows 3..199 are port 221's; the vacuous-middle
+        # pair (220, 221) is the 1686-frame dump's unique adjacent-pair bind.
+        # Ports 219/220 are unexhibited.
+        (346, 3, 3, 'f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b'),
+    ),
     'gp-u27-name-entry': (
         # Live truth Task 7 (record §L7): capture 334 (raw 2837), the round-1
         # mode-8 entry's three-present scan-out. Rows 0..2 are port 219's alone

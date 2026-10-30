@@ -8,8 +8,8 @@
 **Phase rules.** No port code changes: the phase is capture and record, and no
 new portable function is in scope. A capture that proves a port divergence is
 recorded at its first unexplained frame and stops; it is not patched. The design
-is proposed, and as of this record nothing of it has been built, captured or
-pinned.
+is proposed; §L1 is the baseline at which nothing of it had been built, captured
+or pinned. The later sections record the phase's measured changes.
 
 ## §L1 Baseline
 
@@ -132,6 +132,120 @@ game's own damage path, R3 U16 R2 is a record task, R4 `0x21` stays declared,
 R5 U14's fought win stays open). R6-R8 are the orchestrator's ledger rulings
 (capture serialization, measured pins win, optional-task stop rules). The plan
 lists only R1-R5; R6-R8 live in the git-ignored ledger.
+
+## §L2 The KO-branch drawn match (Task 2)
+
+**Decision: `gp-draw` is published and gated by `gp-draw-oracle`; the KO-branch
+`0x0B` winner pose is exhibited.** This is distinct from `gp-draw-timeout`: the
+KO capture has `ad4=2`, while the timeout capture has `ad4=0xFFFFFFFF`. The three
+KO pokes are harness writes, not fought KOs; U14's fought-live-win gap is unchanged.
+No port code or existing pin changed.
+
+### L2.1 One guarded capture and its evidence
+
+Exactly one `make gp-capture scenario=gp-draw` ran. It wrote 2,132 frames (raw
+1377..4939) in 71.2 s, with 2,955 S records (`f=0x0005..0x0B9E`), four W records
+and one X record. All session checks passed: base, 7/7 steps and the mode-`0x0B`
+stop, end frame, mode `0x27` after Enter, `kb == raw`, 2,132/2,132 frames, port
+script v2, no unscripted input, 4/4 pokes with no race, zero skipped BIOS words,
+and the SIGTERM stop at `f=0x0B9E`. `gp_capture.py check-input` also passes.
+
+The three poke steps are round 1 `0x10789E = 0x78` (P2 KO), round 2
+`0x10780A = 0x78` (P1 KO), and round 3 both addresses (the drawn round). The
+deciding S record is:
+
+```
+f=0B02 mode=000A ad4=00000002 b1e=03 adc=00000003 w2=01 w3=01
+f=0B26 mode=000B ad4=00000002 b1e=03 adc=00000003 w2=01 w3=01
+```
+
+Thus `python3 tools/gp_draw.py check --capture data/k11-captures/gp-draw` exits
+0: `ad4=2`, `b1e=adc=3`, `w2=w3=1`, and mode `0x0A` precedes `0x0B`. The capture
+identity is 2,132 frames and poll.log sha256
+`d99571d3db0bf2135ad10d3a0f08d5c5bbdebdea392fad2821e7ce0901299885`.
+
+### L2.2 Replay and miss set
+
+The first replay reached the script end but failed only the not-yet-registered
+miss-set assertion. Its measured log is `distinct=4 dropped=0`: the global
+`0x5D812` `actor_spawn`/`set_dead` rows plus `0x29D60` and `0x5D812` from
+`frontend_mode_1b_step` (one hit each). `k_miss_gp_draw` pins the latter pair;
+its `k_gp_sets` row uses **prefix 0**, so `gp-draw` and `gp-draw-timeout` cannot
+both match. The oracle replay then passes with the same four rows.
+
+The 1,686-frame port dump reaches mode `0x0A` at port 1589 and `0x0B` at port
+1681, and ends at `f=0x0B62` (2914). Trace and moves have zero differences
+through 2914, so both pins are 2915.
+
+### L2.3 Capture 346 and the measured frame window
+
+The initial report measured window start **100**, first unexplained **346**, and
+12 missing classes. Capture 346 (raw 2827) is the round-1 mode-8 entry's
+two-segment scan-out, not a port content divergence:
+
+- rows 0..2 equal port 218, the only earlier holder;
+- rows 3..199 equal port 221;
+- the vacuous-middle adjacent pair `(220,221)` is unique in the 1,686-frame dump;
+- ports 219 and 220 are unexhibited;
+- the top-row sha256 is
+  `f1839ec475ffc5228cb673caafb0ac274e3221299b50e1be804ae5da887aef1b`.
+
+`SCAN3_ALLOWED['gp-draw']` pins exactly `(346,3,3,top_sha)`. With that measured
+recipe, the first unexplained frame is **2064 (raw 4871)**. Capture 2064..2131
+is the post-script tail: the original continues to its X record at `f=0x0B9E`,
+whereas the port script ends at `f=0x0B62`; those 68 frames are not claimed.
+Captures 2058..2063 exhibit ports 1681..1685, so the window below 2064 includes
+both mode `0x0A` and mode `0x0B`, and reach **1685** is the port dump's last
+frame. The 11 canonical non-black missing classes through that reach are
+`[9, 11, 92, 129, 132, 219, 220, 809, 1019, 1083, 1526]`.
+
+| Pin | Measured value |
+|---|---:|
+| `GP_DRAW_MIN_FIRST` | 2064 |
+| `GP_DRAW_TRACE_MIN_FIRST` | 2915 |
+| `GP_DRAW_MOVES_MIN_FIRST` | 2915 |
+| `GP_DRAW_MAX_START` | 100 |
+| `GP_DRAW_MIN_REACH` | 1685 |
+| `GP_DRAW_MAX_MISSING` | 11 |
+| `GP_DRAW_CAPTURE_FRAMES` | 2132 |
+| `GP_DRAW_CAPTURE_SHA256` | `d99571d3db0bf2135ad10d3a0f08d5c5bbdebdea392fad2821e7ce0901299885` |
+
+The frame claim remains narrow: no content-bearing capture frame below 2064 is
+unexplained, with capture 346 admitted only by its byte recipe; port-frame order
+and complete interior coverage are not claimed, and nothing in the post-script
+tail is claimed.
+
+### L2.4 Failing-direction proofs
+
+Each `GP_DRAW_*` mutation below was a command-line override of
+`make gp-draw-oracle`; every run failed as required and the file kept its
+measured value. The exact-pin environment (`PR_PINS_EXACT=1`) makes the
+lower-`MIN_REACH` and raised-`MAX_MISSING` mutations fail too.
+
+| Mutation | Measured failure |
+|---|---|
+| `MIN_FIRST 2064 -> 2065` | `first unexplained 2064 < ratchet N 2065` |
+| `TRACE_MIN_FIRST 2915 -> 2916` | `N 2916 > end 2915: N is unreachable` |
+| `MOVES_MIN_FIRST 2915 -> 2916` | the same moves-side unreachable-N failure |
+| `MAX_START 100 -> 99` | `window starts at capture 100 ... > pinned start 99` |
+| `MIN_REACH 1685 -> 1684` | `window reach port 1685 > pinned reach 1684; re-pin to 1685` |
+| `MAX_MISSING 11 -> 12` | `11 missing class(es) < pinned 12; re-pin to 11` |
+| capture SHA's final hex digit `5 -> 6` | capture identity mismatch (2,132 frames) |
+| `CAPTURE_FRAMES 2132 -> 2131` | capture identity mismatch (2,132 actual frames) |
+
+A separate real-oracle proof changed the capture-346 top hash's final hex digit,
+then restored it. The run failed with `allowed capture 346 ... is not its named
+three-frame scan-out` and `first unexplained 346 < ratchet N 2064`.
+
+### L2.5 Audio, manifest and gate
+
+`prage_000.dro` exists, but is deliberately **outside**
+`tools/audio_compare.py`'s 29-trace inventory: no section was measured and no
+audio claim or section pin is fabricated. The regenerated manifest has 40
+entries. `make gate-check` reads **39/40 captures present, one missing**, with
+39 present checked and the same declared U14 absence. The measured pin-baseline
+reason is `live truth Task 2: measured gp-draw KO-draw oracle and capture-346
+scan-out`, digest `b4b2d3b19322a9d24646820825c6e9cea8bfab6db21eac502b1de8a2fc602013`.
 
 ## §L4 U16 R2: the measured gate operand (Task 4)
 

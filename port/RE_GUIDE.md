@@ -354,8 +354,9 @@ true original, and ported the divergence. Two pieces:
   (`flow.c:1632`/`2416`), so they are two-human-only; `0x0E` (the continue
   screen `0x27A2C`) needs a lost match plus a credit. A poked 1P scenario
   cannot open `0x21`/`0x25`. Their census rows (`0x4BD98`/`0x4E11C`/`0x27A2C`)
-  are `NOT-HIT`, and `0x0B` (the drawn winner pose) stays unexhibited
-  (claim-coverage Task 11's `gp-draw` did not publish).
+  are `NOT-HIT`. The KO-branch `0x0B` drawn winner pose is exhibited and pinned
+  by `gp-draw` (live truth Task 2, record §L2), a distinct claim from the
+  timeout branch's `gp-draw-timeout`.
 - The proof-debt declaration (state-coverage §D7) declares what stays open:
   **U17** (the `gp-u17-device2` wall-paced walk has no tick-keyed replay — its
   screens are already covered by the K11 captures, record §H6.9) and **U14**
@@ -381,9 +382,10 @@ true original, and ported the divergence. Two pieces:
   The exhibits: ENDURANCE's team end (`gp-u25-endurance-end`, `af1` `0 → 4`,
   stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
   `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to
-  `gp-u21`**), the timeout draw (`gp-draw-timeout`, `clock=0` from the `W`
-  record, `b16` not asserted) and the name-entry path (`gp-u27-name-entry`,
-  sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — now the
+  `gp-u21`**), the KO-branch drawn match (`gp-draw`, `ad4=2`/`b1e=adc=3`/
+  `w2=w3=1`, three labelled poked KOs; live truth Task 2, record §L2), the
+  timeout draw (`gp-draw-timeout`, `clock=0` from the `W` record, `b16` not
+  asserted) and the name-entry path (`gp-u27-name-entry`, sub-states `b25 00 → 04 → 05 → 06 → 07 → 0A`, three letters, "ABD" — now the
   gated `gp-u27-oracle` in `make verify`; live truth Task 7, record §L7). The
   U16 fix (§D3): the reaction's record-motion
   gap is a null table base (the stream reads the IVT at linear 0), fixed by

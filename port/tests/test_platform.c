@@ -383,6 +383,15 @@ static const fnm_pair k_miss_gp_u27_name_entry[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-draw (live truth Task 2, record §L2), measured on its full replay to the
+ * script end (f=0xB62): the same two wipe hooks of §G.24, 0x29D60 (bare `ret`,
+ * hits=1) and 0x5D812 (runtime stub, hits=1), both from frontend_mode_1b_step;
+ * the global actor_spawn/set_dead 0x5D812 rows are the fight's. */
+static const fnm_pair k_miss_gp_draw[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* gp-draw-timeout (state coverage Task 7, report task-7-report.md), measured on its full
  * replay to the X record (f=0xB62): the same two wipe hooks of §G.24, 0x29D60
  * (bare `ret`, hits=1) and 0x5D812 (runtime stub, hits=1), both from
@@ -460,6 +469,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u25-endurance-end", 0, k_miss_gp_u25_endurance_end, FNM_N(k_miss_gp_u25_endurance_end) },
     { "gp-u26-side1-ending", 0, k_miss_gp_u26_side1_ending, FNM_N(k_miss_gp_u26_side1_ending) },
     { "gp-u27-name-entry", 0, k_miss_gp_u27_name_entry, FNM_N(k_miss_gp_u27_name_entry) },
+    { "gp-draw", 0, k_miss_gp_draw, FNM_N(k_miss_gp_draw) },
     { "gp-draw-timeout", 0, k_miss_gp_draw_timeout, FNM_N(k_miss_gp_draw_timeout) },
 };
 

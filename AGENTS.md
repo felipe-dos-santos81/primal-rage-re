@@ -47,6 +47,7 @@ make gp-u23-oracle         # endgame truth U23: the U16 finisher reaction under 
 make gp-u25-oracle         # state coverage U25: gp-u25-endurance-end's four-KO roster walk and match end (modes 0x32/0x33; record §D5); in make verify; skips without the capture
 make gp-u26-oracle         # state coverage U26: gp-u26-side1-ending's side-1 tour and ARMADON ending (ad4=1; record §D5); in make verify; skips without the capture
 make gp-u27-oracle         # live truth U27: gp-u27-name-entry's letters and finaliser (record §L7); in make verify; skips without the capture
+make gp-draw-oracle        # live truth Task 2: gp-draw's KO-branch drawn match (0x0A/0x0B under labelled poked KOs; record §L2); in make verify; skips without the capture
 make gp-draw-timeout-oracle # state coverage Task 7: gp-draw-timeout's timeout/health drawn round (record §D7); in make verify; skips without the capture
 make coverage              # the PR_COVERAGE function census (build-cov + every driver with PR_HIT_TAG, then tools/coverage_census.py; NOT in make verify — it re-runs the drivers); COV_REASON="…" re-pins tools/coverage_baseline.txt
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
@@ -547,8 +548,9 @@ consolidation gate).
   master ticks or on a press) and the `config_credit_ready` credit. A poked 1P scenario cannot
   open `0x21`/`0x25` (no poke writes `b1f`/`DS_00104ABC`), so none is built. The census rows
   `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the trample `0x4B470` is
-  `HIT`); `0x0B` (the drawn winner pose) stays unexhibited (claim-coverage Task 11's `gp-draw`
-  did not publish). The `0x21` chain is re-derived in live-truth §L9 and stays declared: `b1d` is a
+  `HIT`). The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
+  (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`
+  chain is re-derived in live-truth §L9 and stays declared: `b1d` is a
   mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; 1 in 7
   on the two-human pick, `flow.c:1350`), the entry's `+0x1F` count resets on spawn and landing
   (`fight.c:1482`, `4942`), no capture's poll.log records that count, and state-coverage §9 forbids a
@@ -609,6 +611,16 @@ consolidation gate).
   the sub-states, three letters, finaliser and score, the path checker compares
   the six `b25` records, and the replay keeps the pinned miss set
   `k_miss_gp_u27_name_entry`.
+- **The KO-branch drawn match is captured and gated** (live truth Task 2, record §L2).
+  `gp-draw` reaches `ad4=2`, `b1e=adc=3`, `w2=w3=1`, mode `0x0A` at `f=0x0B02` and
+  mode `0x0B` at `f=0x0B26`; `gp-draw-oracle` is in `make verify` and the capture is in
+  `CAPTURE_DIRS`. The three KO pokes (four writes) are labelled harness writes, not a
+  fought-match claim. Capture 346's two-segment scan-out is byte-bound in
+  `SCAN3_ALLOWED`; the measured ratchets are frame 2064 (the post-script tail), trace
+  and moves 2915, start 100, reach 1685, 11 missing classes, and capture sha
+  `d99571d3…`/2,132 frames, with `k_miss_gp_draw` using prefix 0. Both draw modes are
+  inside the compared window. The `.dro` stays outside the 29-trace audio inventory
+  (no measured section or audio claim), and U14's fought live win stays declared.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`

@@ -316,6 +316,17 @@
       "last_s_frame": 9457
     },
     {
+      "path": "data/k11-captures/gp-draw",
+      "kind": "k11",
+      "poll_log_sha256": "d99571d3db0bf2135ad10d3a0f08d5c5bbdebdea392fad2821e7ce0901299885",
+      "frame_count": 2132,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2974
+    },
+    {
       "path": "data/k11-captures/gp-draw-timeout",
       "kind": "k11",
       "poll_log_sha256": "bb3e1b8ba888e4f9aed9728f4cbe94570c5f6493c6815aec57ef7e4613674290",
