@@ -268,51 +268,162 @@ class TestEvidence(unittest.TestCase):
         self.assertEqual(gw.death_done_set(L2 + [ok], gs.snapshots(L2)), [0x15])
 
 
-class TestLiveWin(unittest.TestCase):
-    """gp-u14-win-live (gameplay truth II U14 fix; spec W5): a fought win must show the
-    game's own death-animation end (b0c = 1), not the U9/U10 DEATH_DONE poke. The U9 fixture
-    satisfies every gp-u14 milestone row (afc=5, the land marked, w2/ad4) with b0c = 0."""
+# gp-u14-win-live's milestone rows are _START + _MATCH1: (0x10,1), (0x06,1), (0x08,1),
+# (0x06,2), (0x09,1), (0x12,1). The match rule reads the (0x09,1) row's frame; the fixture
+# puts the two mode-6 entries and the two results at these frames.
+MATCH_FRAMES = [0x141, 0x201, 0x2F5, 0x301, 0x3F5, 0x401]
 
-    def run_check(self, lines):
+
+def _fought_match(b0c=0, live=0x10, result=(0, 2, 0), timeout=False):
+    """A fought 2-0 match-1 win with no poke: the mode-6 entries carry a live damage
+    value and the mode-8/9 results carry 0x78. `result` = (ad4, w2, w3)."""
+    ad4, w2, w3 = result
+    tail_mode = 0x07 if timeout else 0x06
+    return _log([
+        (0x100, 0x140, 0x03, {}),
+        (0x141, 0x200, 0x27, {}),
+        (0x201, 0x2F4, 0x06, dict(b1f=3, c0=0, b1e=1, s1_5a=live)),
+        (0x2F5, 0x300, 0x08, dict(b1f=3, c0=0, b1e=1, s1_5a=0x78, w2=1, w3=0,
+                                  ad4=gw.NO_RESULT)),
+        (0x301, 0x3EF, 0x06, dict(b1f=3, b1e=2, s1_5a=live, w2=1)),
+        (0x3F0, 0x3F4, tail_mode, dict(b1f=3, b1e=2, s1_5a=live, w2=1)),
+        (0x3F5, 0x400, 0x09, dict(b1f=3, s1_5a=0x78, w2=w2, w3=w3, ad4=ad4, b0c=b0c)),
+        (0x401, 0x410, 0x12, dict(c0=0, m106=0x82, m10a=0)),
+    ])
+
+
+def _poke(f, addr):
+    return gs.format_w(0, f, 1, addr, b'\x10', b'\x78', 0, 0)
+
+
+class TestLiveMatch(unittest.TestCase):
+    """The match rule split from the final's (Final Truth Task 3, record §F3.1): a fought
+    match-1 win needs no b0c; 0x37FF6's write is the final's 0x0C->0x0D chain, not the
+    match's. The U9 fixture satisfies every gp-u14 milestone row but is poked (its mode-6
+    entry has no live damage value)."""
+
+    def run_match(self, lines, frames=None):
         out = io.StringIO()
-        rc = gw.evidence('gp-u14-win-live', lines, lambda s: out.write(s + '\n'))
+        rc = gw.live_match('gp-u14-win-live', MATCH_FRAMES if frames is None else frames,
+                           lines, gs.snapshots(lines), lambda s: out.write(s + '\n'))
         return rc, out.getvalue()
 
-    def test_the_milestones_alone_do_not_prove_the_death(self):
-        rc, text = self.run_check(_log(U9))
-        self.assertEqual(rc, 1)
-        self.assertIn('no S record with b0c = 1 at or after the round-2 KO', text)
-
-    def test_the_game_must_set_the_death_done_byte_after_the_ko(self):
-        # b0c set before mode 0x24's 0x2703D clear does not count: the rule anchors on the
-        # match-end screen's own byte (its f >= ko window), not the stale pre-clear value.
-        base = _log(U9, change=lambda f, m, k: dict(k, b0c=1) if f < 0x85E else k)
-        cleared = [
-            l.replace('mode=0009', 'mode=0024')
-            if l.startswith('S ') and gs.parse(l)['f'] == 0x85E else l
-            for l in base
-        ]
-        rc, text = self.run_check(cleared)
-        self.assertEqual(rc, 1)
-        self.assertIn('no S record with b0c = 1 at or after the round-2 KO', text)
-        after = _log(U9, change=lambda f, m, k: dict(k, b0c=1) if f >= 0x85E else k)
-        rc, text = self.run_check(after)
+    def test_the_match_rule_passes_a_fought_two_human_win(self):
+        rc, text = self.run_match(_fought_match())
         self.assertEqual(rc, 0)
-        self.assertIn("the game ended a KO'd fighter's death animation itself", text)
-        self.assertIn('6/6 milestones ok', text)
+        self.assertIn('the match result at f=3F5 names side 0', text)
+        self.assertIn('(w2 = 2 > w3 = 0)', text)
+
+    def test_the_milestones_alone_do_not_prove_a_fought_ko(self):
+        # the U9 fixture satisfies every gp-u14 milestone row, but its round-2 mode-6
+        # entry carries no live damage value (the KO is the poked mode-9 record's 0x78)
+        L = _log(U9)
+        snaps = gs.snapshots(L)
+        frames = gw.milestone_frames('gp-u14-win-live', snaps, gw.start_frame(snaps))
+        rc, text = self.run_match(L, frames)
+        self.assertEqual(rc, 1)
+        self.assertIn('no live 0 < s1_5a < 78', text)
+
+    def test_the_match_result_must_name_the_winner(self):
+        rc, text = self.run_match(_fought_match(result=(1, 0, 2)))   # the artifact's shape
+        self.assertEqual(rc, 1)
+        self.assertIn('names side 1', text)
+        self.assertIn('not a 2-0 match win for side 0', text)
+
+    def test_the_winner_needs_two_round_wins(self):
+        rc, text = self.run_match(_fought_match(result=(0, 1, 0)))
+        self.assertEqual(rc, 1)
+        self.assertIn('not a 2-0 match win for side 0', text)
+
+    def test_a_timeout_before_the_match_result_fails(self):
+        rc, text = self.run_match(_fought_match(timeout=True))
+        self.assertEqual(rc, 1)
+        self.assertIn('time-out: mode 7 at f=3F0', text)
+
+    def test_a_no_live_value_fails(self):
+        rc, text = self.run_match(_fought_match(live=0))
+        self.assertEqual(rc, 1)
+        self.assertIn('no live 0 < s1_5a < 78', text)
+
+    def test_a_ko_poke_is_refused(self):
+        rc, text = self.run_match(_fought_match() + [_poke(0x408, 0x10789E)])
+        self.assertEqual(rc, 1)
+        self.assertIn('a poke at f=408 covers 0010789E', text)
 
     def test_a_death_done_poke_is_refused(self):
-        # the rule's second half on its own: the byte is set, but a W record wrote it
-        L = _log([(0x10, 0x20, 0x09, dict(b0c=1))])
-        frames = [None, None, None, None, 0x10, None]   # _START + _MATCH1: the mode-9 row
+        # the match rule still refuses a W record on the death-done byte, but it no longer
+        # requires the byte to be 1 (that is the final-only rule)
+        rc, text = self.run_match(_fought_match() + [_poke(0x408, 0x104B0C)])
+        self.assertEqual(rc, 1)
+        self.assertIn('a poke at f=408 covers 00104B0C', text)
+        rc, text = self.run_match(_fought_match(b0c=0))
+        self.assertEqual(rc, 0)
+        self.assertNotIn('b0c', text)
+
+    @unittest.skipUnless(os.path.isfile(os.path.join(ROOT, 'data', 'k11-captures',
+                                                     'gp-u14-win-live.failed', 'poll.log')),
+                         'the .failed artifact is git-ignored')
+    def test_the_failed_artifacts_fought_ko_is_not_a_win(self):
+        # the artifact's round 1/2 KOs are the game's own (s0_5a 71 -> 78, 63 -> 78), and
+        # gp_twop.ko --arcade passes for the side it names; the match rule for side 0 fails
+        # because the match result names side 1 (w3 = 2 > w2 = 0).
+        import gp_twop as gt
+        with open(os.path.join(ROOT, 'data', 'k11-captures', 'gp-u14-win-live.failed',
+                               'poll.log')) as f:
+            lines = f.read().splitlines()
+        self.assertEqual(gt.ko(lines, winner=1, arcade=True)['fail'], [])
+        frames = [None, None, None, None, 0xF9F, None]
         out = io.StringIO()
-        self.assertEqual(gw.live_death('gp-u14-win-live', frames, _pokes([0x18]),
-                                       gs.snapshots(L), lambda s: out.write(s + '\n')), 1)
-        self.assertIn('a DEATH_DONE poke at f=18', out.getvalue())
+        rc = gw.live_match('gp-u14-win-live', frames, lines, gs.snapshots(lines),
+                           lambda s: out.write(s + '\n'))
+        self.assertEqual(rc, 1)
+        self.assertIn('the match result at f=F9F names side 1', out.getvalue())
+        self.assertIn('not a 2-0 match win for side 0', out.getvalue())
+
+
+_U10_MODE0F = next(i for i, r in enumerate(gw.MILESTONES['gp-u10-ending'])
+                   if (r[1], r[2]) == (0x0F, 1))
+_U10_FRAMES = [0x100 if i == _U10_MODE0F else None
+               for i in range(len(gw.MILESTONES['gp-u10-ending']))]
+
+
+class TestLiveFinal(unittest.TestCase):
+    """The final-only rule: b0c = 1 is required on the final path (0x0C -> 0x0D -> 0x0F),
+    where 0x37FF6's write is the one the U10 DEATH_DONE poke replaced. No scenario is in
+    FINAL_WIN yet (the fought final is not captured); the synthetic row uses
+    gp-u10-ending's mode-0x0F milestone."""
+
+    def _final(self, b0c=1):
+        return _log([(0x100, 0x120, 0x0F, dict(b21=7))],
+                    change=lambda f, m, k: dict(k, b0c=b0c) if f >= 0x110 else k)
+
+    def run_final(self, lines):
         out = io.StringIO()
-        self.assertEqual(gw.live_death('gp-u14-win-live', frames, L, gs.snapshots(L),
-                                       lambda s: out.write(s + '\n')), 0)
-        self.assertIn('(b0c = 1 at f=10, no DEATH_DONE poke)', out.getvalue())
+        rc = gw.live_final('gp-u10-ending', _U10_FRAMES, lines, gs.snapshots(lines),
+                           lambda s: out.write(s + '\n'))
+        return rc, out.getvalue()
+
+    def test_a_final_row_requires_b0c_after_the_mode_0f_entry(self):
+        rc, text = self.run_final(self._final(1))
+        self.assertEqual(rc, 0)
+        self.assertIn('(b0c = 1 at f=110, no DEATH_DONE poke)', text)
+        rc, text = self.run_final(self._final(0))
+        self.assertEqual(rc, 1)
+        self.assertIn('no S record with b0c = 1 at or after mode 0x0F', text)
+
+    def test_b0c_before_the_mode_0f_entry_does_not_count(self):
+        # the game clears b0c on the way in (mode 0x24's 0x2703D / mode 0x17's 0x27200):
+        # a stale pre-entry 1 is not the final path's death-done write
+        L = _log([(0x100, 0x120, 0x0F, dict(b21=7))],
+                 change=lambda f, m, k: dict(k, b0c=1 if f < 0x100 else 0))
+        rc, text = self.run_final(L)
+        self.assertEqual(rc, 1)
+        self.assertIn('no S record with b0c = 1 at or after mode 0x0F', text)
+
+    def test_a_death_done_poke_is_refused(self):
+        rc, text = self.run_final(self._final(0) + [_poke(0x111, 0x104B0C)])
+        self.assertEqual(rc, 1)
+        self.assertIn('a poke at f=111 covers 00104B0C', text)
 
 
 class TestTalonEnding(unittest.TestCase):
