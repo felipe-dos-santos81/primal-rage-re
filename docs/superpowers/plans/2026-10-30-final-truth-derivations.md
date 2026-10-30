@@ -283,7 +283,8 @@ revert.
 
 ## §F2 — the 5120 band (Task 2)
 
-**Outcome: Part A done (no holder; Step 2 prepared, capture pending).** The
+**Outcome: Part A done (no holder); Step 2's one capture ran and the decision
+is PASS-A (§F2.5; the capture-side analysis is §F2.5–§F2.6).** The
 per-pixel holder search over the whole U13 dump finds no port frame that holds
 the capture-5120 band (F2.1); the fade source and the DAC-injection write list
 are derived (F2.2/F2.3), the `gp-u13-band-dac` scenario and its S fields are
@@ -482,7 +483,8 @@ S at W.f+1 is the post-poke one; the sentinel is presented at the latter.
 No pin, oracle, manifest entry, `CAPTURE_DIRS` member or audio trace hangs off
 it (a diagnostic, like `gp-u13-band`); a failed run is preserved as `.failed`.
 
-**The pending capture (not run in this part).**
+**The capture (it ran as the one authorised run; the analysis and decision are
+§F2.5).**
 
 ```
 $ make gp-capture scenario=gp-u13-band-dac
@@ -535,3 +537,111 @@ frame derived from them, raced/late/missing writes) on synthetic sides.
   added to `make verify`'s k11/gp tool unit-test line (the Makefile edit), so
   the derivation's six addresses and four colours stay gated.
 * No C code, no differential row, no oracle and no pin changed.
+
+### F2.5 The capture and the decision (PASS-A)
+
+The one authorised diagnostic capture is `data/k11-captures/gp-u13-band-dac`
+(scenario `gp-u13-band-dac`; exe sha `8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d`,
+`memsize=64`): **5,177** collapsed frames (raw AVI 1408..8946, fps 70.0866),
+session checks 24/24 steps, 23/23 pokes (0 raced), end reached, no unscripted
+input, stopped at f=0x1864 (SIGTERM, rc 0), wall 128.6 s. No second capture.
+
+**The frames.** This run's mode-0x15 entry is **0x17D4** (the older-style
+entry, not gp-u13-band's 0x17D5), so the diagnostic W rows are at f=0x1825 and
+the forced case-4 body presents at f=0x1826 — the analysis's derived
+`W.f+1` frame. The sentinel presentation is **capture frame 05130**
+(`window.txt` raw 8859; AVI 126.401 s against the S record's
+`f=0x1826 ms=126694`, the ~0.29 s poller/AVI offset every earlier comparison
+has; it is the capture's ONLY frame with the exact sentinel set, so the
+identification is by the pixels, not the clock). Frame 05129 (raw 8858)
+precedes it with `000000`×8 / `100000` / `00000c`×4 at the 13 offsets (the
+port's f=0x1825/0x1826 band colours); 05132/05133 show `ef00ef`/`00efef`/
+`efefef` and 05135 `e700e7`/`00e7e7`/`e7e7e7` — the natural bodies at 0x1828
+and 0x182B darkening the sentinel by 8 each (0xF7 -> 0xEF -> 0xE7), exactly
+the port dry run's phase.
+
+**The S record at f=0x1826** (`bbp0=00084410`, `bbp1=002FB038`, `effn=11`):
+
+```
+bb00..bb12 = 32 32 32 32 32 32 32 2E 32 4D 4D 4D 4D      (the port's indices)
+bbc        = 03                                         (the port's 0x65)
+eff0=002DE42C eff1=002D7B28 efffree=002D6B00
+```
+
+The effect links are the original's *relocated* data-object addresses: with the
+data object at base 0x266000, subtract 0x266000 and add `DATA_BASE_VA` 0x80000
+gives **0xF842C** (active head), **0xF1B28** (active tail = the entry-2 record
+the W rows target) and **0xF0B00** (free head) — the port's own measured values
+(F2.2). The capture therefore confirms the injection's record mapping in the
+original, not only in the port's model. `effn=11` (one fewer than the port's
+pre-injection 12; one record had retired by this frame — the entry-2 record is
+still the active tail and its body uploaded the sentinels, as the pixels show).
+
+**The corrected control index.** The original's back buffer at (1,100) holds
+**index 0x03**, not the port's 0x65. The design's control premise was the
+port's index (and the old capture's control *colour* did agree: both indices
+render black — port `DAC[0x03] = DAC[0x65] = 000000`, and the measured control
+pixel is `000000`; at frame 05128 it is `040000`, the fade of index 0x03). The
+0x65 sentinel therefore cannot appear at the control; the band sentinels are
+the injection proof. The checker's control rule is corrected accordingly
+(F2.6): a control whose own index was not injected is reported, not gated; an
+injected control that does not turn is still INCONCLUSIVE.
+
+**The displayed band.** Frame 05130 at the 13 offsets:
+
+```
+(1,23) f700f7  (1,24) f700f7  (1,295) f700f7  (1,296) f700f7
+(2,22) f700f7  (2,297) f700f7
+(3,21) f700f7  (3,74) 00f7f7  (3,298) f700f7
+(4,27) f7f7f7  (4,28) f7f7f7  (4,291) f7f7f7  (4,292) f7f7f7
+control (1,100) 000000
+```
+
+i.e. every one of the 13 pixels shows the sentinel for its own back-buffer
+index (0x32 magenta, 0x2E cyan, 0x4D white) — not the old capture's blue
+`00001c` and not a fade colour. Corroboration: the frame holds **101** magenta
+pixels, exactly the port frame 4316's 101 index-0x32 pixels (the whole static
+background matches); the frame-wide 0x2E/0x4D counts (74/27 vs the port's
+96/54) differ only at some lower-row pixels outside the 13, which are not part
+of the claim. No frame of this capture holds `00001c` at the eight band
+offsets (the old capture's blue band is absent in this run — a run-specific
+scan-out state, consistent with the class below).
+
+**Decision: PASS-A.** The band's index state is the port's (the
+pre-injection back buffer at f=0x1826 is `0x32`×8 / `0x2E` / `0x4D`×4, the
+port frame 4316's indices), and the displayed band pixels follow the game's own
+DAC (they are the injected sentinels). The old capture 5120's `00001c` band is
+therefore **not a content divergence**: it is a capture/present-side effect of
+the scan-out's palette state, the class the U13 allowance comment already names
+(a present state the driver never dumped; the scan-out catching a palette the
+dumped presents do not hold). The specific palette/scan-out state that produced
+`00001c` in that one 70.09 Hz frame is still not named — the diagnostic proves
+the content and that the present follows the DAC, not the exact transient. The
+band allowance `(5120, 1, 5, 56b900b1…)` is **unchanged**; no pin, oracle,
+capture-manifest entry or `CAPTURE_DIRS` membership was added or moved, and the
+diagnostic capture stays outside the gate inventory (a diagnostic, like
+`gp-u13-band`).
+
+### F2.6 The checker correction and its tests
+
+The measured 0x03 control forced a minimal, test-covered change (no pin moved):
+
+* `gp_band.decide_dac`: the control is a gate only when **its own** back-buffer
+  index is one of the four injected indices; a `None` sentinel there (index
+  0x03) is reported, not gated. A band offset without an injected index and an
+  injected control that does not turn are still INCONCLUSIVE; the back-buffer /
+  port-index divergence is still PASS-B first.
+* `gp_band.dac_main`: the expected sentinel at each offset comes from the
+  **back buffer's** index (the game's), not the port's, and the sentinel frames
+  are located by any injected offset (the band offsets included) — a
+  control-only locator would have found zero frames for this capture.
+  `bbc == 0x65` is no longer part of the injection gate; the six-address W-row
+  filter and the `race`/`late` checks stay.
+* Tests: `TestDecideDac.test_a_non_injected_control_is_not_a_gate` (the 0x03
+  case, PASS-A) replaces the old None-control INCONCLUSIVE test (the injected
+  control that does not turn stays INCONCLUSIVE), and
+  `TestDacMain.test_dac_main_accepts_a_non_injected_control` runs the whole
+  `--dac` path with `bbc=0x03` and a black control over the synthetic
+  sentinel-band frame. `python3 -m unittest tools.tests.test_gp_band` (24
+  tests) and `tools.tests.test_gp_session` pass; the other `gp_band` tests are
+  unchanged.

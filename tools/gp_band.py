@@ -174,14 +174,19 @@ def decide_dac(bb, port_idx, cap_rgb, sentinel_rgb, control, injected):
     PRESENT-LAYER: the back buffer matches but the sentinel does not show --
       the aperture held a state the present never wrote (the undumped-present
       class; terminal with the S record).
-    INCONCLUSIVE: the injection is not proven (no S/fields, a race, the control
-      not yellow, or a control whose back-buffer byte is not 0x65)."""
+    INCONCLUSIVE: the injection is not proven (no S/fields, a race/late write),
+      a band offset's index is not one of the four, or the control's own index
+      was injected but its pixel did not show the sentinel (the DAC did not
+      reach the present). A control whose index is NOT one of the four (the
+      measured gp-u13-band-dac control is index 0x03, the port's 0x65) cannot
+      turn any sentinel; it is reported, not a gate -- the band sentinels are
+      the injection proof."""
     if not injected:
-        return 'INCONCLUSIVE'
-    if sentinel_rgb[control] is None or cap_rgb[control] != sentinel_rgb[control]:
         return 'INCONCLUSIVE'
     band = [k for k in range(len(bb)) if k != control]
     if any(sentinel_rgb[k] is None for k in band):
+        return 'INCONCLUSIVE'
+    if sentinel_rgb[control] is not None and cap_rgb[control] != sentinel_rgb[control]:
         return 'INCONCLUSIVE'
     if any(bb[k] != port_idx[k] for k in band):
         return 'PASS-B'
@@ -215,18 +220,21 @@ def _diag_w_rows(lines):
     return [w for w in _w_rows(lines) if w['addr'] in DIAG_W_ADDRS]
 
 
-def _capture_sentinel_frames(cap_dir, offsets, control, wanted):
-    """Capture frames whose control pixel is `wanted` (the derived yellow
-    sentinel), with their 14 colours."""
+def _sentinel_frames(cap_dir, offsets, expected):
+    """Capture frames showing at least one injected sentinel (`expected[k]` is
+    the sentinel colour of the offset's own back-buffer index, or None where
+    that index was not injected). The band offsets are the locator: the
+    measured capture's control index is 0x03, not the port's 0x65, so a
+    control-only locator would miss the sentinel frame entirely."""
+    want = [(k, rgb) for k, rgb in enumerate(expected) if rgb is not None]
     out = []
     names = sorted(n for n in os.listdir(cap_dir) if n.startswith('frame_') and n.endswith('.raw.gz'))
     for n in names:
         with gzip.open(os.path.join(cap_dir, n)) as f:
             rgb = f.read()
-        if rgb[3 * (offsets[control][0] * ROW + offsets[control][1]):
-               3 * (offsets[control][0] * ROW + offsets[control][1]) + 3] != wanted:
-            continue
-        out.append((n, capture_colours(rgb, offsets)))
+        v = capture_colours(rgb, offsets)
+        if any(v[k] == s for k, s in want):
+            out.append((n, v))
     return out
 
 
@@ -262,13 +270,16 @@ def dac_main(a):
     else:
         print('--port-frame is required (the U13 replay frame at the band frame)')
         return 2
-    sentinel = [gs.BAND_DAC_SENTINEL_RGB.get(i) for i in port_idx]
+    # The sentinel a pixel shows is set by ITS OWN back-buffer index (the
+    # game's), not the port's; the control's measured index 0x03 is not one of
+    # the four, so it has no expected sentinel and is reported, not gated.
+    sentinel = [gs.BAND_DAC_SENTINEL_RGB.get(i) for i in bb]
     want = sorted((addr, bytes(data)) for addr, data in gs.BAND_DAC_WRITES)
     got = sorted((w['addr'], bytes.fromhex(w['now'])) for w in diag)
     injected = (len(diag) == len(want) and got == want
                 and all(w['f'] == diag[0]['f'] for w in diag)
                 and not any(w['race'] or w['late'] for w in diag)
-                and s['bbc'] == 0x65 and s['effn'] > 0)
+                and s['effn'] > 0)
     print('S at f=%X: mode=0x%04X bbp0=%08X bbp1=%08X eff0=%08X eff1=%08X efffree=%08X effn=%d'
           % (f, s['mode'], s['bbp0'], s['bbp1'], s['eff0'], s['eff1'], s['efffree'], s['effn']))
     for k, (r, x) in enumerate(gs.BAND_APERTURE):
@@ -281,9 +292,8 @@ def dac_main(a):
              ' '.join('%X' % f for f in sorted(set(w['f'] for w in diag))) or '-',
              len(want), sum(1 for w in diag if w['race']), sum(1 for w in diag if w['late']),
              'match' if got == want else 'MISMATCH'))
-    frames = _capture_sentinel_frames(a.capture, gs.BAND_APERTURE, CONTROL,
-                                      gs.BAND_DAC_SENTINEL_RGB[0x65])
-    print('capture frames with the yellow control sentinel: %d %s'
+    frames = _sentinel_frames(a.capture, gs.BAND_APERTURE, sentinel)
+    print('capture frames showing an injected sentinel: %d %s'
           % (len(frames), ' '.join(n for n, _ in frames[:8])))
     verdicts = []
     for n, cap in frames:

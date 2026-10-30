@@ -127,11 +127,14 @@ class TestDecideDac(unittest.TestCase):
         port, sentinel = self._sides()
         self.assertEqual(gb.decide_dac(port, port, sentinel, sentinel, CONTROL, False), 'INCONCLUSIVE')
 
-    def test_a_control_index_without_a_sentinel_is_inconclusive(self):
+    def test_a_non_injected_control_is_not_a_gate(self):
+        # the measured gp-u13-band-dac control is index 0x03, not the port's
+        # 0x65: it cannot show a sentinel, and the band sentinels prove the
+        # injection (record §F2.5)
         port, sentinel = self._sides()
         sentinel = list(sentinel)
         sentinel[CONTROL] = None
-        self.assertEqual(gb.decide_dac(port, port, sentinel, sentinel, CONTROL, True), 'INCONCLUSIVE')
+        self.assertEqual(gb.decide_dac(port, port, sentinel, sentinel, CONTROL, True), 'PASS-A')
 
 
 class TestDerivedValues(unittest.TestCase):
@@ -226,25 +229,32 @@ def _port_frame_file(path, indices=None):
         f.write(bytes(idx) + bytes(768))
 
 
-def _s_line(f, indices=None):
+def _s_line(f, indices=None, control_bb=None):
     """A synthetic band-dac S record: every field present, the band values from
-    the measured port frame. No WIN field matters to --dac; they are zero."""
+    the measured port frame. No WIN field matters to --dac; they are zero.
+    `control_bb` overrides the control's back-buffer index (the measured capture
+    has 0x03 where the port has 0x65)."""
     fields = gs.SNAP_FIELDS + gs.WIN_EXTRA + gs.BAND_DAC_EXTRA
     vals = {n: 0 for n, _, _ in fields}
     vals.update(f=f, mode=0x15)
     for k in range(CONTROL):
         vals['bb%02d' % k] = (indices or PORT_IDX)[k]
-    vals['bbc'] = (indices or PORT_IDX)[CONTROL]
+    vals['bbc'] = (indices or PORT_IDX)[CONTROL] if control_bb is None else control_bb
     vals.update(bbp0=0x2A6A550, bbp1=0x02A5AB50, eff0=0x000F842C,
                 eff1=0x000F1B28, efffree=0x000F0B00, effn=12)
     return gs.format_s(0, vals, 0, 0x1E, 0x1E, fields=fields)
 
 
-def _cap_frame(path, indices=None):
-    """A synthetic capture frame whose 14 offsets carry the sentinel colours."""
+def _cap_frame(path, indices=None, control_rgb=None):
+    """A synthetic capture frame whose 14 offsets carry the sentinel colours.
+    `control_rgb` overrides the control pixel (the measured capture's index 0x03
+    renders black there)."""
     rgb = bytearray(320 * 200 * 3)
     for k, (r, x) in enumerate(OFFS):
         rgb[3 * (r * 320 + x):3 * (r * 320 + x) + 3] = gs.BAND_DAC_SENTINEL_RGB[(indices or PORT_IDX)[k]]
+    if control_rgb is not None:
+        r, x = OFFS[CONTROL]
+        rgb[3 * (r * 320 + x):3 * (r * 320 + x) + 3] = control_rgb
     with gzip.open(path, 'wb') as f:
         f.write(bytes(rgb))
 
@@ -255,7 +265,8 @@ class TestDacMain(unittest.TestCase):
     must filter to the six BAND_DAC_WRITES addresses, and the S frame is derived
     from the diagnostic rows' f + 1 (the entry frame is run-dependent)."""
 
-    def _run(self, diag_rows, prior_rows=(), s_f=0x1827):
+    def _run(self, diag_rows, prior_rows=(), s_f=0x1827, control_bb=None,
+             control_rgb=None):
         with tempfile.TemporaryDirectory() as d:
             poll = os.path.join(d, 'poll.log')
             with open(poll, 'w') as f:
@@ -263,10 +274,10 @@ class TestDacMain(unittest.TestCase):
                     f.write(line + '\n')
                 for line in diag_rows:
                     f.write(line + '\n')
-                f.write(_s_line(s_f) + '\n')
+                f.write(_s_line(s_f, control_bb=control_bb) + '\n')
             cap = os.path.join(d, 'cap')
             os.makedirs(cap)
-            _cap_frame(os.path.join(cap, 'frame_00000.raw.gz'))
+            _cap_frame(os.path.join(cap, 'frame_00000.raw.gz'), control_rgb=control_rgb)
             pf = os.path.join(d, 'frame_04316.ipx')
             _port_frame_file(pf)
             buf = io.StringIO()
@@ -295,6 +306,16 @@ class TestDacMain(unittest.TestCase):
         # the older-entry run's frame (W 0x1825 -> S 0x1826)
         rc, out = self._run(self._diag(frame=0x1825), s_f=0x1826)
         self.assertIn('S at f=1826', out)
+        self.assertIn('verdict: PASS-A', out)
+
+    def test_dac_main_accepts_a_non_injected_control(self):
+        # the measured capture: the control's back-buffer index is 0x03 (the
+        # port's 0x65), so it cannot show the 0x65 sentinel; the band sentinels
+        # locate the frame and prove the injection (record §F2.5)
+        rc, out = self._run(self._diag(), control_bb=0x03,
+                            control_rgb=bytes.fromhex('000000'))
+        self.assertIn('control (1,100): bb=03 port_idx=65 sentinel=none', out)
+        self.assertIn('capture frames showing an injected sentinel: 1', out)
         self.assertIn('verdict: PASS-A', out)
 
     def test_dac_main_rejects_a_raced_diagnostic_write(self):
