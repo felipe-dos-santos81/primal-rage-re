@@ -354,9 +354,14 @@ true original, and ported the divergence. Two pieces:
   (record `2026-10-23-endgame-truth-derivations.md` §E1.6).
 - The out-of-scope content modes `0x21` (the volleyball easter egg, entered at
   `0x4BD98` after the eighth worshipper trample `+0x1F > 7`) and `0x25` (the
-  both-characters-4 mirror-ARMADON camera sequence, entered at `0x4E11C`) stay
-  declared, not captured (state-coverage record
+  bowling easter egg, entered at `0x4E11C`; the game's decoder returns string
+  `0x61` = "BOWLING!") stay declared (state-coverage record
   `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2).
+  Live truth Task 6 made exactly one real-input `gp-bowling` attempt: both
+  ARMADONs applied reaction `0x22`, but `DS_00108892` reached only 2 of the
+  required 6 and mode `0x25` never opened. Its artifact is
+  `gp-bowling.failed`, with no replay, oracle, pin or second capture (record
+  `../docs/superpowers/plans/2026-10-29-live-truth-derivations.md` §L6).
   Both read `DS_00104ABC >= 2`, and
   `DS_00104ABC = (DS_00104B1F == 3) + 1` (`flow.c:1632`/`2416`), so a poked 1P
   scenario cannot open them. The continue screen `0x0E` is now published by

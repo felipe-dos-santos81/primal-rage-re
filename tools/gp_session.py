@@ -84,6 +84,12 @@ SNAP_FIELDS = (
     ('ab4', 0x100AB4, 4), ('rec_y', 0x1C, 4), ('anchor', 0x100AF0, 4),
     ('s0_57', 0x107807, 1), ('rec8', 0x08, 4), ('rec34', 0x34, 2),
     ('rec36', 0x36, 2), ('rec44', 0x44, 2),
+    # Live truth Task 6 (record §L6): the mode-0x25 trigger and the stores
+    # fight_mode25_enter (0x4E11C) makes. Appended, so every older poll.log's
+    # S lines lack them; only gp-bowling asserts them.
+    ('b892', 0x108892, 2), ('b8c4', 0x1088C4, 1),
+    ('b8a6', 0x1088A6, 2), ('b8bd', 0x1088BD, 1),
+    ('b415', 0x104B15, 1), ('b8c0', 0x1088C0, 1),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -262,6 +268,31 @@ SCENARIOS = {
         ('after', 60, ('end',)),
     )),
 }
+
+# Live truth Task 6 (record §L6): the mode-0x25 bowling entry, with no poke.
+# gp-twop's LEFT PLAYER ARCADE and P2 join, then P1 walks cell 0 -> 5 (five
+# rights; 0xC8882[5] = class 4 ARMADON) while P2 keeps its default cell 5. Both
+# confirm, then both perform character 4's keyboard move 0 (reaction 0x22,
+# callback 0x455A0) from tools/gp_moves.py: facing 0 is right + b0/b2, down,
+# left; facing 1 is its left/right mirror. The two attempts run together so
+# fighter_45158 sees the other slot's +0x5F == 0x22 and DS_00108892 reaches 6.
+# Harness values: gp-twop's 5/4/12-frame holds and 60/30-frame gaps, and a
+# 300-frame tail for the BOWLING! banner and the captured scoreboard window.
+SCENARIOS['gp-bowling'] = dict(time_limit=90, steps=(
+    SCENARIOS['gp-twop']['steps'][:4] + (
+        ('after', 60, ('pad', ('p1.right',), 5)),      # P1 cell 0 -> 1
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 1 -> 2
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 2 -> 3
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 3 -> 4
+        ('after', 30, ('pad', ('p1.right',), 5)),      # 4 -> 5 (class 4)
+        ('after', 30, ('pad', ('p1.b0',), 5)),         # P1 confirms
+        ('after', 30, ('pad', ('p2.b0',), 5)),         # P2 confirms cell 5
+        ('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 4)),
+        ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+        ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+        ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+        ('until_mode', 0x25, 300),
+    )))
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
 # Plan gameplay-u6b (record gameplay-u6 §U6.12): P1 (Sauron, character 0, the
@@ -1396,7 +1427,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
                          'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
-                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue'})
+                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue', 'gp-bowling'})
 
 
 class ScriptError(Exception):

@@ -540,10 +540,10 @@ consolidation gate).
   Option (b), moving the rule to the final, is rejected: its `b0c=1` appears with all seven final KOs poked
   (§E1.3), so it does not discriminate a fought KO.
 - **The out-of-scope content modes `0x21` (volleyball) and `0x25`
-  (both-characters-4 camera) stay declared; the continue screen `0x0E` is now
-  captured** (state-coverage record
+  (the bowling easter egg, decoded string `0x61` = "BOWLING!") stay declared;
+  the continue screen `0x0E` is now captured** (state-coverage record
   `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2; live-truth
-  §L5). `DS_00104ABC =
+  §L5/§L6). `DS_00104ABC =
   (DS_00104B1F == 3) + 1` — written at `flow.c:1632` (`flow_player_join`) and `flow.c:2416`
   (the round-end case-3 arm) — so `DS_00104ABC >= 2` iff `b1f == 3` (a two-human match), and both
   in-match entries read it: `0x21` stores the mode at `0x4BD98` behind `fight_4b470`'s eighth-hit
@@ -553,7 +553,11 @@ consolidation gate).
   the two `0xBAB88`/`0xBAB9C` actor spawns and the `0x1E` timer `DS_001088AA`), and `0x25` at
   `0x4E11C` behind `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's `+0x53 == 0`,
   `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
-  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. `0x0E` opens only in
+  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. Live-truth Task 6 made
+  exactly one real-input `gp-bowling` attempt: both sides selected ARMADON and
+  applied reaction `0x22`, but `DS_00108892` reached only 2, mode `0x25` never
+  opened, and the run is preserved as `gp-bowling.failed` with no replay, oracle,
+  pin or second attempt (record §L6). `0x0E` opens only in
   mode `0x0C` when the KO is on `DS_0010810D`'s side; the other side's KO takes
   the `0x0D` winner pose. Its countdown `DS_00108110` starts `0x0F`, decrements
   every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.

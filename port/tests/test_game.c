@@ -13710,6 +13710,7 @@ static void gp_trace_line(void)
             "s0_30=%08X s0_42=%04X s1_30=%08X s1_42=%04X "
             "af0=%02X af1=%02X c82b=%02X clock=%02X "
             "ab4=%08X rec_y=%08X anchor=%08X s0_57=%02X rec8=%08X rec34=%04X rec36=%04X rec44=%04X "
+            "b892=%04X b8c4=%02X b8a6=%04X b8bd=%02X b415=%02X b8c0=%02X "
             "lat=%08X spz=%02X mpz=%02X "
             "afc=%04X ad4=%08X w2=%02X w3=%02X b1e=%02X b21=%02X b14=%02X b0c=%02X t104=%04X "
             "m106=%08X m10a=%08X sc0=%08X c82=%02X\n",
@@ -13759,6 +13760,11 @@ static void gp_trace_line(void)
             (unsigned)DSW(DSD(DS_001077B0) + 0x34u),
             (unsigned)DSW(DSD(DS_001077B0) + 0x36u),
             (unsigned)DSW(DSD(DS_001077B0) + 0x44u),
+            /* Live truth Task 6 (record §L6): the mode-0x25 trigger and the
+             * fight_mode25_enter stores, gp_session.SNAP_FIELDS' last six. */
+            (unsigned)DSW(DS_00108892), (unsigned)DSB(DS_001088C4),
+            (unsigned)DSW(DS_001088A6), (unsigned)DSB(DS_001088BD),
+            (unsigned)DSB(DS_00104B15), (unsigned)DSB(DS_001088C0),
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */
