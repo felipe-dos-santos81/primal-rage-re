@@ -9,9 +9,10 @@ frame loop and pixel path) before changing engine code.
 Every remaining gap has one measured status there (closed / gated / terminal /
 declared) with its address, file:line or capture; no row is "open". The docs
 test `tools/tests/test_final_claims.py` (in `make verify`) fails when a gap
-statement here has no register row, when a terminal/declared row loses its
-evidence, or when a measured counter changes without the register. The final
-gate is Task 9 of the Final Truth plan.
+statement here has no register row, when its status disagrees with the row
+(outside a historical/superseded clause), when a terminal/declared row loses
+its evidence, or when a measured counter changes without the register. The
+final gate is Task 9 of the Final Truth plan.
 
 ## Commands
 
@@ -361,7 +362,7 @@ consolidation gate).
   win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
   the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
   a poke replaced is not claimed: the KO by hits, the six earlier won matches, the final's death
-  animations. The U9/U10 captures cover character 0; character 1's BLIZZARD ending is captured and pinned by `gp-u13-oracle` (§J5), while the U14 live-win remains a distinct gap (R1, §J6). Both frame ratchets now pass round 1's mode-8 entry and the mode-0x17→0x12 loader strip by name (track G §G6/§G7): the strips at U9 2209 and U10 2062 are the loader's `- LOADING -` presentation — the same 166 px six-row strip (rows 192..197, x 0..85, sha a886c0f3.., glyph fingerprint de1c1bb2..) — composed over the entry screen, a host-owned-audio model artifact allowed by name in `OVERLAY_ALLOWED`, not a named gap; the first unexplained is U9 2452 (the replay's post-script tail) and U10 5437 (the replay's post-script tail), and the pixel claims now reach U9's replay end (f=0xDAE, the X record) and U10's replay end (capture 4662; the replay itself runs on to f=0x26E1), so the results screens, the following rounds' fights and U10's final through the replay's end are under them; U9's trace and WIN fields now agree to its replay's end too (3503, `0 differing through 3502`; the milestone frames, mostly mode changes driven by replayed pokes, do not check which opponent is fought); U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 5437. `gp-u10-ending` runs DOSBox-X with
+  animations. The U9/U10 captures cover character 0; character 1's BLIZZARD ending is captured and pinned by `gp-u13-oracle` (§J5), while the U14 live-win was a named gap in that phase (R1; now terminal, register R04). Both frame ratchets now pass round 1's mode-8 entry and the mode-0x17→0x12 loader strip by name (track G §G6/§G7): the strips at U9 2209 and U10 2062 are the loader's `- LOADING -` presentation — the same 166 px six-row strip (rows 192..197, x 0..85, sha a886c0f3.., glyph fingerprint de1c1bb2..) — composed over the entry screen, a host-owned-audio model artifact allowed by name in `OVERLAY_ALLOWED`, not a named gap; the first unexplained is U9 2452 (the replay's post-script tail) and U10 5437 (the replay's post-script tail), and the pixel claims now reach U9's replay end (f=0xDAE, the X record) and U10's replay end (capture 4662; the replay itself runs on to f=0x26E1), so the results screens, the following rounds' fights and U10's final through the replay's end are under them; U9's trace and WIN fields now agree to its replay's end too (3503, `0 differing through 3502`; the milestone frames, mostly mode changes driven by replayed pokes, do not check which opponent is fought); U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 5437. `gp-u10-ending` runs DOSBox-X with
   `memsize=64`, a harness value (the original ran out of memory in the poked final at 16 MB,
   record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The mode-8 entry frames the ratchets used to stop at (U9 346, U10 331, gp-idle-loss 2064) hold one screen three consecutive scans and then put two presents inside one 70.09 Hz scan-out: track G §G6 isolated that as the loop's own catch-up (an iteration whose compute overruns an ISR tick fails the 0x25643 gate and skips its present; the re-opened presents land sub-tick apart) — a comparison-model limit, not a port divergence, the loader re-sync hypothesis tested and rejected. Those frames are allowed by name in `SCAN3_ALLOWED` with per-frame byte recipes (a pinned hash row strip that an earlier dump frame must hold + one unique adjacent pair binding the rows below; mutation-tested per §G5's discipline), the U9/U10 entry strips in `OVERLAY_ALLOWED` (the same discipline, §G7), and the ratchets moved up to U9 2452 / U10 5437 / idle-loss 7559 (the idle-loss and U9 ones are past the replay script's end — how far the port got — and U10's 5437 is the replay's post-script tail; the 4113–4134 death-animation run is explained by the span-writer carry fix, record §W1). A P batch that ports
   a target in a miss set re-measures and re-pins (U10: `0x29C78` P7; record §W.16;
@@ -379,8 +380,8 @@ consolidation gate).
   TRACE and WIN pins rise 2364/3162 -> 3503 (MIN_FIRST 346 and MAX_START 100 unchanged and exact),
   and `0x29C78` P7: U10's set loses it (distinct=4) with every pin exact and unchanged — record
   2026-10-04-reverse-p7 §P7.8).
-- **The endgame truth phase: all seven endings and the U16 finisher are captured; U14 R1 stays
-  a named gap** (plan `docs/superpowers/plans/2026-10-23-endgame-truth.md`, record
+- **The endgame truth phase: all seven endings and the U16 finisher are captured; U14 R1 was
+  a named gap in that phase (now terminal; register R04)** (plan `docs/superpowers/plans/2026-10-23-endgame-truth.md`, record
   `2026-10-23-endgame-truth-derivations.md` §E2–§E11). Five ending captures clone U13's poked win
   path — `gp-u18-talon-ending` (TALON, character 2, cell 1), `gp-u19-vertigo-ending` (VERTIGO, 3,
   cell 2), `gp-u20-chaos-ending` (CHAOS, 6, cell 4), `gp-u21-armadon-ending` (ARMADON, 4, cell 5)
@@ -398,7 +399,7 @@ consolidation gate).
   `r0=0x27` where the capture advances to `0x33` (the capture also holds `0x27` at `f=0x14F7`).
   **The claims are the ending content and the finisher reaction, not the fight**: the WIN_MENU
   path, the seven land marks, the `0x10789E` damage and the `DEATH_DONE` pokes are harness writes,
-  so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) is
+  so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) was
   a named gap, now **terminal** (final truth Task 3, record `2026-10-30-final-truth-derivations.md`
   §F3): the fought-match-truth phase's one authorized attempt (2026-10-26) lost the game's
   match (P1 KO'd in both rounds, P2 VERTIGO `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened)
@@ -463,10 +464,12 @@ consolidation gate).
   §H6.7). `gp-u17-device2` pins the no-pad clear and the device-2 selection's screen proof
   (`make gp-u17-oracle`); its frame/trace ratchets are empty because the walk is wall-paced and
   the frame-keyed replay cannot follow it (§H6.9's named gap).
-- **The movie audio needs no port.** Both shipped movies declare zero audio tracks, so no stream
-  opens and the 13 deferred movie-audio rows are a zero-payload finding, not an implementation gap;
-  `0x10678` is the ms reader (`[0x81E10]*4`, not a buffer size), record §H1. A report-only
-  Alt-J/boot probe is optional and is not a `gp-*` fixture (record gameplay-truth-ii §J9).
+- **The movie audio needs no port.** Both shipped movies declare zero audio tracks
+  (`audio_descriptors=[(0,0) x7]` for `TWI5.SMK`/`TWG.SMK`): `0x1C740` asks for all seven tracks
+  and `0x63180` opens a stream only for a track with bit `0x40`, so no stream opens and the 13
+  deferred movie-audio rows are a zero-payload finding, not an implementation gap; `0x10678` is
+  the ms reader (`[0x81E10]*4`, not a buffer size), record §H1. A report-only Alt-J/boot probe is
+  optional and is not movie audio or a `gp-*` fixture (record gameplay-truth-ii §J9).
 - **The music truth phase: the in-match/menu music plays; the register stream is the claim**
   (plan `docs/superpowers/plans/2026-10-25-music-truth.md`, record
   `2026-10-25-music-truth-derivations.md` §M1–§M6). `0x1C930` is ported as
@@ -664,7 +667,7 @@ consolidation gate).
   plus the out-of-table `0x5D110`** (`0x81110[128] == 0x81310[0]`, the 386th target, reachable), and
   the E2 triage has **388 `span-writer` rows plus the supplement `0x5D004`** (`0x81110[127]`, the one
   writer slot `>= RUNTIME_BASE`, named in the supplement). **U17** (the wall-paced walk, no
-  tick-keyed replay; its screens already covered by the K11 captures) is declared; **U14 R1**
+  tick-keyed replay; its screens already covered by the K11 captures) is terminal; **U14 R1**
   (the fought live win) is terminal; final truth Task 3 split U14's old `live_death` rule (record §F3): `b0c`'s
   only non-zero writer is `0x37FF6` in `0x37EA0` (a death-animation end), and the byte's only
   consumer is the **final's** `0x0C→0x0D` chain (`game_mode_0d_step` `0x274FC`,
@@ -747,8 +750,8 @@ consolidation gate).
   and capture sha `15705a3f…`/2,565 frames, with `k_miss_gp_twop_ko` and four
   byte-bound scan-out allowances (the repeated wipe's later pair is occurrence-pinned
   at 176). The oracle asserts the KO and round result; it does not claim a fought
-  match win or that the result naming is a fought win. U14's fought live win stays
-  declared. The `.dro` stays outside the 29-trace audio inventory, and the gate
+  match win or that the result naming is a fought win. U14's fought live win is
+  terminal (R1; register R04). The `.dro` stays outside the 29-trace audio inventory, and the gate
   reads 40/41 present with the same one declared U14 absence.
 - **The continue screen, countdown and expiry are captured and gated** (live truth
   Task 5, record §L5). `gp-u28-continue` reuses U10's route through match 1, then

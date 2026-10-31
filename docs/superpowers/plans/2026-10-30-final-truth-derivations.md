@@ -882,7 +882,7 @@ the U10 game-set byte is on the poked final (all seven final KOs poked, record
 §E1.3), and a match-1 arcade win never enters `0x0D` (mode `0x17`'s setup
 clears the byte). The two-human fought win above is **not** an arcade win: it is a
 second human's idle slot against the script, it does not exercise the arcade
-AI, and its capture failed its session check. **R1 stays declared**; the
+AI, and its capture failed its session check. **R1 is terminal**; the
 match rule is correct and closed, but no arcade fought-win capture is claimed.
 
 ### F3.8 The commands and the tree
@@ -2193,7 +2193,7 @@ table (§F8).
 ## §F8 — the terminal claim register and the docs reconciliation (Task 8)
 
 **Outcome: implemented.** `docs/superpowers/specs/2026-10-30-final-claims.md`
-is the single source of truth: **32 rows — 4 closed, 1 gated, 19 terminal, 8
+is the single source of truth: **34 rows — 6 closed, 1 gated, 19 terminal, 8
 declared** — and every terminal/declared row names an address, a file:line or
 a `data/k11-captures/…` capture or `.failed` artifact. No row is "open". The
 register records only what Tasks 1–7 measured; it adds no claim, capture or

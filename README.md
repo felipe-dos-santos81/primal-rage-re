@@ -64,7 +64,7 @@ game-over/high-score flows. The measured claims:
   banks into **12 whole-section-claimed / 10 requested-unclaimed residue / 2
   requested-but-unattributable / 2 never-requested**, and declares **rendered
   audibility terminal** (no device-recording oracle; the invented mixer is not
-  the game).
+  the game), with the carrier-TL latch closed (R34).
 - **Endgame.** All seven endings are pinned — SAURON and BLIZZARD by the earlier
   U10/U13 captures, TALON, VERTIGO, CHAOS, ARMADON and DIABLO by `gp-u18`…
   `gp-u22` — and the U16 finisher reaction by `gp-u23`, all under poked win
@@ -83,7 +83,8 @@ limited to 1, but no frame-exact route is derivable), the 5120 band is
 capture/present-side class), the 20 terminal differential rows (19 addresses)
 with 12 `WEAKER` and 8 `UNROWED`, the 4 `UNINSTRUMENTED` census addresses
 (`0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`), the storage items, the zero-payload
-movie audio, the 53/37/315 classification, and the oracle window/model limits.
+movie audio (R33), the 53/37/315 classification, and the oracle window/model
+limits.
 `0x25` bowling and the taken continue are **closed** (gated captures), and
 `0x2CADC`'s boot-defaults omission is **fixed**. The state-coverage phase
 (2026-10-28) added the measured function census, the ENDURANCE team end, the
@@ -91,7 +92,8 @@ side-1 tour, the timeout draw, the U16 reaction fix and the OPL pitch test.
 Live truth gates the KO-branch `0x0A`/`0x0B` draw, the no-poke two-human KO, the
 `0x0E` continue countdown/expiry and the name-entry path. The running detail
 and every gap's evidence are in [`docs/PROGRESS.md`](docs/PROGRESS.md); the
-frame loop and pixel path are in `port/spec/game_flow.md`.
+frame loop and pixel path are in `port/spec/game_flow.md`. Final truth Task 8
+(the terminal claim register) is complete; the final gate is Task 9.
 
 ## Layout
 

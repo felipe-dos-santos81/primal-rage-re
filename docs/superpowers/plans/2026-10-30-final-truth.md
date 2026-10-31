@@ -456,7 +456,7 @@ docs agree.
 **Deliverable:** the register + docs + test; no new claim beyond Tasks 1–7.
 
 **Measured outcome (Final truth Task 8, record §F8):** implemented. The register
-is `docs/superpowers/specs/2026-10-30-final-claims.md` (32 rows: 4 closed, 1
+is `docs/superpowers/specs/2026-10-30-final-claims.md` (34 rows: 6 closed, 1
 gated, 19 terminal, 8 declared) and `tools/tests/test_final_claims.py` is in
 `make verify`.
 

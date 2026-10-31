@@ -246,7 +246,7 @@ start, sets `b1f=side+1`, spends the credit, and stores mode `0x0C`
 `gp-u29-continue-taken-oracle` is in `make verify`; the census improves
 `0x2791C` and `0x33B00`. Movie audio is already closed: both Smacker files
 declare zero audio tracks and no stream opens; it is a zero-payload terminal
-finding (register R19).
+finding (register R33).
 
 ### 3.7 The `0x2CADC` boot-defaults omission was a real visible gap
 
@@ -380,7 +380,7 @@ except by re-measurement; fitting a tolerance or a cause.
 ## 9. Terminal claims the phase issued
 
 The register is `docs/superpowers/specs/2026-10-30-final-claims.md` (Task 8):
-**32 rows — 4 closed, 1 gated, 19 terminal, 8 declared**, each with its
+**34 rows — 6 closed, 1 gated, 19 terminal, 8 declared**, each with its
 address/file:line or capture. The measured outcome differs from the design's
 expectation, and the raw wins:
 
@@ -388,7 +388,8 @@ expectation, and the raw wins:
   full, WEAKER 13 → 12, 810/845 full, no oracle re-pin); 0x25 (Task 5:
   `gp-bowling-2` opened the mode at `f=0x832`, the count not the camera was the
   residue); the `0x0E` taken branch (Task 4: `gp-u29-continue-taken`, `0x2791C`
-  and `0x33B00` HIT); the `0x0E` expiry (live truth Task 5).
+  and `0x33B00` HIT); the `0x0E` expiry (live truth Task 5); the movie-audio
+  zero-payload finding (R33); and the carrier-TL latch (Task 7a, R34).
 - **Terminal:** U14's arcade fought win (R1) with the measured damage race;
   5120 **PASS-A** (Task 2: the content is the port's, the old blue is the
   capture/present-side class; the exact transient is unnamed); rendered

@@ -544,8 +544,10 @@ rows stay `NOT-HIT`.
 claim beyond the measured bytes.
 
 **Execution outcome:** Task 10 was not taken because the fade palette source
-was not funded. No injection or capture ran. The 5120 band stays INCONCLUSIVE,
-with no fitted cause and unchanged bounds and pins (record §L10).
+was not funded. No injection or capture ran. The 5120 band stays INCONCLUSIVE
+in that phase, with no fitted cause and unchanged bounds and pins (record §L10).
+**Superseded by Final truth Task 2 (record §F2.5): PASS-A terminal; register
+R02.**
 
 ---
 
@@ -609,7 +611,8 @@ gap declared.
 - [ ] **Step 1: Update the narrative.** Add the new oracles/commands, the
   capture inventory, and the corrected named gaps: `0x0B` exhibited (KO draw),
   `0x0E` exhibited, `0x25` declared after Task 6's two failed attempts with its
-  precise blocker unresolved, `gp-u27` gated, U16 R2 measured, U14 game-evidence-only, `0x21`
+  precise blocker unresolved (**superseded: Final truth Task 5 closed it;
+  register R06**), `gp-u27` gated, U16 R2 measured, U14 game-evidence-only, `0x21`
   declared, 5120 outcome, audio prefix. Keep the U14 fought win declared.
 - [ ] **Step 2: Re-measure the counters.** `python3 tools/port_progress.py`
   (expect `798 1203 66` / `759 759 100`); `make diff-verify` (expect the
@@ -684,8 +687,11 @@ pin ±1-proved; no existing pin weakens; the U14 gap remains declared.
 - The `0x25` bowling content — Task 6's two real-input attempts failed
   (`b892=2`, then a last sample of 5), the precise remaining blocker is
   unresolved, and the two `.failed` artifacts have no oracle or pins.
+  **Superseded by Final truth Task 5 (register R06): `gp-bowling-2` opened the
+  mode.**
 - The 5120 band's cause — Task 10 was not taken; the instrument gap stays
-  declared and the band INCONCLUSIVE.
+  declared and the band INCONCLUSIVE in that phase. **Superseded by Final truth
+  Task 2 (register R02): PASS-A terminal.**
 - Rendered audibility; the 4 never-requested audio banks (superseded by
   final-truth §F7.2's 12/10/2/2 inventory); the terminal
   differential rows; the declared storage/config items.

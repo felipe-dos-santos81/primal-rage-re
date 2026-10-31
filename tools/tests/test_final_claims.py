@@ -11,10 +11,11 @@ single source of truth for every remaining gap. This test pins:
   row fails);
 * the measured counters (the differential, coverage, capture inventory, pin
   digest and ported figures) are present in the register;
-* every `AGENTS.md` gap statement has a mapped register row, and the narrow
-  phrases that introduce a gap statement ("stays declared", "declared
-  terminal", "INCONCLUSIVE", ...) all carry a mapped anchor (a new unmapped gap
-  statement fails).
+* every `AGENTS.md` gap/status statement ("named gap", "stays declared",
+  "declared terminal", "INCONCLUSIVE", ...) maps to a register row with the
+  same status; a clause with no anchor fails, and a status mismatch fails
+  unless the clause carries a historical/superseded marker (a new unmapped or
+  split-line statement fails).
 
 The mutation cases at the bottom run the same checkers on mutated copies, so
 the assertions are able to fail without editing the real files.
@@ -45,7 +46,7 @@ EXPECTED = {
     'R10': ('terminal', ('TRACE_RESIDUE', '1,437')),
     'R11': ('declared', ('0x0A8C', '0x05E4')),
     'R12': ('declared', ('0x37640', '0x24559')),
-    'R13': ('terminal', ('port/src/platform/audio/opl/opl.c', '49,716')),
+    'R13': ('terminal', ('port/src/platform/audio/opl/opal.c:3', '49716')),
     'R14': ('terminal', ('gp-u17-device2', 'H6.9')),
     'R15': ('terminal', ('0x1531', '0x0EAE')),
     'R16': ('declared', ('gp-u23-u16-finisher', '0x27')),
@@ -65,6 +66,8 @@ EXPECTED = {
     'R30': ('declared', ('0x4BD98', 'flow.c:1632')),
     'R31': ('terminal', ('UNROWED_CENSUS', 'AGENTS.md:511')),
     'R32': ('terminal', ('0x29D60', '0x2EA30')),
+    'R33': ('closed', ('TWI5.SMK', 'audio_descriptors')),
+    'R34': ('closed', ('0x68B0E', 'sequencer.c')),
 }
 
 # Counter strings that must appear in the register (its §3 and §2 rows).
@@ -75,7 +78,8 @@ MUST_MENTION = (
     '43/44', '798 1203 66', '759 759 100', '44 explicit paths',
     '0x29D60', '0x2EA30', '0x2EA64', '0x500BB',
     '0x37FF6', '0x2587C', '0x4E11C', '0x2791C', '0x2CADC', '0x0EAE',
-    '0x1531', '66% raw',
+    '0x1531', '66% raw', 'TWI5.SMK', 'audio_descriptors=[(0,0) x7]',
+    '0x68B0E',
 )
 
 # Every AGENTS gap statement, mapped to its register row. Each phrase must be
@@ -85,10 +89,13 @@ AGENTS_ANCHORS = (
     ('appears are not claimed** (a named gap', 'R22'),
     ('named gap stays its cause, not isolated', 'R24'),
     ('U9/U10 captures cover character 0', 'R23'),
-    ('while the U14 live-win remains a distinct gap', 'R04'),
+    ('the U14 live-win was a named gap in that phase', 'R04'),
+    ("U14's fought live win", 'R04'),
+    ('U14 R1', 'R04'),
     ('terminal with the measured arcade damage race', 'R04'),
     ('**Named gaps:**', 'R13'),
     ('the 26 code-reachable banks are claimed', 'R09'),
+    ("the named gaps: N and F are the end of the port's replay", 'R22'),
     ('10 are requested', 'R10'),
     ('requested at runtime but unattributable', 'R11'),
     ('§H6.9\'s named gap', 'R14'),
@@ -97,7 +104,8 @@ AGENTS_ANCHORS = (
     ('`0x21` (volleyball) stays declared', 'R05'),
     ('old "stays declared / never opened / no oracle', 'R06'),
     ('The proof debt is declared terminal', 'R17'),
-    ('is declared; **U14 R1**', 'R14'),
+    ('**U17** (the wall-paced walk', 'R14'),
+    ('its screens already covered by the K11 captures)', 'R14'),
     ('declared absent', 'R27'),
     ('declared terminal difference on `0x2EA68`', 'R19'),
     ('gaps (record §S.10 and §S.8\'s PLAUSIBLE items, declared terminal by', 'R19'),
@@ -105,7 +113,9 @@ AGENTS_ANCHORS = (
     ('every one is a declared terminal with a per-row reason', 'R17'),
     ('is **PASS-A terminal**', 'R02'),
     ('5120 band', 'R02'),
-    ('The movie audio needs no port', 'R19'),
+    ('The movie audio needs no port', 'R33'),
+    ('audio_descriptors=[(0,0) x7]', 'R33'),
+    ('the named gap `host_1b890`', 'R17'),
     ('The storage layer is ported', 'R19'),
     ('is now published', 'R06'),
     ('Task 5 measured it', 'R06'),
@@ -140,21 +150,73 @@ AGENTS_ANCHORS = (
     ('0x1531', 'R15'),
 )
 
-# Narrow status phrases that introduce a gap statement. Every AGENTS line
-# containing one of these must also contain a mapped anchor above.
-TRIGGERS = (
-    'Named gaps left by the phase:',
-    '**Named gaps:**',
+# Status phrases that introduce a gap statement. A clause carrying one of
+# these must map to a register row, and (unless it carries a historical marker)
+# the row's status must match the phrase.
+STATUS_TRIGGERS = (
     'stays declared',
     'stays a declared gap',
     'remains a distinct gap',
-    'is **INCONCLUSIVE**',
+    'stays a named gap',
+    'is a named gap',
+    'is declared',
+    'are declared',
     'declared terminal',
     'declared absent',
-    'are declared',
-    'is declared',
+    'is **INCONCLUSIVE**',
+    'declared gap',
     'were open',
+    'stays open',
 )
+
+# A statement about a past phase is allowed to name an old status. The marker
+# must be in the same clause.
+HISTORICAL_MARKERS = (
+    'superseded',
+    'historical',
+    'at that phase',
+    'in that phase',
+    'old ',
+    'no longer',
+    'earlier',
+    'previously',
+    'before ',
+    'was a ',
+    'were ',
+)
+
+# A bare "named gap" statement is checked only when it names a specific
+# address or capture (a policy sentence such as "a named gap with its
+# evidence" is not a project gap).
+SPECIFIC_RE = re.compile(r'0x[0-9A-Fa-f]{4,}|gp-[a-z0-9-]+|data/k11-captures')
+
+
+def _clauses(text):
+    """Unwrap the line breaks, then split on sentences and semicolons."""
+    flat = re.sub(r'\s+', ' ', text)
+    return re.split(r'(?<=[.!?])\s+|;\s*', flat)
+
+
+def _claimed_status(clause):
+    c = clause.lower()
+    if 'inconclusive' in c:
+        return 'inconclusive'
+    if 'declared terminal' in c or 'now **terminal**' in c:
+        return 'terminal'
+    if any(x in c for x in ('stays a named gap', 'remains a distinct gap',
+                            'is a named gap')):
+        return 'terminal' if 'terminal' in c else 'declared'
+    if 'declared absent' in c:
+        return 'declared'
+    if any(x in c for x in ('stays declared', 'is declared', 'are declared')):
+        return 'declared'
+    return None
+
+
+def _is_historical(clause):
+    c = clause.lower()
+    return any(m in c for m in HISTORICAL_MARKERS)
+
 
 # Evidence that satisfies the terminal/declared rule. A prose-only cell must
 # fail; these are the address / file:line / capture / .failed shapes.
@@ -231,7 +293,12 @@ def check_register(text):
 
 
 def check_agents(text, register_text):
-    """Return the list of problems between AGENTS and the register."""
+    """Return the list of problems between AGENTS and the register.
+
+    Every current gap/status statement must map to a register row with the same
+    status. A historical/superseded clause may name an old status; a clause with
+    no anchor that is not historical is a missing row.
+    """
     rows, problems = parse_register(register_text)
     anchor_phrases = []
     for phrase, rid in AGENTS_ANCHORS:
@@ -242,12 +309,36 @@ def check_agents(text, register_text):
             problems.append('AGENTS: anchor %r maps to missing register row %s'
                             % (phrase, rid))
 
-    for lineno, line in enumerate(text.splitlines(), 1):
-        if any(t in line for t in TRIGGERS):
-            if not any(p in line for p in anchor_phrases):
+    for clause in _clauses(text):
+        low = clause.lower()
+        statused = any(t in low for t in STATUS_TRIGGERS)
+        named = 'named gap' in low and bool(SPECIFIC_RE.search(clause))
+        if not (statused or named):
+            continue
+        anchors = [(p, rid) for p, rid in AGENTS_ANCHORS if p in clause]
+        historical = _is_historical(clause)
+        if not anchors:
+            if not historical:
                 problems.append(
-                    'AGENTS:%d: gap statement has no register anchor: %r'
-                    % (lineno, line.strip()[:120]))
+                    'AGENTS: gap statement has no register anchor: %r'
+                    % clause.strip()[:160])
+            continue
+        claimed = _claimed_status(clause)
+        if claimed is None or historical:
+            continue
+        if claimed == 'inconclusive':
+            problems.append(
+                'AGENTS: current INCONCLUSIVE statement has no terminal or '
+                'superseded marker: %r' % clause.strip()[:160])
+            continue
+        mapped = [rid for _, rid in anchors if rid in rows]
+        if not any(rows[rid]['status'] == claimed for rid in mapped):
+            problems.append(
+                'AGENTS: gap statement claims %r, but its register rows are %s: %r'
+                % (claimed,
+                   ', '.join('%s=%s' % (rid, rows[rid]['status'])
+                             for rid in mapped if rid in rows) or 'none',
+                   clause.strip()[:160]))
     return problems
 
 
@@ -302,6 +393,37 @@ class TestFinalClaims(unittest.TestCase):
         problems = check_agents(bad, register)
         self.assertTrue(any('no register anchor' in p for p in problems),
                         problems)
+
+    def test_a_split_line_stays_declared_fails(self):
+        agents = self._read(AGENTS_REL)
+        register = self._read(REGISTER_REL)
+        bad = agents + "\n- **U14's fought live win stays\ndeclared.**\n"
+        problems = check_agents(bad, register)
+        self.assertTrue(any('claims' in p or 'no register anchor' in p
+                            for p in problems), problems)
+
+    def test_a_u17_status_mismatch_fails(self):
+        agents = self._read(AGENTS_REL)
+        register = self._read(REGISTER_REL)
+        bad = agents.replace(
+            'its screens already covered by the K11 captures) is terminal',
+            'its screens already covered by the K11 captures) is declared', 1)
+        self.assertNotEqual(bad, agents)
+        problems = check_agents(bad, register)
+        self.assertTrue(any('claims' in p for p in problems), problems)
+
+    def test_a_historical_marker_is_allowed(self):
+        agents = self._read(AGENTS_REL)
+        register = self._read(REGISTER_REL)
+        bad = agents + "\n- The old made-up mode stays declared in that phase.\n"
+        self.assertEqual(check_agents(bad, register), [])
+
+    def test_a_named_gap_with_an_address_fails(self):
+        agents = self._read(AGENTS_REL)
+        register = self._read(REGISTER_REL)
+        bad = agents + "\n- A made-up gap is a named gap at `0x1234`.\n"
+        problems = check_agents(bad, register)
+        self.assertTrue(any('no register anchor' in p for p in problems), problems)
 
     def test_a_stale_agents_anchor_fails(self):
         agents = self._read(AGENTS_REL)

@@ -135,7 +135,9 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   precise remaining blocker is unresolved: the `+0x53` dispatcher's case-7 clear
   branch means the earlier structural-impossibility wording is not derived. The
   two `.failed` artifacts have no replay, oracle or pins, and no further execution
-  of the current route is authorized.
+  of the current route is authorized. **Superseded by Final truth Task 5 (record
+  §F5): `gp-bowling-2` opened the mode; the count, not the camera, was the
+  residue; register R06.**
 
 ### 2.6 `0x21` — volleyball stays declared
 
@@ -199,8 +201,11 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   from the raw bytes, the task declares the instrument gap and leaves the band
   where §D4 left it; it does not fit a cause.
 - **Execution outcome:** T10 was not taken because the fade palette source was
-  not funded. No DAC injection ran. The band stays **INCONCLUSIVE**, the cause
-  is not fitted, and the byte-pinned bounds and every pin are unchanged.
+  not funded. No DAC injection ran. The band stays **INCONCLUSIVE** in that
+  phase, the cause is not fitted, and the byte-pinned bounds and every pin are
+  unchanged. **Superseded by Final truth Task 2 (record §F2.5):
+  `gp-u13-band-dac` proves PASS-A; the band is PASS-A terminal (register
+  R02).**
 
 ### 2.9 Audio and `gp-u27`
 
@@ -363,10 +368,13 @@ gate is last.
   strict clear. U14's failed artifact is game evidence for a fought arcade KO,
   not a capture, oracle, pin or fought-win claim.
 - `0x21` stays declared under the state-coverage stop rule. `0x25` also stays
-  declared: two real-input attempts failed, the symmetric route is blocked by
-  slot `+0x53`, and the two `.failed` artifacts have no oracle or pins.
+  declared in that phase: two real-input attempts failed, the symmetric route
+  is blocked by slot `+0x53`, and the two `.failed` artifacts have no oracle or
+  pins. **Superseded by Final truth Task 5 (register R06): `gp-bowling-2`
+  opened the mode.**
 - Task 10 was not taken; the 5120 instrument gap and INCONCLUSIVE band are
-  unchanged. Task 11 pins **74 diff-allowed audio prefixes / 29,656 ticks**;
+  unchanged in that phase. **Superseded by Final truth Task 2 (register R02):
+  PASS-A terminal.** Task 11 pins **74 diff-allowed audio prefixes / 29,656 ticks**;
   the unmatched remainders and rendered audibility stay named.
 - Task 12a reconciles the documents only. Task 12b re-pinned the census (§11);
   its manifest and pin-baseline results are recorded there. Task 13 runs the full

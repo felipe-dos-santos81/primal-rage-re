@@ -415,8 +415,10 @@ true original, and ported the divergence. Two pieces:
   path. Final truth Task 4's `gp-u29-continue-taken` claims the take (record
   §F4, register R07): `f=0x1561`, mode `0x0E`→`0x0C`, `cred` 4→3, `b1f` 1, the
   incumbent's `+0x5A` `0x78`→0. The pre-L5 census rows were
-  `0x4BD98`/`0x4E11C`/`0x27A2C` `NOT-HIT`; Task 12b re-measured them, Final
-  truth Task 5 made `0x4E11C` HIT and Task 4 made `0x27A2C` HIT.
+  `0x4BD98`/`0x4E11C`/`0x27A2C` `NOT-HIT`; Task 12b re-measured them. `0x27A2C`
+  was already HIT from live truth Task 5's `gp-u28-continue` (Task 12b's
+  re-pin); Final truth Task 5 made `0x4E11C` HIT, and Task 4 made `0x2791C`
+  and `0x33B00` HIT.
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live truth Task 2, record §L2), a distinct claim from the timeout branch's
   `gp-draw-timeout`.
