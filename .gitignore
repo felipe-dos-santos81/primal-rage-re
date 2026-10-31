@@ -1,10 +1,11 @@
 # Build output
 build/
 build-cov/
+build-*/
 *.o
 *.a
 
-# Generated frames, extracted art and dumps
+# Generated frames, rendered audio/video, extracted art and dumps
 frames/
 coverage/
 extracted/
@@ -13,6 +14,11 @@ extracted/
 *.pal
 *.idx
 *.dro
+*.wav
+*.avi
+*.ipx
+*.raw.gz
+*.log
 
 # The installed game (untracked, read-only) — includes its captures
 # (data/smk-captures, data/title-captures, data/k11-captures)

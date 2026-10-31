@@ -11,13 +11,14 @@ declared) with its address, file:line or capture; no row is "open". The docs
 test `tools/tests/test_final_claims.py` (in `make verify`) fails when a gap
 statement here has no register row, when its status disagrees with the row
 (outside a historical/superseded clause), when a terminal/declared row loses
-its evidence, or when a measured counter changes without the register. The
-final gate is Task 9 of the Final Truth plan.
+its evidence, or when a measured counter changes without the register. The Final Truth phase
+is complete: Task 9's two full gates and both `make audio-render` runs passed on
+the gated tree; `main` is the merge `43b79b30`.
 
 ## Commands
 
 ```bash
-make help                  # the authoritative target list
+make help                  # quick target list; make help-all lists every target
 make build                 # cmake -S port -B build && cmake --build build
 make gate-check            # inventory the CAPTURE_DIRS paths; strict/partial modes; reports the declared U14 gap
 make verify                # THE gate: gate-check + frames + oracle-required tests + all oracles + symbols.h idempotence

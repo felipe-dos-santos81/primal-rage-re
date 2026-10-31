@@ -1,12 +1,9 @@
-# Makefile for Primal Rage (DOS, 1995) — reverse engineering + SDL3 port
-# Two pipelines:
-#   RE   info → gra → symbols → cluster → decompile → analyse → oracle → original
-#   PORT build → test → check → run → verify
-#
-# The pin constants below (DEMO_FIGHT_MIN_FIRST, ATTRACT2_MIN_FIRST, GP_*) hold
-# measured ratchets: each N is the first unexplained/differing frame with its
-# provenance in the comment above it, and is raised (never lowered) when the
-# port improves. Their evidence is load-bearing (AGENTS.md) — do not "tidy" it.
+# Primal Rage (DOS, 1995) — reverse engineering + SDL3 port.
+# `make help` is the quick target list; `make help-all` lists every target.
+# Pipelines: RE (info -> gra -> symbols -> decompile -> oracle) and PORT
+# (build -> check -> run -> verify).
+# The measured N/pin constants below are load-bearing: each has its provenance
+# in the comment above it; raise, never lower, when the port improves.
 SERVICE = Primal Rage (DOS)
 
 # Variables
@@ -128,7 +125,7 @@ verify_frames ?= 820
 gra ?= S16TITLE.GRA
 chunk ?= 0
 
-.PHONY: help deps build gate-check test verify check run clean coverage audio-render \
+.PHONY: help help-all deps build gate-check test verify check run clean coverage audio-render \
         smk-oracle title-pin title-capture title-oracle attract-oracle \
         audio-one audio-oracle audio-determinism \
         frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
@@ -146,9 +143,25 @@ chunk ?= 0
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
-help: ## Print this help message
+help: ## Print the quick start and main targets (help-all lists every target)
 	@printf '\033[01;32m${SERVICE} — reverse engineering + SDL3 port\033[00;37m\n\n'
-	@printf "\033[33mUsage:\033[0m\n  make [target] [arg=\"val\"...]\n\n\033[33mTargets:\033[0m\n"
+	@printf "\033[33mUsage:\033[0m\n  make [target] [arg=\"val\"...]\n\n"
+	@printf "\033[33mQuick start:\033[0m\n"
+	@printf "  make deps      # check the toolchain and game assets\n"
+	@printf "  make build     # configure and build the port\n"
+	@printf "  make check     # headless frames -> frames/\n"
+	@printf "  make run       # windowed port\n"
+	@printf "  make verify    # the full gate\n\n"
+	@printf "\033[33mMain targets:\033[0m\n"
+	@printf "  gate-check test check run verify diff-verify entry-triage clean coverage deps help help-all\n\n"
+	@printf "\033[33mCaptures and oracles:\033[0m\n"
+	@printf "  smk-* title-* attract-* attract2-* frontend-* demo-* k11-* save-reload-* gp-* audio-*\n\n"
+	@printf "\033[33mRE:\033[0m\n"
+	@printf "  re-info re-gra re-render re-extract re-symbols re-cluster re-decompile re-analyze re-oracle re-original\n\n"
+	@printf "Every target: make help-all\n"
+
+help-all: ## Print every target with its description
+	@printf '\033[01;32m${SERVICE} — every target\033[00;37m\n\n'
 	@grep -E '^[-a-zA-Z0-9_\.\/]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; \
 		{printf "  \033[36m%-26s\033[0m %s\n", $$1, $$2}'
