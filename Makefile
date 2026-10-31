@@ -1523,23 +1523,23 @@ GP_U29_CAPTURE_FRAMES = 4446
 # Final truth Task 5 (record §F5): the mode-0x25 bowling entry, reached by real
 # two-human input with no poke. gp-bowling-2 plays character 4's move 0 five
 # times on both sides 150 frames apart; the fourth attempt's +2 puts
-# DS_00108892 at 7 at the reaction's clear, and fight_mode25_enter (0x4E11C)
-# opens the mode at f=0x832 (the frame the get-up's +0x53 = 0 meets the >= 6
-# gate). All ten session checks pass (28/32 steps, stopped on mode 0x25,
-# 1,491/1,491 frames, no unscripted input, 0/0 pokes). The evidence checker
-# (`gp_bowling.py check --staggered`) proves the counter's 1/3/5/7 growth, the
-# 7-long +0x53 windows, the signed camera -606 inside [-0x3300,0x3300], the
-# entry stores and the absence of W records. Capture 443 (raw 2896) is the
-# wipe-in's two-present scan-out in SCAN3_ALLOWED (rows 19..32 port 301, rows
-# 33..199 port 302, the measured pair 301 pinned because the layout repeats at
-# 31/255). The port replay dumps 1,138 presented frames; trace and moves agree
-# through 2158 (the capture's X record is f=0x86E) with 0 differences, so both
-# ratchets pin at 2,159; the first unexplained capture frame is 1,422 (raw
-# 3962), the port dump's post-script tail, so the frame claim reaches the
-# entry's first 52 frames (the entry is capture 1,370). The window start 97
-# (raw 1735), the reach 1,137 (the dump's last presented frame) and the four
-# missing non-black classes [9, 11, 68, 255] are measured; an absent capture
-# skips.
+# DS_00108892 at 7, and fight_mode25_enter (0x4E11C) opens the mode at f=0x832,
+# the first frame the get-up's +0x53 = 0 meets the >= 6 gate (the fifth attempt
+# never fires: 28 of 32 steps). All ten session checks pass (stopped on mode
+# 0x25, 1,491/1,491 frames, no unscripted input, 0/0 pokes). The evidence
+# checker (`gp_bowling.py check --staggered`) proves the counter's 1/3/5/7
+# growth, the 7-long +0x53 windows, the signed camera -606 inside
+# [-0x3300,0x3300], the entry stores and the absence of W records. Capture 443
+# (raw 2896) is the wipe-in's two-present scan-out in SCAN3_ALLOWED (rows 19..32
+# port 301, rows 33..199 port 302, the measured pair 301 pinned because the
+# layout repeats at 31/255). The port replay dumps 1,138 presented frames; trace
+# and moves agree through 2158 (the capture's X record is f=0x86E) with 0
+# differences, so both ratchets pin at 2,159; the first unexplained capture
+# frame is 1,422 (raw 3962), the port dump's post-script tail, so the frame
+# claim reaches capture 1,421 (the entry is capture 1,370, +51). The window
+# start 97 (raw 1735), the reach 1,137 (the dump's last presented frame) and the
+# four missing non-black classes [9, 11, 68, 255] are measured; an absent
+# capture skips.
 # >>> PIN-BASELINE-BEGIN gp-bowling-2
 GP_BOWLING_MIN_FIRST = 1422
 GP_BOWLING_TRACE_MIN_FIRST = 2159
