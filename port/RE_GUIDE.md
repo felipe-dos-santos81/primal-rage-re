@@ -365,28 +365,36 @@ true original, and ported the divergence. Two pieces:
   `0x663D4`; `0x2D62C` is the counter, not the ISR). AIL's own dispatch from
   `0x6627E` to the registered callback `0x1BDF4` is not traced byte by byte
   (record `2026-10-23-endgame-truth-derivations.md` §E1.6).
-- The out-of-scope content modes `0x21` (the volleyball easter egg, entered at
-  `0x4BD98` after the eighth worshipper trample `+0x1F > 7`) and `0x25` (the
-  bowling easter egg, entered at `0x4E11C`; the game's decoder returns string
-  `0x61` = "BOWLING!") stay declared (state-coverage record
+- The out-of-scope content mode `0x21` (the volleyball easter egg, entered at
+  `0x4BD98` after the eighth worshipper trample `+0x1F > 7`) stays declared
+  (state-coverage record
   `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2).
-  Live truth Task 6 made two real-input attempts with no pokes: the one-attempt
-  route reached `DS_00108892 = 2`, and the review-corrected three-attempt route's
-  last sample was 5 (+1/+2/+2); the trace cannot distinguish stopping at 5 from
-  reaching 6 and taking the same-iteration rejection decrement. Mode `0x25` never
-  opened, and the precise remaining blocker is unresolved. The reaction-`0x22`
-  callback installs the increment hook and sets slot `+0x53=7` (`0x455C3`), while
-  the caller requires slot 0's `+0x53==0` (`0x263DE`) and states 9/10 are no-ops;
-  however, the `+0x53` dispatcher's case 7 can call `fighter_state_367dc` for
-  character 4, reaction `0x21`/`0x22` and a passing `+0x86` threshold
-  (`fighter.c:3680-3693`), and that callee clears `+0x52`/`+0x53`
-  (`fighter.c:2690-2691`). Whether that clear can pass on every relevant increment
-  frame is not derived, so structural impossibility is not claimed. The artifacts are
-  `gp-bowling.failed` and `gp-bowling-fix.failed`, with no replay, oracle or pin.
-  No fourth execution of the current route is authorized and no more captures are
-  to be run; a staggered route would be a new, unmeasured task (record
-  `../docs/superpowers/plans/2026-10-29-live-truth-derivations.md` §L6).
-  Both read `DS_00104ABC >= 2`, and
+  `0x25` (the bowling easter egg, entered at `0x4E11C`; the game's decoder
+  returns string `0x61` = "BOWLING!") is **published by Final truth Task 5**
+  (record `../docs/superpowers/plans/2026-10-30-final-truth-derivations.md`
+  §F5): `data/k11-captures/gp-bowling-2` (1,491 frames, every session check ok,
+  no poke, sha256 `54d4c7d5…`) raised `DS_00108892` to `1/3/5/7` and opened the
+  mode at `f=0x832`, the first frame slot 0's `+0x53` was 0 with the count
+  `>= 6` (the get-up's `0x35D6C` clear), and `gp-bowling-oracle` is in
+  `make verify`/`CAPTURE_DIRS` with `k_miss_gp_bowling` and the `GP_BOWLING_*`
+  pins (N 1,422, trace/moves 2,159, start 97, reach 1,137, 4 missing) plus a
+  capture-443 three-present scan-out allowance. The increment/`+0x53` raw
+  derivation of live truth §L6 stands (the hook counts the other slot's
+  reaction `0x22` through the AF8 overlap latch, the other record's
+  `+0x74/+0x76` and its `+0x42` bit 3; the callback writes slot `+0x53=7` at
+  `0x455C3` and the gate needs slot 0's `+0x53==0` at `0x263DE`); what is
+  superseded is the old "stays declared / never opened / no oracle or pin"
+  register: the live-truth phase's two real-input attempts (`DS_00108892 = 2`;
+  last sample 5, +1/+2/+2) are preserved as `gp-bowling.failed` and
+  `gp-bowling-fix.failed` and still fail `mode 0x25 never observed`, and the
+  measured `+0x53` lattice (`7`, `0x0A` pose, `0x0B` floor, `0`, so the
+  `0x367DC` 91-frame arm never fired) corrects the plan's clear-frame model.
+  The residue is settled: the count, not the camera (measured `-1433..4887`,
+  `-606` at the entry, against the `±0x3300` gate), and the appended `s0_53`/
+  `camx` S/T fields are the measurement. The claim boundary: the counter/camera
+  series are the checker's capture-side claims, the frame claim reaches capture
+  1,421 (the entry + 70) and nothing past it, and the later scoreboard is not
+  claimed. Both read `DS_00104ABC >= 2`, and
   `DS_00104ABC = (DS_00104B1F == 3) + 1` (`flow.c:1632`/`2416`), so a poked 1P
   scenario cannot open them. The continue screen `0x0E` is now published by
   `gp-u28-continue-oracle` (live truth Task 5, record §L5): mode `0x0C` opens it

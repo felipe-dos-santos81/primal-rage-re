@@ -1536,7 +1536,8 @@ GP_U29_CAPTURE_FRAMES = 4446
 # and moves agree through 2158 (the capture's X record is f=0x86E) with 0
 # differences, so both ratchets pin at 2,159; the first unexplained capture
 # frame is 1,422 (raw 3962), the port dump's post-script tail, so the frame
-# claim reaches capture 1,421 (the entry is capture 1,370, +51). The window
+# claim reaches capture 1,421 (the entry is capture 1,352, +70; capture 1,370 is
+# port 1,093 at f=0x842). The window
 # start 97 (raw 1735), the reach 1,137 (the dump's last presented frame) and the
 # four missing non-black classes [9, 11, 68, 255] are measured; an absent
 # capture skips.

@@ -1,6 +1,7 @@
 # Final Truth — design
 
-**Status:** proposed, not implemented. Date: 2026-10-30.
+**Status:** in progress — Tasks 1–5 implemented (derivation record §F1–§F5);
+Task 8's reconciliation pass owns the final register. Date: 2026-10-30.
 **Predecessor:** Live Truth (`docs/superpowers/specs/2026-10-29-live-truth-design.md`).
 **Plan:** `docs/superpowers/plans/2026-10-30-final-truth.md`.
 
@@ -99,7 +100,34 @@ requires `b1d∉{2,3}`, `DS_00104AD8<=0`, `DS_00104ABC>=2` and
 `fight_13134==0`. A poked 1P exhibit is barred by state-coverage §9; a poked
 two-human exhibit would need a new operator reversal, not this phase.
 
-### 3.3 0x25 — the one-sided route is dead; the residue is the count window
+### 3.3 0x25 — the staggered route opened the mode; the residue was the count
+
+**Outcome (Final truth Task 5, record §F5): `0x25` is published.** The one
+authorized staggered capture `gp-bowling-2` (mirror-ARMADON move 0 four times
+on both sides, 150 frames apart, no poke; sha256 `54d4c7d5…`, 1,491 frames,
+every session check ok) raised `DS_00108892` to `1/3/5/7` and opened the mode
+at `f=0x832` — the first frame slot 0's `+0x53` was 0 with the count `>= 6`.
+The measured `+0x53` lattice is `7`, `0x0A` (pose arming), `0x0B` (knockdown
+floor), `0`, so the get-up's `0x35D6C` clear supplied the gate's zero and the
+`0x367DC` 91-frame arm was never reached; the appended `s0_53` (`0x107803`) and
+`camx` (`0xF0AF0`) settle the residue as **the count, not the camera**
+(`camx` `-1433..4887`, `-606` at the entry, against the `±0x3300` gate; `0x104AD8`
+is 0 in a fight and `0x104ABC = (b1f == 3) + 1`). `gp-bowling-oracle` is in
+`make verify`/`CAPTURE_DIRS` with `k_miss_gp_bowling`, the `GP_BOWLING_*` pins
+(N 1,422, trace/moves 2,159, start 97, reach 1,137, 4 missing, 1,491 frames)
+and a capture-443 three-present scan-out allowance (rows 19..32 port 301, rows
+33..199 port 302, the measured pair 301 pinned); the census re-pin moved
+`0x4E11C` and the mode's own chain to HIT (`HIT 675 / NOT-HIT 80`). The claim
+boundary: the counter/camera series are the checker's capture-side claims, the
+frame claim reaches capture 1,421 (the entry + 70) and nothing past it, and the
+later scoreboard is not claimed. The live-truth phase's two failed real-input
+attempts (`b892=2`; last sample 5, +1/+2/+2) are preserved as
+`gp-bowling.failed`/`gp-bowling-fix.failed` and still fail `mode 0x25 never
+observed`.
+
+*The derivation below is the pre-capture text and stays as the raw evidence;
+its "a staggered route is a new, unmeasured task" conclusion is superseded by
+the outcome above.*
 
 `fighter_45158` (`0x45158`) uses `ctx[3]` as the **other** slot and increments
 only when that slot's `+0x5F==0x22` and `+0x7A==4`. The increment hook is

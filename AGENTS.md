@@ -551,9 +551,10 @@ consolidation gate).
   poked (§E1.3), so it does not discriminate a fought KO. Final truth Task 3 records the split instead
   (record §F3): the match rule has no `b0c`, the final-only rule requires it, the two-human fought win
   is game evidence in `gp-u14-twop-win.failed` (its port-script check failed), and R1 is terminal.
-- **The out-of-scope content modes `0x21` (volleyball) and `0x25`
-  (the bowling easter egg, decoded string `0x61` = "BOWLING!") stay declared;
-  the continue screen `0x0E` is now captured** (state-coverage record
+- **The out-of-scope content mode `0x21` (volleyball) stays declared; `0x25`
+  (the bowling easter egg, decoded string `0x61` = "BOWLING!") is now published
+  by Final truth Task 5 (record §F5); the continue screen `0x0E` is now
+  captured** (state-coverage record
   `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2; live-truth
   §L5/§L6). `DS_00104ABC =
   (DS_00104B1F == 3) + 1` — written at `flow.c:1632` (`flow_player_join`) and `flow.c:2416`
@@ -565,32 +566,43 @@ consolidation gate).
   the two `0xBAB88`/`0xBAB9C` actor spawns and the `0x1E` timer `DS_001088AA`), and `0x25` at
   `0x4E11C` behind `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's `+0x53 == 0`,
   `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
-  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. Live-truth Task 6 made
-  two real-input attempts with no pokes: the one-attempt route reached `b892=2`,
-  and the review-corrected three-attempt route's last sample was 5 (+1/+2/+2);
-  the trace cannot distinguish stopping at 5 from reaching 6 and taking the
-  same-iteration rejection decrement. Mode `0x25` never opened, and the precise
-  remaining blocker is unresolved: the reaction-`0x22` callback installs the
-  increment hook and sets slot `+0x53=7` (`0x455C3`), the caller requires slot 0's
-  `+0x53==0` (`0x263DE`), and states 9/10 are no-ops, but the `+0x53` dispatcher's
-  case 7 can call `fighter_state_367dc` for character 4, reaction `0x21`/`0x22`
-  and a passing `+0x86` threshold (`fighter.c:3680-3693`), whose callee clears
-  `+0x52`/`+0x53` (`fighter.c:2690-2691`). Whether that clear can pass on every
-  relevant increment frame is not derived, so structural impossibility is not
-  claimed. The artifacts are preserved as `gp-bowling.failed` and
-  `gp-bowling-fix.failed`, with no replay, oracle or pin; no fourth execution of
-  the current route is authorized and no more captures are to be run. A staggered
-  route would be a new, unmeasured task (record §L6). The counter's increment
-  guard skips `hit_geometry` (flag 5) and reads the AF8 latch, the other record's
-  `+0x74/+0x76`, and its `+0x42` bit 3; the camera `0xF0AF0`, `0x104AD8`,
-  `0x107803` and `0x104ABC` inputs were not sampled. `0x0E` opens only in
+  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. **Final truth
+  Task 5 measured it** (record §F5): `gp-bowling-2` — the same mirror-ARMADON
+  move-0 route with four attempts on both sides 150 frames apart, no poke —
+  raised `DS_00108892` to 1/3/5/7 and opened the mode at `f=0x832`, the first
+  frame slot 0's `+0x53` was 0 with the count `>= 6` (the get-up's `0x35D6C`
+  clear; the `0x367DC` 91-frame arm was never reached). `s0_53` (`0x107803`)
+  and `camx` (`0xF0AF0`) are appended S/T fields; the camera measured
+  `-1433..4887`, `-606` at the entry, against the `±0x3300` gate, and
+  `0x104AD8` is 0 in a fight while `0x104ABC = (b1f == 3) + 1`. The published
+  capture is `data/k11-captures/gp-bowling-2` (1,491 frames, every session
+  check ok, sha256 `54d4c7d5…`); `gp-bowling-oracle` is in `make verify` and
+  `CAPTURE_DIRS` with `k_miss_gp_bowling`, the `GP_BOWLING_*` pins (N 1,422,
+  trace/moves 2,159, start 97, reach 1,137, 4 missing, 1,491 frames) and a
+  capture-443 three-present scan-out allowance (rows 19..32 port 301, rows
+  33..199 port 302, the measured pair 301 pinned). The claim boundary: the
+  entry stores, the counter's 1/3/5/7 growth and the camera are the checker's
+  capture-side claims (they are not in the compare's trace/move field sets),
+  the frame claim reaches capture 1,421 (the entry + 70) and nothing past it,
+  and the later scoreboard is not claimed. The live-truth phase's two
+  real-input attempts and the old "stays declared / never opened / no oracle
+  or pin" register (live-truth §L6, record §L6.2-§L6.4) are **superseded by
+  Final truth Task 5**: `b892=2` and the last sample 5 (+1/+2/+2) are
+  preserved as `gp-bowling.failed` and `gp-bowling-fix.failed`, both still
+  failing `mode 0x25 never observed`; the count, not the camera, was the
+  residue. The counter's increment guard skips `hit_geometry` (flag 5) and
+  reads the AF8 latch, the other record's `+0x74/+0x76`, and its `+0x42` bit 3.
+  `0x0E` opens only in
   mode `0x0C` when the KO is on `DS_0010810D`'s side; the other side's KO takes
   the `0x0D` winner pose. Its countdown `DS_00108110` starts `0x0F`, decrements
   every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.
   A poked 1P scenario cannot open `0x21`/`0x25` (no poke writes
-  `b1f`/`DS_00104ABC`), so none is built. The pre-L5 census rows
-  `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the
-  trample `0x4B470` is `HIT`); Task 12b re-measured them. The L5 expiry capture
+  `b1f`/`DS_00104ABC`), so none is built (`0x25` was reached by real two-human
+  input). The pre-L5 census rows
+  `0x4BD98`/`0x4E11C`/`0x27A2C` were `NOT-HIT` (baseline l.696/714/255; the
+  trample `0x4B470` is `HIT`); Task 12b re-measured them and Final truth
+  Task 5's re-pin made `0x4E11C` `HIT` (`HIT 675 / NOT-HIT 80 /
+  UNINSTRUMENTED 4`). The L5 expiry capture
   reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`.
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`

@@ -1470,7 +1470,7 @@ scan3-allowed, 8 all-black, 1 unexplained), 0 order failures.
 
 | Pin | Measured value | Evidence |
 |---|---:|---|
-| `GP_BOWLING_MIN_FIRST` | **1422** | first unexplained capture 1422 (raw 3962), the port dump's post-script tail; the entry is capture **1370**, so the frame claim covers it and 51 frames after it |
+| `GP_BOWLING_MIN_FIRST` | **1422** | first unexplained capture 1422 (raw 3962), the port dump's post-script tail; the entry is capture **1352** (a splice of port 1077/1078, port 1077 `f=0x832` mode 0x25), so the frame claim covers it and 70 frames after it (capture 1370 is port 1093, `f=0x842`) |
 | `GP_BOWLING_TRACE_MIN_FIRST` / `GP_BOWLING_MOVES_MIN_FIRST` | **2159** / **2159** | 0 differing through 2158 (`f=0x86E`, the X record) |
 | `GP_BOWLING_MAX_START` | **97** | window starts at capture 97 (raw 1735) |
 | `GP_BOWLING_MIN_REACH` | **1137** | highest exhibited port index (the dump's last presented frame) |
@@ -1523,4 +1523,38 @@ UNINSTRUMENTED=4)`.
 `GP_TRACES` list has no gp-bowling-2 entry): no audio section was measured, so
 no audio claim is fabricated. The claim is the trigger and the entry, not the
 bowling scoreboard: the capture holds 120 mode-`0x25` snapshots and the frame claim
-reaches capture 1421 (the entry + 51), and nothing past it is claimed.
+reaches capture 1421 (the entry at capture 1352, +70), and nothing past it is claimed.
+
+### F5.7 Fix round 1 (2026-10-30): the register text, the entry-store mutation proof, the entry's capture index
+
+Three corrections; no capture, no pin moved.
+
+1. **The authoritative docs no longer say the mode never opened** (Final truth
+   Task 8 still owns the full register): `AGENTS.md`'s `0x21`/`0x25` block now
+   states the measured outcome (capture, entry stores, oracle/pins, census
+   `0x4E11C` `HIT`, the claim boundary) and marks the old "stays declared /
+   never opened / no oracle or pin" register superseded; `docs/PROGRESS.md`
+   gains the Final truth Task 5 paragraph and marks the Live truth Task 6, the
+   state-coverage Task 4 and the Task 12a sentences superseded; `port/RE_GUIDE.md`'s `0x25` passage is
+   updated the same way; the design's status line and §3.3 carry the outcome
+   (`0x25` published, the count residue, the measured `+0x53` lattice
+   correction) with the pre-capture derivation kept as the raw evidence; and
+   the plan's Task 5 item 3 records the measured edge bound (`3..10`, two per
+   attempt per side) and the entry's `s0_53` value.
+2. **The staggered checker's entry-store predicates are mutation-proved.**
+   `TestStaggered.test_each_entry_store_predicate_is_required` mutates each of
+   `b1f`, `b1d`, `c0`, `c1`, `b25`, `b8c4`, `b8a6`, `b8bd`, `b415`, `b8c0` at
+   the entry, seeds a pre-entry `b8c4 = 1`, and drops the `I` records,
+   asserting the named failure (the old route's table test calls `evidence()`,
+   so it could not cover this branch). Each of the four predicate deletions in
+   `gp_bowling.py` was then applied and caught: the `ENTRY_VALUES` loop (nine
+   sub-tests), the `b1d` gate, the `pad_sides` gate and the `b8c4` 0 → 1 gate
+   (the log is task-5-report.md §12); `gp_bowling.py` was restored
+   byte-identically.
+3. **The entry's capture index is 1352, not 1370.** Capture 1352 is a splice
+   of port 1077 (`f=0x832` tick=`0x927` mode `0x25`) and port 1078
+   (`f=0x833`); capture 1370 is port 1093 (`f=0x842`, clean). The frame claim
+   (`MIN_FIRST` 1422) therefore covers the entry and 70 frames after it; N, the
+   start, the reach and every other pin are unchanged. The Makefile comment,
+   this record and the report are corrected and §F5.6's table row carries the
+   measured classification.

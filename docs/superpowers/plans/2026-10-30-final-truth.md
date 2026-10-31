@@ -297,9 +297,14 @@ publish the mode or declare it terminal.
 2. Scenario `gp-bowling-2`: the `gp-bowling-fix` mirror-ARMADON route with
    4–5 attempts, 150 frames apart; stop on mode 0x25 or after the fifth
    attempt; no poke.
-3. Checker `gp_bowling.py check --staggered`: 3–5 callback edges per side,
+3. Checker `gp_bowling.py check --staggered`: callback edges per side (the
+   plan's "3–5" estimate is superseded by the measurement: both prior captures
+   show exactly two per attempt per side, so the staggered checker enforces
+   `3..10` for the route's five attempts — Final truth Task 5, record §F5.7),
    visible counter growth to ≥6 or the permitted same-iteration 6→5, the
-   `s0_53=0` at the entry check, `camx` within ±0x3300, the entry stores
+   `s0_53` at the entry check (the plan's 0 is the `0x263DE` gate's read; the
+   entry's own `0x38154` write stores 0 or `0x0C`, and the measured capture
+   holds `0x0C` — record §F5.5), `camx` within ±0x3300, the entry stores
    (`b892=0`, `b1f=3`, `b1d∉{2,3}`, `c0=c1=4`, `b25=0`, `b8c4 0→1`,
    `b8a6=0xB4`, `b8bd=b415=0`, `b8c0=1`), no `W`.
 4. One capture. If it opens 0x25: `gp-bowling-oracle`, pins, capture path,
