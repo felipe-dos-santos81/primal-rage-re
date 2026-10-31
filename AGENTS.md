@@ -485,10 +485,18 @@ consolidation gate).
   `MAX_MISSING`/`MIN_REACH` pins were re-measured (record §M2.7). **Named gaps:** rendered
   audibility (the OPL core/mixer is an invented model); across the 27 reports, **12 of
   the 26 code-reachable banks are claimed by whole-section matches, 10 are requested
-  but unclaimed as whole sections** (some have the bounded prefix claim), and **4 are
-  never requested** — grave+0x0A8C, grave+0x08, sound+0x7714 and konsd+0x1CCB0 — and
-  need new captures; the unmatched diff-allowed remainders and the later
-  `0x31`/match sections the capture's cursor advanced past; and `0x1C930`/`0x1CF40` stay
+  but unclaimed as whole sections** (some have the bounded prefix claim), and **2 are
+  requested at runtime but unattributable by the section model** (grave+0x0A8C and
+  grave+0x08: every ending replay starts them for two tick-0 writes before the
+  section anchor, so the S records prove the request and the section model cannot
+  attribute it — live-truth §L11.3's "4 never requested" is corrected by final-truth
+  record §F7.2), and **2 are never requested** — sound+0x7714 (the reaction-0x32
+  callback `0x37640`; the t9-r5 replay never applies reaction 0x32) and
+  konsd+0x1CCB0 (the `0x24508` handler) — and need new captures; the 10 rows are
+  pinned in `TRACE_RESIDUE` with their first-diff tick and measured cause class
+  (`voice-rotation`/`tail-lag`) in the `trace-residue` pin region; the unmatched
+  diff-allowed remainders and the later `0x31`/match sections the capture's cursor
+  advanced past; and `0x1C930`/`0x1CF40` stay
   `UNROWED` (a row would fabricate the AIL handle and could not compare the hand-off). The
   PCM pin is **determinism, not audibility**: `make audio-render` renders the selected
   selmo (`0x0980025C`, volume `0x50`) at peak **2790**, sha256

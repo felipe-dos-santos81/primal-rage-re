@@ -1877,3 +1877,274 @@ is a new task (and a new capture authorization), not this brief.
   counter/landing blocker is refuted, the stage is a 1-in-7 retry), and the
   plan's Task 8 step 3 lists both files in the register's reconciliation set so
   the final text cannot repeat the refuted blockers.
+
+## §F7 Audio truth: the carrier-TL latch, the bank residue, and rendered audibility terminal (Task 7)
+
+**Decision: the one unproven audio exclusion is re-derived and the port's latch
+is proven to be the raw's; the 10 requested-unclaimed banks are pinned as a
+no-capture residue table; the §L11.3 "4 never requested" inventory is corrected
+to 2 never requested + 2 requested-but-unattributable; the t9-r5 replay does not
+request the `0xE4` bank and it is declared; rendered audibility is terminal.**
+No new capture, no replay in the 27-trace inventory, no port game-code change
+(the only port-code edit is the new unit case). The register-stream claim is
+unchanged: 74 diff-allowed prefixes / 29,656 ticks and the whole-section pins.
+
+### F7.1 The carrier-TL latch (the raw `0x68B0E`/`0x68C8B`/`0x69320` sequence)
+
+**The raw, from the checked-in decompilation and objdump of the fixup-applied
+image (`./build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/opencode/primg`;
+the Ghidra decomp is `port/decomp/prage.c`).** The CC7 arm of `0x68AB0`:
+
+```
+0x68B07  lea eax, [esi + 0xD0]      ; the state block 0x688E0 writes
+0x68B0E  call 0x688E0               ; logs the RAW CC7 (status/controller/value)
+  0x68A48  mov [esi + ecx*4 + 0x280], eax   ; esi = seq+0xD0 -> seq+0x350+ch*4
+0x68C8B  mov edx, [esi + 0x34]      ; the AIL sequence volume NOW
+0x68C8E  imul edx, edi              ; * the received CC7
+0x68C9B  idiv edi(=0x7F)            ; signed / 0x7F
+0x68C9F..0x68CAD  clamp to 0..0x7F
+        ; the scaled value is param_4, dispatched to the driver
+```
+
+and the two re-send sites: `0x69320` reads `[seq + ch*4 + 0x350]` and calls
+`0x68AB0` with controller 7, i.e. it re-sends the **raw** log and lets `0x68C8B`
+re-scale it by the volume *of that moment*; `0x6A8D0` calls `0x69320` at the
+fade start (`0x6A93B`) and `0x699BB` calls it on every 8th service call while a
+fade runs (`0x699B4` `test byte [eax+0x30],7`; `0x693C1` increments `+0x30` once
+per service call, and `0x69250` clears it and the log). The port models exactly
+this (`sequencer.c:283-292` logs `b` and stores
+`clamp(S.seqvol*b/0x7F)`; `sequencer.c:437-444` re-dispatches `S.cc7_log[ch]`;
+`sequencer.c:449-459` re-sends on every 8th `seq_tick`).
+
+**Two corrections (raw wins).**
+
+- The decompiler prints `FUN_000688e0(param_1 + 0x34, ...)` at `0x68AB0`; the
+  raw instruction at `0x68B07` is `lea eax,[esi+0xD0]`. With that base the
+  `0x68A48` store is `seq+0x350+ch*4`, which is exactly what `0x69320` reads
+  (`0x6933E`). The decomp's `+0x34` would place the log at `seq+0x2B4` and make
+  the re-send read an unwritten array; the raw wins and the port's comment
+  already records the `0x350` base.
+- `audio.md`'s old residual wording ("provably unpinnable: one sequence volume
+  and one timer tick, yet ch4 and ch9 written at the same tick imply 0x50 vs
+  0x54") is wrong as a *mechanism*. The latch freezes each channel's scaled CC7
+  at its own arrival and re-scales the raw log only on the fade re-sends, so
+  two channels whose CC7 arrives at different points of one 500 ms fade
+  legitimately hold different volumes. The exclusion stays (the `.dro` records
+  no CC7 arrival time, so the capture-side value is not recoverable), but it is
+  now justified by the latch, not by an unpinnable single volume.
+
+**The unit case (`port/tests/test_audio.c`, `test_sequencer` 4f).** A synthetic
+bank feeds the same raw CC7 (100) at three arrival points: tick 1 (volume
+`0x7F`), tick 4 (after three 120 Hz service steps: volume 124) and tick 67
+(after the 500 ms fade reaches `0x3F`). The assertions are the raw's formula,
+not a fitted value:
+
+```
+call 1:   seqvol 0x7F  -> ch1 latch 100
+call 3:   seqvol 124
+call 4:   ch4 latch 97   (100*124/0x7F)  ch1 still 100  (frozen at arrival)
+call 8:   re-send at 119 -> ch1 = ch4 = 93   (100*119/0x7F, the raw log)
+calls 16/24/32/40/48/56 (end-of-call volumes 110/102/93/85/76/68):
+          ch1 = 86/80/73/66/59/53
+call 60:  seqvol 0x3F; call 61..: 0x69965 skips the re-send (ch1 stays 53)
+call 67:  ch4's late CC7 latches 49 (100*0x3F/0x7F), ch1 stays 53
+```
+
+The case fails under two mutations, run and reverted: (a) `(S.seqvol*b)>>7` for
+the arrival scale — the existing 4e and the new case both fail; (b) re-sending
+`S.volume[ch]` instead of `S.cc7_log[ch]` — the new case fails at the call-8
+re-send (`90 != 93` for ch4, whose latched 97 would be double-scaled) and at
+every later re-send (64/46/30/17/9). The re-send is therefore pinned to the raw
+log, which is the §F.5 correction's whole point.
+
+### F7.2 The bank inventory and the residue table
+
+**The measured partition (from the 27 replay dumps' `S` records, not the
+section model).** `PR_AUDIO_DUMP` emits an `S` line whenever `cc/dc/vol/bank/
+inits` changes, so the port's actual song starts are all recorded. Across the 27
+dumps the port requested **24 distinct banks** (of the 26 code-reachable banks
+of §M1.6.7). The section model attributes **12 whole-section matches** and the
+**10 requested-unclaimed** banks of §L11.3; the remaining two requested hashes
+are `0xC670CD36` (`s16grave.gra+0x0A8C`) and `0x5A56E385` (`s16grave.gra+0x08`).
+Only **2 banks are never requested**: `s16sound.gra+0x7714` (`0xE4`) and
+`s16konsd.gra+0x1CCB0` (`0xEB`).
+
+The two "never requested" rows of §L11.3 that are actually requested are a
+**section-attribution gap**, not a missing capture. In all seven ending replays
+the ending alternation starts `0x05E4`/`0x1A10`/`0x0A8C` (and later `0x08`) for
+only the two tick-0 reset writes before the section's first key-on; `parse_port`
+keeps one section per tick-regression run, and `_reduce_port` drops the writes
+before the anchor (`audio_compare.py:582-588`), so the bank never becomes a
+section. Measured in `gp-u10-ending`: `0x0A8C` at frames 5323/5363/5403
+(`inits` 13/17/21, 3 `S` rows) and `0x08` at frame 5443 (`inits` 25); the same
+rows exist in `gp-u13/u18/u19/u20/u21/u22`. The port's request path is the
+ported `sound_voice` case-1 dispatcher, so this is game behaviour, not a
+harness artifact; the section model cannot compare the bank (nothing is written
+after the anchor), and no capture-side claim is made for it.
+
+**The residue table.** `tools/audio_compare.py`'s `TRACE_RESIDUE` pins the 10
+requested-unclaimed banks in the new `trace-residue` PIN-BASELINE region. Each
+row is `(name, scenario, section index, first-diff tick, cause)`, where the tick
+is that section's measured matched prefix (the first tick whose sorted groups
+differ, equal to its `TRACE_PREFIX_PINS` value) and the row uses the bank's
+**longest measured prefix** (not its earliest occurrence, which can be a 5-tick
+hand-off). Measured from the existing dumps:
+
+| bank | scenario/section (longest prefix) | first-diff tick | cause |
+|---|---|---:|---|
+| `s16citys.gra+0x08` `20DA829D` | `gp-twop` 3 (all sections unanchored) | 0 | voice-rotation |
+| `s16conti.gra+0x08` `8FE546D4` | `gp-idle-loss` 9 | 960 | tail-lag |
+| `s16hghsc.gra+0x08` `15B3F30E` | `gp-u10-ending` 13 | 1437 | tail-lag |
+| `s16himal.gra+0x08` `BF1C78E2` | `gp-idle-loss` 3 | 30 | voice-rotation |
+| `s16sound.gra+0x335E` `B40FF4A6` | `gp-u10-ending` 12 | 120 | voice-rotation |
+| `s16sound.gra+0x39F4` `19AB8B2B` | `gp-idle-loss-run2` 10 | 303 | tail-lag |
+| `s16sound.gra+0x3E64` `3D536DDE` | `gp-u12-endurance` 3 | 180 | voice-rotation |
+| `s16sound.gra+0x5B88` `3BA4C376` | `gp-idle-loss` 4 (all unanchored) | 0 | voice-rotation |
+| `s16sound.gra+0x6CA8` `E3533961` | `gp-u10-ending` 5 | 5 | voice-rotation |
+| `s16sound.gra+0x72D4` `1895A942` | `gp-u23-u16-finisher` 8 | 177 | voice-rotation |
+
+The class rule is content-derived, no threshold: **tail-lag** iff the port's
+reduced group at the first-diff tick is a proper subset of the capture's (the
+capture keeps writing after the port's tail). Measured groups: `conti` port
+`[(0xB4,0x0A)]` vs capture `[(0xB4,0x0A),(0x1A1,0xB2),(0x1B1,0x32)]`; `hghsc`
+port `[]` vs capture `[(0xB2,0x13)]`; `39F4` port `[]` vs capture key-off/
+frequency writes. Every other row contradicts the capture at that tick:
+`himal` `(0x43,0x3F)` vs `(0x43,0x1A)` (carrier TL), `335E` AM/VIB values
+(e.g. `0x120` 1 vs 0x71), `3E64` `(0x20,1)` vs `(0x20,0x18)`, `6CA8` port-only
+`(0x1A1,0x8B)/(0x1B1,0x22)`, `72D4` port-only `(0x1B5,0x12)`. The two tick-0
+rows are the unanchored banks, whose measured cause is §M4.4 item 1 (the
+driver's voice-rotation cursor advanced by the capture's boundary note).
+
+**The guards.** `check_trace_residue` (a) asserts the 12+10+2+2 partition is 26
+distinct banks and names, (b) requires every non-zero tick to equal
+`TRACE_PREFIX_PINS[scenario][index]` and every tick-0 row to name a section with
+no prefix pin, and (c) is unit-tested with a mutated copy whose `conti` tick is
+one earlier (`959`): it fails with `does not equal the pinned prefix`, i.e. the
+task's "move one first-diff tick one earlier" mutation. `residue_violation` runs
+the same row against a live comparison and is unit-tested for a moved first
+difference (`959` against the 960 pin), an anchored tick-0 row, a lost status
+and an absent section; `compare_trace` appends its problems to `failed`, so
+`make audio-oracle` enforces the rows. The report-only rerun over all 27 dumps
+with the shipped table is clean (`bad 0`). The table is inside its own
+`# >>> PIN-BASELINE-BEGIN trace-residue` region and the digest is re-pinned
+(§F7.5).
+
+### F7.3 The 4 banks and the t9-r5 replay
+
+**`s16sound.gra+0x7714` (`0xE4`):** the sole request sites are the reaction-0x32
+callback `0x37640` (port `fighter.c:2942`, gate at `0x3766E`/`0x37678`: the
+other slot's `+0x42` bit 5 and `+0x43` bit 3). The design's "true for 99 sampled
+frames at f=0x149A" is **not reproducible** from the artifact: the poll.log's
+sampled `s1_42` has bit 5 for **261** frames from f=0x149A (`0x8830`), while
+`+0x43` is not a SNAP_FIELD (only slot 0's `s0_43` is logged, and its bit 3 is
+0). The t9-r5 replay is the measurement:
+
+```
+$ python3 tools/gp_session.py port-script --scenario gp-u24-u16-state \
+    --capture data/k11-captures/gp-u24-u16-state-t9-r5 --out /tmp/opencode/t9r5/t9r5.script
+gp_session: port-script: gp-u24-u16-state: wrote ... (136 lines)
+$ PR_GP_DUMP=/tmp/opencode/t9r5/gp PR_GP_SCRIPT=/tmp/opencode/t9r5/t9r5.script \
+  PR_AUDIO_DUMP=/tmp/opencode/t9r5/audio.txt PR_GAME_DIR=data/game/C ./build/run_tests
+audio dump: 23357 OPL register writes
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+FAIL ... the driver's miss log holds only its pinned known-set (0x29D60, 0x5D812)
+```
+
+The replay wrote 11 `S` records / 10 distinct banks (`title`, `selmo+0x25C`,
+`selmo+0x08`, `citys`, `sound+0x5B88`, `sound+0x6CA8`, `citys`, `sound+0x6EC8`,
+**`sound+0x72D4`**, `snd2+0x21BFA`). `0xE4` is **not** among them. The reason is
+measurable: the callback is only reached when the reaction-0x32 entry runs, and
+neither side applies reaction `0x32` in this artifact — the capture's `S`
+records and the port's `T` records both never show `r0`/`r1 == 0x32` (the pose
+bits alone are necessary, not sufficient). The miss-log failure is the driver's
+per-scenario known set (this is a diagnostic scenario, not a published one):
+`0x29D60`/`0x5D812` are reached once at the boot front-end, the other two
+entries are the pinned `0x5D812` actor hits. The dump is a diagnostic replay,
+not a capture, and adds no oracle or pin. **Outcome: declared**; `0xE4` needs a
+new capture that applies reaction 0x32 (the U16/finisher family), not a rerun
+of this artifact.
+
+**`s16konsd.gra+0x1CCB0` (`0xEB`):** the sole request site is `0x24559` inside
+the `0x24508` handler (port `fighter.c:16937`), which is a stream/handler
+target, not a static call: the only image reference to its address is the data
+code pointer at `0xD50E2` (fixup target `0x24508`), and the handler needs the
+`hit_anim_ctx` context plus the other slot's `+0x52=0x10/+0x53=0x0A` setup
+before it runs. No capture in the inventory requests it. **Declared**, gated by
+the `0x24508` stream.
+
+**`s16grave.gra+0x0A8C` (`0x26`) and `s16grave.gra+0x08` (`0x2A`):** requested at
+runtime in all seven ending replays (§F7.2), and the request sites are in the
+ported code, not an unmeasured dynamic path:
+- `0x26` is the second value of `sound_voice(0x25 + (n != 0))` (`0x277A0..0x277B0`
+  in mode 0x0D, port `flow.c:2131`; the same expression at `0x29950` in mode
+  0x32, `flow.c:2234`), with `n = DS_00104B0A ^ 1`. The design's "dead (no
+  static request site)" holds only for a literal `0x26` constant; the shipped
+  code computes it, and the ending replays reach it: `gp-u10`'s mode-0x0D
+  frames 0x14C6..0x1520 request `0x0A8C` at frames 5323/5363/5403 (`S` records,
+  `inits` 13/17/21).
+- `0x2A` is the mode-0x0D `n == 7` arm (`0x27599`, `flow.c:2070`) and mode-0x32's
+  4-win arm (`0x297BF`, `flow.c:2184`). The design's "gated by U14 R1" is
+  refuted: the poked ending reaches `b21 == 7` at frame 0x1543 (mode 0x0D,
+  `b21` 6) and mode 0x0F at 0x1544 with `b21` 7, and the `S` record at frame
+  5443 (`inits` 25) is `dc=0C000008 bank=5A56E385`.
+
+Neither is a new-capture gate; the section model simply cannot attribute a
+reset-only start (the two tick-0 writes are before the anchor), so the §L11.3
+"never requested" row is superseded for both.
+
+### F7.4 Rendered audibility is terminal
+
+Exact PCM equality is not a game claim and cannot be one:
+
+- The port vendors **Opal 2.0.3**, renders at **49,716 Hz** stereo through an
+  invented Q8/4-voice mixer; DOSBox-X uses its own OPL core at **48 kHz** with
+  DC-bias correction and a different voice allocation. The cores, the rates,
+  the mixers and the voice allocation all differ, so a byte comparison would
+  measure the emulator and the mixer, not Primal Rage.
+- The measured **0.8 % span** between the game-frame request boundary and the
+  capture's music clock (record §M3.4) already makes the section end a model
+  boundary, and the host-load **label-shift flake** (`gp-u18-talon-ending`,
+  record §F6.3: the same register/value data with 180 `W` frame labels one
+  lower) can move tick labels without changing the game's output. Neither is
+  audible-content divergence.
+- The **game-owned claim is the register stream**: 74 diff-allowed prefixes /
+  29,656 ticks, the whole-section pins and this residue table. The PCM pin
+  (`make audio-render`: selmo peak 2790, sha
+  `530a9430…`, title `515b7c94…`) is **determinism, not audibility**.
+- The optional narrow **register-to-render** test (a WAV sink at
+  `host_audio_submit` plus an exact comparison of the game path's OPL stem to
+  `opl_render` of `PR_AUDIO_DUMP`) was **not taken**: it would prove only that
+  the invented mixer is deterministic from its own write hook (the PCM pin
+  already does), it cannot compare against the original's PCM, and it would add
+  a device-dependent seam. Its honest name would be "determinism", never
+  "audibility"; skipping it changes no claim.
+
+**Terminal statement:** rendered audibility is a declared terminal limit (the
+Opal/mixer/48 kHz model is not the game); the game-owned audio claim stops at
+the register stream, the 74 prefixes, the whole-section pins, the 10-row
+residue table and the 2 never-requested gates. Task 8's register owns the final
+table.
+
+### F7.5 Files, tests and commands
+
+- `port/tests/test_audio.c`: `test_sequencer` 4f (the latch arrival sequence;
+  the two mutations above).
+- `tools/audio_compare.py`: the `trace-residue` PIN-BASELINE region
+  (`TRACE_CLAIMED_BANKS`, `TRACE_RESIDUE`, `TRACE_RESET_ONLY`,
+  `TRACE_NEVER_REQUESTED`), `RESIDUE_CAUSES`, `check_trace_residue`,
+  `residue_violation`, the `compare_trace` hook, and the corrected
+  `documented_excluded`/module docstrings.
+- `tools/tests/test_audio_compare.py`: 4 residue cases (partition, the
+  one-tick-earlier table mutation, a moved live first difference, an anchored
+  tick-0 row); `tools/tests/test_capture_manifest.py`: the `trace-residue`
+  region guard.
+- `port/spec/audio.md`: the residual paragraph rewritten on the raw latch.
+- `AGENTS.md` music-truth bullet and the live-truth record §L11.3's superseded
+  note; `docs/PROGRESS.md` Task 7 paragraph.
+- Commands: `./build/run_tests` (green, the 4f case), `python3 -m unittest
+  tools.tests.test_audio_compare tools.tests.test_capture_manifest` (72 tests
+  OK), the report-only 27-dump rerun (`bad 0`), the t9-r5 replay above. The pin
+  baseline is re-pinned for the new region only:
+  `python3 tools/capture_manifest.py --update-pins --reason "final truth Task 7:
+  add the measured trace-residue bank inventory (12 claimed + 10 residue + 2
+  reset-only + 2 never-requested)"`.

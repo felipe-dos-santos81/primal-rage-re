@@ -1234,6 +1234,12 @@ bank as a whole-section match.
 - **4 never requested:** **grave+0x0A8C, grave+0x08, sound+0x7714 and
   konsd+0x1CCB0**. These need new captures that request them. No such capture was
   made, and no coverage is claimed for them.
+  **Superseded (final-truth record §F7.2):** the port's `S` records show
+  `grave+0x0A8C` and `grave+0x08` **were** requested at runtime in all seven
+  ending replays (bank hashes `C670CD36`/`5A56E385`); the section model cannot
+  attribute them because each start writes only the two tick-0 reset registers
+  before the anchor. They are "requested but unattributable", not never
+  requested. Only `sound+0x7714` and `konsd+0x1CCB0` are never requested.
 
 ### L11.4 Claim limits
 
