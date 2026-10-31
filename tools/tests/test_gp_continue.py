@@ -162,6 +162,11 @@ class TestTakenEvidence(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn('not one of the route', text)
 
+    def test_a_duplicate_route_poke_is_rejected(self):
+        rc, text = _check_taken(_taken_log() + [_w(0x0900, 0x10789E, b'\x78')])
+        self.assertEqual(rc, 1)
+        self.assertIn('duplicate write is a new poke', text)
+
     def test_the_incumbent_poke_is_required(self):
         rc, text = _check_taken([l for l in _taken_log()
                                  if not l.startswith('W ') or '10780A' not in l])

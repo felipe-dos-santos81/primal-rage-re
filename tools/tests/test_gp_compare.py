@@ -1216,6 +1216,33 @@ class Scan3Allowance(Dirs):
         self.assertTrue(any('FAIL: allowed capture 1' in line and
                             'no unique adjacent port pair' in line for line in out), out)
 
+    def test_u29_two_segment_recipe_rejects_one_mutated_bound_byte(self):
+        # Final truth Task 4 (record §F4): the taken-continue capture's 346
+        # (raw 2823) is the same round-1 mode-8 entry's scan-out in the
+        # TWO-segment shape (the U9/gp-draw one): top rows 0..1 are the earlier
+        # port 218's and rows 2..199 are port 221's through the vacuous middle
+        # pair (220, 221); ports 219/220 are unexhibited. PIN plus the
+        # fixture's mutation: the real dump is not retained, so the shape's
+        # bind is proved here.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-u29-continue-taken'],
+                         ((346, 2, 2,
+                           '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),))
+        R = tc.ROW
+        c = rgb(1)[:2 * R] + rgb(3)[2 * R:]
+        entry = (1, 2, 2, hashlib.sha256(rgb(1)[:2 * R]).hexdigest())
+        self.write([1, 2, 3], [rgb(1), c, rgb(3), rgb(3)])
+        self.assertEqual(self.run_scan3(s3=(entry,))[:2], (0, None))
+        path = os.path.join(self.port, 'frame_00002.ipx')
+        with open(path, 'rb') as f:
+            mutated = bytearray(f.read())
+        mutated[2 * 320 + 17] ^= 1
+        with open(path, 'wb') as f:
+            f.write(mutated)
+        rc, first, out = self.run_scan3(s3=(entry,))
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('FAIL: allowed capture 1' in line and
+                            'no unique adjacent port pair' in line for line in out), out)
+
     def test_the_table_names_the_measured_scanouts(self):
         # the pinned recipes of record §G6: gp-idle-loss 2064 (ports 1666/1669/
         # 1670), gp-u9-win 346 (218/221, vacuous middle), gp-u10-ending 331

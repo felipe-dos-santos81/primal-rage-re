@@ -47,9 +47,12 @@ CREDIT_DS = 0x105C00
 PATH_FIELDS = ('mode', 'w10d', 'cnt', 'cred', 'b1f', 'b25')
 # The route's existing harness writes (record §L5, plan Task 4 ruling R-P10):
 # the game-1 win's lands byte and P2 KO, the second P2 KO, and the incumbent KO
-# that opens the screen. A capture may carry only these; the incumbent one is
-# the screen's labelled opener (and is required before the screen opens).
+# that opens the screen. A capture may carry only these, in exactly these
+# counts (a duplicate would be a new poke the address set alone cannot see);
+# the incumbent one is the screen's labelled opener (and is required before the
+# screen opens).
 ROUTE_W = (0x108106, 0x10789E, 0x10780A)
+ROUTE_W_COUNT = {0x108106: 1, 0x10789E: 2, 0x10780A: 1}
 # How many mode-0x0C records the taken capture must hold after the take for the
 # round restart to be in the window (measured: 0x5F; a floor, not the pin).
 TAKEN_MIN_ROUND = 0x20
@@ -231,6 +234,15 @@ def taken_evidence(name, lines, out=print):
         out('gp_continue: %s: evidence: FAIL: a poke at f=%X (0x%08X) is not one '
             'of the route\'s existing harness writes (0x108106/0x10789E/0x10780A)'
             % (name, unknown['f'], unknown['addr']))
+        return 1
+    counts_w = {}
+    for w in ws:
+        counts_w[w['addr']] = counts_w.get(w['addr'], 0) + 1
+    wrong = next((a for a, n in ROUTE_W_COUNT.items() if counts_w.get(a, 0) != n), None)
+    if wrong is not None:
+        out('gp_continue: %s: evidence: FAIL: %d W record(s) on 0x%08X, not the '
+            'route\'s %d: a duplicate write is a new poke'
+            % (name, counts_w.get(wrong, 0), wrong, ROUTE_W_COUNT[wrong]))
         return 1
     for r in run + [take]:
         if r['w10d'] != 0:
