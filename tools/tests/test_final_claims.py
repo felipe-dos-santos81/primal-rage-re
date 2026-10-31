@@ -148,6 +148,10 @@ AGENTS_ANCHORS = (
     ('0x2587C', 'R05'),
     ('0x0EAE', 'R15'),
     ('0x1531', 'R15'),
+    # The "is terminal"/"are terminal" trigger's two statements (Final truth
+    # Task 8 wording): a terminal clause with no other anchor maps here.
+    ('R1 is terminal', 'R04'),
+    ('frontier is terminal with its per-row reasons', 'R17'),
 )
 
 # Status phrases that introduce a gap statement. A clause carrying one of
@@ -161,6 +165,8 @@ STATUS_TRIGGERS = (
     'is a named gap',
     'is declared',
     'are declared',
+    'is terminal',
+    'are terminal',
     'declared terminal',
     'declared absent',
     'is **INCONCLUSIVE**',
@@ -202,6 +208,8 @@ def _claimed_status(clause):
     if 'inconclusive' in c:
         return 'inconclusive'
     if 'declared terminal' in c or 'now **terminal**' in c:
+        return 'terminal'
+    if 'is terminal' in c or 'are terminal' in c:
         return 'terminal'
     if any(x in c for x in ('stays a named gap', 'remains a distinct gap',
                             'is a named gap')):
@@ -401,6 +409,20 @@ class TestFinalClaims(unittest.TestCase):
         problems = check_agents(bad, register)
         self.assertTrue(any('claims' in p or 'no register anchor' in p
                             for p in problems), problems)
+
+    def test_an_is_terminal_statement_must_match_its_row(self):
+        # "is terminal" is a status trigger: R03 (`gp-u14-twop-win.failed`) is
+        # declared, so a clause that calls it terminal must fail.
+        agents = self._read(AGENTS_REL)
+        register = self._read(REGISTER_REL)
+        old = ('is game evidence in `gp-u14-twop-win.failed` (its port-script '
+               'check failed), and R1 is terminal.')
+        bad = agents.replace(
+            old, old.replace('R1 is terminal',
+                             '`gp-u14-twop-win.failed` is terminal'), 1)
+        self.assertNotEqual(bad, agents)
+        problems = check_agents(bad, register)
+        self.assertTrue(any('claims' in p for p in problems), problems)
 
     def test_a_u17_status_mismatch_fails(self):
         agents = self._read(AGENTS_REL)

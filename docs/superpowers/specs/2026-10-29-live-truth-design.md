@@ -172,6 +172,15 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   remains stream's `0xD100` opcode, which runs on the **ending** path; the
   U14 scenario stops at mode `0x12` in match 1. The rule can never pass on
   that capture, whatever the fight does.
+
+  **Superseded by Final truth Task 3 (record
+  `docs/superpowers/plans/2026-10-30-final-truth-derivations.md` §F3.1; design
+  `docs/superpowers/specs/2026-10-30-final-truth-design.md` §3.1):** the
+  setter's only consumer is `game_mode_0d_step` (`0x274FC`), entered from the
+  **final's** seven-opponent arena (`flow_arena_ko_check` `0x272DC` via
+  `game_mode_0c_step` `0x27380`), i.e. the final's `0x0C→0x0D` chain — not an
+  ending path, and not a match-1 win (`0x09→0x17→0x12`). R1 is terminal
+  (register R04).
 - Option (a) is the smallest honest claim: replace the two-human clause with
   `b1f==1` (arcade) and keep the damage/KO clauses; run it read-only on
   `gp-u14-win-live.failed` (`ko f=898`, `w3=2`, `b0c` never 1, no `X`/`W`).

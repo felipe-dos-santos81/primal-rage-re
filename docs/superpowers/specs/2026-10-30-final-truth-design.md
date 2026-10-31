@@ -129,8 +129,9 @@ script) is the route to exhibit the mode, and it is a new task.
 ### 3.3 0x25 — the staggered route opened the mode; the residue was the count
 
 **Outcome (Final truth Task 5, record §F5): `0x25` is published.** The one
-authorized staggered capture `gp-bowling-2` (mirror-ARMADON move 0 four times
-on both sides, 150 frames apart, no poke; sha256 `54d4c7d5…`, 1,491 frames,
+authorized staggered capture `gp-bowling-2` (mirror-ARMADON move 0 five times
+scheduled on both sides, 150 frames apart — the fifth never fires, 28 of 32
+steps, so four fire — no poke; sha256 `54d4c7d5…`, 1,491 frames,
 every session check ok) raised `DS_00108892` to `1/3/5/7` and opened the mode
 at `f=0x832` — the first frame slot 0's `+0x53` was 0 with the count `>= 6`.
 The measured `+0x53` lattice is `7`, `0x0A` (pose arming), `0x0B` (knockdown

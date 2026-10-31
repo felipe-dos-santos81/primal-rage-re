@@ -60,6 +60,8 @@ make gp-u27-oracle         # live truth U27: gp-u27-name-entry's letters and fin
 make gp-draw-oracle        # live truth Task 2: gp-draw's KO-branch drawn match (0x0A/0x0B under labelled poked KOs; record §L2); in make verify; skips without the capture
 make gp-draw-timeout-oracle # state coverage Task 7: gp-draw-timeout's timeout/health drawn round (record §D7); in make verify; skips without the capture
 make gp-u28-continue-oracle # live truth Task 5: gp-u28-continue's PRESS START prompt, 15→0 countdown and mode-0x15 expiry (record §L5); in make verify; skips without the capture
+make gp-u29-continue-taken-oracle # final truth Task 4: gp-u29-continue-taken takes the prompt (mode 0x0E→0x0C, cred 4→3, the 0x2791C restart; record §F4, register R07); in make verify; skips without the capture
+make gp-bowling-oracle     # final truth Task 5: gp-bowling-2's real-input mode-0x25 entry at f=0x832 (record §F5, register R06); in make verify; skips without the capture
 make coverage              # the PR_COVERAGE function census (build-cov + every driver with PR_HIT_TAG, then tools/coverage_census.py; NOT in make verify — it re-runs the drivers); COV_REASON="…" re-pins tools/coverage_baseline.txt
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
@@ -592,7 +594,8 @@ consolidation gate).
   `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
   both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. **Final truth
   Task 5 measured it** (record §F5): `gp-bowling-2` — the same mirror-ARMADON
-  move-0 route with four attempts on both sides 150 frames apart, no poke —
+  move-0 route with five attempts scheduled on both sides 150 frames apart
+  (the fifth never fires — 28 of 32 steps — so four fire), no poke —
   raised `DS_00108892` to 1/3/5/7 and opened the mode at `f=0x832`, the first
   frame slot 0's `+0x53` was 0 with the count `>= 6` (the get-up's `0x35D6C`
   clear; the `0x367DC` 91-frame arm was never reached). `s0_53` (`0x107803`)
@@ -605,9 +608,11 @@ consolidation gate).
   trace/moves 2,159, start 97, reach 1,137, 4 missing, 1,491 frames) and a
   capture-443 three-present scan-out allowance (rows 19..32 port 301, rows
   33..199 port 302, the measured pair 301 pinned). The claim boundary: the
-  entry stores, the counter's 1/3/5/7 growth and the camera are the checker's
-  capture-side claims (they are not in the compare's trace/move field sets),
-  the frame claim reaches capture 1,421 (the entry + 70) and nothing past it,
+  entry stores, the counter's growth rules (+1/+2 a frame, only the `>= 6`
+  rejection's -1) and the **entry frame's** camera are the checker's
+  capture-side claims (the wider camera span is a record measurement, not a
+  gate; none is in the compare's trace/move field sets), the frame claim
+  reaches capture 1,421 (the entry + 70) and nothing past it,
   and the later scoreboard is not claimed. The live-truth phase's two
   real-input attempts and the old "stays declared / never opened / no oracle
   or pin" register (live-truth §L6, record §L6.2-§L6.4) are **superseded by

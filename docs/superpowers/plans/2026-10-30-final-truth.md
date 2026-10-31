@@ -192,8 +192,10 @@ class; no fitted cause.
    `eff0/eff1/efffree/effn` (`0xFCCE0/4/E8`, `0x9AF3D`); read `0xE87A0` for
    the just-presented frame at the S record (the swap runs after the copy).
 3. Add `gp-u13-band-dac`: U13 steps + `WIN_EXTRA`, stop `after_entry 0x15,
-   k=1, n=84`, time 240, memsize 64; the 56 W writes at f=0x1825 (24 records
-   × 4 sentinel groups) with the derived sentinels; the control pixel must
+   k=1, n=84`, time 240, memsize 64; the **six** measured W writes at f=0x1825
+   (two state + four sentinel writes over the two records that cover the four
+   indices; the "56" — 24 records × 4 sentinel groups — was the pre-derivation
+   estimate, record §F2.2) with the derived sentinels; the control pixel must
    turn the sentinel colour.
 4. One capture. Outcomes:
    - sentinel at the 8 pixels + back buffer `0x32` → PASS-A (capture/pipeline

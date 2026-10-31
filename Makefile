@@ -1937,7 +1937,7 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # never opened; record 2026-10-26-fought-match-truth §F2), and final truth Task 3's one
 # authorized two-human gp-u14-twop-win run reached the game's 2-0 win (round-1 KO f=0xB1B,
 # match result f=0x13A8, mode 0x12 f=0x1693, no W, b0c=0) but failed port script v2 at f=0xB1B
-# (a missed S(0xB1A); 15 missed frames), so it is preserved as
+# (a missed S(0xB1A); 15 of 5,820 snapshots), so it is preserved as
 # data/k11-captures/gp-u14-twop-win.failed with no oracle/pin/CAPTURE_DIRS path (record
 # 2026-10-30-final-truth-derivations.md §F3.5). R1 (the arcade fought win) is terminal, so no
 # claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed arcade

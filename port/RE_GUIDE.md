@@ -401,8 +401,11 @@ true original, and ported the divergence. Two pieces:
   `0x367DC` 91-frame arm never fired) corrects the plan's clear-frame model.
   The residue is settled: the count, not the camera (measured `-1433..4887`,
   `-606` at the entry, against the `±0x3300` gate), and the appended `s0_53`/
-  `camx` S/T fields are the measurement. The claim boundary: the counter/camera
-  series are the checker's capture-side claims, the frame claim reaches capture
+  `camx` S/T fields are the measurement. The claim boundary: the checker gates
+  the entry-store fields, the counter's growth rules (at most +2 a frame, only
+  the `>= 6` rejection's -1, a visible maximum `>= 6`) and the **entry frame's**
+  `camx` inside `±0x3300` (the wider `-1433..4887` span is a record measurement,
+  not a gate), the frame claim reaches capture
   1,421 (the entry + 70) and nothing past it, and the later scoreboard is not
   claimed. Both read `DS_00104ABC >= 2`, and
   `DS_00104ABC = (DS_00104B1F == 3) + 1` (`flow.c:1632`/`2416`), so a poked 1P
@@ -422,9 +425,11 @@ true original, and ported the divergence. Two pieces:
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live truth Task 2, record §L2), a distinct claim from the timeout branch's
   `gp-draw-timeout`.
-- The proof-debt declaration (state-coverage §D7) declares what stays open:
+- The proof-debt declaration (state-coverage §D7) declares what stays open and
+  what is terminal:
   **U17** (the `gp-u17-device2` wall-paced walk has no tick-keyed replay — its
-  screens are already covered by the K11 captures, record §H6.9) is declared;
+  screens are already covered by the K11 captures, record §H6.9) is terminal
+  (register R14);
   **U14**'s fought live win (R1) is terminal (final truth Task 3, record §F3):
   `0x37FF6` in `0x37EA0` is the byte's only non-zero writer (a death-animation
   end), its only consumer is the **final's** `0x0C→0x0D` chain

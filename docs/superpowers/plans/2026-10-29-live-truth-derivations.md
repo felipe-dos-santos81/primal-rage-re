@@ -122,6 +122,14 @@ re-measured here: the `0x25` bowling string, the `0x0E` side rule, and the U14
    stream's `0xD100` opcode), which runs on the ending path. The U14 scenario
    stops at mode `0x12` in match 1, so the clause cannot pass on that capture.
    The `.failed` artifact is game evidence only (ruling R5).
+   **Superseded by Final truth Task 3 (record
+   `docs/superpowers/plans/2026-10-30-final-truth-derivations.md` §F3.1; design
+   `docs/superpowers/specs/2026-10-30-final-truth-design.md` §3.1):** the
+   setter's only consumer is `game_mode_0d_step` (`0x274FC`), entered from the
+   **final's** seven-opponent arena (`flow_arena_ko_check` `0x272DC` via
+   `game_mode_0c_step` `0x27380`) — the final's `0x0C→0x0D` chain, not an
+   ending path, and not a match-1 win (`0x09→0x17→0x12`). R1 is terminal
+   (register R04).
 
 ### L1.5 Ledger
 
