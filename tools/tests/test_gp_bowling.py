@@ -17,7 +17,8 @@ except ImportError:
 
 def _s(f, mode=6, **kw):
     vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
-    vals.update(f=f, mode=mode, b1f=3, c0=4, c1=4, t508=1, t50c=2, **kw)
+    vals.update(dict(f=f, mode=mode, b1f=3, c0=4, c1=4, t508=1, t50c=2))
+    vals.update(kw)          # a caller may override any default (the entry-store cases)
     return gs.format_s(0, vals, 0, 0x1E, 0x1E)
 
 
@@ -350,6 +351,40 @@ class TestStaggered(unittest.TestCase):
         rc, text = _check_staggered(_stagger_log(counts=(1, 3, 5, 8)))
         self.assertEqual(rc, 1)
         self.assertIn('more than the two', text)
+
+    def test_each_entry_store_predicate_is_required(self):
+        # The entry's stores are the raw's own set (0x4E11C: b1f/characters/b25/
+        # b892/b8c4/b8a6/b8bd/b415/b8c0) behind the 0x4E127 b1d and 0x4E13D
+        # camera gates. Mutating any one of them must fail the staggered check
+        # with that predicate named. The old route's table test calls evidence();
+        # this one calls evidence_staggered() and covers its own branch.
+        cases = (
+            (dict(b1f=1), 'b1f=1 at the mode-0x25 entry'),
+            (dict(b1d=2), 'b1d=2 at f='),
+            (dict(c0=3), 'c0=3 at the mode-0x25 entry'),
+            (dict(c1=3), 'c1=3 at the mode-0x25 entry'),
+            (dict(b25=1), 'b25=1 at the mode-0x25 entry'),
+            (dict(b8c4=0), 'b8c4=0 at the mode-0x25 entry'),
+            (dict(b8a6=0xB3), 'b8a6=B3 at the mode-0x25 entry'),
+            (dict(b8bd=1), 'b8bd=1 at the mode-0x25 entry'),
+            (dict(b415=1), 'b415=1 at the mode-0x25 entry'),
+            (dict(b8c0=0), 'b8c0=0 at the mode-0x25 entry'),
+        )
+        for kw, why in cases:
+            with self.subTest(field=list(kw)[0]):
+                rc, text = _check_staggered(_stagger_log(**kw))
+                self.assertEqual(rc, 1, text)
+                self.assertIn(why, text)
+        # the 0 -> 1 transition itself: a pre-entry sample that already reads 1
+        lines = [l.replace('b8c4=00', 'b8c4=01') if ' f=0501 ' in l else l
+                 for l in _stagger_log()]
+        rc, text = _check_staggered(lines)
+        self.assertEqual(rc, 1, text)
+        self.assertIn('0 -> 1 transition', text)
+        # the real pad input: the same capture-shaped log without its I records
+        rc, text = _check_staggered([l for l in _stagger_log() if not l.startswith('I ')])
+        self.assertEqual(rc, 1)
+        self.assertIn('lacks real pad input', text)
 
     def test_state9_edges_are_bounded_by_the_routes_attempts(self):
         rc, text = _check_staggered(_stagger_log(counts=(1,)))
