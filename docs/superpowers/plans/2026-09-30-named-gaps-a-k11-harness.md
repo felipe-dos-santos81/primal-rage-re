@@ -2103,7 +2103,7 @@ make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes 
 - [ ] **Step 2: Check the targets without a capture**
 
 ```bash
-make help | grep -E 'k11-'
+make help-all | grep -E 'k11-'
 make k11-oracle; echo "exit=$?"
 make k11-report; echo "exit=$?"
 ```

@@ -373,7 +373,7 @@ instead of gzip → `ERROR: test_frames_stream_to_gzip`.
 
 `make gp-capture scenario=<gp-…> [GP_ARGS=…]` (after `k11-report`; in
 `.PHONY`; depends on `title-pin`; `--exe $(TITLE_PIN_DIR)/PRAGE.EXE`, so a
-`TITLE_PIN_DIR` override reaches it). `make help | grep gp-capture` prints
+`TITLE_PIN_DIR` override reaches it). `make help-all | grep gp-capture` prints
 `gp-capture  Capture a gameplay scenario (scenario=gp-pads|gp-idle-loss; writes
 data/k11-captures/)` (`gp-idle-loss` is U4's scenario; U1 defines only
 `gp-pads`). `make verify`'s tool-test line now also runs
@@ -822,7 +822,7 @@ comparison and its ratchets; items 2 and 3 are recorded for it in §H.)
 ## §G.11 `make gp-replay` and the gate (U2 Task 3)
 
 `Makefile`: `GP_DUMP = /tmp/pr_gp_dump` beside `K11_DUMP`; `gp-replay` after
-`gp-capture` (in `.PHONY`; `make help` lists it), as the plan's Step 1 with one
+`gp-capture` (in `.PHONY`; `make help-all` lists it), as the plan's Step 1 with one
 addition: an absent capture prints `gp-replay: no capture at
 data/k11-captures/<scenario>` and exits 0, **or exits 1 when
 `PR_ORACLE_REQUIRED` is set (even empty, the `make test` convention) and
@@ -1352,7 +1352,7 @@ Enter, `after 150` Enter, `until_mode 3 0`; `time_limit = 200`) and
 `f <= F` and writes `end F`, a header comment `(cut at F)`; an `--end` past the
 capture's `X` frame is a `ScriptError`); `gp_session.py port-script … --end F`;
 `make gp-replay … GP_SCRIPT_ARGS="--end F"` (`GP_SCRIPT_ARGS ?=`, appended to the
-`port-script` command); the `make help` line for `gp-capture` now names
+`port-script` command); the `make help-all` line for `gp-capture` now names
 `gp-pads|gp-idle-loss`. The 150-frame gaps and the 200 s limit are harness
 values (spec §5), the probe's 2.5 s and 169.9 s.
 

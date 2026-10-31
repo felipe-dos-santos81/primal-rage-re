@@ -4,7 +4,8 @@
 **Design:** `docs/superpowers/specs/2026-10-30-final-truth-design.md`.
 **Base:** `9a149100` (the Live Truth merge); worktree/branch `final-truth`.
 **Status:** implemented through Task 8 (§F1–§F8; the terminal claim register is
-`docs/superpowers/specs/2026-10-30-final-claims.md`); the final gate is Task 9.
+`docs/superpowers/specs/2026-10-30-final-claims.md`); the final gate (Task 9)
+passed on 2026-10-31.
 
 Each section is the authoritative raw-byte source for its task. Addresses are
 linear (object base + offset); a data-object VA `0x8xxxx` is file offset
@@ -1138,7 +1139,8 @@ evidence checker, the replay/miss set, the frame/order/coverage, trace/moves and
 the 4-milestone path. The affected Python suites (`test_gp_continue`,
 `test_gp_session`, `test_gp_compare`, `test_gp_capture`,
 `test_capture_manifest`) pass; no game or port implementation file changed, no
-other capture's oracle pin moved, and the full `make verify` remains Task 9.
+other capture's oracle pin moved, and the full `make verify` passed as Task 9
+on 2026-10-31.
 
 `prage_000.dro` is deliberately outside `tools/audio_compare.py`'s 29-trace
 inventory (the `GP_TRACES` list is fixed and has no gp-u29 entry): no audio
@@ -2220,7 +2222,7 @@ reads 66% raw / 100% portable, 44 capture paths (43/44 present), 810/845 full,
 WEAKER 12 and the register pointer; `port/RE_GUIDE.md` gains the register
 pointer and the same final statuses; the design's status, §1 counters, §3.1,
 §3.2, §3.4, §3.6, §3.7, §3.8, §9 and §10 carry the measured outcomes; the plan
-is marked implemented through Task 8 with Task 9 the final gate.
+is marked implemented through Task 9 (the final gate passed 2026-10-31).
 
 **No new claim.** No capture, no game or port implementation change, no pin,
 no miss set and no census re-pin. The folded cosmetic minors: the `0x2CADC`

@@ -2,8 +2,9 @@
 # `make help` is the quick target list; `make help-all` lists every target.
 # Pipelines: RE (info -> gra -> symbols -> decompile -> oracle) and PORT
 # (build -> check -> run -> verify).
-# The measured N/pin constants below are load-bearing: each has its provenance
-# in the comment above it; raise, never lower, when the port improves.
+# The measured N/pin constants (`DEMO_FIGHT_MIN_FIRST`, `ATTRACT2_MIN_FIRST`,
+# `GP_*`) are load-bearing: each has its provenance in the comment above it;
+# raise, never lower, when the port improves — do not "tidy" it.
 SERVICE = Primal Rage (DOS)
 
 # Variables
@@ -157,7 +158,7 @@ help: ## Print the quick start and main targets (help-all lists every target)
 	@printf "\033[33mCaptures and oracles:\033[0m\n"
 	@printf "  smk-* title-* attract-* attract2-* frontend-* demo-* k11-* save-reload-* gp-* audio-*\n\n"
 	@printf "\033[33mRE:\033[0m\n"
-	@printf "  re-info re-gra re-render re-extract re-symbols re-cluster re-decompile re-analyze re-oracle re-original\n\n"
+	@printf "  re-info re-gra re-render re-extract re-extract-test re-symbols re-cluster re-decompile re-analyze re-oracle re-original\n\n"
 	@printf "Every target: make help-all\n"
 
 help-all: ## Print every target with its description
@@ -528,7 +529,7 @@ attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without 
 
 # The --attract2 comparison alone, on the dump the last front-end run left (verify
 # runs it right after demo-fight-oracle, which made that dump).
-attract2-compare:
+attract2-compare: ## Print the attract cycle-2 comparison report (used by attract2-oracle)
 	@$(PYTHON) tools/title_compare.py --attract2 --attract2-min-first $(ATTRACT2_MIN_FIRST) \
 		--max-missing $(ATTRACT2_MAX_MISSING) \
 		--capture $(TITLE_CAPTURES)/frontend --port $(FRONTEND_DUMP)/run1
@@ -1189,7 +1190,7 @@ gp-modes-oracle: build ## Gameplay U8 oracle: the other START MENU rows and the 
 		$(MAKE) --no-print-directory gp-modes-one GP_MODES_ID=$${p%%:*} scenario=$${p#*:} || exit 1; \
 	done
 
-gp-modes-one: build
+gp-modes-one: build ## Run one U8 mode capture/replay (used by gp-modes-oracle)
 	@if [ -d $(K11_CAPTURES)/$(scenario) ]; then \
 		$(PYTHON) tools/gp_modes.py check --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) && \
 		$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1 \
@@ -1838,7 +1839,7 @@ gp-ending-oracle: build ## Gameplay U10 oracle: ending evidence, frame/trace/mil
 	@echo "== gameplay oracle: gp-u10-ending (the ending under pokes; plan U9/U10) =="
 	$(PYTHON) -m unittest tools.tests.test_gp_win
 	@$(MAKE) --no-print-directory gp-win-one scenario=gp-u10-ending GP_WIN_ID=ENDING
-gp-win-one: build
+gp-win-one: build ## Run one win/ending replay (used by gp-win-oracle/gp-ending-oracle)
 	@if [ ! -d $(K11_CAPTURES)/$(scenario) ]; then echo "gp-win-one: no capture at $(K11_CAPTURES)/$(scenario) (skipped)"; else \
 		$(PYTHON) tools/gp_win.py check --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" && \

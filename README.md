@@ -14,17 +14,18 @@ no 16-bit real-mode game code.
 ## Quick start
 
 ```bash
-make deps                 # toolchain + game assets
+make deps                 # check the toolchain and game assets
 make build                # cmake -S port -B build && cmake --build build
 make run                  # windowed port
 make check frames=60      # headless frames -> frames/frame_*.ppm/.pal/.idx
 make verify               # the full gate
 ```
 
-The original game files are **not included**. Put them under `data/game/C/`
-(`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers). `data/` is git-ignored and
-`data/game/` is read-only; the capture harness writes only its own directories
-under `data/`.
+The original game files are **not included**. Download them (e.g. from
+[myabandonware](https://www.myabandonware.com/game/primal-rage-2vr)) and place
+them under `data/game/C/` (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers).
+`data/` is git-ignored and `data/game/` is read-only; the capture harness writes
+only its own directories under `data/`.
 
 ## Status
 
@@ -33,26 +34,32 @@ menu, character select, one- and two-player matches, the win path, all seven
 endings, and the game-over/high-score flows. The measured claims:
 
 - **Port:** 798 of 1,203 indexed functions (**66%** raw); **759/759 portable
-  (100%)**. The 405 not ported are 53 classified host-owned/deferred, 37
-  replaced clean-room runtime and 315 WATCOM/DOS4GW/AIL runtime functions served
-  by the host (`tools/port_progress.py`).
+  (100%)**. The 405 not ported are 53 classified host-owned/deferred (41
+  host-owned + 12 deferred; `tools/port_classification.txt`), 37 replaced
+  clean-room runtime and 315 WATCOM/DOS4GW/AIL runtime functions served by the
+  host (`tools/port_progress.py`).
 - **Differential:** `make diff-verify` runs the original's bytes against the
   port's C functions: **1033/1033 functions**, **14993/14993 mutants**, **0 named
   gaps**; **825/845** callee rows closed, **810/845** full; **20 terminal rows**
   (19 addresses), **12 `WEAKER`**, **8 `UNROWED`**.
 - **Oracles:** **44 explicit capture paths**, **43/44 present** (only the
-  declared U14 gap); title/attract, front end, demo, K11 service menu and the
-  gameplay replays are compared against the original's frames. These are
-  bounded-missing claims, not complete coverage.
+  declared U14 gap); the Smacker logo, title/attract, front end, demo, K11
+  service menu and the gameplay replays are compared against the original's
+  frames. These are bounded-missing claims, not complete coverage.
+- **Span census:** the independent census has 417 slots / 386 writer targets /
+  26 code-shape classes proved (385/386 writer targets); E2 reads 736 candidates
+  (732 by U0's rule), 388 span-writer.
 - **Audio:** the register-stream oracle compares the port's OPL writes
-  tolerance-free against 29 `.dro` traces across 28 capture directories; the 26
+  tolerance-free against 29 `.dro` traces across 28 capture directories (the
+  29th, `gp-u17-device2`, skips by name); the 26
   code-reachable banks split **12 claimed / 10 residue / 2 unattributable / 2
   never-requested**, with **74 diff-allowed prefixes / 29,656 ticks** matched.
   Rendered audibility is terminal (the OPL core/mixer is an invented model); the
   game-owned claim is the register stream.
 - **Endgame:** all seven endings and the U16 finisher reaction are pinned under
   poked win paths. The claim is the ending content and finisher reaction, not
-  the KO by hits.
+  the KO by hits; the U23 moves ratchet records the port's `r0=0x27` vs the
+  capture's `0x33`.
 
 The single source of truth for every remaining gap is the **terminal claim
 register**:
@@ -72,7 +79,7 @@ oracle window/model limits. `0x25` bowling and the taken continue are **closed**
 The full gate is two consecutive
 `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs plus
 `make audio-render`; the two runs and both audio renders passed on the gated
-tree (`b3a710cc`, merged as `43b79b30`).
+tree (`b3a710cc`, merged as `43b79b30`; recorded in `docs/PROGRESS.md`).
 
 ## Layout
 
@@ -87,7 +94,7 @@ tree (`b3a710cc`, merged as `43b79b30`).
 | `docs/THIRD_PARTY_LICENSES.md` | Vendored third-party code and licences |
 | `docs/superpowers/` | Sub-project specs, plans, derivation records and reports |
 | `tools/` | RE/oracle toolbox: `le_info.py`, `gra_render.py`, `gra_extract.py`, `gen_symbols.py`, the comparison tools |
-| `_tools/ghidra_scripts/` | Ghidra headless scripts used to produce the artifacts |
+| `_tools/ghidra_scripts/` | Ghidra headless scripts used to produce the artefacts |
 | `data/game/C/` | Installed game (git-ignored); `data/game/CD/RAGECD.ISO` is the original CD |
 | `Makefile` | `make help` (quick) / `make help-all` (every target) |
 

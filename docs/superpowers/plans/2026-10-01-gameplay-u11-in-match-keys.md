@@ -1266,7 +1266,7 @@ PATCH
 
 - [ ] **Step 3: Run it without the capture**
 
-Run: `make gp-keys-oracle 2>&1 | grep -E '==|gp-replay:|gp_keys:'; make help | grep gp-keys-oracle`
+Run: `make gp-keys-oracle 2>&1 | grep -E '==|gp-replay:|gp_keys:'; make help-all | grep gp-keys-oracle`
 Expected:
 
 ```

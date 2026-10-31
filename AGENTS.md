@@ -13,7 +13,7 @@ statement here has no register row, when its status disagrees with the row
 (outside a historical/superseded clause), when a terminal/declared row loses
 its evidence, or when a measured counter changes without the register. The Final Truth phase
 is complete: Task 9's two full gates and both `make audio-render` runs passed on
-the gated tree; `main` is the merge `43b79b30`.
+the gated tree; the phase merged to `main` as `43b79b30`.
 
 ## Commands
 
@@ -984,8 +984,8 @@ consolidation gate).
   a declared `PORT_PROGRESS_EXCEPTIONS` entry in `port/src` (the strict rule
   `tools/diff_verify.py`'s `NonPortable.ported` shares; the loose "anywhere in a
   comment" form reads prose mentions as implementations and is not used).
-  Update the README title and its "N% of the original's D real functions"
-  line after any merge that adds or removes a ported function.
+  Update the README title and its `798 of 1,203 indexed functions (66%)`
+  status line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure and the class breakdown; the
   README title keeps the raw
   percentage. As of 2026-10-28 (claim coverage Task 4) the lines read `798 1203 66`,

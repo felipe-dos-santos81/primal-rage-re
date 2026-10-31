@@ -28,7 +28,7 @@
 3. **Unscripted input** — `check-input` in each capture task; a non-clean input stops the task.
 4. **A sibling capture's pin or allowance copied over** — U13 clones U10 and U14 shares U9's machinery; Tasks 7 and 9 measure their own values, and the record names any copied shape.
 5. **A replay miss pinned without evidence, or a new ported function** — each capture task's miss-set step records the exact `fn-miss` addr/ctx; an unported target stops the claim.
-6. **A docs claim contradicted by the tree** — Task 1's greps must return no stale "no-op"/"unported"/"byte-wise" hits; Task 2's command list must match `make help`.
+6. **A docs claim contradicted by the tree** — Task 1's greps must return no stale "no-op"/"unported"/"byte-wise" hits; Task 2's command list must match `make help-all`.
 7. **A claim the evidence check cannot prove** (U16's finisher, U12's 0x31) — Tasks 3 and 4 add the capture-side checks before the captures; a capture without the state is a named gap, not a green pin.
 
 ---
@@ -98,7 +98,7 @@ git commit -m "docs: evidence closeout the spec's storage and clock truth"
 - Modify: `docs/superpowers/specs/2026-10-21-host-input-truth-design.md:71`
 
 **Interfaces:**
-- Consumes: `make help` (the authoritative target list) and the Makefile's `deps`/`verify` checks.
+- Consumes: `make help-all` (the authoritative target list) and the Makefile's `deps`/`verify` checks.
 - Produces: the command list, the fixture/tool prerequisites and the phase status agree with the tree.
 
 - [ ] **Step 1: Record the current gaps (the failing check)**
@@ -106,10 +106,10 @@ git commit -m "docs: evidence closeout the spec's storage and clock truth"
 Run:
 ```bash
 make deps
-make help | grep -E "gp-u1[2-6]-oracle"
+make help-all | grep -E "gp-u1[2-6]-oracle"
 grep -n "title_screen_ref.ppm" AGENTS.md
 ```
-Expected: `make deps` prints no `ghidra_data.bin`/unicorn/capstone/CMOS line; `make help` lists the five targets (they exist) while `AGENTS.md` lists none of them; the fixture line names the unused `title_screen_ref.ppm`.
+Expected: `make deps` prints no `ghidra_data.bin`/unicorn/capstone/CMOS line; `make help-all` lists the five targets (they exist) while `AGENTS.md` lists none of them; the fixture line names the unused `title_screen_ref.ppm`.
 
 - [ ] **Step 2: Update AGENTS and the dependency check**
 

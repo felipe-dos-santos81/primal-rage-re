@@ -1,10 +1,11 @@
 # Final claims — the terminal claim register
 
-**Status:** implemented by Final truth Task 8. Every remaining gap in the
-project has one row below with a measured status; no row is "open". The final
-gate is Task 9 (two `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make
-verify` runs plus `make audio-render`). This register records what Tasks 1–7
-measured; it adds no claim, no capture and no pin.
+**Status:** implemented by Final truth Task 8; the final gate (Task 9) passed
+on 2026-10-31 — two `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make
+verify` runs plus `make audio-render`; the phase merged as `43b79b30`. Every
+remaining gap in the project has one row below with a measured status; no row
+is "open". This register records what Tasks 1–7 measured; it adds no claim, no
+capture and no pin.
 **Plan:** `docs/superpowers/plans/2026-10-30-final-truth.md` (Task 8).
 **Design:** `docs/superpowers/specs/2026-10-30-final-truth-design.md` §3, §9,
 §10.
@@ -126,5 +127,5 @@ historical text; the docs test pins the current gap statements.
   fails on a missing row, a changed expected status, an unsupported terminal
   row, an `AGENTS.md` gap statement with no row, and a status that disagrees
   with its row outside a historical/superseded clause.
-- The final gate (Task 9) re-measures the counters in §3; only a measured
+- The final gate (Task 9) re-measured the counters in §3; only a measured
   improvement may change them, and it must carry its reason here.

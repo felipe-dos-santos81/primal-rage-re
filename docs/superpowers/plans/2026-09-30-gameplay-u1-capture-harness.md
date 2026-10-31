@@ -1310,7 +1310,7 @@ Add `gp-capture` to the `.PHONY` list. In `verify`, extend the tool-test line to
 
 ```bash
 S=/tmp/gameplay-u1
-make help | grep gp-capture
+make help-all | grep gp-capture
 make verify > "$S/t7_verify.txt" 2>&1; echo "verify-exit=$?"
 grep -E '^(oracle C-vs-Python|capture oracle|smk_compare|title_compare|attract_compare|k11_compare)' "$S/t7_verify.txt" | diff - "$S/or_base.txt" && echo ORACLES-EQUAL
 grep -E '^Ran [0-9]+ tests' "$S/t7_verify.txt"

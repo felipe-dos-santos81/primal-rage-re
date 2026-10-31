@@ -988,10 +988,10 @@ for old, new in (("gp-report: build ## Report-only gameplay comparison", block +
 open('Makefile', 'w').write(s)
 print('Makefile: gp-charsel-oracle added')
 EOF
-python3 $S/add_target.py $S/pins.txt && git diff --stat Makefile && make help | grep gp-charsel-oracle
+python3 $S/add_target.py $S/pins.txt && git diff --stat Makefile && make help-all | grep gp-charsel-oracle
 ```
 
-Expected: `Makefile: gp-charsel-oracle added`, `1 file changed, 19 insertions(+), 1 deletion(-)` (the 17-line block, the `verify` line, the `.PHONY` line changed; measured by the planner), the `make help` line. Then add one provenance line under the block's comment by hand, citing Task 7's two report lines (the first unexplained frame's raw index and nearest port `f`; the trace line) — words only, no number that is not in §C5.17. (The planner ran `add_target.py` on a clean Makefile with `pins.sh`'s gp-idle-loss values as stand-ins, and `make gp-charsel-oracle` on a checkout without the capture: `gp-replay: no capture at data/k11-captures/gp-u5-charsel`, `gp_compare: no capture at data/k11-captures/gp-u5-charsel (skipped)`, exit 0.)
+Expected: `Makefile: gp-charsel-oracle added`, `1 file changed, 19 insertions(+), 1 deletion(-)` (the 17-line block, the `verify` line, the `.PHONY` line changed; measured by the planner), the `make help-all` line. Then add one provenance line under the block's comment by hand, citing Task 7's two report lines (the first unexplained frame's raw index and nearest port `f`; the trace line) — words only, no number that is not in §C5.17. (The planner ran `add_target.py` on a clean Makefile with `pins.sh`'s gp-idle-loss values as stand-ins, and `make gp-charsel-oracle` on a checkout without the capture: `gp-replay: no capture at data/k11-captures/gp-u5-charsel`, `gp_compare: no capture at data/k11-captures/gp-u5-charsel (skipped)`, exit 0.)
 
 - [ ] **Step 3: Green, and each pin can fail**
 
@@ -1101,7 +1101,7 @@ On scratch clones of `e9271df` (record §C5 header lists the paths):
 - `orig_idle_tick.py`, `instr_at.py` + `at_summary.py` on a fresh clone of `e9271df` (outputs in record §C5.3, identical to Task 1's expected text).
 - `TestCharsel` and the `gp-u5-charsel` scenario: `Ran 25 tests … OK`; before the scenario `KeyError` ×3; the three mutations fail as listed.
 - The Task 5 generator, replay, set and both mutations (the `gp-u5-sim` header: `4 != 2`; the `0x29D60` row deleted: `4 != 3`, `unexpected 0x29D60 from frontend_mode_1b_step`); the replay to `end 1518` with the set: `all checks passed`; the cursor sequence and mode path of record §C5.6 (with throw-away `fprintf`s, not part of the plan).
-- The Task 8 block with dummy values on a checkout without the capture (skip lines, exit 0, `make help` line) and `pins.sh` on `gp-idle-loss`'s verify lines (it reproduced the Makefile's pins) and on synthetic report lines for both exact-pin branches.
+- The Task 8 block with dummy values on a checkout without the capture (skip lines, exit 0, `make help-all` line) and `pins.sh` on `gp-idle-loss`'s verify lines (it reproduced the Makefile's pins) and on synthetic report lines for both exact-pin branches.
 - `modepath.py` on `gp-idle-loss` (the U4 mode path; no edges, as P1 never pressed).
 - `pngs.py` and `damage.py` on `gp-idle-loss` after the fix (`cap_787.png`/`port_575.png`; `FAIL: first unexplained 457 < ratchet N 787`); `add_target.py` on a clean Makefile (`19 insertions(+), 1 deletion(-)`); the Task 9 PROGRESS heredoc into a scratch file (the values expand: `rose from 203 to 787, the trace ratchet stays 2088`).
 - Not run (needs the capture): Task 6, Task 7 on `gp-u5-charsel`, Task 8 Steps 1–4 on `gp-u5-charsel`. The Task 2-alt branch was not taken.

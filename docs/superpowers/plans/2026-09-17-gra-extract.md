@@ -828,7 +828,7 @@ re-extract-test: ## Unit + oracle tests for the extractor (oracle needs data/gam
 and change the toolchain bullet `* Python 3 with \`capstone\` for ad-hoc disassembly checks.` to
 `* Python 3 with \`capstone\` for ad-hoc disassembly checks and \`Pillow\` for \`tools/gra_extract.py\`.`
 
-Run: `make re-extract-test` — expected 28 tests `OK`. Run `make help | grep extract` — expected both targets listed.
+Run: `make re-extract-test` — expected 28 tests `OK`. Run `make help-all | grep extract` — expected both targets listed.
 
 - [ ] **Step 6: Commit**
 
