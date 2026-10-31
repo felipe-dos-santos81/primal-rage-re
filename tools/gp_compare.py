@@ -576,6 +576,12 @@ SCAN3_ALLOWED = {
 }
 # <<< PIN-BASELINE-END scan3
 
+# Correction to the gp-u29-continue-taken comment above (Final truth Task 8):
+# the raw window starts at 1373, which is **fourteen** capture frames before
+# gp-u28's 1387; the "+10" is the *game-frame* shift (record §F4.4). The
+# comment inside the scan3 region is left byte-identical because the pin
+# baseline hashes that region; this note is outside it and moves no pin.
+
 
 # Per-scenario named per-frame glyph-overlay allowances (record §G7): one
 # capture frame whose loader presentation landed on a screen the replay only

@@ -1,7 +1,9 @@
 # Final Truth — execution plan
 
 **Design:** `docs/superpowers/specs/2026-10-30-final-truth-design.md`.
-**Status:** ready for execution; not started. Date: 2026-10-30.
+**Status:** implemented through Task 8 (the terminal claim register is
+`docs/superpowers/specs/2026-10-30-final-claims.md`); the final gate is Task 9.
+Date: 2026-10-30.
 **Base:** `main` at `9a149100` (tree `6815bdef`; the Live Truth merge).
 **Worktree/branch:** `final-truth`; merge to `main` at the end; keep only
 `main` locally and remotely unless the operator asks otherwise.
@@ -92,9 +94,10 @@ from a measured baseline.
 1. Check `/tmp/opencode/lt-final-status`, the four logs, and
    `pgrep -af 'make verify'`.
 2. If running, wait; if green, record; if red, diagnose and fix.
-3. Record in the phase ledger: gate exit codes, `make gate-check` (41/42,
-   declared U14), `make diff-verify` (`1033/1033`, `14993/14993`, 0 named
-   gaps, `825/845`, `809/845`, 8 unrowed), `port_progress.py`
+3. Record in the phase ledger: gate exit codes, `make gate-check` (41/42 at
+   Gate-0; the final count is 44/43 after Tasks 4–5), `make diff-verify`
+   (`1033/1033`, `14993/14993`, 0 named gaps, `825/845`, `809/845` at Gate-0;
+   `810/845` after Task 1, 8 unrowed), `port_progress.py`
    (`798 1203 66` / `759 759 100`), `capture_manifest --check-pins`
    (`cadd4ec6…`), `audio-render` hashes.
 4. Create the ledger `.superpowers/sdd/2026-10-30-final-truth/progress.md`
@@ -112,9 +115,11 @@ or the omission is a terminal deviation with the measured frame shift.
 
 **Why:** `config_set_defaults` (`0x2CADC`) makes ten raw calls; the port makes
 five and omits `0x2F198` (draws the defaults message, stores the cursor words
-`0x105F34/36`), `0x2EA78(0xB4)` (the 180-tick wait that presents frames) and
+`0x105F34/36`), `0x2EA78(0xB4)` (the wait that presents one frame and runs
+   `n + 2` = **182** tick passes; the "180" was the pre-derivation label, record
+   §F1.3) and
 `0x2F280` (releases the cells). The `PORT` note says the omission is to keep
-the frame-indexed oracles stable. The row is one of the 13 WEAKER rows and
+the frame-indexed oracles stable. The row was one of the 13 WEAKER rows and
 the only non-error-path behavioural one.
 
 **Derivation first**
@@ -160,6 +165,11 @@ the only non-error-path behavioural one.
 attempt.
 
 ## Task 2 — the 5120 band
+
+**Measured outcome (Final truth Task 2, record §F2.5): PASS-A.** The one
+diagnostic `gp-u13-band-dac` shows the band sentinels and the port's
+back-buffer indices; the old blue is the capture/present-side class and the
+allowance is unchanged. The decision branches below are the pre-capture plan.
 
 **Goal:** decide the 13-pixel band's cause and either fix it or declare its
 class; no fitted cause.
@@ -282,8 +292,10 @@ publish the mode or declare it terminal.
 1. Record the `+0x53` machine: `0x455A0` writes `+0x53=7` and `+0x52=9`;
    `0x263DE` checks slot 0's `+0x53==0`; `0x3531C` case 7 → `0x367DC` when
    char 4, `+0x5F∈{0x21,0x22}`, `+0x88>90`; `0x367DC` clears `+0x52/+0x53`
-   and sets `+0x5F=0xFF`. The clear is at the ~91st reaction frame, so
-   `b892>=6` must hold at that frame. The one-sided route is impossible
+   and sets `+0x5F=0xFF`. **Superseded by the measurement (record §F5.5):** the
+   `+0x53` lattice is `7`, `0x0A` (pose), `0x0B` (floor), `0`; the get-up's
+   `0x35D6C` supplied the gate's zero and the `0x367DC` 91-frame arm never
+   fired. The one-sided route is impossible
    (the increment reads the other slot's `+0x5F==0x22`; the hook is installed
    only by that slot's own callback).
 2. State the residue: the corrected capture's last sample is 5 (the first
@@ -327,7 +339,9 @@ if a window exists, one two-human capture; otherwise terminal.
    after a counted trample. The candidate blocker: `0x4B470` never writes
    `+0x1C`; the case-6 landing at `+0x36==0` leaves bit 7 off; only the
    type-8 release tramples without counting → count can only reach 1 per
-   spawn.
+   spawn. **Superseded by Task 6 (record §F6.4): the count is not limited to
+   1;** the engine's `motion_step` restores the height and each hit
+   re-launches (`h(n) = 568n - 8n²`, 71 motion steps).
 2. If the count cannot exceed 1: terminal declaration with the derivation,
    the `0x4B470`/`0x49F47` addresses, and the census rows; no capture.
 3. If a window exists: state the exact sequence and the stage RNG; proceed to
@@ -441,11 +455,16 @@ docs agree.
 
 **Deliverable:** the register + docs + test; no new claim beyond Tasks 1–7.
 
+**Measured outcome (Final truth Task 8, record §F8):** implemented. The register
+is `docs/superpowers/specs/2026-10-30-final-claims.md` (32 rows: 4 closed, 1
+gated, 19 terminal, 8 declared) and `tools/tests/test_final_claims.py` is in
+`make verify`.
+
 ## Task 9 — final gate and merge
 
 **Steps**
-1. `make gate-check` (the expected count: 41/42 plus the new captures if
-   published; U14's absence stays if R1 is terminal).
+1. `make gate-check` (the expected count: 44/43 after Tasks 4–5; U14's absence
+   stays because R1 is terminal).
 2. `make diff-verify` (`PR_DIFF_FULLSCAN=1`), the counter string; if Task 1
    removed the `0x2CADC` WEAKER row, update `WEAKER_CENSUS` and the string
    (13 → 12); every other count unchanged.

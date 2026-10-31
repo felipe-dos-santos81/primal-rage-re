@@ -578,7 +578,9 @@ with no fitted cause and unchanged bounds and pins (record §L10).
   section prefixes`.
 
 **Acceptance:** a prefix pin that fails one tick short; the 4 never-requested
-banks named; no new capture; no audibility claim.
+banks named; no new capture; no audibility claim. **Superseded by
+final-truth record §F7.2:** the measured inventory is 12/10/2/2 (only
+`sound+0x7714` and `konsd+0x1CCB0` are never requested).
 
 ---
 
@@ -684,5 +686,6 @@ pin ±1-proved; no existing pin weakens; the U14 gap remains declared.
   unresolved, and the two `.failed` artifacts have no oracle or pins.
 - The 5120 band's cause — Task 10 was not taken; the instrument gap stays
   declared and the band INCONCLUSIVE.
-- Rendered audibility; the 4 never-requested audio banks; the terminal
+- Rendered audibility; the 4 never-requested audio banks (superseded by
+  final-truth §F7.2's 12/10/2/2 inventory); the terminal
   differential rows; the declared storage/config items.

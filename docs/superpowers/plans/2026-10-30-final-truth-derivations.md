@@ -3,7 +3,8 @@
 **Plan:** `docs/superpowers/plans/2026-10-30-final-truth.md`.
 **Design:** `docs/superpowers/specs/2026-10-30-final-truth-design.md`.
 **Base:** `9a149100` (the Live Truth merge); worktree/branch `final-truth`.
-**Status:** in progress (this record grows per task; §F1 is Task 1).
+**Status:** implemented through Task 8 (§F1–§F8; the terminal claim register is
+`docs/superpowers/specs/2026-10-30-final-claims.md`); the final gate is Task 9.
 
 Each section is the authoritative raw-byte source for its task. Addresses are
 linear (object base + offset); a data-object VA `0x8xxxx` is file offset
@@ -89,7 +90,7 @@ Why `0x2F280`'s EBX/ECX are live without a reload after the wait:
 The call chain: `0x2D6F8` (the storage validate, port `config_validate`,
 `config.c`) calls `0x2CADC` at its defaults arm `0x2D886` when the four magic
 bytes at `0x105E30` are not `0x9C94D2C4`; `0x2F9CC` (master init, port
-`game_master_init`, `flow.c:6975`) calls `0x2D6F8` at `0x2FA0B`; `0x20C10`
+`game_master_init`, `flow.c:6970`) calls `0x2D6F8` at `0x2FA0B`; `0x20C10`
 (port `game_init`, `flow.c:7002`) calls `0x2F9CC` at `0x20C15`; the master loop
 `0x255CC` (port `game_loop`) starts afterwards. On the shipped all-zero `CMOS`
 the magic is 0, so the defaults arm and these three calls run on every boot.
@@ -122,14 +123,14 @@ data-object VA. The port therefore passes `mem + 0x809C8u` and
 `0x2F198` centres a col `-1` as `(0x2B - 36) >> 1 = 3` and stores
 `{row, col + extent} = {0xE, 0x27}` at `0x105F34/36`.
 
-`0x2F280` takes the same register shape (`actors.h:194`): its `text_width` is
+`0x2F280` takes the same register shape (`actors.h:196`): its `text_width` is
 the same 36, so it walks the same 36 cells from the centred col 3, row `0xE`,
 through the grid at `0x105F38` (`row * 0xAC + col * 4`), releases each record
 through `0x2AD40` and zeroes the cell.
 
 ### F1.3 The wait: one frame, 182 tick passes
 
-`0x2EA78` (port `config_screen_wait`, `config.c:901`) reads EAX into ECX
+`0x2EA78` (port `config_screen_wait`, `config.c:910`) reads EAX into ECX
 (`0x2EA7C mov ecx,eax`), clears the latch `0x105F30`, runs `0x2A31C`,
 `0x1C3FC`, `0x14328`, copies/blits the back buffer to the aperture and swaps
 (`0x2EAD6`; one presented frame per call, before any waiting), and returns
@@ -138,7 +139,8 @@ the body runs for `ECX = n, n-1, .., -1` — the `0x2EB6E mov eax,ecx; dec ecx;
 cmp eax,-1; jg` test reads the pre-decrement value — so **n + 2 passes**, each
 waiting for `0xEF6DE` to change, pumping `0x500C4`, and draining the BIOS key
 queue (record §49-Y). `n = 0xB4` is therefore **182 passes and one presented
-frame**. The port's model already implements this (record §49-Y; the
+frame** (the plan/design's "180" was the pre-derivation label; the loop's own
+pre-decrement compare gives `n + 2`). The port's model already implements this (record §49-Y; the
 `0x2EA78` row runs it with the key model).
 
 The present happens inside `game_init`, before the master loop's first
@@ -156,8 +158,8 @@ The wait's tick writes are also outside the loop's state:
   the `0x1BDF4` model in `config_screen_wait`]. The raw's ISR is
   `0x1BDF4`; the same 182 increments are what a capture made by the original
   would have.
-* `game_init_resume` then calls `actors_reset()` (`0x2BAF4(1)`, `flow.c:7093`
-  and `game_state_init` at `6065`), whose non-zero arm calls `0x52106`
+* `game_init_resume` then calls `actors_reset()` (`0x2BAF4(1)`, `flow.c:7092`
+  and `game_state_init` at `6061`), whose non-zero arm calls `0x52106`
   (`actors.c:1157`), and `gfx_screen_reset(0)` stores 0 into **both**
   `DS_00101508` and `DS_0010150C` (`gfx.c:225-226`; raw `0x52106` at
   `0x52108`/`0x5210D`). `game_isr_word_reset` (`0x5D808`, `flow.c:7134`)
@@ -264,7 +266,9 @@ facts: the two data-object strings are byte-equal to
 `text_cursor_set(-1, 0xE, 0x809C8, 0xB000)` writes `{0xE, 0x27}` and the first
 and last message cells hold records; `text_cells_release(-1, 0xE, 0x809F0,
 0xB000)` zeroes both and sets the released record's dead bit and clears its
-pset `+0x0E`. The existing `test_cfg_helpers` suite passes. The assertion was
+pset `+0x0E`. The test pins the derived values, not the config wiring; the
+wiring's claim is the differential row's recorded arguments (§F1.5). The
+existing `test_cfg_helpers` suite passes. The assertion was
 mutation-proved by flipping the expected cursor high word `0x27 -> 0x28`:
 `run_tests` failed `39 != 40` at `test_game.c:2195`, then passed after the
 revert.
@@ -1061,9 +1065,9 @@ Frame measurement:
 
 * window start **100** (raw 1737);
 * the first unexplained frame is capture **4380** (raw 7984), nearest port
-  3649, rows 128..199 - inside the harness's `STOP_TAIL` past the X
-  (`f=0x15C0`), so the whole prompt/countdown/take and the post-take round are
-  below it;
+  3649, rows 128..199 - inside the harness's 60-frame `STOP_TAIL` after the X
+  (`f=0x15C0`; the stop/SIGTERM is `f=0x15FC`), so the whole
+  prompt/countdown/take and the post-take round are below it;
 * reach **3649** (the dump's last presented frame), **12** canonical non-black
   missing classes: `[9, 11, 92, 129, 132, 219, 220, 809, 1019, 1083, 1926,
   2008]`;
@@ -1530,7 +1534,7 @@ reaches capture 1421 (the entry at capture 1352, +70), and nothing past it is cl
 Three corrections; no capture, no pin moved.
 
 1. **The authoritative docs no longer say the mode never opened** (Final truth
-   Task 8 still owns the full register): `AGENTS.md`'s `0x21`/`0x25` block now
+   Task 8 then reconciled the full register; register §2): `AGENTS.md`'s `0x21`/`0x25` block now
    states the measured outcome (capture, entry stores, oracle/pins, census
    `0x4E11C` `HIT`, the claim boundary) and marks the old "stays declared /
    never opened / no oracle or pin" register superseded; `docs/PROGRESS.md`
@@ -1549,7 +1553,7 @@ Three corrections; no capture, no pin moved.
    so it could not cover this branch). Each of the four predicate deletions in
    `gp_bowling.py` was then applied and caught: the `ENTRY_VALUES` loop (nine
    sub-tests), the `b1d` gate, the `pad_sides` gate and the `b8c4` 0 → 1 gate
-   (the log is task-5-report.md §12); `gp_bowling.py` was restored
+   (the log is task-5-report.md §11.2); `gp_bowling.py` was restored
    byte-identically.
 3. **The entry's capture index is 1352, not 1370.** Capture 1352 is a splice
    of port 1077 (`f=0x832` tick=`0x927` mode `0x25`) and port 1078
@@ -1570,10 +1574,10 @@ therefore *mechanically* reachable, and every link but the composition is alread
 pinned by a unit test or a differential row (§F6.4). What no byte sequence
 yields is a *frame-exact eight-hit route*: the trigger needs a two-human match
 whose stage word is one `rng(7)` draw away, a crowd-lie state, and eight strikes
-each inside a ~7-pass window of a 71-motion-step flight, so the phase's one
+each inside a 7-motion-step window (`n = 65..71`) of a 71-motion-step flight, so the phase's one
 capture was not spent on an underived script (§F6.7-§F6.8). The mode's own pass and the eighth-hit tail stay
 `NOT-HIT` (§F6.6); no "structurally unreachable" register text is written
-(Task 8 owns the final register).
+(Task 8 owned the final register; §F8).
 
 ### F6.1 The two `+0x1C` fields (they are different objects)
 
@@ -1672,8 +1676,8 @@ narrower: the entry's pset point
 `(pset_x/64 - 0x18, pset_y/64 - 0x38)` (`0x17D64..0x17D97`) must fall inside a
 fighter's `0x30 x 0x38` attack box (`0x1790C`'s `DS_00100AC8 + side*4` box, the
 `0x15F48` bitplane). `0x38` = 56 px = 3,584 units; `h(64) = 3,584` and
-`h(65) = 3,120`, so the point is in vertical reach on the **7 passes** whose
-preceding motion step left `h < 3,584` (n = 65..71).
+`h(65) = 3,120`, so the point is in vertical reach for the **7 passes** that
+follow the motion steps `n = 65..71` (their preceding step left `h < 3,584`).
 
 **Why the count is not limited to 1.** A hit in that window needs only
 `entry+0x1C & 0x80` (`0x4B6A6..0x4B6B3`) and a fighter's box containing the
@@ -1836,14 +1840,15 @@ run has eight counted tramples.
 ### F6.8 Why the one capture was not taken
 
 The brief allows one capture **only if the derivation survives**. It yields the
-window (7 passes, `n = 65..71` of a 71-motion-step flight), the stream/phase
+window (7 motion steps, `n = 65..71`, and their following passes, of a
+71-motion-step flight), the stream/phase
 chain and the stage's 1-in-7 draw, but not a frame-exact route:
 
 1. **The strike frames are not in the static bytes.** Whether a strike lands is
    `camera_point_hit` against the *fighter's* current attack box, whose 4-byte
    `DS_00100AC8` box is written per attack frame from that character's stream
    data; the derivation cannot pin "press at F".
-2. **Eight windows, 71 motion steps apart.** Each hit needs one of ~7 passes; a
+2. **Eight windows, 71 motion steps apart.** Each hit needs one of the 7 passes that follow `n = 65..71`; a
    miss lands the entry (`0x49FAF` zeroes the count) and restarts the chain. A
    scripted first attempt has no margin to discover the phase.
 3. **The set-up is a chain of its own.** A stage-0 two-human match (a 1-in-7
@@ -1856,7 +1861,8 @@ chain and the stage's 1-in-7 draw, but not a frame-exact route:
 
 The honest route to publishing `0x21` is a **port-side search** (the port is
 deterministic and its fight is frame-verified against captures): script the
-two-human join, a character with a non-zero stage base, a combo to lie the
+two-human join, a stage-0 draw (retry until it lands; the two-human pick is
+`rng(7)`, 1-in-7), a combo to lie the
 crowd, and two spammers, then read `+0x1F`/`+0x1C` from the port until an
 eight-count appears; that script would then be a *derived* capture route. That
 is a new task (and a new capture authorization), not this brief.
@@ -1875,7 +1881,7 @@ is a new task (and a new capture authorization), not this brief.
   measured boundary; `docs/PROGRESS.md` gains the Task 6 paragraph; the
   live-truth design §2.6 and record §L9.3 carry superseded notes (the
   counter/landing blocker is refuted, the stage is a 1-in-7 retry), and the
-  plan's Task 8 step 3 lists both files in the register's reconciliation set so
+  plan's Task 8 step 3 listed both files in the register's reconciliation set so
   the final text cannot repeat the refuted blockers.
 
 ## §F7 Audio truth: the carrier-TL latch, the bank residue, and rendered audibility terminal (Task 7)
@@ -2147,8 +2153,8 @@ Exact PCM equality is not a game claim and cannot be one:
 **Terminal statement:** rendered audibility is a declared terminal limit (the
 Opal/mixer/48 kHz model is not the game); the game-owned audio claim stops at
 the register stream, the 74 prefixes, the whole-section pins, the 10-row
-residue table and the 2 never-requested gates. Task 8's register owns the final
-table.
+residue table and the 2 never-requested gates. Task 8's register holds the final
+table (§F8).
 
 ### F7.5 Files, tests and commands
 
@@ -2182,3 +2188,51 @@ table.
   `python3 tools/capture_manifest.py --update-pins --reason "final truth Task
   7 fix 1: correct the measured bank split (0x5A56E385 claimed, 0x13211DEB
   reset-only) and add the key-on evidence"`.
+
+
+## §F8 — the terminal claim register and the docs reconciliation (Task 8)
+
+**Outcome: implemented.** `docs/superpowers/specs/2026-10-30-final-claims.md`
+is the single source of truth: **32 rows — 4 closed, 1 gated, 19 terminal, 8
+declared** — and every terminal/declared row names an address, a file:line or
+a `data/k11-captures/…` capture or `.failed` artifact. No row is "open". The
+register records only what Tasks 1–7 measured; it adds no claim, capture or
+pin. The rows and their evidence are the register's §2; the measured counters
+are its §3; the superseded wording and where it was reconciled are its §4.
+
+**The docs test.** `tools/tests/test_final_claims.py` (added to `make verify`'s
+unittest list) parses the register table and checks (a) every required row id
+exists with its expected status and evidence token, (b) every terminal/declared
+row's evidence matches an address, a `file:line`, a capture or a `.failed`
+artifact, (c) every pinned counter is present, (d) every `AGENTS.md` gap
+statement has a register row, and (e) the narrow trigger phrases in `AGENTS.md`
+that introduce a gap statement all carry a mapped anchor. Its mutation cases
+remove a required row, add an unsupported terminal row, change an expected
+status, remove an `AGENTS.md` anchor and add a new unmapped "stays declared"
+line; each fails the checker.
+
+**The docs.** `AGENTS.md` gains the register pointer at the top and loses the
+stale "42/41 captures", "HIT 657 / NOT-HIT 98", "U14 R1 stays declared",
+"5120 INCONCLUSIVE" and "0x0E taken not claimed" statements; `docs/PROGRESS.md`
+gains the Task 2, Task 4 and Task 8 paragraphs and marks the historical
+taken-continue/5120/U14/WEAKER/809/41-42 statements superseded; `README.md`
+reads 66% raw / 100% portable, 44 capture paths (43/44 present), 810/845 full,
+WEAKER 12 and the register pointer; `port/RE_GUIDE.md` gains the register
+pointer and the same final statuses; the design's status, §1 counters, §3.1,
+§3.2, §3.4, §3.6, §3.7, §3.8, §9 and §10 carry the measured outcomes; the plan
+is marked implemented through Task 8 with Task 9 the final gate.
+
+**No new claim.** No capture, no game or port implementation change, no pin,
+no miss set and no census re-pin. The folded cosmetic minors: the `0x2CADC`
+row comment says seven distinct callees (not eight); the §F1.3 citations read
+`config.c:910`/`flow.c:6970`/`flow.c:7092`/`6061`/`actors.h:196`; the 180 → 182
+label; the §F1.6 test-scope sentence; the `0x15C0` X vs the `0x15FC` stop; the
+`+10` game-frame vs the 14-capture-frame shift, recorded in a note outside the
+pinned `scan3` region because the pin baseline hashes that region (the comment
+inside it is byte-identical); the
+Task 4 report's commit id; the Task 5 report §11.2; the plan's 91st-frame model
+and Task 6's count-max-1 blocker marked superseded; the `~7` window stated as
+7 motion steps; the route-sketch character-base phrase; the landing/spawn
+clears; the Task 7 report's old `0xE4` text and the live-truth "4 never"
+notes; the task-8 brief's 10/4 bank note; and the "unladen"/"committed
+poll.logs" cosmetics.

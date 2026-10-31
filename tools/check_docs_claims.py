@@ -42,6 +42,18 @@ CLAIMS = [
     # PROGRESS's "the port is complete": that is the portable figure (759/759),
     # not the proof state.
     ("docs/PROGRESS.md", "The port is complete"),
+    # Final truth Task 8's register reconciliation: the stale status/count
+    # wording removed from the authoritative files. Each is scoped to the one
+    # file that held it; the historical phase paragraphs keep their own text
+    # with a superseded note.
+    ("AGENTS.md", "U14 R1 stays declared"),
+    ("AGENTS.md", "42 explicit capture paths"),
+    ("AGENTS.md", "HIT 657 / NOT-HIT 98"),
+    ("README.md", "13 `WEAKER`"),
+    ("README.md", "42 explicit capture paths"),
+    ("README.md", "0x25` bowling route stays declared"),
+    ("port/RE_GUIDE.md", "13 rows are `WEAKER`"),
+    ("port/RE_GUIDE.md", "5120 band is **INCONCLUSIVE**"),
 ]
 
 

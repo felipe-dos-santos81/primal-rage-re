@@ -40,9 +40,9 @@ game-over/high-score flows. The measured claims:
   against the port's C functions from the same image, comparing every changed
   byte, the return register, the ordered calls and the block coverage:
   **1033/1033 functions VERIFIED**, **14993/14993 mutants detected**, **0 named
-  gaps**. Of the 845 rows with callees, **825 are closed** and **809 are closed
+  gaps**. Of the 845 rows with callees, **825 are closed** and **810 are closed
   on full rows** (188 callee-less rows counted apart); **20 declared terminal
-  rows** (19 addresses), **13 `WEAKER`**, **8 `UNROWED`** (45 `FN_`
+  rows** (19 addresses), **12 `WEAKER`**, **8 `UNROWED`** (45 `FN_`
   ported-unrowed = 8 portable + 37 runtime).
 - **Span writers.** The independent census has **417 slots and 392 distinct
   targets** (386 writer targets, 385 reachable); **385/386 targets** and
@@ -50,19 +50,21 @@ game-over/high-score flows. The measured claims:
   U0's rule), 388 span-writer.
 - **Pixel and timing oracles.** The Smacker logo, title, attract (cycle 2),
   front end, demo fight, K11 service menu and the gameplay replays are compared
-  against the original's captured frames. Live truth adds `gp-draw-oracle`,
-  `gp-twop-ko-oracle`, `gp-u28-continue-oracle` and `gp-u27-oracle` to
-  `make verify`. The gate inventory is **42 explicit capture paths**,
-  **41/42 present** with only the declared U14 gap. These are
-  **bounded-missing claims, not complete coverage**: an unsampled state or a
-  same-count class substitution remains outside them.
+  against the original's captured frames. Final truth adds `gp-u29-continue-taken`
+  (the taken continue) and `gp-bowling-2` (mode `0x25`) to `make verify`. The
+  gate inventory is **44 explicit capture paths**, **43/44 present** with only
+  the declared U14 gap. These are **bounded-missing claims, not complete
+  coverage**: an unsampled state or a same-count class substitution remains
+  outside them.
 - **Audio.** The register-stream oracle compares the port's OPL register writes
   tolerance-free against **29 `.dro` traces across 28 capture directories**
   (gp-pads holds two; the wall-paced device-2 walk skips by name), and
-  `audio-render` pins the rendered WAV. Live truth also pins **74 diff-allowed
-  section prefixes / 29,656 leading matched ticks**; unmatched remainders stay
-  named. **Rendered audibility remains a named gap** (no device-recording
-  oracle).
+  `audio-render` pins the rendered WAV. Final truth pins **74 diff-allowed
+  section prefixes / 29,656 leading matched ticks**, splits the 26 code-reachable
+  banks into **12 whole-section-claimed / 10 requested-unclaimed residue / 2
+  requested-but-unattributable / 2 never-requested**, and declares **rendered
+  audibility terminal** (no device-recording oracle; the invented mixer is not
+  the game).
 - **Endgame.** All seven endings are pinned — SAURON and BLIZZARD by the earlier
   U10/U13 captures, TALON, VERTIGO, CHAOS, ARMADON and DIABLO by `gp-u18`…
   `gp-u22` — and the U16 finisher reaction by `gp-u23`, all under poked win
@@ -70,35 +72,33 @@ game-over/high-score flows. The measured claims:
   hits**: U23's moves ratchet records the port's `r0=0x27` where the capture
   reaches `0x33`.
 
-Named gaps: the U14 fought live win (R1), the 5120 band's unisolated cause
-(INCONCLUSIVE — the DOSBox-X memory file excludes the VGA aperture; Task 10's
-DAC injection was not taken because the fade palette source was not funded),
-rendered audibility, the 20 terminal differential rows (19 addresses) with 13
-`WEAKER` and 8 `UNROWED`, the declared two-human-only modes `0x21`/`0x25`, the
-4 `UNINSTRUMENTED` census addresses (`0x29D60`, `0x2EA30`, `0x2EA64`,
-`0x500BB`), U14's `live_death` rule mismatch, the host/product items (SDL pad
-hot-plug, CI, packaging, save-path docs), and the bounded-missing limits. The
-state-coverage phase (2026-10-28) added the measured function census, the
-ENDURANCE team end, the side-1 tour, the timeout draw, the U16 reaction
-fix and the OPL pitch test. Live truth gates the KO-branch `0x0A`/`0x0B`
-draw, the no-poke two-human KO, the `0x0E` continue countdown/expiry and the
-name-entry path. The `0x25` bowling route stays declared after two failed
-real-input attempts (`b892=2`, then a last sample of 5); its precise remaining
-blocker is unresolved. U16 R2's gate
-operand is measured. U14's failed artifact is game evidence for a fought
-arcade KO only.
-The fought-match truth phase measured the harness and two game-side results
-(U14's one authorized live win lost, the two-human KO as game evidence only,
-the U16 case-3 exit) **without adding a claim in that phase**. The running
-detail and every gap's evidence are in
-[`docs/PROGRESS.md`](docs/PROGRESS.md); the frame loop and pixel path are in
-`port/spec/game_flow.md`.
+The single source of truth for every remaining gap is the **terminal claim
+register**, [`docs/superpowers/specs/2026-10-30-final-claims.md`](docs/superpowers/specs/2026-10-30-final-claims.md):
+each row is closed, gated, terminal or declared, with its address, file:line or
+capture. Named there: the U14 fought arcade win (R1) is **terminal** (the
+measured arcade damage race; the two-human 2-0 win is game evidence only in
+`gp-u14-twop-win.failed`), `0x21` volleyball is **declared** (the count is not
+limited to 1, but no frame-exact route is derivable), the 5120 band is
+**PASS-A terminal** (the content is the port's; the old blue is the
+capture/present-side class), the 20 terminal differential rows (19 addresses)
+with 12 `WEAKER` and 8 `UNROWED`, the 4 `UNINSTRUMENTED` census addresses
+(`0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`), the storage items, the zero-payload
+movie audio, the 53/37/315 classification, and the oracle window/model limits.
+`0x25` bowling and the taken continue are **closed** (gated captures), and
+`0x2CADC`'s boot-defaults omission is **fixed**. The state-coverage phase
+(2026-10-28) added the measured function census, the ENDURANCE team end, the
+side-1 tour, the timeout draw, the U16 reaction fix and the OPL pitch test.
+Live truth gates the KO-branch `0x0A`/`0x0B` draw, the no-poke two-human KO, the
+`0x0E` continue countdown/expiry and the name-entry path. The running detail
+and every gap's evidence are in [`docs/PROGRESS.md`](docs/PROGRESS.md); the
+frame loop and pixel path are in `port/spec/game_flow.md`.
 
 ## Layout
 
 | Path | What |
 |---|---|
 | `docs/PROGRESS.md` | Running status: what's ported, verified, and every named gap |
+| `docs/superpowers/specs/2026-10-30-final-claims.md` | The terminal claim register: every remaining gap's measured status and evidence |
 | `port/` | SDL3 port: `RE_GUIDE.md` (address model), `PORTING.md` (rules), `spec/game_flow.md` |
 | `port/src/` | The port: `game/`, `platform/` (gfx, sprite, render, res, input, `audio/`), `mem.c`, `host.c` |
 | `port/decomp/` | Ghidra decompilation + function/string/symbol indexes (`DECOMPILATION.md`) |
@@ -173,12 +173,12 @@ make verify            # the gate (sets PR_ORACLE_REQUIRED=1)
 `make verify` runs the headless `--check` smoke, the oracle-required tests, the
 restart driver, the pixel/ratchet oracles, the register-stream audio oracle and
 `audio-render`, the differential harness, the E2 triage, the tool unit tests
-(including the docs-claim guard) and `symbols.h` idempotence. `make gate-check`
-inventories the **42 explicit capture paths** first; the full checkout is
-**41/42** with only the declared U14 gap. `GATE_STRICT=1` (the default) fails an
-undeclared absence; `GATE_STRICT=0` tolerates missing captures so their skips
-can run. `PR_PINS_EXACT` is strict by default, so an improvement requires a
-re-pin.
+(including the final-claims register guard) and `symbols.h` idempotence.
+`make gate-check` inventories the **44 explicit capture paths** first; the full
+checkout is **43/44** with only the declared U14 gap. `GATE_STRICT=1` (the
+default) fails an undeclared absence; `GATE_STRICT=0` tolerates missing captures
+so their skips can run. `PR_PINS_EXACT` is strict by default, so an improvement
+requires a re-pin.
 
 The full gate needs `port/tests/ghidra_data.bin` (git-ignored; `make re-oracle`
 regenerates it), `unicorn` and `capstone` (`pip install -r

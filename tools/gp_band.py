@@ -164,7 +164,7 @@ def decide_dac(bb, port_idx, cap_rgb, sentinel_rgb, control, injected):
       offset (sentinel_rgb[k] is None where the back-buffer index is not one of
       the four injected ones); injected: the caller's checks (an S record at the
       diagnostic W frame + 1 with the fields, the six W writes at one frame,
-      unraced and unladen, effn > 0) -- the control's index/colour is not part
+      unraced and not late, effn > 0) -- the control's index/colour is not part
       of it.
 
     PASS-B: a band offset's back buffer is not the port's index -- the game's

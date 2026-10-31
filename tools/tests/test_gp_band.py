@@ -202,7 +202,7 @@ class TestDerivedValues(unittest.TestCase):
 
     def test_the_measured_mode_15_entry_frames(self):
         # The review measured 0x17D5 in gp-u13-band; gp-u13-ending2's capture is
-        # 0x17D4. Pin both from the committed poll.logs (skip without the data).
+        # 0x17D4. Pin both from the published poll.logs (skip without the data).
         base = os.path.join(ROOT, 'data', 'k11-captures')
         want = {'gp-u13-ending2': 0x17D4, 'gp-u13-band': 0x17D5}
         for cap, f in want.items():

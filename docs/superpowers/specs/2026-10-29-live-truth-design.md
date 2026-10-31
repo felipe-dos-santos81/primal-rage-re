@@ -270,6 +270,10 @@ is ready, and the phase keeps B/C as named follow-ups.
   proven port divergence is recorded for a follow-up, not patched.
 - **No rendered-audibility claim**; the PCM pin stays determinism.
 - **No new capture for the 4 never-requested audio banks**; they stay named.
+  **Superseded by final-truth record §F7.2:** the measured inventory is 12
+  claimed / 10 residue / 2 requested-but-unattributable (`grave+0x0A8C`,
+  `grave+0x05E4`) / 2 never requested (`sound+0x7714`, `konsd+0x1CCB0`);
+  `grave+0x08` is the claimed 1,200-tick section.
 - **No re-litigation of the terminal differential rows** or the declared
   storage/`config_field_get` items.
 

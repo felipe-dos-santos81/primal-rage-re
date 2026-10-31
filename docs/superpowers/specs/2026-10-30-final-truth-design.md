@@ -1,7 +1,8 @@
 # Final Truth — design
 
-**Status:** in progress — Tasks 1–5 implemented (derivation record §F1–§F5);
-Task 8's reconciliation pass owns the final register. Date: 2026-10-30.
+**Status:** implemented through Task 8 — the terminal claim register is
+`docs/superpowers/specs/2026-10-30-final-claims.md` (derivation record §F1–§F8);
+the final gate is Task 9. Date: 2026-10-30.
 **Predecessor:** Live Truth (`docs/superpowers/specs/2026-10-29-live-truth-design.md`).
 **Plan:** `docs/superpowers/plans/2026-10-30-final-truth.md`.
 
@@ -12,11 +13,11 @@ The port is complete on its declared target: **759/759 portable functions**
 runtime, 315 runtime). The 2026-10-29 Live Truth phase published the last
 live captures: the KO-branch draw, the no-poke two-human KO, the continue
 screen/countdown/expiry, the name-entry oracle, and the 74 audio matched
-prefixes. The capture inventory is **41/42 present**, with only U14's fought
+prefixes. The capture inventory is **44 paths, 43/44 present**, with only U14's fought
 live win declared absent. The differential census is **1033/1033 functions
 VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845 rows with
-callees closed; 809/845 full; 8 unrowed**; the coverage census is **HIT 657 /
-NOT-HIT 98 / UNINSTRUMENTED 4**.
+callees closed; 810/845 full; 8 unrowed; 12 `WEAKER`**; the coverage census is
+**HIT 675 / NOT-HIT 80 / UNINSTRUMENTED 4**.
 
 What is left is not porting. It is the **live-gap layer**: a small number of
 real behavioural/fidelity differences, a few unexhibited content branches, and
@@ -76,10 +77,11 @@ round and match results, no time-out, an X record). The one authorized
 `gp-u14-twop-win` run reached the game's two-round 2-0 win (`b1f=3`, no `W`,
 round 1 `f=0xB1B`, match result `f=0x13A8`, mode `0x12` at `f=0x1693`) but
 failed the `port script v2` check at `f=0xB1B` (`pad change ... unpinned`, no
-`S(0xB1A)`; 15 missed frames). It is preserved as
+`S(0xB1A)`; 15 of 5,820 snapshots missed by the capture model). It is preserved as
 `data/k11-captures/gp-u14-twop-win.failed`; per the capture discipline it
 publishes no oracle, pin, miss set, manifest entry or `CAPTURE_DIRS` path, and
-R1 stays declared. The claim is game evidence only, not a published capture.
+R1 is terminal (the measured arcade damage race in §3.1's opening). The claim
+is game evidence only, not a published capture.
 
 ### 3.2 0x21 — the eight-trample chain and the `+0x1C` re-hit question
 
@@ -109,7 +111,8 @@ motion opcode), but the engine does: `0x4B470` sets `actor+0x36 = 0x240`
 so the first step adds `0x230` and `h(n) = 568n - 8n²`: a 71-motion-step flight
 (landing on the 72nd effects pass, apex `0x2760`, 157.5 px), with 35 passes of
 `vy < 0` where `0x49F18` re-sets `entry+0x1C` bit 7. `0x4B470` re-launches on
-every hit and the count is zeroed only on landing (`0x49FAF`), so the count
+every hit and the count is zeroed only on landing (`0x49FAF`) or a
+spawn/rebuild (`0x49622`/`0x4D061`/`0x4E4E8`), so the count
 **accumulates across a flight chain** and the eight-hit tail (`0x4B579`) is
 mechanically reachable — the existing unit cases G/H/I/J of `test_fight.c` pin
 every link but the composition. What is not derivable is a frame-exact route:
@@ -117,8 +120,8 @@ the trigger needs a stage-0 two-human match (the two-human pick is `rng(7)` at
 `0x2587C`, 1-in-7, measured `m=0`/`b1f=3` at f=876 in `gp-twop` → 5; the
 `0xA87C4[c] + rng(6) + 1` arm is the 1P pick), a crowd lie (four measured
 `0x4B470` calls — `gp-idle-loss` twice and the demo twice — all first hits,
-`+0x1F=1`, on distinct lying entries), and eight strikes each inside ~7 of the
-71 motion steps. With one capture and `.failed` publishing nothing, the phase
+`+0x1F=1`, on distinct lying entries), and eight strikes each inside a 7-motion-step window
+(`n = 65..71`) of the 71-step flight. With one capture and `.failed` publishing nothing, the phase
 does not spend it on an underived script; the mode's pass `0x4BF18` and the
 tail `0x4BD98` stay `NOT-HIT`. A port-side route search (a derived, frame-keyed
 script) is the route to exhibit the mode, and it is a new task.
@@ -179,12 +182,22 @@ fade trajectory can produce (`5100-5108` fade `140000→0c0000→040000→000000
 This is a **different presented index state**, not a fade/palette timing
 offset. A per-pixel/per-row holder search over the existing U13 dump can
 decide whether any port frame holds those exact 13 values; if none does, the
-DAC-injection diagnostic (56 derived W writes over the 24 active palette
-records, sentinels for `0x65/0x32/0x4D/0x2E`, back-buffer reads at `0xE87A0`
-and `0xE87A4`) distinguishes PASS-A (capture/pipeline present model) from
+DAC-injection diagnostic (the **six** derived W writes over the two records
+that cover the four indices; the design's 56/24 was the pre-derivation estimate,
+record §F2.2; sentinels for `0x65/0x32/0x4D/0x2E`, back-buffer reads at
+`0xE87A0` and `0xE87A4`) distinguishes PASS-A (capture/pipeline present model) from
 PASS-B (content divergence with a nameable renderer). The fade source is
 pinned through `0x29B74`/`0x13D4C`/`0x134C0`; the specific list entry for
 `0x32` is not yet pinned.
+
+**Task 2 outcome (record §F2.5): PASS-A.** The one authorised diagnostic
+`data/k11-captures/gp-u13-band-dac` shows the 13 band pixels as the injected
+sentinels at capture frame 05130 and the S record at `f=0x1826` holds the port's
+back-buffer indices (`0x32`×8/`0x2E`/`0x4D`×4), so the old capture-5120 blue
+`00001c` is the capture/present-side class, not content. The exact
+palette/scan-out transient is not named; the allowance `(5120,1,5,56b900b1…)`
+is unchanged. The pre-capture text above is the raw evidence.
+
 
 ### 3.5 Audio — the game-owned claim is the register stream, not the PCM
 
@@ -224,37 +237,43 @@ are pinned capture-side; the unique gain is binding the label to a port
 frame. This is terminal for the phase (the tick-keyed replay is documented as
 a closable-but-low-value option).
 
-The taken-continue branch is a genuine small gap: `gp-u28-continue` proves
+The taken-continue branch was a genuine small gap: `gp-u28-continue` proves
 expiry only. `flow_continue_poll` returns 1 with a credit and a newly pressed
 start, sets `b1f=side+1`, spends the credit, and stores mode `0x0C`
-(`flow.c:1898-1910`, `1985`, `1961`). One clone of the U28 route plus a
-`p1.start` at the prompt is feasible with no poke; it should flip `0x2791C`
-from NOT-HIT and add a real oracle. Movie audio is already closed: both
-Smacker files declare zero audio tracks and no stream opens; it is a
-zero-payload terminal finding.
+(`flow.c:1898-1910`, `1985`, `1961`). **Task 4 outcome (record §F4): closed.**
+`gp-u29-continue-taken` takes the prompt at `f=0x1561` (mode `0x0E`→`0x0C`,
+`cred` 4→3, `b1f` 1, the incumbent's `+0x5A` `0x78`→0) with no new poke, and
+`gp-u29-continue-taken-oracle` is in `make verify`; the census improves
+`0x2791C` and `0x33B00`. Movie audio is already closed: both Smacker files
+declare zero audio tracks and no stream opens; it is a zero-payload terminal
+finding (register R19).
 
-### 3.7 The `0x2CADC` boot-defaults omission is a real visible gap
+### 3.7 The `0x2CADC` boot-defaults omission was a real visible gap
 
 `config_set_defaults` (`0x2CADC`) makes ten raw calls; the port makes five
 and omits `0x2F198` (draws the defaults message and stores the cursor words
-`0x105F34/36`), `0x2EA78(0xB4)` (the 180-tick wait that presents frames) and
+`0x105F34/36`), `0x2EA78(0xB4)` (the wait that presents one frame and runs `n + 2` = **182**
+tick passes; the plan's "180" was the pre-derivation label, record §F1.3) and
 `0x2F280` (releases the cells). The omission is a deliberate `PORT` note: the
 wait would present frames before the loop and move the frame-indexed oracles.
-The message's pixels are real, the wait is real, and the row is one of the 13
-WEAKER rows. It is the only non-error-path behavioural WEAKER row. The phase
-should derive whether the message can be drawn and the wait modelled/re-pinned
-without invalidating the oracle model; if not, it is a terminal deviation with
-a measured reason. This is a fidelity fix, not a proof-debt row.
+The message's pixels are real, the wait is real, and the row was one of the 13
+WEAKER rows. **Task 1 outcome (record §F1): fixed.** The three calls are wired
+with the data object's strings (not a literal), the `0x2CADC` row is the full
+ten-call row, the title (96) and attract (690) dumps are byte-identical before
+and after, no oracle was re-pinned, and `WEAKER` is 12 with 810/845 full. The
+message's rendered pixels are still not gated (the present is outside every
+capture's frame set); that is the residual claim (register R01).
 
 ### 3.8 Proof debt, storage, coverage, classification
 
-The 20 open differential rows are 19 blocker addresses; 13 AIL rows plus
+The 20 open differential rows are 19 blocker addresses; 15 AIL rows plus
 `0x1C308`, the four PIT/game-port probes and `0x6C4CF` are terminal, and the
 only genuine opening (modelling the `0x6C4CF` exit walk via DOS `int 0x21`
-AH=0x3E/0x40) is not worth the proof. The 13 WEAKER rows are 12 inherent plus
-`0x2CADC`; the 8 UNROWED are all `<0x5D000` and stay declared (the specs
+AH=0x3E/0x40) is not worth the proof. **Task 1 closed `0x2CADC`**, so **12**
+rows are WEAKER; the 8 UNROWED are all `<0x5D000` and stay declared (the specs
 would compare constants, not game behaviour). The 4 UNINSTRUMENTED are
 inlined one-liners with VERIFIED rows; instrumenting them is low value. The
+coverage census is HIT 675 / NOT-HIT 80 / UNINSTRUMENTED 4 after Tasks 4–5. The
 storage items (`0x2EA68`, short CMOS, slot 13..35 low bytes, the four
 PLAUSIBLE items) are terminal with their measured reasons. The 53/37/315
 classification is already the measured denominator; it needs a terminal
@@ -358,31 +377,56 @@ except by re-measurement; fitting a tolerance or a cause.
 - **Scope creep**: the terminal register is the deliverable; a gap that
   cannot be closed in the phase is declared, not carried as an open task.
 
-## 9. Terminal claims the phase expects to issue
+## 9. Terminal claims the phase issued
 
-The register is built in Task 8; the expected terminal set is U14's arcade
-fought win (R1), 0x21 if the `+0x1C` derivation closes it, 0x25 if the
-staggered run fails, rendered audibility, the 12/10/2/2 audio-bank residue
-(record §F7.2: 12 claimed + 10 residue + 2 requested-but-unattributable +
-2 never requested), U17's
-wall-paced replay, the differential 20/13/8, the 4 UNINSTRUMENTED/98 NOT-HIT,
-the storage items, movie audio (zero-payload), and the 53/37/315
-classification. `0x2CADC` and 5120 are closed if the conditional tasks
-succeed; otherwise they join the terminal set with their measured reasons.
+The register is `docs/superpowers/specs/2026-10-30-final-claims.md` (Task 8):
+**32 rows — 4 closed, 1 gated, 19 terminal, 8 declared**, each with its
+address/file:line or capture. The measured outcome differs from the design's
+expectation, and the raw wins:
+
+- **Closed:** `0x2CADC` (Task 1: the message/wait/release are wired, the row is
+  full, WEAKER 13 → 12, 810/845 full, no oracle re-pin); 0x25 (Task 5:
+  `gp-bowling-2` opened the mode at `f=0x832`, the count not the camera was the
+  residue); the `0x0E` taken branch (Task 4: `gp-u29-continue-taken`, `0x2791C`
+  and `0x33B00` HIT); the `0x0E` expiry (live truth Task 5).
+- **Terminal:** U14's arcade fought win (R1) with the measured damage race;
+  5120 **PASS-A** (Task 2: the content is the port's, the old blue is the
+  capture/present-side class; the exact transient is unnamed); rendered
+  audibility (Opal 2.0.3/49,716 Hz vs DOSBox-X 48 kHz); the 10-row audio
+  residue; U17's wall-paced replay; U16 R2's measured operand; the differential
+  `1033/1033`, `14993/14993`, 0 named gaps, `825/845`, `810/845`, 8 unrowed,
+  WEAKER 12, 20 open rows/19 addresses; coverage HIT 675 / NOT-HIT 80 /
+  UNINSTRUMENTED 4; the storage items; the 53/37/315 classification; and the six
+  oracle model limits (front-end/K11 window starts, gameplay order/coverage, U10
+  death streams/mode-F, gp-keys 835, the label-shift flake, `memsize=64`).
+- **Declared:** 0x21 (Task 6: the count is not limited to 1, but no frame-exact
+  route is derivable; the two-human `.failed` win is game evidence only; the 2
+  audio banks requested-but-unattributable and the 2 never requested; the U16
+  finisher; the capture inventory; the music-truth Task 6 optional items; the
+  poked 1P exhibits).
+- **Gated:** the 12 whole-section-claimed audio banks and the 74 prefixes.
+
+No row says "open". The two-human `gp-u14-twop-win` capture is game evidence
+only; `gp-u14-win-live` stays absent and declared. A capture that failed a
+session check publishes nothing.
 
 ## 10. Success criterion (definition of done)
 
-1. The terminal claim register exists and every remaining named gap has a
-   measured status; no row says "open" without a task result.
+1. The terminal claim register `docs/superpowers/specs/2026-10-30-final-claims.md`
+   exists and every remaining named gap has a measured status; no row says
+   "open" without a task result; the docs test is in `make verify`.
 2. Every new capture is either published with an oracle/pins or preserved as
-   `.failed` with no claim.
+   `.failed` with no claim (`gp-u29-continue-taken` and `gp-bowling-2`
+   published; `gp-u14-twop-win.failed` game evidence only, no pins).
 3. Every new pin is mutation-proven; every existing pin is unchanged or
    re-measured with a recorded reason.
 4. The two full gates and `make audio-render` are green on the final tree;
-   `make gate-check`, `capture_manifest --check-pins`, `port_progress.py`,
-   `diff-verify`, `entry-triage` and `symbols.h` read the recorded values.
-5. No port implementation changed except the conditional `0x2CADC` fix and
-   the audio TL fix (if the re-derivation requires it); no new portable
-   function.
+   `make gate-check` reads 43/44, `capture_manifest --check-pins` the digest
+   `d3b6969f…`, `port_progress.py` `798 1203 66` / `759 759 100`,
+   `diff-verify` `1033/1033` / `14993/14993` / `810/845` / WEAKER 12,
+   coverage 675/80/4, `entry-triage` unchanged and `symbols.h` byte-identical.
+5. No port implementation changed except the `0x2CADC` fix (Task 1); the audio
+   TL re-derivation needed only the unit test (Task 7), and no new portable
+   function exists.
 6. Only `main` remains locally and remotely after the merge, unless the
    operator asks otherwise.

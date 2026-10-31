@@ -32966,7 +32966,7 @@ D6A_SPECS += [
     # and t2 0x100) goes to 0x2DA0C(0x2A, ..); 0x1AE20(); 0x2EA78(0xB4) (0x2CB55 EAX; 0x2CB5A EDX = 0xE is
     # loaded for the release and survives the wait, which pushes and pops EDX); 0x2F280(-1, 0xE, 0x809F0,
     # 0xB000) (0x2CB64 EAX = -1; EDX 0xE; EBX = 0x809F0 set at 0x2CB46 and ECX = 0xB000 at 0x2CB3A, both
-    # preserved by 0x2DA0C/0x1AE20/0x2EA78). All eight callees are stubs. Mask 0: `xor eax,eax` 0x2D88B
+    # preserved by 0x2DA0C/0x1AE20/0x2EA78). All seven distinct callees are stubs. Mask 0: `xor eax,eax` 0x2D88B
     # follows the one call site (0x2D886).
     Spec("config_set_defaults", 0x2CADC, [
         Case("t0", {}, {}, {0x2CCD0: 0x00000015, 0x2D974: 0x000000A4}),
