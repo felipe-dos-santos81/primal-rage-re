@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: final truth Task 5: measured gp-bowling-2 pins (N 1422, trace/moves 2159, start 97, reach 1137, 4 missing, capture 1491 frames sha 54d4c7d5..) and the capture-443 two-present scan-out allowance (pinned pair 301)
-1a56a69cbe1c68bee9b42c0eb8d9d7e3932e4ae3584f9a89eb931bb444ac2ba2
+# reason: final truth Task 7: add the measured trace-residue bank inventory (12 claimed + 10 residue + 2 reset-only + 2 never-requested)
+9603e909e82bb84e974fa9407170889d559c2319a12045687a813a2f64c4987a

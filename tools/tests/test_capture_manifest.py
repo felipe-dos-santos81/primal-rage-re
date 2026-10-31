@@ -156,6 +156,14 @@ class TestPinBaseline(unittest.TestCase):
         self.assertIn('trace-prefix-pins', by_name)
         self.assertIn('TRACE_PREFIX_PINS = {', by_name['trace-prefix-pins'])
 
+    def test_trace_residue_is_inside_the_pin_baseline(self):
+        regions = cm.pin_regions([os.path.join(ROOT, 'tools', 'audio_compare.py')])
+        by_name = {name: body for _path, name, body in regions}
+        self.assertIn('trace-residue', by_name)
+        for table in ('TRACE_CLAIMED_BANKS = {', 'TRACE_RESIDUE = {',
+                      'TRACE_RESET_ONLY = {', 'TRACE_NEVER_REQUESTED = {'):
+            self.assertIn(table, by_name['trace-residue'])
+
     def test_unbalanced_markers_are_errors(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, 'pins.txt')
