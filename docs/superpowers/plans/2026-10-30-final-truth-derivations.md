@@ -1505,10 +1505,19 @@ writes **44 entries** (43 present, 1 declared skip) and `make gate-check` reads
 preflight and the pin baseline re-pinned (reason "final truth Task 5: measured
 gp-bowling-2 pins ...").
 
-The capture is in `CAPTURE_DIRS`, so `make coverage`'s
-`GP_COV_SCENARIOS` includes it and the census will move `0x4E11C` (and the
-mode-25 passes it calls) from `NOT-HIT` to `HIT`; the re-pin is deferred to the
-coverage run that follows (COV_REASON records it).
+**Coverage.** The capture is in `CAPTURE_DIRS`, so `make coverage`'s
+`GP_COV_SCENARIOS` includes it automatically. The run re-pinned the census from
+**HIT 659 / NOT-HIT 96 / UNINSTRUMENTED 4** to **HIT 675 / NOT-HIT 80 /
+UNINSTRUMENTED 4** (`tools/coverage_baseline.txt`, reason "final truth Task 5:
+gp-bowling-2 reaches the mode-0x25 entry and its first 60 frames"), and the 16
+rows that moved are exactly the mode-`0x25` chain:
+`0x12FD8` (camera_mode_track_pair), `0x18950` (fighter_connect_query), `0x266AC`
+(game_mode_25_step), `0x38154`/`0x382C4`/`0x38434`/`0x384F8`/`0x385B0` (the
+mode-25 per-side approach/combo passes), `0x3C1C8`, `0x4A808`/`0x4A8A8` (the
+audience effects' handlers), `0x4E11C` (fight_mode25_enter), `0x4E27C`,
+`0x4E350` (the pin spawn), `0x4E5A4` and `0x4E67C` (the audience pass). No
+other row moved, and a re-run `--check` reads `no change (HIT=675 NOT-HIT=80
+UNINSTRUMENTED=4)`.
 
 `prage_000.dro` stays outside `tools/audio_compare.py`'s 29-trace inventory (the
 `GP_TRACES` list has no gp-bowling-2 entry): no audio section was measured, so
