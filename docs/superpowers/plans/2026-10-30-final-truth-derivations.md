@@ -898,3 +898,246 @@ match rule is correct and closed, but no arcade fought-win capture is claimed.
   unchanged.
 * No `make verify` (the task's scope); no port code, no game byte, no
   existing pin, no manifest entry and no `CAPTURE_DIRS` line changed.
+
+## §F4 The taken-continue branch: `0x0E` -> `0x2791C` (Task 4)
+
+**Decision: `gp-u29-continue-taken` is published and
+`gp-u29-continue-taken-oracle` is in `make verify`.** One guarded capture
+passed every session check and the new `tools/gp_continue.py check --taken`.
+The claim is that the credit-ready PRESS START prompt is **taken**: the game's
+own `flow_continue_poll` spends one credit, `b1f` becomes 1, `flow_continue_take`
+runs, and the round restarts in mode `0x0C`. The route's four harness writes
+(the two match-1 KOs and their lands byte, and the incumbent KO that opens the
+screen) are labelled: neither a fought KO nor a match win is claimed.
+
+### F4.1 The route, the press and the raw take
+
+`gp-u29-continue-taken` clones `gp-u28-continue`'s step tuple (U10's LEFT
+PLAYER ARCADE through the two match-1 KOs, then
+`('after_entry', 0x0C, 1, 10, KO_P1)`, the labelled `0x10780A = 0x78` poke that
+makes `flow_arena_ko_check` (`0x272DC`) open the screen through `flow_continue_open`
+(`0x278B0`)). It then adds one `p1.start` and a frame-keyed end
+(`gp_session.py`):
+
+```
+CONTINUE_TAKEN_PRESS = ('after_entry', 0x0E, 1, 0xA0, ('pad', ('p1.start',), 6))
+steps = gp-u28-continue's + (CONTINUE_TAKEN_PRESS, ('after_entry', 0x0E, 1, 0x100, ('end',)))
+```
+
+The press frame is derived, not tuned. `0x27B59`'s `cmp eax,0xE; jge` is the
+prompt arm: the PRESS START blink (`0x2C0F4`) is drawn only while the signed
+count `DS_00108110` is below `0x0E`. The screen opens at `f=0x14C0` with count
+`0x0F` (raw `0x278C2`) and the count decrements on the frames whose
+`DS_000EF6DC & 0x3F` is 0 (`0x27ACD..0x27AED`), so the prompt's first frame is
+`cnt=0x0D` at `f=0x1540`. The `after_entry` target is `F = 0x14C0 + 0xA0 =
+0x1560`: the injector writes the key-state byte in the spin of `f=0x155F`,
+iteration `0x1560` samples the key down (the capture's `S(0x1560)` has
+`raw=0x01000000`, `kb=0x0100`), and `0x500C4`'s one-frame debounce makes
+`0x4F644` report the newly pressed bit at `0x1561`, where the take is taken.
+`p1.start` is the F1 key slot (scan `0x3B`): its P1 byte bit 0 is the start mask
+`0x9ACBC[0] = 0x01000000` (the data table's first dword; the second is P2's
+`0x00000100`, read from `ghidra_data.bin` at DS+0x1ACBC). The 6-frame hold is
+`gp-u5-charsel`'s and the 240 s limit/game memory are `gp-u28-continue`'s.
+
+The take is `0x42F60` -> `0x2791C` (port `flow.c` headers `0x42F60`, `0x2791C`,
+`0x27A2C`):
+
+* `config_credit_ready` (`0x2C060`) is true while free play `0x105D60` or the
+  credit dword `0x105C00` is non-zero; `config_credit_zero` (`0x2CA78`) is
+  `xor eax,eax; ret`, so the spend is always `config_credit_spend(1)`
+  (`0x2CA7C`). Its `0x2CA9C` debit runs only while `DS_00104B1F` is 0 - and
+  `0x27A40` stores `b1f` **after** the poll, so the take debits `4 -> 3`.
+* `0x27A40` stores `b1f = (DS_0010810D != 0) + 1`; the incumbent is side 0
+  (`w10d=0`), so `b1f=1`.
+* `0x2791C` releases string `0x41`'s cells at row `0xA`, the PRESS START prompt
+  at row `0xC`, and `0x1C` cells at rows `0xE`/`0xF`; restores both
+  `0x27254` snapshots through `0x33B00`; calls `0x1D764` on the incumbent
+  (which clears its `+0x5A` to 0, `0x1D782`); `0x46534(DS_00104B12, -2)`;
+  stores mode `0x0C` (`0x27A15`, DX) and clears the incumbent's `+0x41` bit 4.
+* Mode `0x0C` persists: its handler `0x27380` (`game_mode_0c_step`) ends in
+  `0x272DC` and has no `DS_00104B00` store (the decomp's `FUN_00027380`; the
+  only mode-6 stores in the image are `0x25F6B`'s no-entrance round and the
+  volleyball/`0x25` exits), so the restarted round runs in `0x0C` until a KO.
+
+The frame-keyed end is `0x100` frames after the screen's entry (`f=0x15C0`), so
+the take and 0x5F frames of the restarted round are inside the replayed window.
+No new poke: the route's four writes are U28's and none lands at or after
+`0x14C0`.
+
+### F4.2 The one capture and acceptance
+
+Command, run exactly once with the host idle (load 0.29 on 20 CPUs):
+
+```
+make gp-capture scenario=gp-u29-continue-taken
+```
+
+The published capture is `data/k11-captures/gp-u29-continue-taken`: **4,446
+frames** (raw 1373..8052), 5,605 snapshots (`f=0x0005..0x15FC`, 19 game frames
+missed by the documented poller), wall 115.7 s, and poll.log sha256
+`cb0347c50cd257408b1c447c23b667991dedbf2c9ee4ce64fb9638dcc1136b9c`. All
+session checks passed: base; 8/8 steps fired; end frame reached; mode `0x27`
+after Enter; `kb == raw`; 4,446/4,446 frames written; port script v2; no
+unscripted input; 4/4 pokes written with zero races; zero skipped BIOS words;
+stopped at the end (`SIGTERM` at `f=0x15FC`, rc=0). The X record and generated
+script end at `f=0x15C0` (5568); the later SIGTERM is after the harness's
+`STOP_TAIL=60` poll. No `.failed` artifact and no second capture exists.
+
+The checker and the capture's S/I/W records measure:
+
+| Claim | Capture evidence |
+|---|---|
+| labelled incumbent KO | `W f=0x14BF addr=0010780A was=00 now=78`; mode `0x0E` opens at `f=0x14C0` with `w10d=0` and the incumbent `s0_5a=0x78` |
+| countdown to the prompt | `cnt=0x0F` at `f=0x14C0`, `0x0E@0x1500`, `0x0D@0x1540`: the prompt arm (`cnt < 0x0E`, `0x27B59`) is on screen from `0x1540` |
+| the press | `I f=0x155F step=7 press=p1.start scan=3B`; `S(0x1560) raw=01000000 kb=0100`, `S(0x1540..0x1560)` keep `cnt=0x0D` |
+| the take | `S(0x1561) mode=0x0C cred=3 b1f=1 cnt=0x0D s0_5a=0` |
+| the spend | `cred=4` through the screen (`0x14C0..0x1560`), `cred=3` from `0x1561` to the end: no `W` on `0x105C00` |
+| the restart | 155 records of mode `0x0C` after `0x1561` (`cnt` frozen at `0x0D`, `b1f=1`, `cred=3`) to the last `S(0x15FC)` |
+| the route's writes only | `W f=0x489 00108106`/`0010789E`, `W f=0x857 0010789E`, `W f=0x14BF 0010780A`, all `late=0 race=0`; nothing at or after `0x14C0` |
+
+The route's absolute frames are `+10` against `gp-u28-continue` (`W 0x489` vs
+`0x47F`, mode `0x27` at `0x13B` vs `0x131`): the U29 capture's raw window starts
+14 presents earlier (1373 vs 1387), so the boot's Enter and every later frame
+sit ten game frames later. The `after_entry` anchors are relative, so the route
+is unchanged; the trace's zero differences through `0x15C0` are the measured
+confirmation (below).
+
+### F4.3 The checker (`tools/gp_continue.py check --taken`)
+
+`check` (expiry) is unchanged; `--taken` selects the new branch and is accepted
+only with `--scenario gp-u29-continue-taken`. It proves, from the capture's
+records alone:
+
+* the first mode-`0x0E` run has `w10d=0`, `cred=4`, `b1f=0` (the screen's
+  `0x278BC` store) and the incumbent `+0x5A=0x78` in every record;
+* the new countdown values are exactly `0x0F -> 0x0E -> 0x0D`; the last screen
+  record is the prompt frame (`cnt=0x0D < 0x0E`);
+* the take is the first record after the screen: mode `0x0C`, `cnt=0x0D`,
+  `cred=3`, `b1f=1` and the incumbent `+0x5A=0` (`0x1D764`'s clear);
+* at least `0x20` post-take mode-`0x0C` records with `cnt` frozen at the take's
+  value and `cred=3`/`b1f=1` to the end: the `0x27A2C` countdown stopped and the
+  round restarted;
+* the W rule (plan ruling R-P10): exactly one `0x10780A=0x78` write **before**
+  the screen opens; no write to the credit dword `0x105C00..+3`; no `W` at or
+  after the screen's open (the take is not poke-induced); every `W` address is
+  one of the route's three (`0x108106`, `0x10789E`, `0x10780A`) and each
+  address's write count is the route's (`1`, `2`, `1`), so a new poke and a
+  duplicate write both fail the check.
+
+The prompt/countdown **cells' pixels** are not state fields: `0x2F388`/
+`0x2C088` clear the text cells, and the capture's `cnt` freezing is the
+checker's witness that the handler stopped. The cleared-screen pixels are the
+frame oracle's claim (`gp_compare`), exactly as §L5 said of the prompt's pixels.
+
+`path --taken` reproduces the capture's four milestones on the fields
+`gp_trace_line` carries (`mode`, `w10d`, `cnt`, `cred`, `b1f`, `b25`):
+`f=0x14C0/0x1500/0x1540` (mode `0x0E`, `cnt 0x0F/0x0E/0x0D`) and `f=0x1561`
+(mode `0x0C`, `cnt=0x0D`), 4/4 on the port's replay.
+
+The tests (`tools/tests/test_gp_continue.py`, 28 tests) reject the expiry-only
+U28 shape and a synthetic no-take through `check --taken`, and each distinct
+rule has its own failing case: a credit write, a poke at/after the screen, an
+unknown route write, a missing incumbent poke, an uncleared `+0x5A`, a take
+holding `cred=4` or `b1f=0`, a take at `cnt=0x0F` (no prompt frame), a short
+post-take window and a reopened screen; the taken path fails on a no-take
+capture and on a port `b1f` difference. The U28 evidence/path tests and their
+messages are unchanged. The real expiry capture is rejected by the same check
+(`gp_continue.py check --taken --scenario gp-u29-continue-taken --capture
+data/k11-captures/gp-u28-continue`: `f=18C2 has mode 15 after the 0x0E screen,
+not the 0x2791C take's mode 0x0C`).
+
+### F4.4 Replay, frame measurement and pins
+
+The replay reaches the script end and records its own miss set,
+`k_miss_gp_u29_continue_taken` (`port/tests/test_platform.c`): `0x29D60`
+(bare `ret`, hits=1) and `0x5D812` (runtime stub, hits=3), both from
+`frontend_mode_1b_step`; the global `0x5D812 actor_spawn`/`set_dead` rows are
+the fight's, as `gp-u28-continue`'s. The dump has **3,650 presented frames**
+(0..3649); trace and moves agree through the end (`f=0x15C0 = 5568`), 5,236
+frames compared with 19 capture frames lacking a snapshot, zero differences:
+`GP_U29_TRACE_MIN_FIRST` and `GP_U29_MOVES_MIN_FIRST` are 5569.
+
+Frame measurement:
+
+* window start **100** (raw 1737);
+* the first unexplained frame is capture **4380** (raw 7984), nearest port
+  3649, rows 128..199 - inside the harness's `STOP_TAIL` past the X
+  (`f=0x15C0`), so the whole prompt/countdown/take and the post-take round are
+  below it;
+* reach **3649** (the dump's last presented frame), **12** canonical non-black
+  missing classes: `[9, 11, 92, 129, 132, 219, 220, 809, 1019, 1083, 1926,
+  2008]`;
+* capture **346** (raw 2823), the round-1 mode-8 entry's two-segment scan-out,
+  is one `SCAN3_ALLOWED` name: rows 0..1 are port 218's (the only earlier
+  holder of those bytes) and rows 2..199 port 221's, bound through the vacuous
+  middle pair (220, 221); ports 219/220 are unexhibited. The top-2-row bytes
+  are U28's, so the recipe's sha is the same
+  `2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd`.
+
+Measured pins:
+
+| Pin | Value |
+|---|---:|
+| `GP_U29_MIN_FIRST` | 4380 |
+| `GP_U29_TRACE_MIN_FIRST` / `GP_U29_MOVES_MIN_FIRST` | 5569 / 5569 |
+| `GP_U29_MAX_START` | 100 |
+| `GP_U29_MIN_REACH` | 3649 |
+| `GP_U29_MAX_MISSING` | 12 |
+| `GP_U29_CAPTURE_FRAMES` | 4446 |
+| `GP_U29_CAPTURE_SHA256` | `cb0347c50cd257408b1c447c23b667991dedbf2c9ee4ce64fb9638dcc1136b9c` |
+
+Every pin was moved one step in its failing direction and restored:
+
+| Mutation | Observed failure |
+|---|---|
+| `MIN_FIRST 4380 -> 4381` | `first unexplained 4380 < ratchet N 4381` |
+| `TRACE_MIN_FIRST 5569 -> 5570` | `N 5570 > end 5569: N is unreachable` |
+| `MOVES_MIN_FIRST 5569 -> 5570` | the same unreachable-N failure on moves |
+| `MAX_START 100 -> 99` | `window starts at capture 100 (raw 1737) > pinned start 99` |
+| `MIN_REACH 3649 -> 3648` | `window reach port 3649 > pinned reach 3648; re-pin to 3649` |
+| `MAX_MISSING 12 -> 13` with `PR_PINS_EXACT=1` | `12 missing class(es) < pinned 13; re-pin to 12` |
+| capture SHA final digit `9 -> d` | capture identity mismatch (poll.log sha) |
+| `CAPTURE_FRAMES 4446 -> 4445` | capture identity mismatch (4,446 actual frames) |
+| scan-out top hash last digit `d -> e` | `allowed capture 346 (raw 2823) is not its named three-frame scan-out` and `FIRST UNEXPLAINED capture 346` |
+
+`tools/tests/test_gp_compare.py` gains the two-segment recipe's fixture case
+(`test_u29_two_segment_recipe_rejects_one_mutated_bound_byte`): the tuple is
+pinned, the fixture explains the frame and one mutated bound byte of the bottom
+holder returns `no unique adjacent port pair`. The 94 `test_gp_compare` tests
+pass; the real dump's hash mutation above is the manual proof on the capture.
+
+### F4.5 Coverage, manifest and verification
+
+The capture is in `CAPTURE_DIRS`, so `make coverage`'s
+`GP_COV_SCENARIOS = $(filter-out gp-pads gp-u17-device2,$(notdir ...))` includes
+it automatically: the coverage driver is extended, and the census was re-pinned
+from the measured hit dump. The run's split is **HIT 659 / NOT-HIT 96 /
+UNINSTRUMENTED 4** (was 657/98/4). The task's expectation was `0x2791C` alone
+(98 -> 97); the measured union improves **two** rows, and the second is the
+take's own callee: `0x2791C` (flow_continue_take) and `0x33B00`
+(fighter_state_33b00, the snapshot restore `0x2791C` calls for both sides -
+`0x27994..0x2799A`; no earlier capture replayed it, because the expiry route
+never takes). No other census row moved. The baseline reason is "final truth
+Task 4: gp-u29-continue-taken improves 0x2791C and 0x33B00 (the 0x2791C take
+and the snapshot restore it calls; HIT 659 / NOT-HIT 96 / UNINSTRUMENTED 4)",
+and a re-run `--check` reads `no change`.
+
+`tools/capture_manifest.py --generate` writes **43 entries** (42 present, 1
+declared skip) and `make gate-check` reads **42/43 captures present, one
+missing**, the declared U14 gap, with the manifest, the verify preflight and the
+pin baseline (`b5cc953efeb550ca03404cee7b183f386f447865f0a914cb551e46c8fb1e243a`,
+reason "final truth Task 4: measured gp-u29-continue-taken pins ... and the
+capture-346 two-segment scan-out allowance") green.
+
+`PR_PINS_EXACT=1 make gp-u29-continue-taken-oracle` is green, including the
+evidence checker, the replay/miss set, the frame/order/coverage, trace/moves and
+the 4-milestone path. The affected Python suites (`test_gp_continue`,
+`test_gp_session`, `test_gp_compare`, `test_gp_capture`,
+`test_capture_manifest`) pass; no game or port implementation file changed, no
+other capture's oracle pin moved, and the full `make verify` remains Task 9.
+
+`prage_000.dro` is deliberately outside `tools/audio_compare.py`'s 29-trace
+inventory (the `GP_TRACES` list is fixed and has no gp-u29 entry): no audio
+section was measured, so no section minimum or audio claim is fabricated.
+The claim is the take and the restart, not a fought KO or a win: the route's
+KOs are harness writes and the credit spend is the game's own `0x2CA9C` debit.

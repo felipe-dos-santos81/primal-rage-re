@@ -1,4 +1,4 @@
-# reason: live truth Task 12b: gp-u27-name-entry improves 0x20860; gp-u28-continue improves 0x27254 0x278B0 0x27A2C (HIT 657 / NOT-HIT 98 / UNINSTRUMENTED 4)
+# reason: final truth Task 4: gp-u29-continue-taken improves 0x2791C and 0x33B00 (the 0x2791C take and the snapshot restore it calls; HIT 659 / NOT-HIT 96 / UNINSTRUMENTED 4)
 0x10D70 HIT
 0x10DB0 HIT
 0x10E18 HIT
@@ -251,7 +251,7 @@
 0x274FC HIT
 0x277C0 HIT
 0x278B0 HIT
-0x2791C NOT-HIT
+0x2791C HIT
 0x27A2C HIT
 0x27BA4 HIT
 0x27C48 HIT
@@ -416,7 +416,7 @@
 0x33A10 HIT
 0x33A68 HIT
 0x33ACC HIT
-0x33B00 NOT-HIT
+0x33B00 HIT
 0x33C18 HIT
 0x33C78 HIT
 0x33EB4 HIT
