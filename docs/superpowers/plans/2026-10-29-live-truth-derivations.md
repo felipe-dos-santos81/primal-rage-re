@@ -1225,7 +1225,8 @@ bank as a whole-section match.
 
 - **12 claimed by at least one whole-section match:** title+0x36102, selmo+0x25C,
   selmo+0x08, beach+0x08, caves+0x08, jungl+0x08, stone+0x08, snd2+0x21BFA,
-  sound+0x6EC8, sound+0x08, grave+0x1A10 and grave+0x05E4.
+  sound+0x6EC8, sound+0x08, grave+0x1A10 and grave+0x08 (the played 1,200-tick
+  section; the list said grave+0x05E4, corrected by final-truth §F7.2).
 - **10 requested but unclaimed as whole sections:** citys+0x08, conti+0x08,
   hghsc+0x08, himal+0x08, sound+0x335E, sound+0x39F4, sound+0x3E64,
   sound+0x5B88, sound+0x6CA8 and sound+0x72D4. Eight of these have at least one
@@ -1234,12 +1235,18 @@ bank as a whole-section match.
 - **4 never requested:** **grave+0x0A8C, grave+0x08, sound+0x7714 and
   konsd+0x1CCB0**. These need new captures that request them. No such capture was
   made, and no coverage is claimed for them.
-  **Superseded (final-truth record §F7.2):** the port's `S` records show
-  `grave+0x0A8C` and `grave+0x08` **were** requested at runtime in all seven
-  ending replays (bank hashes `C670CD36`/`5A56E385`); the section model cannot
-  attribute them because each start writes only the two tick-0 reset registers
-  before the anchor. They are "requested but unattributable", not never
-  requested. Only `sound+0x7714` and `konsd+0x1CCB0` are never requested.
+  **Superseded (final-truth record §F7.2, fix round 1):** the port's `S` records
+  show `grave+0x0A8C` (`C670CD36`) and `grave+0x05E4` (`13211DEB`) **were**
+  requested at runtime in all seven ending replays; the section model cannot
+  attribute those two because each start writes only the two tick-0 reset
+  registers before the played song's first key-on. They are "requested but
+  unattributable", not never requested. `grave+0x08` (`0x5A56E385`) is not
+  reset-only: it is the **claimed** 1,200-tick ending section (its `S` record
+  precedes the first key-on at frame 5472 tick 60; `parse_port` now attributes
+  from the last `S` inside [first write, anchor]). Only `sound+0x7714` and
+  `konsd+0x1CCB0` are never requested. The corrected inventory is
+  **12 claimed / 10 residue / 2 requested-but-unattributable /
+  2 never requested**.
 
 ### L11.4 Claim limits
 

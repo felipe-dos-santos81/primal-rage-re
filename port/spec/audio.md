@@ -1374,7 +1374,12 @@ caves, sound+0x5B88, sound+0x3E64), and the other **16 of `0x1C930`'s 26
 code-reachable banks are not requested or attributed in the measured cut
 windows** — the capture tails past the cut were not measured, so this is not a
 claim that the complete traces never play them. A bank not covered there is a
-named gap, never a fitted match. The later `0x31`/match sections of most traces
+named gap, never a fitted match. **Superseded** by live-truth §L11's 27-report
+inventory and final-truth §F7.2's corrected split: **12 whole-section-claimed /
+10 requested-unclaimed (bounded prefixes pinned) / 2 requested-but-unattributable
+(`grave+0x0A8C`, `grave+0x05E4`) / 2 never requested (`sound+0x7714`,
+`konsd+0x1CCB0`)**; the played 1,200-tick ending section is `grave+0x08`'s
+`0x5A56E385`, not `0x05E4`. The later `0x31`/match sections of most traces
 are unanchored because a game-frame section boundary lets the capture's tail note
 advance the driver's voice cursor; the sections that still anchor (446..480
 ticks) match. `0x1C930` and `0x1CF40` stay in `UNROWED`: a row would have to

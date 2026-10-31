@@ -200,13 +200,20 @@ to `opl_render` of `PR_AUDIO_DUMP` — determinism, not audibility.
 
 The 10 requested-unclaimed banks are all already present in existing traces;
 the whole-section mismatch is the driver's voice-rotation/tail model, not a
-missing capture. The 4 never-requested banks: `grave+0x0A8C` has no static
-request site (evidence of absence), `grave+0x08` is the fought/final path
-(U14 R1), `sound+0x7714` is gated by the `+0x42`/`+0x43` pose (true for 99
-sampled frames in `gp-u24-u16-state-t9-r5`, which can be replayed without a
-capture), and `konsd+0x1CCB0` is gated by the `0x24508` stream target. A
-no-capture residue table (bank → first-diff tick and cause class) is the
-smallest defensible closure for the 10.
+missing capture. **Superseded by the measured outcome (record §F7.2):** the 4
+never-requested premise is wrong for two banks. `grave+0x0A8C` is requested by
+the mode-0x0D `sound_voice(0x25 + (n != 0))` arm (the "dead" claim holds only
+for a literal `0x26` constant), `grave+0x08` is the **claimed** 1,200-tick
+ending section (`0x5A56E385`, id `0x2A`, reached by the mode-0x0D `n == 7` arm
+in the poked endings — not gated by U14 R1), and `grave+0x05E4` is the
+reset-only second of that pair. `sound+0x7714` is requested by three reaction
+callbacks behind the shared `+0x42`/`+0x43` gate (the t9-r5 replay reaches
+`r0=0x33` but the gate fails; the "99 sampled frames" is the exact
+`s1_42 == 0x8830` count, 99 `S` rows), and `konsd+0x1CCB0` is gated by the
+`0x24508` stream target. The corrected inventory is **12 claimed + 10 residue +
+2 requested-but-unattributable (`0x0A8C`, `0x05E4`) + 2 never requested
+(`0x7714`, `0x1CCB0`)**; a no-capture residue table (bank → first-diff tick and
+cause class) is the smallest defensible closure for the 10.
 
 ### 3.6 U17, taken-continue, movie audio
 
@@ -355,7 +362,9 @@ except by re-measurement; fitting a tolerance or a cause.
 
 The register is built in Task 8; the expected terminal set is U14's arcade
 fought win (R1), 0x21 if the `+0x1C` derivation closes it, 0x25 if the
-staggered run fails, rendered audibility, the 10/4 audio-bank residue, U17's
+staggered run fails, rendered audibility, the 12/10/2/2 audio-bank residue
+(record §F7.2: 12 claimed + 10 residue + 2 requested-but-unattributable +
+2 never requested), U17's
 wall-paced replay, the differential 20/13/8, the 4 UNINSTRUMENTED/98 NOT-HIT,
 the storage items, movie audio (zero-payload), and the 53/37/315
 classification. `0x2CADC` and 5120 are closed if the conditional tasks

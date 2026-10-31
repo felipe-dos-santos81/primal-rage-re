@@ -487,11 +487,14 @@ consolidation gate).
   the 26 code-reachable banks are claimed by whole-section matches, 10 are requested
   but unclaimed as whole sections** (some have the bounded prefix claim), and **2 are
   requested at runtime but unattributable by the section model** (grave+0x0A8C and
-  grave+0x08: every ending replay starts them for two tick-0 writes before the
-  section anchor, so the S records prove the request and the section model cannot
-  attribute it — live-truth §L11.3's "4 never requested" is corrected by final-truth
-  record §F7.2), and **2 are never requested** — sound+0x7714 (the reaction-0x32
-  callback `0x37640`; the t9-r5 replay never applies reaction 0x32) and
+  grave+0x05E4: every ending replay starts them for two tick-0 reset writes before the
+  played song's first key-on, so the S records prove the request and the section model
+  cannot attribute it — live-truth §L11.3's "4 never requested" is corrected by
+  final-truth record §F7.2; the played 1,200-tick section is grave+0x08's
+  `0x5A56E385`, whose S record precedes its first key-on), and **2 are never
+  requested** — sound+0x7714 (three reaction callbacks `0x37640`/`0x37774`/`0x37898`
+  request it behind the shared `+0x42` bit-5/`+0x43` bit-3 gate; t9-r5 reaches
+  `r0=0x33` but the gate fails) and
   konsd+0x1CCB0 (the `0x24508` handler) — and need new captures; the 10 rows are
   pinned in `TRACE_RESIDUE` with their first-diff tick and measured cause class
   (`voice-rotation`/`tail-lag`) in the `trace-residue` pin region; the unmatched

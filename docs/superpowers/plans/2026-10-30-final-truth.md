@@ -384,9 +384,11 @@ and declare rendered audibility terminal.
    (`voice-rotation` vs `tail-lag`), measured from the existing 27 reports.
    Pin it in its own `PIN-BASELINE` region; the region guard and the
    mutation test (move one first-diff tick one earlier) fail.
-2. The 4 never-requested: `grave+0x0A8C` dead (no static request site),
-   `grave+0x08` gated by U14 R1, `sound+0x7714` gated by the `+0x42`/`+0x43`
-   pose, `konsd+0x1CCB0` gated by the `0x24508` stream. Record the evidence.
+2. The 4 never-requested (superseded by the measured outcome, record §F7.2:
+   the pair is `grave+0x0A8C` + `grave+0x05E4`, requested-but-unattributable;
+   `grave+0x08` is the claimed 1,200-tick section; `sound+0x7714` is gated by
+   the shared `+0x42`/`+0x43` pose behind three reaction callbacks, and
+   `konsd+0x1CCB0` by the `0x24508` stream). Record the evidence.
 3. Replay the existing `gp-u24-u16-state-t9-r5` artifact with `PR_AUDIO_DUMP`
    (no new capture); if the `0xE4` bank fires, add the section/pin; otherwise
    declare it.
@@ -414,7 +416,9 @@ docs agree.
    gap | status (closed/gated/terminal) | evidence (address/file:line or
    capture/frame) | terminal reason | residual claim.
 2. Include: U14 R1; 0x21; 0x25; `0x0E` taken-continue; 5120; rendered
-   audibility; the 10/4 audio banks; U17; U16 R2/finisher; the differential
+   audibility; the 12/10/2/2 audio banks (record §F7.2: 12 claimed + 10
+   residue + 2 requested-but-unattributable + 2 never requested); U17; U16
+   R2/finisher; the differential
    20/13/8; the coverage 4/98; storage; movie audio; the 53/37/315
    classification; the oracle window/model limits; the `0x2CADC` deviation
    if aborted.

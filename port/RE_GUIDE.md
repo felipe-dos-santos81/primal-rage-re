@@ -458,4 +458,11 @@ true original, and ported the divergence. Two pieces:
   (§D6) renders 439.9915 Hz (measured 439.0000 Hz) within the 1.7586 Hz
   derived tolerance. Live truth Task 11 pins **74 diff-allowed audio section
   prefixes / 29,656 leading matched ticks**; unmatched remainders and rendered
-  audibility stay named (record §L11).
+  audibility stay named (record §L11). Final truth Task 7 re-derives the CC7
+  latch and pins the bank residue: the inventory is **12 claimed + 10 residue +
+  2 requested-but-unattributable (`grave+0x0A8C`, `grave+0x05E4`) + 2 never
+  requested (`sound+0x7714`, `konsd+0x1CCB0`)** — the `0x05E4/0x08` split is
+  the measured `S`-record one (the played 1,200-tick section is `grave+0x08`),
+  and the `TRACE_RESIDUE`/`TRACE_BANK_KEYON`/`TRACE_RESET_ONLY` tables are in
+  the `trace-residue` pin region (record `2026-10-30-final-truth-derivations.md`
+  §F7).

@@ -161,7 +161,8 @@ class TestPinBaseline(unittest.TestCase):
         by_name = {name: body for _path, name, body in regions}
         self.assertIn('trace-residue', by_name)
         for table in ('TRACE_CLAIMED_BANKS = {', 'TRACE_RESIDUE = {',
-                      'TRACE_RESET_ONLY = {', 'TRACE_NEVER_REQUESTED = {'):
+                      'TRACE_RESET_ONLY = {', 'TRACE_BANK_KEYON = {',
+                      'TRACE_NEVER_REQUESTED = {'):
             self.assertIn(table, by_name['trace-residue'])
 
     def test_unbalanced_markers_are_errors(self):

@@ -1871,7 +1871,8 @@ int test_ail(void)
     /* 4f. The CC7 latch is time-dependent, and it is the raw's own arithmetic
      *     (record named-gaps-f §F.5, re-derived in final-truth record §F7):
      *     0x68AB0's CC7 arm calls 0x688E0 with seq+0xD0 (raw 0x68B07; the
-     *     decomp's `param_1 + 0x34` is wrong), whose 0x68A48 store logs the
+     *     decomp's `param_1 + 0x34` is the same byte offset on an `int *`),
+     *     whose 0x68A48 store logs the
      *     RAW CC7 at seq+0x350+ch*4; 0x68C8B..0x68CAD then scale it by the
      *     sequence volume of that moment (seq+0x34) and hand the scaled value
      *     to the driver, which holds it until 0x69320 re-sends the raw log
