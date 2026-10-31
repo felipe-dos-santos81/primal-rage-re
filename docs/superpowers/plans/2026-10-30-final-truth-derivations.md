@@ -1339,3 +1339,179 @@ A one-sided route cannot produce (1) (§F5.1), and no poke can (§F5.3's gate is
 the game's own), so the route stays the symmetric move-0 route with 4-5
 attempts at the measured 150-frame spacing.
 
+
+### F5.5 The one capture and the measured trigger
+
+Command, run exactly once with the host idle (load 0.36 on 20 CPUs):
+
+```
+make gp-capture scenario=gp-bowling-2
+```
+
+The published capture is `data/k11-captures/gp-bowling-2`: **1,491 frames**
+(raw 1381..4030), **2,207 snapshots** (`f=0x0005..0x08A9`; 6 game frames missed
+by the documented poller), wall 58.4 s, and poll.log sha256
+**`54d4c7d506c0835f8f94e1270029348cbb529d6313ba5759c0f69fe3134ad3b3`**. All ten
+session checks pass: base; **28/32 steps fired, `stopped on mode 0x25`**; end
+frame reached; mode `0x27` after Enter; `kb == raw` (0 differ); 1,491/1,491
+frames written; port script v2; no unscripted input; 0/0 pokes with zero races;
+zero skipped BIOS words; stopped at the end (`SIGTERM` at `f=0x8AA`, rc=0). The
+X record is `f=0x86E` (the entry + the 60-frame stop delay). No `.failed`
+artifact and no second capture.
+
+The route played **four** attempts and the fourth opened the mode: 28 = the 12
+base steps + 4 × 4 attempt steps, so the fifth attempt never fired. The
+measured trigger:
+
+| Claim | Capture evidence |
+|---|---|
+| both reactions | `r0=r1=0x22` from `f=0x5EA` |
+| the counter | `b892` 0→**1** @`0x5EF`, 1→**3** @`0x692`, 3→**5** @`0x728`, 5→**7** @`0x7BE`; 0 at the entry |
+| the `+0x53` lattice | attempt 1: `7` @`0x5EA..0x621` (56 samples), `0`, `4`, `0`; attempt 2: `7` @`0x680..0x691` (18), `0x0A` @`0x692..0x6E0` (79), `0x0B` @`0x6E1..0x705` (37), `0`; attempt 3: `7` @`0x716..0x75A` (69), `0`, `4`, `0`; attempt 4: `7` @`0x7AC..0x7BD` (18), `0x0A` @`0x7BE..0x80C` (79), `0x0B` @`0x80D..0x831` (37), **`0` at `0x832` = the entry** |
+| the camera | `camx` **-1433..4887** over the fight's 713 mode-6 snapshots, **-606** at the entry (the gate is `±0x3300 = ±13056`) |
+| the entry | `f=0x832` mode `0x25`, `b892=0`, `s0_53=0x0C`, `b8c4=1`, `b8a6=0xB4`, `b8bd=b415=0`, `b8c0=1`, `b1f=3`, `b1d=0`, `c0=c1=4`, `b25=0`; 120 mode-`0x25` snapshots to `f=0x8A9` |
+| no poke | **0** `W` records |
+
+**The residue is settled: the count, not the camera.** The three-attempt route
+stopped at 5; the fourth attempt's +2 reached 7 and the mode opened on the
+first frame whose `+0x53` was 0. The camera never approached its gate
+(`-1433..4887` against `±13056`), and the fifth attempt was margin that was not
+needed.
+
+**Plan-vs-raw corrections (the measurement wins; §F5.2/§F5.3 are corrected
+here):**
+
+1. **`+0x53` is not held at `7` for 91 frames.** Its writers are not all behind
+   the `0x3531C` dispatcher: the pose arming `0x39F7F`/`0x3A98A` stores `0x0A`,
+   the knockdown floor `0x347B8` stores `0x0B` (`0x3484C`), the attack consumer
+   `0x3BDDC` stores `4` (`0x3BF16`) and the launch `0x3BC70` stores `0`
+   (`0x3BC97`). The measured `7` windows are 18, 56 and 69 samples long, then
+   `0x0A`/`0x0B`; the §F5.2 derivation's "nothing else can clear it" was wrong.
+   The 91-frame `0x367DC` clear (`+0x88 > 0x5A`) was never reached in this
+   route.
+2. **The gate's zero came from the get-up, not the `0x367DC` clear.** Attempt
+   4's `+0x53` left `0x0B` for `0` at `f=0x832` (the get-up's `0x35D6C`:
+   `if (+0x53 != 0x0D) +0x53 = 0`), 116 frames after the last increment. So
+   §F5.3's "the count must reach 6 at the clear frame" holds in the weaker,
+   measured form: the count must be `>= 6` at the **first frame after the
+   window where slot 0's `+0x53` is 0**, whenever that frame is. The count had
+   been `7` since `0x7BE`, and the entry is the first such zero.
+3. **The entry snapshot's `s0_53` is `0x0C`, not 0.** `0x4E11C`'s own
+   `0x38154(side)` writes it: the flag-clear arm stores `0x0C` and the
+   flag-set arm runs `0x367DC` (0). The `0x263DE` gate's `0` is read earlier in
+   the same iteration and is not in the end-of-frame snapshot. The checker
+   accepts `{0, 0x0C}` and prints the measured value.
+
+### F5.6 The checker, the allowance, the oracle and the pins
+
+`tools/gp_bowling.py check --staggered` (its own branch; `check` for the old
+route is unchanged) proves from the capture's records alone: no `W`; 3..10
+state-9 rising edges per side (`>= 3` the live-truth minimum, `<= 10` = the
+route's five attempts × the two per attempt both prior captures measured); the
+counter's visible maximum `>= 6` (the fourth attempt's increments over the
+three-attempt route's measured 5); every increase `<= 2` (the two `0x45158`
+hooks, one `inc word [0x88892]` each per frame); every decrease exactly the
+rejection arm's `-1` from `>= 6` at a frame whose `s0_53` is 0
+(`0x4E131`/`0x4E189` only run behind the `0x263DE` gate); at least one
+pre-entry `s0_53 = 7` (the reaction window); the `b8c4` 0 → 1 transition; the
+entry's `s0_53 in {0, 0x0C}`, `camx` signed within `±0x3300`, and every
+`fight_mode25_enter` store; real pad input on both sides and `r0=r1=0x22`.
+The CLI pins the scenario name (`--scenario`, default `gp-bowling-2`) and the
+poll.log sha (`--capture-sha256`). `tools/tests/test_gp_bowling.py` runs **25
+tests** (10 new): the four-attempt crossing, the count one short, the camera
+inside/outside at both ends, the rejection shapes (a valid `7→6` at
+`s0_53=0`, a `7→6` at `s0_53=7`, a `5→4`, a `7→5`), a `+3` frame, the edge
+bounds (2 and 12), the missing window, both entry writes (`0`, `0x0C`) and two
+wrong ones (`7`, `0x0B`), the poke, the CLI and the prior artifacts. Both
+preserved artifacts still exit 1 with the recorded verdict, now with the
+residue appended:
+
+```
+gp_bowling: gp-bowling.failed: evidence: FAIL: mode 0x25 never observed (b892 max 2 in mode 6), camx not sampled (pre-Task-5 capture)
+gp_bowling: gp-bowling-fix.failed: evidence: FAIL: mode 0x25 never observed (b892 max 5 in mode 6), camx not sampled (pre-Task-5 capture)
+```
+
+**The frame allowance.** Capture **443** (raw 2896), the second wipe-in's first
+presented frame, is the only frame the two-frame model cannot answer in the
+window: its rows 0..18 are black, rows 19..32 are port 301's (`f=0x4DD`
+tick=`0x5CD` mode=`0x1B`) and rows 33..199 are port 302's (`f=0x4DE`
+tick=`0x5D3` mode=`0x1B`) — a scan-out that spanned two presents, the SCAN3
+class. Its byte layout repeats at ports 31 and 255 (the first transition's
+identical wipe), so the measured occurrence 301 is the entry's pinned fifth
+field:
+
+```
+SCAN3_ALLOWED['gp-bowling-2'] = ((443, 19, 33,
+    '558052a232c34e9c3607aab24451e103c2c7062885013197af9270ef18924539', 301),)
+```
+
+Named limits (as §G6): the top rows are bound by hash and by the *existence* of
+an earlier holder (many all-black frames hold them) and the row splits 19/33 are
+capture-pinned bytes — the presents' timing is not claimed. Its neighbours are
+a splice (442, the loader strip) and a two-frame `(302, 303)` splice at row 61
+(444). A real-dump mutation proof flipped one byte of port 301's bound rows
+(`frame_00301.ipx` offset `25*320+300`): the allowance reported
+`pinned adjacent port pair 301/302 does not bind its rows [19,33) and [33,200)`,
+the frame became `FIRST UNEXPLAINED capture 443` and the ratchet failed
+(`first unexplained 443 < ratchet N 1422`); the original dump was not modified.
+`tools/tests/test_gp_compare.py` pins the tuple and proves the pinned-occurrence
+model on a fixture (two identical pairs: unpinned ambiguous, wrong pin refused,
+measured pin accepted).
+
+**The replay and the pins.** The replay reaches the X record (`f=0x86E`) and
+records its own miss set, `k_miss_gp_bowling` (`port/tests/test_platform.c`):
+`0x29D60` (bare `ret`, hits=1) and `0x5D812` (runtime stub, hits=1), both from
+`frontend_mode_1b_step`; the global `0x5D812 actor_spawn`/`set_dead` rows are
+the fight's. The dump has **1,138 presented frames** (0..1137); trace and moves
+agree through `f=0x86E = 2158` with zero differences (1,845 frames compared from
+`f=134` on, 6 capture frames without a snapshot). Frame
+measurement: 1,318 classified (726 clean, 588 splice, 2 transition, 1
+scan3-allowed, 8 all-black, 1 unexplained), 0 order failures.
+
+| Pin | Measured value | Evidence |
+|---|---:|---|
+| `GP_BOWLING_MIN_FIRST` | **1422** | first unexplained capture 1422 (raw 3962), the port dump's post-script tail; the entry is capture **1370**, so the frame claim covers it and 51 frames after it |
+| `GP_BOWLING_TRACE_MIN_FIRST` / `GP_BOWLING_MOVES_MIN_FIRST` | **2159** / **2159** | 0 differing through 2158 (`f=0x86E`, the X record) |
+| `GP_BOWLING_MAX_START` | **97** | window starts at capture 97 (raw 1735) |
+| `GP_BOWLING_MIN_REACH` | **1137** | highest exhibited port index (the dump's last presented frame) |
+| `GP_BOWLING_MAX_MISSING` | **4** | canonical non-black missing classes `[9, 11, 68, 255]` through port 1137 |
+| `GP_BOWLING_CAPTURE_FRAMES` | **1491** | stored capture frames |
+| `GP_BOWLING_CAPTURE_SHA256` | **`54d4c7d5...4ad3b3`** | full value above |
+
+Every pin was moved one step in its failing direction and restored:
+
+| Mutation | Observed failure |
+|---|---|
+| `MIN_FIRST 1422 -> 1423` | `first unexplained 1422 < ratchet N 1423` |
+| `TRACE_MIN_FIRST 2159 -> 2160` | `N 2160 > end 2159: N is unreachable` |
+| `MOVES_MIN_FIRST 2159 -> 2160` | the same unreachable-N failure on moves |
+| `MAX_START 97 -> 96` | `window starts at capture 97 (raw 1735) > pinned start 96` |
+| `MIN_REACH 1137 -> 1136` with `PR_PINS_EXACT=1` | `window reach port 1137 > pinned reach 1136; re-pin to 1137` |
+| `MIN_REACH 1137 -> 1138` | `window reach port 1137 < pinned reach 1138` |
+| `MAX_MISSING 4 -> 5` with `PR_PINS_EXACT=1` | `4 missing class(es) < pinned 5; re-pin to 4` |
+| capture SHA final digit `3 -> 4` | capture identity mismatch (poll.log sha) |
+| `CAPTURE_FRAMES 1491 -> 1490` | capture identity mismatch (1,491 actual frames) |
+| one bound byte of port 301 | `allowed capture 443 ... is not its named three-frame scan-out` + `FIRST UNEXPLAINED capture 443` |
+
+`PR_PINS_EXACT=1 make gp-bowling-oracle` is green: the checker, the replay/miss
+set, the frame/order/coverage and the trace/moves ratchets. The claim is narrow
+like the other gp oracles: no under-render detection inside the window, order
+and per-frame coverage not claimed; the `b892`/`s0_53`/`camx` series are the
+checker's capture-side claim (they are not in the compare's trace/move field
+sets), and the mode-0x25 entry is claimed by the trace's `mode` field at
+`f=0x832` plus the checker's stores. `tools/capture_manifest.py --generate`
+writes **44 entries** (43 present, 1 declared skip) and `make gate-check` reads
+**43/44 captures present**, the declared U14 gap, with the manifest, the verify
+preflight and the pin baseline re-pinned (reason "final truth Task 5: measured
+gp-bowling-2 pins ...").
+
+The capture is in `CAPTURE_DIRS`, so `make coverage`'s
+`GP_COV_SCENARIOS` includes it and the census will move `0x4E11C` (and the
+mode-25 passes it calls) from `NOT-HIT` to `HIT`; the re-pin is deferred to the
+coverage run that follows (COV_REASON records it).
+
+`prage_000.dro` stays outside `tools/audio_compare.py`'s 29-trace inventory (the
+`GP_TRACES` list has no gp-bowling-2 entry): no audio section was measured, so
+no audio claim is fabricated. The claim is the trigger and the entry, not the
+bowling scoreboard: the capture holds 120 mode-`0x25` snapshots and the frame claim
+reaches capture 1421 (the entry + 51), and nothing past it is claimed.
