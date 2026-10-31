@@ -328,6 +328,10 @@ class TestKO(unittest.TestCase):
     entry that no poke wrote and that did not time out, and the result naming
     the winner."""
 
+    def test_the_ko_fields_are_the_shared_session_tuple(self):
+        # gp_session.KO_POKES is the one tuple: gp_twop and gp_win must not diverge
+        self.assertIs(gt.KO_POKES, gs.KO_POKES)
+
     def test_a_hand_dealt_ko_passes_and_reports_death_done(self):
         r = gt.ko(_ko_log(), winner=0)
         self.assertEqual(r['fail'], [])
@@ -520,6 +524,120 @@ class TestKO(unittest.TestCase):
                     rc = gt.main()
         self.assertEqual(rc, 0)
         self.assertIn('hand-dealt KO: ok', stdout.getvalue())
+
+
+def _win_log(second_ko=True, timeout=False, result_w2=2, result_w3=0, result_ad4=0,
+             round1_w2=1, round1_w3=0, winner_ko=False, poke=None, x=True):
+    """A two-human fought 2-0 match win: both rounds' live s1_5a -> 0x78, the round
+    result (mode 8) and the match result (mode 9), and an X record. Builds on _s()."""
+    L = [_s(f, mode=0x10, b1f=1) for f in range(0x2F0, 0x300)]
+    L += [_s(f, mode=0x10) for f in range(0x300, 0x310)]
+    L += [_s(0x400, mode=5, e2=0xA000)]                    # character 1's entrance
+    L += [_s(0x500, held=0x10002000),                      # both sides press in the fight
+          _s(0x501, new=0x02000400, held=0x02000400)]
+    L += [_s(0x510, mode=6, b1f=3, s1_5a=0x10),
+          _s(0x520, mode=6, b1f=3, s1_5a=0x78, w2=1)]
+    L += [_s(0x530, mode=8, b1f=3, s1_5a=0x78, w2=round1_w2, w3=round1_w3,
+             ad4=0xFFFFFFFF)]
+    if timeout:
+        L += [_s(0x535, mode=7, b1f=3, s1_5a=0x40, w2=round1_w2, w3=round1_w3)]
+    if second_ko:
+        L += [_s(0x600, mode=6, b1f=3, s1_5a=0x10, w2=1),
+              _s(0x610, mode=6, b1f=3, s1_5a=0x78, w2=2)]
+        L += [_s(0x620, mode=9, b1f=3, s1_5a=0x78, w2=result_w2, w3=result_w3,
+                 ad4=result_ad4, s0_5a=0x78 if winner_ko else 0)]
+    if poke is not None:
+        L.append('W ms=0 f=0628 step=1 addr=%08X len=1 was=10 now=78 late=0 race=0' % poke)
+    if x:
+        L.append('X ms=0 f=0630 step=1 end')
+    return L
+
+
+class TestMatchWin(unittest.TestCase):
+    """The two-human fought match win (Final Truth Task 3, record §F3.2): a two-human
+    match whose loser's +0x5A reaches 0x78 from a live value in both rounds, with the
+    round result and the match result naming the winner and an X record. It rejects a
+    one-round win and the arcade .failed artifact (two-human clause)."""
+
+    def test_a_two_round_fought_win_passes(self):
+        r = gt.match_win(_win_log())
+        self.assertEqual(r['fail'], [])
+        self.assertEqual((r['ko'], r['round'], r['result'], r['match'], r['x']),
+                         (0x520, 0x530, 0x620, 0x620, 0x630))
+
+    def test_a_one_round_win_fails(self):
+        # the round result alone is not the match: the one-round KO leaves the match open
+        r = gt.match_win(_win_log(second_ko=False))
+        self.assertEqual(len(r['fail']), 1)
+        self.assertIn('no match result', r['fail'][0])
+
+    def test_a_timeout_fails(self):
+        r = gt.match_win(_win_log(timeout=True))
+        self.assertIn('time-out', ' '.join(r['fail']))
+
+    def test_a_ko_poke_fails(self):
+        self.assertIn('poke', ' '.join(gt.match_win(_win_log(poke=0x10789E))['fail']))
+
+    def test_a_death_done_poke_fails(self):
+        self.assertIn('poke', ' '.join(gt.match_win(_win_log(poke=0x104B0C))['fail']))
+
+    def test_the_match_result_must_be_two_zero(self):
+        self.assertTrue(gt.match_win(_win_log(result_w3=1, result_ad4=0))['fail'])
+        self.assertTrue(gt.match_win(_win_log(result_ad4=1, result_w2=0, result_w3=2))['fail'])
+
+    def test_the_winner_must_not_be_ko_d(self):
+        self.assertTrue(gt.match_win(_win_log(winner_ko=True))['fail'])
+
+    def test_a_missing_x_record_fails(self):
+        self.assertIn('no X record', ' '.join(gt.match_win(_win_log(x=False))['fail']))
+
+    def test_a_poked_second_ko_fails(self):
+        # the round-1 KO is live, but round 2's mode-6 entry is not: the live rule
+        # rejects the second KO (the match result's 0x78 has no live predecessor)
+        L = [_s(0x600, mode=6, b1f=3, s1_5a=0, w2=1)
+             if (gs.parse(l) and gs.parse(l)['f'] == 0x600) else l for l in _win_log()]
+        self.assertIn('live', ' '.join(gt.match_win(L)['fail']))
+
+    def test_the_arcade_failed_artifact_is_not_a_two_human_win(self):
+        # gp-u14-win-live.failed is a one-human arcade round (b1f 1): the two-human
+        # clause rejects it even though its KOs are the game's own
+        path = os.path.join(ROOT, 'data', 'k11-captures', 'gp-u14-win-live.failed', 'poll.log')
+        if not os.path.isfile(path):
+            self.skipTest('the .failed artifact is git-ignored')
+        with open(path) as f:
+            lines = f.read().splitlines()
+        r = gt.match_win(lines, winner=0)
+        self.assertIn('b1f never reaches 3', ' '.join(r['fail']))
+
+    def _run(self, lines, args):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+            stdout = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', d] + args):
+                with contextlib.redirect_stdout(stdout):
+                    rc = gt.main()
+        return rc, stdout.getvalue()
+
+    def test_cli_win_passes_a_two_round_win(self):
+        rc, out = self._run(_win_log(), ['--win'])
+        self.assertEqual(rc, 0)
+        self.assertIn('match win: ok', out)
+
+    def test_cli_win_rejects_a_one_round_win(self):
+        rc, out = self._run(_win_log(second_ko=False), ['--win'])
+        self.assertEqual(rc, 1)
+        self.assertIn('match win: FAIL', out)
+
+    def test_cli_win_is_mutually_exclusive_with_ko(self):
+        stderr = io.StringIO()
+        with mock.patch.object(sys, 'argv', ['gp_twop.py', 'check', '--capture', 'capture',
+                                             '--win', '--ko']):
+            with contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as cm:
+                    gt.main()
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn('not allowed with argument', stderr.getvalue())
 
 
 if __name__ == '__main__':

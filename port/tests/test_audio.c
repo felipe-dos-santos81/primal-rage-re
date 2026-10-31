@@ -1868,6 +1868,83 @@ int test_ail(void)
         AIL_stop_sequence(seq);
     }
 
+    /* 4f. The CC7 latch is time-dependent, and it is the raw's own arithmetic
+     *     (record named-gaps-f §F.5, re-derived in final-truth record §F7):
+     *     0x68AB0's CC7 arm calls 0x688E0 with seq+0xD0 (raw 0x68B07; the
+     *     decomp's `param_1 + 0x34` is the same byte offset on an `int *`),
+     *     whose 0x68A48 store logs the
+     *     RAW CC7 at seq+0x350+ch*4; 0x68C8B..0x68CAD then scale it by the
+     *     sequence volume of that moment (seq+0x34) and hand the scaled value
+     *     to the driver, which holds it until 0x69320 re-sends the raw log
+     *     (0x6A93B at a fade start, 0x699BB on every 8th service call while a
+     *     fade runs). Two channels that receive the same raw CC7 at different
+     *     points of one fade therefore hold different latched volumes: that is
+     *     the shape of the carrier-TL residual on MIDI channels 1 and 4
+     *     (audio.md "Residual"), not a fitted per-channel factor. The fade
+     *     arithmetic (1000000/120 us per service call, 500 ms * 1000 / 64 =
+     *     7812 us per volume step, 0x6A8D0) is the model 4e pins; this case
+     *     pins the latch itself, with the same raw level (100) arriving at
+     *     three different fade moments. */
+    {
+        static const u8 ev[] = { 0xB1, 0x07, 0x64,   /* tick 1: CC7 ch1 = 100 at 0x7F */
+                                 0x03,               /* 3-tick delta */
+                                 0xB4, 0x07, 0x64,   /* tick 4: CC7 ch4 = 100 mid-fade */
+                                 0x3F,               /* 63-tick delta */
+                                 0xB4, 0x07, 0x64,   /* tick 67: CC7 ch4 = 100 after it */
+                                 0x7F, 0xFF, 0x2F, 0x00 };
+        static u8 bank[64];
+        u32 call;
+
+        (void)build_xmi(bank, ev, sizeof ev);
+        seq_set_sequence_volume(0x20);               /* sentinel: init must reseed */
+        CHECK_EQ_INT(AIL_init_sequence(seq, bank, 0), 1);
+        CHECK_EQ_INT(seq_sequence_volume(), 0x7F);   /* 0x6A5B7 preference 12 */
+        AIL_set_sequence_volume(seq, 0x3F, 500);     /* 0x6A8D0: step 7812 us */
+        CHECK_EQ_INT(seq_sequence_volume(), 0x7F);   /* a fade, not a jump */
+        AIL_start_sequence(seq);
+
+        seq_tick();                                  /* call 1: ch1 arrives at 0x7F */
+        CHECK_EQ_INT(seq_channel_volume(1), 100);    /* the raw level, not 0x7F */
+        CHECK_EQ_INT(seq_channel_volume(4), 0);      /* never received a CC7 */
+        for (call = 2; call <= 3; call++) seq_tick();
+        CHECK_EQ_INT(seq_sequence_volume(), 124);    /* 3 calls: 24999 / 7812 */
+        seq_tick();                                  /* call 4: ch4 arrives at 124 */
+        CHECK_EQ_INT(seq_channel_volume(4), 97);     /* 100 * 124 / 0x7F */
+        CHECK_EQ_INT(seq_channel_volume(1), 100);    /* ch1 keeps its arrival value */
+        for (call = 5; call <= 7; call++) seq_tick();
+        CHECK_EQ_INT(seq_channel_volume(4), 97);     /* no re-send before the 8th */
+        seq_tick();                                  /* call 8: 0x69320 re-sends */
+        CHECK_EQ_INT(seq_sequence_volume(), 119);
+        /* 0x69320 re-dispatches the RAW log through 0x68AB0, so the new value
+         * is 100*119/0x7F. Rescaling ch4's latched 97 instead would give
+         * 97*119/0x7F = 90 at this re-send (the mutation the case catches);
+         * the raw store at 0x68A48 makes that impossible. */
+        CHECK_EQ_INT(seq_channel_volume(1), 93);
+        CHECK_EQ_INT(seq_channel_volume(4), 93);
+        /* 0x699BB re-sends on every 8th service call while the fade runs, and
+         * 0x69320 re-scales the raw log each time. The end-of-call sequence
+         * volume is 119, 110, 102, 93, 85, 76, 68 at calls 8..56. */
+        {
+            static const int resend_call[] = { 16, 24, 32, 40, 48, 56 };
+            static const int resend_vol[] = { 110, 102, 93, 85, 76, 68 };
+            static const int resend_latch[] = { 86, 80, 73, 66, 59, 53 };
+            u32 at = 9;
+            for (int k = 0; k < 6; k++) {
+                for (; at <= (u32)resend_call[k]; at++) seq_tick();
+                CHECK_EQ_INT(seq_sequence_volume(), resend_vol[k]);
+                CHECK_EQ_INT(seq_channel_volume(1), resend_latch[k]);
+            }
+        }
+        for (call = 57; call <= 66; call++) seq_tick();
+        CHECK_EQ_INT(seq_sequence_volume(), 0x3F);   /* call 60 reaches the target */
+        CHECK_EQ_INT(seq_channel_volume(1), 53);     /* 0x69965: no re-send at it */
+        seq_tick();                                  /* call 67: the late ch4 CC7 */
+        CHECK_EQ_INT(seq_channel_volume(4), 49);     /* 100 * 0x3F / 0x7F */
+        CHECK_EQ_INT(seq_channel_volume(1), 53);
+        CHECK_EQ_INT(AIL_sequence_status(seq), 4);
+        AIL_stop_sequence(seq);
+    }
+
     /* 5. The 8-bit -> s16 conversion is exact and lives once, in samples.c. */
     {
         static const u8 pcm8[3] = { 0, 128, 255 };

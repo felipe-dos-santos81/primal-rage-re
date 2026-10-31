@@ -392,6 +392,22 @@ SCAN3_ALLOWED = {
         # binding. The one-row top's non-unique holder is the named limit (§J8).
         (4089, 1, 66, '8eeaad13ee80ed904df9a8d600d3972f34959d6d5a0692cdbd319003b80376f6'),
     ),
+    'gp-bowling-2': (
+        # Final truth Task 5 (record §F5.5): capture 443 (raw 2896), the first
+        # presented frame of the second mode-0x1B -> mode-5 wipe-in (the claw
+        # sprite), a scan-out that spanned two presents. Rows 0..18 are black
+        # (the S records bracket the frame at f=0x4DB ms=41013 -> f=0x4DC
+        # ms=41513 and the sprite's first row is 19), rows 19..32 are port 301's
+        # (f=0x4DD tick=000005CD mode=001B) and rows 33..199 are port 302's
+        # (f=0x4DE tick=000005D3 mode=001B); the neighbours are a splice (442,
+        # the loader strip) and a two-frame splice of (302, 303) at row 61 (444).
+        # The pair's byte layout repeats at 31 and 255 (the first transition's
+        # identical wipe), so the measured occurrence 301 is pinned. Named
+        # limits (as §G6): the top rows are bound by hash and by the EXISTENCE of
+        # an earlier holder (many all-black frames hold them) and the row splits
+        # 19/33 are capture-pinned bytes — the presents' timing is not claimed.
+        (443, 19, 33, '558052a232c34e9c3607aab24451e103c2c7062885013197af9270ef18924539', 301),
+    ),
     'gp-u18-talon-ending': (
         # Capture 4099 (raw 7759): the final's mode-0x0D -> 0x0C transition (record
         # §E3), the same three-present scan as U13's 4248/4320: rows 0..63 are port
@@ -547,8 +563,24 @@ SCAN3_ALLOWED = {
         # 217 is unexhibited. The byte recipe covers this capture frame only.
         (336, 2, 10, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
     ),
+    'gp-u29-continue-taken': (
+        # Final truth Task 4 (record §F4): capture 346 (raw 2823), the same
+        # round-1 mode-8 entry's scan-out on the taken-continue route (the raw
+        # window starts at 1373, ten capture frames before gp-u28's 1387, so
+        # the frame index differs). Rows 0..1 are port 218's, the only earlier
+        # holder; the two-segment shape (the U9/gp-draw one) binds rows 2..199
+        # to port 221 through the vacuous middle pair (220, 221), port 219/220
+        # unexhibited. The top-2-row bytes are U28's, hence the same sha.
+        (346, 2, 2, '2d6fb6ad829baae61c65a844fb44f05cb51393322afdce4ab8117960e1306ddd'),
+    ),
 }
 # <<< PIN-BASELINE-END scan3
+
+# Correction to the gp-u29-continue-taken comment above (Final truth Task 8):
+# the raw window starts at 1373, which is **fourteen** capture frames before
+# gp-u28's 1387; the "+10" is the *game-frame* shift (record §F4.4). The
+# comment inside the scan3 region is left byte-identical because the pin
+# baseline hashes that region; this note is outside it and moves no pin.
 
 
 # Per-scenario named per-frame glyph-overlay allowances (record §G7): one

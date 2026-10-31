@@ -135,7 +135,9 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   precise remaining blocker is unresolved: the `+0x53` dispatcher's case-7 clear
   branch means the earlier structural-impossibility wording is not derived. The
   two `.failed` artifacts have no replay, oracle or pins, and no further execution
-  of the current route is authorized.
+  of the current route is authorized. **Superseded by Final truth Task 5 (record
+  §F5): `gp-bowling-2` opened the mode; the count, not the camera, was the
+  residue; register R06.**
 
 ### 2.6 `0x21` — volleyball stays declared
 
@@ -148,7 +150,13 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   `b1f==3` join route satisfies `DS_00104ABC>=2`. The real blockers are the
   eight-trample chain (the counter resets on landing; no capture measures that
   count, and no capture evidences a count of two or more) and the 1-in-7 stage
-  RNG. A poke can force `+0x1F=8`, but the
+  RNG. **Superseded in part by Final truth Task 6 (record §F6):** the landing
+  reset is real but is *not* a blocker — `0x4B470` re-launches on every hit and
+  `motion_step`'s lift makes the latch return on the 35 passes with `vy < 0`, so
+  the count accumulates across a flight chain (no frame-exact route is derivable
+  and no run measures a count of two or more, so the mode stays declared with no
+  capture); and the stage is a 1-in-7 `rng(7)` draw — a retry condition, not a
+  blocker (measured `m=0`/`b1f=3` at f=876 in `gp-twop` → 5). A poke can force `+0x1F=8`, but the
   state-coverage design §9 is a stop rule for a poked 1P scenario ("Do not build
   one; declare the modes with their gates"); reversing that is an operator
   decision, not this phase's call.
@@ -164,6 +172,15 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   remains stream's `0xD100` opcode, which runs on the **ending** path; the
   U14 scenario stops at mode `0x12` in match 1. The rule can never pass on
   that capture, whatever the fight does.
+
+  **Superseded by Final truth Task 3 (record
+  `docs/superpowers/plans/2026-10-30-final-truth-derivations.md` §F3.1; design
+  `docs/superpowers/specs/2026-10-30-final-truth-design.md` §3.1):** the
+  setter's only consumer is `game_mode_0d_step` (`0x274FC`), entered from the
+  **final's** seven-opponent arena (`flow_arena_ko_check` `0x272DC` via
+  `game_mode_0c_step` `0x27380`), i.e. the final's `0x0C→0x0D` chain — not an
+  ending path, and not a match-1 win (`0x09→0x17→0x12`). R1 is terminal
+  (register R04).
 - Option (a) is the smallest honest claim: replace the two-human clause with
   `b1f==1` (arcade) and keep the damage/KO clauses; run it read-only on
   `gp-u14-win-live.failed` (`ko f=898`, `w3=2`, `b0c` never 1, no `X`/`W`).
@@ -193,8 +210,11 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   from the raw bytes, the task declares the instrument gap and leaves the band
   where §D4 left it; it does not fit a cause.
 - **Execution outcome:** T10 was not taken because the fade palette source was
-  not funded. No DAC injection ran. The band stays **INCONCLUSIVE**, the cause
-  is not fitted, and the byte-pinned bounds and every pin are unchanged.
+  not funded. No DAC injection ran. The band stays **INCONCLUSIVE** in that
+  phase, the cause is not fitted, and the byte-pinned bounds and every pin are
+  unchanged. **Superseded by Final truth Task 2 (record §F2.5):
+  `gp-u13-band-dac` proves PASS-A; the band is PASS-A terminal (register
+  R02).**
 
 ### 2.9 Audio and `gp-u27`
 
@@ -264,6 +284,10 @@ is ready, and the phase keeps B/C as named follow-ups.
   proven port divergence is recorded for a follow-up, not patched.
 - **No rendered-audibility claim**; the PCM pin stays determinism.
 - **No new capture for the 4 never-requested audio banks**; they stay named.
+  **Superseded by final-truth record §F7.2:** the measured inventory is 12
+  claimed / 10 residue / 2 requested-but-unattributable (`grave+0x0A8C`,
+  `grave+0x05E4`) / 2 never requested (`sound+0x7714`, `konsd+0x1CCB0`);
+  `grave+0x08` is the claimed 1,200-tick section.
 - **No re-litigation of the terminal differential rows** or the declared
   storage/`config_field_get` items.
 
@@ -353,10 +377,13 @@ gate is last.
   strict clear. U14's failed artifact is game evidence for a fought arcade KO,
   not a capture, oracle, pin or fought-win claim.
 - `0x21` stays declared under the state-coverage stop rule. `0x25` also stays
-  declared: two real-input attempts failed, the symmetric route is blocked by
-  slot `+0x53`, and the two `.failed` artifacts have no oracle or pins.
+  declared in that phase: two real-input attempts failed, the symmetric route
+  is blocked by slot `+0x53`, and the two `.failed` artifacts have no oracle or
+  pins. **Superseded by Final truth Task 5 (register R06): `gp-bowling-2`
+  opened the mode.**
 - Task 10 was not taken; the 5120 instrument gap and INCONCLUSIVE band are
-  unchanged. Task 11 pins **74 diff-allowed audio prefixes / 29,656 ticks**;
+  unchanged in that phase. **Superseded by Final truth Task 2 (register R02):
+  PASS-A terminal.** Task 11 pins **74 diff-allowed audio prefixes / 29,656 ticks**;
   the unmatched remainders and rendered audibility stay named.
 - Task 12a reconciles the documents only. Task 12b re-pinned the census (§11);
   its manifest and pin-baseline results are recorded there. Task 13 runs the full

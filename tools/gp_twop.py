@@ -30,6 +30,12 @@ record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
                                       evidence only, not a capture pass: that artifact
                                       failed four session checks (end frame, port script,
                                       unscripted input, stopped at the end)
+  gp_twop.py check --win --capture DIR [--winner N]
+                                     a two-human fought match win (Final Truth Task 3,
+                                     record §F3.2): the KO predicate, both rounds'
+                                     loser +0x5A live-to-0x78, the round result (mode 8)
+                                     and the match result (mode 9) at 2-0, no time-out
+                                     and an X record. Not an arcade win
   gp_twop.py check --trace FILE     the same over a port trace.txt (its T records
                                     are read as S records; any file whose records
                                     are T lines is a trace)
@@ -72,9 +78,9 @@ NO_RESULT = 0xFFFFFFFF          # DS_00104AD4 = -1 (0x25A0E; the -1 store at 0x2
 # round wins (w2/w3), the match result (ad4), the death-done byte (b0c) and the
 # seven land marks (m106/m10a; gp_session.lands_marked writes them at 0x108106 with
 # len 7). A W record that covers one of these replaced the game's own write
-# (record §W.3, §W.5; gp_session.KO_P2, DEATH_DONE).
-KO_POKES = (0x10780A, 0x10789E, 0x104AF2, 0x104AF3, 0x104AD4,
-            0x104B0C, 0x108106, 0x10810A, 0x10810C)
+# (record §W.3, §W.5; gp_session.KO_P2, DEATH_DONE). The tuple is
+# gp_session.KO_POKES, shared with gp_win.KO_DEATH_POKES (no duplicated literals).
+KO_POKES = gs.KO_POKES
 
 
 def pad_word(new, held, side):
@@ -449,6 +455,119 @@ def ko(lines, winner=0, arcade=False):
     return out
 
 
+def _transitions(snaps, field):
+    """The frames where `field` reads 0x78 and the previous S record read < 0x78: one
+    per KO (the KO and its result share the iteration, record §F3.2)."""
+    out, prev = [], None
+    for f in sorted(snaps):
+        v = snaps[f][field]
+        if v == KO_VALUE and (prev is None or prev < KO_VALUE):
+            out.append(f)
+        prev = v
+    return out
+
+
+def _live_before(snaps, f, field):
+    """Whether the mode-6 entry before `f` has a live 0 < value < 0x78 record."""
+    run = []
+    for g in reversed([g for g in sorted(snaps) if g < f]):
+        if snaps[g]['mode'] != FIGHT_MODE:
+            break
+        run.append(snaps[g])
+    return any(0 < r[field] < KO_VALUE for r in run)
+
+
+def match_win(lines, winner=0):
+    """The two-human fought match win (Final Truth Task 3, record §F3.2).
+
+    Returns dict(ko, round, result, death, match, x, fail): the KO, round-result and
+    match-result frames, the first death-done transition, the match-result frame
+    (`match`), the X record's frame, and the reasons the log is not a two-human
+    fought match win of side `winner`.
+
+    The KO predicate (`ko`) supplies the two-human claim, the no-poke rule, the live
+    value for the first KO, the no-time-out check at its result and the result naming.
+    This adds what makes it a *match* win: an X record (the scenario end was
+    reached; the capture-time session checks, not this checker, decide whether it is
+    a published capture — the two-human `.failed` artifact is X-terminated and its
+    game rows pass), no mode-7 time-up anywhere, the round result (mode 8) at 1-0 with
+    ad4 = NO_RESULT, the match result (mode 9) at 2-0 for the winner with ad4 = the
+    winner, both rounds' loser +0x5A reaching 0x78 from a live 0 < value < 0x78 in a
+    mode-6 entry, and the winner's +0x5A never at 0x78. A one-round win has no match
+    result and fails (0x28024..0x2803B enters mode 9 only when the match is decided)."""
+    out = dict(ko=None, round=None, result=None, death=None, match=None, x=None, fail=[])
+    if winner not in (0, 1):
+        out['fail'].append('side %r cannot win: the slots are 0 and 1' % (winner,))
+        return out
+    loser = 1 - winner
+    wfield, lfield = ('w2', 'w3') if winner == 0 else ('w3', 'w2')
+    w5, l5 = 's%d_5a' % winner, 's%d_5a' % loser
+    k = ko(lines, winner=winner)
+    out.update(k)
+    out['fail'] = list(k['fail'])
+    if out['fail']:
+        return out
+    parsed = [r for r in (gs.parse(line) for line in lines) if r]
+    x = next((r['f'] for r in parsed if r['kind'] == 'X'), None)
+    out['x'] = x
+    if x is None:
+        out['fail'].append('no X record: the scenario end was not reached. The X clause '
+                           'proves the scenario end, not a session-passing or published '
+                           'capture; the capture-time session checks are separate')
+        return out
+    snaps = {f: r for f, r in gs.snapshots(lines).items() if f <= x}
+    recs = sorted(snaps.values(), key=lambda r: r['f'])
+    tout = next((r['f'] for r in recs if r['mode'] == TIMEOUT_MODE), None)
+    if tout is not None:
+        out['fail'].append('time-out: mode %X at f=%X before the match result: the match '
+                           'must be won by fought KOs, not the timer' % (TIMEOUT_MODE, tout))
+    res = next((r for r in recs if r['mode'] == MATCH_MODE and r['f'] >= out['ko']), None)
+    if res is None:
+        out['fail'].append('no match result (mode %X) at or after the KO at f=%X: a '
+                           'one-round win is not a match win' % (MATCH_MODE, out['ko']))
+        return out
+    out['match'] = res['f']
+    out['result'] = res['f']
+    if res['ad4'] != winner:
+        out['fail'].append('the match result at f=%X has ad4 = %X, not winner side %d%s'
+                           % (res['f'], res['ad4'], winner,
+                              ' (2 is the draw)' if res['ad4'] == 2 else ''))
+    if not (res[wfield] == 2 and res[lfield] == 0):
+        out['fail'].append('the match result at f=%X is %d-%d, not the measured 2-0 win '
+                           'of side %d (w2 = %d, w3 = %d)'
+                           % (res['f'], res[wfield], res[lfield], winner, res['w2'], res['w3']))
+    if res[l5] != KO_VALUE:
+        out['fail'].append("the match result at f=%X has the loser's %s = %X, not the KO value %X"
+                           % (res['f'], l5, res[l5], KO_VALUE))
+    if res[w5] >= KO_VALUE:
+        out['fail'].append("the winner's %s = %X at the match result f=%X: the winner was KO'd"
+                           % (w5, res[w5], res['f']))
+    rr = next((r for r in recs if r['mode'] == ROUND_MODE and r['f'] >= out['ko']), None)
+    if rr is None:
+        out['fail'].append('no round result (mode %X) at or after the KO at f=%X'
+                           % (ROUND_MODE, out['ko']))
+    else:
+        out['round'] = rr['f']
+        if rr['ad4'] != NO_RESULT:
+            out['fail'].append('the round result at f=%X has ad4 = %X, not the open match %X'
+                               % (rr['f'], rr['ad4'], NO_RESULT))
+        if not (rr[wfield] == 1 and rr[lfield] == 0):
+            out['fail'].append('the round result at f=%X is %d-%d, not side %d\'s 1-0 round'
+                               % (rr['f'], rr[wfield], rr[lfield], winner))
+        if rr[l5] != KO_VALUE:
+            out['fail'].append("the round result at f=%X has the loser's %s = %X, not %X"
+                               % (rr['f'], l5, rr[l5], KO_VALUE))
+    live = [f for f in _transitions(snaps, l5) if _live_before(snaps, f, l5)]
+    if len(live) != 2:
+        out['fail'].append("side %d's %s reaches %X from a live 0 < value < %X %d time(s), "
+                           'not twice: both rounds of the win must be fought KOs'
+                           % (loser, l5, KO_VALUE, KO_VALUE, len(live)))
+    if _transitions(snaps, w5):
+        out['fail'].append("side %d's %s reaches the KO value %X: the winner was KO'd"
+                           % (winner, w5, KO_VALUE))
+    return out
+
+
 def finisher(lines, allow_missing_reaction=False):
     """The U16 finisher evidence: a two-human log reached modes 0x09 and 0x12 and
     contains a finisher reaction (0x32..0x34) in either S record move field. When
@@ -507,18 +626,22 @@ def main():
                        help='check the U16 finisher reactions and match-end modes, as well as the two-human match')
     check.add_argument('--ko', action='store_true',
                        help="check the hand-dealt KO of one side and the result that names it (--winner)")
+    check.add_argument('--win', action='store_true',
+                       help="check a two-human fought match win: both rounds' live KO, the round and "
+                            'match results, no time-out, an X record (the scenario end; the '
+                            'capture-time session checks are separate) (--winner)')
     ap.add_argument('--allow-missing-reaction', action='store_true',
                     help='with --finisher, allow no sampled finisher reaction while still checking end modes')
     ap.add_argument('--winner', type=int, choices=(0, 1),
-                    help='with --ko, the winning side (default 0)')
+                    help='with --ko or --win, the winning side (default 0)')
     ap.add_argument('--arcade', action='store_true',
                     help='with --ko, a one-human arcade round (b1f 1) replacing the two-human clause; '
                          'its ok on a .failed artifact is game evidence, not a capture pass')
     a = ap.parse_args()
     if a.allow_missing_reaction and not a.finisher:
         ap.error('--allow-missing-reaction requires --finisher')
-    if a.winner is not None and not a.ko:
-        ap.error('--winner requires --ko')
+    if a.winner is not None and not (a.ko or a.win):
+        ap.error('--winner requires --ko or --win')
     if a.arcade and not a.ko:
         ap.error('--arcade requires --ko')
     path = os.path.join(a.capture, 'poll.log') if a.capture else a.trace
@@ -529,6 +652,17 @@ def main():
             print('%s:%d f=%X mode=%X b1f=%X cred=%X e0=%04X e2=%04X'
                   % (os.path.basename(path), n, f, m, b1f, cred, e0, e2))
         return 0
+    if a.win:
+        w = 0 if a.winner is None else a.winner
+        k = match_win(lines, winner=w)
+        print('gp_twop: %s: two-human fought match win of side %d: ko f=%s; round result f=%s; '
+              'match result f=%s; death-done f=%s; X f=%s'
+              % (name, w, _hx(k['ko']), _hx(k['round']), _hx(k['result']),
+                 _hx(k['death']), _hx(k['x'])))
+        for x in k['fail']:
+            print('gp_twop: %s: FAIL: %s' % (name, x))
+        print('gp_twop: %s: match win: %s' % (name, 'FAIL' if k['fail'] else 'ok'))
+        return 1 if k['fail'] else 0
     if a.ko:
         w = 0 if a.winner is None else a.winner
         k = ko(lines, winner=w, arcade=a.arcade)

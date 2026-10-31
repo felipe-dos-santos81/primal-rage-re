@@ -17,7 +17,8 @@ except ImportError:
 
 def _s(f, mode=6, **kw):
     vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
-    vals.update(f=f, mode=mode, b1f=3, c0=4, c1=4, t508=1, t50c=2, **kw)
+    vals.update(dict(f=f, mode=mode, b1f=3, c0=4, c1=4, t508=1, t50c=2))
+    vals.update(kw)          # a caller may override any default (the entry-store cases)
     return gs.format_s(0, vals, 0, 0x1E, 0x1E)
 
 
@@ -51,16 +52,55 @@ def _check(lines):
     return rc, out.getvalue()
 
 
+def _stagger_log(counts=(1, 3, 5, 7), window=True, entry=True, reject=None, **entry_kw):
+    """The staggered route's shape: one attempt per count entry, 150 frames
+    apart, each a +2 `b892` increment inside its `s0_53 = 7` window and two
+    state-9 edges per side; the clear at the attempt's fifth sample, then the
+    mode-0x25 entry (record §F5.2/§F5.3)."""
+    lines = [_s(0x4FF),
+             'I ms=0 f=04FF step=12 press=p1.right scan=2E lin=00000000 old=80 bios=2E63 ring=1 late=0',
+             'I ms=0 f=04FF step=12 press=p2.left scan=4B lin=00000000 old=80 bios=4BE0 ring=1 late=0']
+    f, prev = 0x500, 0
+    on = 7 if window else 0
+    for v in counts:
+        lines.append(_s(f, mode=6, r0=0x22, r1=0x22, s0_52=9, s1_52=9, s0_53=on, b892=prev))
+        lines.append(_s(f + 1, mode=6, r0=0x22, r1=0x22, s0_52=9, s1_52=9, s0_53=on, b892=v))
+        lines.append(_s(f + 2, mode=6, r0=0x22, r1=0x22, s0_52=16, s1_52=16, s0_53=on, b892=v))
+        lines.append(_s(f + 3, mode=6, r0=0x22, r1=0x22, s0_52=9, s1_52=9, s0_53=on, b892=v))
+        lines.append(_s(f + 4, mode=6, r0=0x22, r1=0x22, s0_53=0, b892=v))
+        prev, f = v, f + 0x96
+    if reject is not None:
+        a, b, st = reject
+        lines.append(_s(f, mode=6, r0=0x22, r1=0x22, s0_53=0, b892=a))
+        lines.append(_s(f + 1, mode=6, r0=0x22, r1=0x22, s0_53=st, b892=b))
+        f += 2
+    if entry:
+        vals = dict(mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1, b892=0, s0_53=0x0C)
+        vals.update(entry_kw)
+        lines.append(_s(f, **vals))
+        lines.append(_s(f + 1, mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1))
+    lines.append('X ms=0 f=%04X step=24 end' % (f + 0x40))
+    return lines
+
+
+def _check_staggered(lines):
+    out = io.StringIO()
+    rc = gb.evidence_staggered('gp-bowling-2', lines, lambda s: out.write(s + '\n'))
+    return rc, out.getvalue()
+
+
 class TestSnapshotFields(unittest.TestCase):
     def test_the_mode25_fields_are_appended_with_their_widths(self):
         # A missing/inserted field, a wrong address, or a word read as a byte
         # breaks both the DOS snapshot and the port's T-record contract.
-        self.assertEqual(gs.SNAP_FIELDS[-6:], (
+        self.assertEqual(gs.SNAP_FIELDS[-8:], (
             ('b892', 0x108892, 2), ('b8c4', 0x1088C4, 1),
             ('b8a6', 0x1088A6, 2), ('b8bd', 0x1088BD, 1),
-            ('b415', 0x104B15, 1), ('b8c0', 0x1088C0, 1)))
+            ('b415', 0x104B15, 1), ('b8c0', 0x1088C0, 1),
+            ('s0_53', 0x107803, 1), ('camx', 0x0F0AF0, 4)))
         vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
-        vals.update(f=0x1234, b892=6, b8c4=1, b8a6=0xB4, b8bd=0, b415=0, b8c0=1)
+        vals.update(f=0x1234, b892=6, b8c4=1, b8a6=0xB4, b8bd=0, b415=0, b8c0=1,
+                    s0_53=7, camx=0xFFFFCD00)
         line = gs.format_s(1, vals, 0, 0, 0)
         self.assertIn('b892=0006', line)
         self.assertIn('b8c4=01', line)
@@ -68,10 +108,14 @@ class TestSnapshotFields(unittest.TestCase):
         self.assertIn('b8bd=00', line)
         self.assertIn('b415=00', line)
         self.assertIn('b8c0=01', line)
+        self.assertIn('s0_53=07', line)
+        self.assertIn('camx=FFFFCD00', line)
         self.assertEqual({n: gs.parse(line)[n] for n in
-                          ('b892', 'b8c4', 'b8a6', 'b8bd', 'b415', 'b8c0')},
+                          ('b892', 'b8c4', 'b8a6', 'b8bd', 'b415', 'b8c0',
+                           's0_53', 'camx')},
                          {'b892': 6, 'b8c4': 1, 'b8a6': 0xB4,
-                          'b8bd': 0, 'b415': 0, 'b8c0': 1})
+                          'b8bd': 0, 'b415': 0, 'b8c0': 1,
+                          's0_53': 7, 'camx': 0xFFFFCD00})
 
 
 class TestScenario(unittest.TestCase):
@@ -106,6 +150,31 @@ class TestScenario(unittest.TestCase):
         for name in ('gp-bowling', 'gp-bowling-fix'):
             self.assertIn(name, gs.STOP_AT_END)
             self.assertFalse(any(st[-1][0] == 'poke' for st in steps[:-1]))
+
+    def test_the_staggered_route_plays_five_attempts_and_stops_on_the_mode(self):
+        # Final truth Task 5 (record §F5): the same mirror-ARMADON fight and move
+        # 0, five attempts at the measured 150-frame spacing, no poke, and the
+        # capture ends on mode 0x25 (60 frames in) or 300 frames after the fifth
+        # attempt when the mode never opens.
+        self.assertIn('gp-bowling-2', gs.SCENARIOS)
+        scn = gs.SCENARIOS['gp-bowling-2']
+        self.assertEqual(scn['steps'][:12], gs.SCENARIOS['gp-bowling']['steps'][:12])
+        attempts = scn['steps'][12:-1]
+        self.assertEqual(len(attempts), 20)
+        for k in range(5):
+            self.assertEqual(attempts[k * 4:(k + 1) * 4], (
+                ('after', 60 if k == 0 else 142,
+                 ('pad', ('p1.right', 'p2.left'), 4)),
+                ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+                ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+                ('after', 4, ('pad', ('p1.left', 'p2.right'), 4))))
+        self.assertEqual(scn['steps'][-1], ('after', 300, ('end',)))
+        self.assertEqual(scn['stop_mode'], 0x25)
+        self.assertEqual(scn['stop_delay'], 60)
+        self.assertIn('gp-bowling-2', gs.STOP_AT_END)
+        self.assertFalse(any(st[-1][0] == 'poke' for st in scn['steps'][:-1]))
+        # the route's attempts 2-5 repeat the fix route's measured attempt-2/3 steps
+        self.assertEqual(attempts[4:], gs.BOWLING_MOVE0_ATTEMPTS[4:] * 2)
 
 
 class TestEvidence(unittest.TestCase):
@@ -237,6 +306,165 @@ class TestEvidence(unittest.TestCase):
                 f.write('\n'.join(_log()).replace('b892=0004', 'b892=0002') + '\n')
             with mock.patch.object(sys, 'argv', ['gp_bowling.py', 'check', '--capture', d]):
                 self.assertEqual(gb.main(), 1)
+
+
+class TestStaggered(unittest.TestCase):
+    """Final truth Task 5's five-attempt route check (record §F5)."""
+
+    def test_the_fourth_attempt_crossing_passes(self):
+        # The three-attempt route measured 5; a fourth +1..+2 puts the clear
+        # frame's count at 6..7 and the entry stores reset it to 0.
+        rc, text = _check_staggered(_stagger_log())
+        self.assertEqual(rc, 0, text)
+        self.assertIn('b892 max 7', text)
+        self.assertIn('state-9 edges 8/8', text)
+        self.assertIn('camx=+0', text)
+        self.assertIn('s0_53=C', text)
+
+    def test_the_count_must_reach_six(self):
+        # 1,3,5,5: the three-attempt route's shape one attempt short.
+        rc, text = _check_staggered(_stagger_log(counts=(1, 3, 5, 5)))
+        self.assertEqual(rc, 1)
+        self.assertIn('b892 reached 5, not >= 6', text)
+
+    def test_the_camera_must_be_inside_the_plus_minus_0x3300_gate(self):
+        for cam, ok in ((0x3300, True), (-0x3300 & 0xFFFFFFFF, True),
+                        (0x3301, False), (-0x3301 & 0xFFFFFFFF, False)):
+            with self.subTest(cam=cam):
+                rc, text = _check_staggered(_stagger_log(camx=cam))
+                self.assertEqual(rc, 0 if ok else 1, text)
+                if not ok:
+                    self.assertIn('outside', text)
+                    self.assertIn('0x4E13D', text)
+
+    def test_the_rejection_decrement_is_the_one_minus_one_from_six(self):
+        rc, text = _check_staggered(_stagger_log(reject=(7, 6, 0)))
+        self.assertEqual(rc, 0, text)
+        self.assertIn('1 rejection decrement', text)
+        for reject, why in (((7, 6, 7), 's0_53'), ((5, 4, 0), '>= 6'), ((7, 5, 0), '>-1')):
+            with self.subTest(why=why):
+                rc, text = _check_staggered(_stagger_log(reject=reject))
+                self.assertEqual(rc, 1, text)
+                self.assertIn('rejection arm', text)
+
+    def test_an_increment_is_at_most_two_a_frame(self):
+        rc, text = _check_staggered(_stagger_log(counts=(1, 3, 5, 8)))
+        self.assertEqual(rc, 1)
+        self.assertIn('more than the two', text)
+
+    def test_each_entry_store_predicate_is_required(self):
+        # The entry's stores are the raw's own set (0x4E11C: b1f/characters/b25/
+        # b892/b8c4/b8a6/b8bd/b415/b8c0) behind the 0x4E127 b1d and 0x4E13D
+        # camera gates. Mutating any one of them must fail the staggered check
+        # with that predicate named. The old route's table test calls evidence();
+        # this one calls evidence_staggered() and covers its own branch.
+        cases = (
+            (dict(b1f=1), 'b1f=1 at the mode-0x25 entry'),
+            (dict(b1d=2), 'b1d=2 at f='),
+            (dict(c0=3), 'c0=3 at the mode-0x25 entry'),
+            (dict(c1=3), 'c1=3 at the mode-0x25 entry'),
+            (dict(b25=1), 'b25=1 at the mode-0x25 entry'),
+            (dict(b8c4=0), 'b8c4=0 at the mode-0x25 entry'),
+            (dict(b8a6=0xB3), 'b8a6=B3 at the mode-0x25 entry'),
+            (dict(b8bd=1), 'b8bd=1 at the mode-0x25 entry'),
+            (dict(b415=1), 'b415=1 at the mode-0x25 entry'),
+            (dict(b8c0=0), 'b8c0=0 at the mode-0x25 entry'),
+        )
+        for kw, why in cases:
+            with self.subTest(field=list(kw)[0]):
+                rc, text = _check_staggered(_stagger_log(**kw))
+                self.assertEqual(rc, 1, text)
+                self.assertIn(why, text)
+        # the 0 -> 1 transition itself: a pre-entry sample that already reads 1
+        lines = [l.replace('b8c4=00', 'b8c4=01') if ' f=0501 ' in l else l
+                 for l in _stagger_log()]
+        rc, text = _check_staggered(lines)
+        self.assertEqual(rc, 1, text)
+        self.assertIn('0 -> 1 transition', text)
+        # the real pad input: the same capture-shaped log without its I records
+        rc, text = _check_staggered([l for l in _stagger_log() if not l.startswith('I ')])
+        self.assertEqual(rc, 1)
+        self.assertIn('lacks real pad input', text)
+
+    def test_state9_edges_are_bounded_by_the_routes_attempts(self):
+        rc, text = _check_staggered(_stagger_log(counts=(1,)))
+        self.assertEqual(rc, 1)
+        self.assertIn('want at least three', text)
+        rc, text = _check_staggered(_stagger_log(counts=(1, 3, 5, 7, 7, 7, 7)))
+        self.assertEqual(rc, 1)
+        self.assertIn('measured per attempt', text)
+
+    def test_the_reaction_window_and_the_entry_write_are_required(self):
+        rc, text = _check_staggered(_stagger_log(window=False))
+        self.assertEqual(rc, 1)
+        self.assertIn('never reads 7', text)
+        # 0x4E11C's own 0x38154 writes 0 on its flag-set arm and 0x0C on the
+        # flag-clear one (the measured capture: 0x0C); anything else is not the
+        # entry's write.
+        for v in (0, 0x0C):
+            with self.subTest(v=v):
+                self.assertEqual(_check_staggered(_stagger_log(s0_53=v))[0], 0)
+        for v in (7, 0x0B):
+            with self.subTest(v=v):
+                rc, text = _check_staggered(_stagger_log(s0_53=v))
+                self.assertEqual(rc, 1, text)
+                self.assertIn('0x38154', text)
+
+    def test_a_poke_cannot_substitute_for_the_trigger(self):
+        lines = _stagger_log()
+        lines.insert(-2, gs.format_w(0, 0x700, 14, 0x108892,
+                                    b'\x01\x00', b'\x08\x00', 0, 0))
+        rc, text = _check_staggered(lines)
+        self.assertEqual(rc, 1)
+        self.assertIn('poke', text)
+
+    def test_the_prior_failed_artifacts_still_fail_the_trigger(self):
+        # Neither real capture entered mode 0x25: both must fail with the same
+        # verdict the live-truth task recorded (§L6.2/§L6.3), now with the
+        # measured residue appended when the new fields exist.
+        for name in ('gp-bowling.failed', 'gp-bowling-fix.failed'):
+            path = os.path.join(ROOT, 'data', 'k11-captures', name, 'poll.log')
+            if not os.path.isfile(path):
+                self.skipTest('the .failed artifacts are git-ignored')
+            with open(path) as f:
+                lines = f.read().splitlines()
+            out = io.StringIO()
+            rc = gb.evidence_staggered(name, lines, lambda s: out.write(s + '\n'))
+            text = out.getvalue()
+            self.assertEqual(rc, 1, text)
+            self.assertIn('mode 0x25 never observed', text)
+            self.assertIn('b892 max', text)
+
+    def test_cli_staggered_pins_the_scenario_name(self):
+        if gb is None or not callable(getattr(gb, 'main', None)):
+            self.fail('main missing')
+        with tempfile.TemporaryDirectory() as d:
+            cap = os.path.join(d, 'gp-bowling-2')
+            os.makedirs(cap)
+            with open(os.path.join(cap, 'poll.log'), 'w') as f:
+                f.write('\n'.join(_stagger_log()) + '\n')
+            with mock.patch.object(sys, 'argv',
+                                   ['gp_bowling.py', 'check', '--staggered', '--capture', cap]):
+                self.assertEqual(gb.main(), 0)
+            with mock.patch.object(sys, 'argv',
+                                   ['gp_bowling.py', 'check', '--staggered', '--capture', d]):
+                self.assertEqual(gb.main(), 1)
+            with open(os.path.join(cap, 'poll.log'), 'w') as f:
+                f.write('\n'.join(_stagger_log(counts=(1, 3, 5, 5))) + '\n')
+            with mock.patch.object(sys, 'argv',
+                                   ['gp_bowling.py', 'check', '--staggered', '--capture', cap]):
+                self.assertEqual(gb.main(), 1)
+            # the capture identity: a pinned sha passes only on the pinned bytes
+            with open(os.path.join(cap, 'poll.log'), 'wb') as f:
+                f.write(b'\n'.join(l.encode() for l in _stagger_log()) + b'\n')
+            import hashlib
+            sha = hashlib.sha256(open(os.path.join(cap, 'poll.log'), 'rb').read()).hexdigest()
+            for pinned, want in ((sha, 0), (sha[:-1] + ('0' if sha[-1] != '0' else '1'), 1),
+                                 ('', 1)):
+                with mock.patch.object(sys, 'argv',
+                                       ['gp_bowling.py', 'check', '--staggered', '--capture', cap,
+                                        '--capture-sha256', pinned]):
+                    self.assertEqual(gb.main(), want)
 
 
 if __name__ == '__main__':

@@ -976,21 +976,29 @@ payload decode is **verified** against the capture:
   **Residual (excluded by name).** Carrier TL on MIDI **channels 1 and 4** only:
   those are the two channels whose CC7 leaves 127, and the engine volume that
   makes their rows exact (`0x50`) differs from the steady channels' (`0x54`).
-  That per-channel split is **provably unpinnable**: the engine has one sequence
-  volume and one timer tick, yet ch4 and ch9 written at the same tick imply
-  `0x50` vs `0x54`, and the only shipped-image writer of the engine's
-  per-channel volume array (`seq+0x350`) is controller 83, which this title
-  never sends (109/115 do not write it). (Correction, record
-  `2026-09-30-named-gaps-f-derivations.md` §F.5: `seq+0x350` is also the CC7
-  log, written by `0x688E0` at `0x68A48` on every CC7 and re-sent by
-  `0x69320` during a `0x6A8D0` fade; the driver holds each channel's CC7
-  scaled by the sequence volume of the moment it arrived. The residual was not
-  re-analysed against that.) No `SBPRO2.MDI` term varies by channel
-  (round 2 §R2.1 fingerprints the capture as `SBPRO2.MDI`). Reproducing those
-  rows would need a fitted constant, which this repo forbids, so
-  `documented_excluded` names exactly those rows instead of the whole family.
+  The raw's latch explains that split, and the port implements it: `0x68AB0`'s
+  CC7 arm calls `0x688E0` with `seq+0xD0` (raw `0x68B07`), whose `0x68A48` store
+  logs the **raw** CC7 at `seq+0x350+ch*4`; `0x68C8B..0x68CAD` then scales it by
+  the sequence volume **of that moment** (`seq+0x34`) and hands the scaled value
+  to the driver, which holds it. `0x69320` re-sends the logged raw CC7 through
+  the same path (at `AIL_set_sequence_volume`'s `0x6A93B`, and via `0x699BB` on
+  every 8th service call while a `0x6A8D0` fade runs), re-scaling it by the
+  volume *then*; `0x69250` clears the log and the service counter on start. So
+  each channel holds the volume of its own CC7 arrival, and two channels whose
+  CC7 arrives at different points of one fade legitimately differ — the split
+  is not "one sequence volume at one tick" (the earlier "provably unpinnable"
+  reading, corrected in record `2026-09-30-named-gaps-f-derivations.md` §F.5 and
+  re-derived in `2026-10-30-final-truth-derivations.md` §F7.1). The **capture**
+  records no CC7 arrival time (and no CC7 at all), so its arrival-time volume
+  is not recoverable from the `.dro`; reproducing those rows would need a
+  fitted constant, which this repo forbids. `documented_excluded` therefore
+  names exactly those rows instead of the whole family; the port's latch itself
+  is pinned by `test_sequencer`'s 4f case (the same raw level arriving at three
+  fade moments and the every-8th re-send). No `SBPRO2.MDI` term varies by
+  channel (round 2 §R2.1 fingerprints the capture as `SBPRO2.MDI`).
   `verified (cmd: SBPRO2.MDI disassembly + prage_000.dro + FAT.OPL +
-  tools/opl_seq.py; docs/superpowers/plans/2026-09-20-midi-controllers-tl-derivation.md)`.
+  tools/opl_seq.py; docs/superpowers/plans/2026-09-20-midi-controllers-tl-derivation.md;
+  port/decomp/prage.c 0x688E0/0x68AB0/0x69320 + objdump of 0x68B07/0x68C8B)`.
 * `[0] = 0x0E` and `[1] = 0x00` are constant across all 181 entries; `[2]` is
   the percussion base note for the `0x7F` bank (`likely`).
 
@@ -1366,7 +1374,12 @@ caves, sound+0x5B88, sound+0x3E64), and the other **16 of `0x1C930`'s 26
 code-reachable banks are not requested or attributed in the measured cut
 windows** — the capture tails past the cut were not measured, so this is not a
 claim that the complete traces never play them. A bank not covered there is a
-named gap, never a fitted match. The later `0x31`/match sections of most traces
+named gap, never a fitted match. **Superseded** by live-truth §L11's 27-report
+inventory and final-truth §F7.2's corrected split: **12 whole-section-claimed /
+10 requested-unclaimed (bounded prefixes pinned) / 2 requested-but-unattributable
+(`grave+0x0A8C`, `grave+0x05E4`) / 2 never requested (`sound+0x7714`,
+`konsd+0x1CCB0`)**; the played 1,200-tick ending section is `grave+0x08`'s
+`0x5A56E385`, not `0x05E4`. The later `0x31`/match sections of most traces
 are unanchored because a game-frame section boundary lets the capture's tail note
 advance the driver's voice cursor; the sections that still anchor (446..480
 ticks) match. `0x1C930` and `0x1CF40` stay in `UNROWED`: a row would have to

@@ -360,6 +360,28 @@
       "last_s_frame": 6395
     },
     {
+      "path": "data/k11-captures/gp-u29-continue-taken",
+      "kind": "k11",
+      "poll_log_sha256": "cb0347c50cd257408b1c447c23b667991dedbf2c9ee4ce64fb9638dcc1136b9c",
+      "frame_count": 4446,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 5628
+    },
+    {
+      "path": "data/k11-captures/gp-bowling-2",
+      "kind": "k11",
+      "poll_log_sha256": "54d4c7d506c0835f8f94e1270029348cbb529d6313ba5759c0f69fe3134ad3b3",
+      "frame_count": 1491,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 2217
+    },
+    {
       "path": "data/k11-captures/walk",
       "kind": "k11",
       "poll_log_sha256": "aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f",

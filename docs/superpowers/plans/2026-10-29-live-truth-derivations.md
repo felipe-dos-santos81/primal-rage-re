@@ -122,6 +122,14 @@ re-measured here: the `0x25` bowling string, the `0x0E` side rule, and the U14
    stream's `0xD100` opcode), which runs on the ending path. The U14 scenario
    stops at mode `0x12` in match 1, so the clause cannot pass on that capture.
    The `.failed` artifact is game evidence only (ruling R5).
+   **Superseded by Final truth Task 3 (record
+   `docs/superpowers/plans/2026-10-30-final-truth-derivations.md` §F3.1; design
+   `docs/superpowers/specs/2026-10-30-final-truth-design.md` §3.1):** the
+   setter's only consumer is `game_mode_0d_step` (`0x274FC`), entered from the
+   **final's** seven-opponent arena (`flow_arena_ko_check` `0x272DC` via
+   `game_mode_0c_step` `0x27380`) — the final's `0x0C→0x0D` chain, not an
+   ending path, and not a match-1 win (`0x09→0x17→0x12`). R1 is terminal
+   (register R04).
 
 ### L1.5 Ledger
 
@@ -1060,6 +1068,10 @@ the `DS_00104B17 == 0` path of `flow_stage_pick` (`flow.c:1343-1350`), `b1f == 3
 picks the stage as `rng_next(7u)` (`flow.c:1350`, `0x2587C`), so the stage word is
 0 with probability 1/7 per pick. I did not trace which of the four callers of
 `0x25848` runs at an arcade match's setup, so the 1-in-7 is per pick on that path.
+**Confirmed by Final truth Task 6 (record §F6.6):** the caller is the arcade
+stage hook `fight_hook_430e8` (`0x430FE`), and `gp-twop`'s single pick reads
+`m = 0`/`b1f = 3` and takes `0x2587C` (word 5). A 1/7 draw is a retry
+condition, not a structural blocker.
 
 **(c) The trample counter resets on landing.** `+0x1F` is zeroed when an entry spawns
 (`fight.c:1482`, `0x49622`) and when a tumbling entry lands in the case-6 arm
@@ -1068,6 +1080,13 @@ while `+0x36 < 0` (`fight.c:4912-4913`). So eight hits must land on one entry du
 its fall; a landing ends the count. Two other writers also increment `+0x1F`
 (`fight.c:3455`, `0x4D81C`; `fight.c:4320`, `0x4C6DE`). This record does not trace
 whether they reach the `0x4B590` tail.
+**Superseded in part by Final truth Task 6 (record §F6.4):** the "during its fall"
+clause is the whole chain, not a blocker. The trample's `+0x36 = 0x240` plus
+`motion_step`'s lift give a 71-motion-step flight whose 35 negative-`vy` passes
+re-set bit 7 (`0x49F18`), and `0x4B470` re-launches on every hit before the live
+entry can land, so the count accumulates across consecutive flights. What is not
+derivable is a frame-exact route; no run measures a count of two or more (the four
+measured `0x4B470` calls are first hits on distinct entries).
 
 **(d) No capture measures a count of two or more.** Every `poll.log` S row carries
 `ent=`, which is entry 1's pointer (`DS_0010741C`, `tools/gp_session.py:44`), not a
@@ -1214,7 +1233,8 @@ bank as a whole-section match.
 
 - **12 claimed by at least one whole-section match:** title+0x36102, selmo+0x25C,
   selmo+0x08, beach+0x08, caves+0x08, jungl+0x08, stone+0x08, snd2+0x21BFA,
-  sound+0x6EC8, sound+0x08, grave+0x1A10 and grave+0x05E4.
+  sound+0x6EC8, sound+0x08, grave+0x1A10 and grave+0x08 (the played 1,200-tick
+  section; the list said grave+0x05E4, corrected by final-truth §F7.2).
 - **10 requested but unclaimed as whole sections:** citys+0x08, conti+0x08,
   hghsc+0x08, himal+0x08, sound+0x335E, sound+0x39F4, sound+0x3E64,
   sound+0x5B88, sound+0x6CA8 and sound+0x72D4. Eight of these have at least one
@@ -1223,6 +1243,18 @@ bank as a whole-section match.
 - **4 never requested:** **grave+0x0A8C, grave+0x08, sound+0x7714 and
   konsd+0x1CCB0**. These need new captures that request them. No such capture was
   made, and no coverage is claimed for them.
+  **Superseded (final-truth record §F7.2, fix round 1):** the port's `S` records
+  show `grave+0x0A8C` (`C670CD36`) and `grave+0x05E4` (`13211DEB`) **were**
+  requested at runtime in all seven ending replays; the section model cannot
+  attribute those two because each start writes only the two tick-0 reset
+  registers before the played song's first key-on. They are "requested but
+  unattributable", not never requested. `grave+0x08` (`0x5A56E385`) is not
+  reset-only: it is the **claimed** 1,200-tick ending section (its `S` record
+  precedes the first key-on at frame 5472 tick 60; `parse_port` now attributes
+  from the last `S` inside [first write, anchor]). Only `sound+0x7714` and
+  `konsd+0x1CCB0` are never requested. The corrected inventory is
+  **12 claimed / 10 residue / 2 requested-but-unattributable /
+  2 never requested**.
 
 ### L11.4 Claim limits
 

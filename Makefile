@@ -83,6 +83,8 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-draw \
 	$(K11_CAPTURES)/gp-draw-timeout \
 	$(K11_CAPTURES)/gp-u28-continue \
+	$(K11_CAPTURES)/gp-u29-continue-taken \
+	$(K11_CAPTURES)/gp-bowling-2 \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -137,6 +139,7 @@ chunk ?= 0
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
         gp-u26-oracle gp-u27-oracle gp-draw-oracle gp-draw-timeout-oracle gp-u28-continue-oracle \
+        gp-u29-continue-taken-oracle gp-bowling-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -683,6 +686,7 @@ GP_U27_MAX_MISSING = 38
 GP_DRAW_MAX_MISSING = 11
 GP_DRAW_TIMEOUT_MAX_MISSING = 5
 GP_U28_MAX_MISSING = 17
+GP_U29_MAX_MISSING = 12
 # <<< PIN-BASELINE-END gp-max-missing
 gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
@@ -1482,6 +1486,100 @@ gp-u28-continue-oracle: build ## Live truth Task 5 oracle: gp-u28-continue's pro
 			--port $(GP_DUMP)/gp-u28-continue --capture-sha256 "$(GP_U28_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u28-continue; exit $$rc; fi
 
+# Final truth Task 4 oracle (design §3.6, record §F4): the taken-continue branch
+# gp-u28-continue deliberately did not reach. The route is gp-u28-continue's (U10's
+# ARCADE through the two match-1 KOs and the labelled incumbent 0x10780A=0x78 poke)
+# plus one p1.start at the PRESS START prompt: the prompt arm is cnt < 0x0E (0x27B59),
+# cnt=0x0D from f=0x1540, the press is injected in the spin of f=0x155F (iteration
+# 0x1560 samples the key down) and 0x500C4's debounce makes the newly-pressed bit
+# reach 0x4F644 at f=0x1561. The measured take: 0x42F60 spends one credit (cred 4 -> 3,
+# 0x2CA9C debits only while b1f is 0), 0x27A40 sets b1f=(w10d != 0)+1=1, 0x2791C
+# clears the prompt/countdown cells, restores both snapshots, 0x1D764 clears the
+# incumbent +0x5A 0x78 -> 0 and stores mode 0x0C. `gp_continue.py check --taken` proves
+# w10d=0, the countdown 0F -> 0E -> 0D to the prompt arm, the take/spend/b1f/+0x5A,
+# 155 post-take mode-0x0C records with cnt frozen at 0x0D, and that the W rows are the
+# route's four existing harness writes only: no credit write and no poke at or after
+# the screen opens (the KOs are harness writes, not a fought-KO or win claim). `path
+# --taken` reproduces 4/4 milestones on fields the port trace carries.
+# N=4380 is the first unexplained capture frame (raw 7984), in the harness's STOP_TAIL
+# after the shared script end (X f=0x15C0=5568; SIGTERM f=0x15FC=5628; the replay has
+# no frames for the 60 tail captures), so the whole prompt/countdown/take and the
+# post-take round are below it. Capture 346 (raw 2823) is the round-1 mode-8 entry's
+# two-segment scan-out in SCAN3_ALLOWED (rows 0..1 port 218; rows 2..199 port 221
+# through the vacuous pair 220/221; ports 219/220 unexhibited). The trace and moves
+# agree through 5568 (zero differences to the script's end); 12 canonical non-black
+# classes are missing through the reach. The window start 100 (raw 1737) and the reach
+# 3649 (the dump's last presented frame) are measured; an absent capture skips.
+# >>> PIN-BASELINE-BEGIN gp-u29-continue-taken
+GP_U29_MIN_FIRST = 4380
+GP_U29_TRACE_MIN_FIRST = 5569
+GP_U29_MOVES_MIN_FIRST = 5569
+GP_U29_MAX_START = 100
+GP_U29_MIN_REACH = 3649
+GP_U29_CAPTURE_SHA256 = cb0347c50cd257408b1c447c23b667991dedbf2c9ee4ce64fb9638dcc1136b9c
+GP_U29_CAPTURE_FRAMES = 4446
+# <<< PIN-BASELINE-END gp-u29-continue-taken
+
+# Final truth Task 5 (record §F5): the mode-0x25 bowling entry, reached by real
+# two-human input with no poke. gp-bowling-2 plays character 4's move 0 five
+# times on both sides 150 frames apart; the fourth attempt's +2 puts
+# DS_00108892 at 7, and fight_mode25_enter (0x4E11C) opens the mode at f=0x832,
+# the first frame the get-up's +0x53 = 0 meets the >= 6 gate (the fifth attempt
+# never fires: 28 of 32 steps). All ten session checks pass (stopped on mode
+# 0x25, 1,491/1,491 frames, no unscripted input, 0/0 pokes). The evidence
+# checker (`gp_bowling.py check --staggered`) proves the counter's 1/3/5/7
+# growth, the 7-long +0x53 windows, the signed camera -606 inside
+# [-0x3300,0x3300], the entry stores and the absence of W records. Capture 443
+# (raw 2896) is the wipe-in's two-present scan-out in SCAN3_ALLOWED (rows 19..32
+# port 301, rows 33..199 port 302, the measured pair 301 pinned because the
+# layout repeats at 31/255). The port replay dumps 1,138 presented frames; trace
+# and moves agree through 2158 (the capture's X record is f=0x86E) with 0
+# differences, so both ratchets pin at 2,159; the first unexplained capture
+# frame is 1,422 (raw 3962), the port dump's post-script tail, so the frame
+# claim reaches capture 1,421 (the entry is capture 1,352, +70; capture 1,370 is
+# port 1,093 at f=0x842). The window
+# start 97 (raw 1735), the reach 1,137 (the dump's last presented frame) and the
+# four missing non-black classes [9, 11, 68, 255] are measured; an absent
+# capture skips.
+# >>> PIN-BASELINE-BEGIN gp-bowling-2
+GP_BOWLING_MIN_FIRST = 1422
+GP_BOWLING_TRACE_MIN_FIRST = 2159
+GP_BOWLING_MOVES_MIN_FIRST = 2159
+GP_BOWLING_MAX_START = 97
+GP_BOWLING_MIN_REACH = 1137
+GP_BOWLING_MAX_MISSING = 4
+GP_BOWLING_CAPTURE_SHA256 = 54d4c7d506c0835f8f94e1270029348cbb529d6313ba5759c0f69fe3134ad3b3
+GP_BOWLING_CAPTURE_FRAMES = 1491
+# <<< PIN-BASELINE-END gp-bowling-2
+gp-bowling-oracle: build ## Final truth Task 5 oracle: gp-bowling-2's mode-0x25 entry (skips without its capture)
+	@echo "== final truth Task 5: the mode-0x25 bowling entry (skips without its capture; record §F5) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_bowling
+	@if [ ! -d $(K11_CAPTURES)/gp-bowling-2 ]; then echo "gp-bowling-oracle: no capture at $(K11_CAPTURES)/gp-bowling-2 (skipped)"; else \
+		$(PYTHON) tools/gp_bowling.py check --staggered --scenario gp-bowling-2 --capture $(K11_CAPTURES)/gp-bowling-2 \
+			--capture-sha256 "$(GP_BOWLING_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-bowling-2 GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-bowling-2 --capture $(K11_CAPTURES)/gp-bowling-2 \
+			--port $(GP_DUMP)/gp-bowling-2 --min-first "$(GP_BOWLING_MIN_FIRST)" \
+			--trace-min-first "$(GP_BOWLING_TRACE_MIN_FIRST)" --moves-min-first "$(GP_BOWLING_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_BOWLING_MAX_START)" --min-reach "$(GP_BOWLING_MIN_REACH)" --max-missing "$(GP_BOWLING_MAX_MISSING)" \
+			--capture-sha256 "$(GP_BOWLING_CAPTURE_SHA256)" --capture-frames "$(GP_BOWLING_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-bowling-2; exit $$rc; fi
+gp-u29-continue-taken-oracle: build ## Final truth Task 4 oracle: gp-u29-continue-taken's take of the continue screen (skips without its capture)
+	@echo "== final truth Task 4: the taken continue (0x0E -> 0x2791C -> mode 0x0C; skips without its capture) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_continue
+	@if [ ! -d $(K11_CAPTURES)/gp-u29-continue-taken ]; then echo "gp-u29-continue-taken-oracle: no capture at $(K11_CAPTURES)/gp-u29-continue-taken (skipped)"; else \
+		$(PYTHON) tools/gp_continue.py check --taken --scenario gp-u29-continue-taken --capture $(K11_CAPTURES)/gp-u29-continue-taken \
+			--capture-sha256 "$(GP_U29_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u29-continue-taken GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u29-continue-taken --capture $(K11_CAPTURES)/gp-u29-continue-taken \
+			--port $(GP_DUMP)/gp-u29-continue-taken --min-first "$(GP_U29_MIN_FIRST)" \
+			--trace-min-first "$(GP_U29_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U29_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_U29_MAX_START)" --min-reach "$(GP_U29_MIN_REACH)" --max-missing "$(GP_U29_MAX_MISSING)" \
+			--capture-sha256 "$(GP_U29_CAPTURE_SHA256)" --capture-frames "$(GP_U29_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_continue.py path --taken --scenario gp-u29-continue-taken --capture $(K11_CAPTURES)/gp-u29-continue-taken \
+			--port $(GP_DUMP)/gp-u29-continue-taken --capture-sha256 "$(GP_U29_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u29-continue-taken; exit $$rc; fi
+
 # Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
 # (data/k11-captures/gp-u9-win) and the ending (data/k11-captures/gp-u10-ending), each reached
@@ -1821,29 +1919,40 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # end, record §E2; mode 7 is the fix round's addition, since a timed-out round is a failed
 # run but its presses must not overrun the end either).
 # Its claim is the poked wins' narrow one plus what a poke could not claim: the game itself
-# raises P2's +0x5A to 0x78, reaches the same mode-8/mode-9 entries and the land mark, and
-# gp_win.py check requires an S record with the death-done byte b0c = 1 at or after the
-# round-2 KO (mode 9) with no DEATH_DONE poke — the game's own 0x37EA0 -> 0x37FF6 write that
-# U9/U10 poked (spec W5). The byte is not cleared between rounds (only mode 0x17's setup
-# 0x271E0 and the final's consumers clear it), so the rule proves a game death animation
-# ended by the match-end screen, not that round 2's specifically did; the frames and the WIN
-# trace carry which animation ran. spec W5's shared-code limit still applies — the same path's
+# raises P2's +0x5A to 0x78, reaches the same mode-8/mode-9 entries and the land mark. Final
+# truth Task 3 corrected the rule (record 2026-10-30-final-truth-derivations.md §F3): a
+# match-1 win has NO b0c clause, because the byte's only consumer is the final's
+# 0x0C -> 0x0D chain (game_mode_0d_step 0x274FC; flow_arena_ko_check 0x272DC /
+# game_mode_0c_step 0x27380), and a 0x09 -> 0x17 -> 0x12 match win never enters it (mode
+# 0x17's setup clears the byte at 0x27200). gp_win.live_match
+# requires the live KO and the 2-0 match result with no poke and no time-out; the final-only
+# rule (gp_win.live_final) keeps b0c = 1 at/after mode 0x0F and has no scenario yet. The
+# U9/U10 DEATH_DONE pokes stay the poked wins' writes. spec W5's shared-code limit still
+# applies — the same path's
 # gp-u9-win (first mode-6 S f=0x480) and gp-u10-ending (f=0x479) captures have c1 = 6 (CHAOS),
 # afc = 5, while the failed 2026-10-26 run measured c0 = 0, c1 = 3 (VERTIGO), afc = 3 (record
 # 2026-10-26-fought-match-truth §F2.6): the KO'd fighter's death stream is not U10's final
 # SAURON's, and a later capture's own S fields decide it.
-# The pins are EMPTY: Task 2's one authorized run (2026-10-26) failed the game's win — P1 was
-# KO'd in both rounds and b0c never became 1 (record 2026-10-26-fought-match-truth §F2) — so no
-# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed artifact is
-# preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays absent); the
-# run also failed the port-script/unscripted-input/end-frame checks after a BIOS-ring burst. The
+# The pins are EMPTY: the 2026-10-26 arcade run lost 0-2 (P1 KO'd in both rounds, mode 0x12
+# never opened; record 2026-10-26-fought-match-truth §F2), and final truth Task 3's one
+# authorized two-human gp-u14-twop-win run reached the game's 2-0 win (round-1 KO f=0xB1B,
+# match result f=0x13A8, mode 0x12 f=0x1693, no W, b0c=0) but failed port script v2 at f=0xB1B
+# (a missed S(0xB1A); 15 of 5,820 snapshots), so it is preserved as
+# data/k11-captures/gp-u14-twop-win.failed with no oracle/pin/CAPTURE_DIRS path (record
+# 2026-10-30-final-truth-derivations.md §F3.5). R1 (the arcade fought win) is terminal, so no
+# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed arcade
+# artifact is preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays
+# absent); the run also failed the port-script/unscripted-input/end-frame checks after a
+# BIOS-ring burst. The
 # phase's gp-u24-u16-state scenario stays diagnostic and outside CAPTURE_DIRS. gp-twop-ko
 # failed that phase's harness pin but is now published by live truth Task 3 above; both
 # scenarios' .dro traces and the failed U14 run's (data/k11-captures/gp-u14-win-live.failed)
 # stay outside tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
-# skips on the absent directory; a later authorized capture fills the nine pins from
-# tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING is the
-# report's missing-class count; coverage_check fails closed without it).
+# skips on the absent directory. The nine GP_U14_* pins belong to this gp-u14-win-live
+# scenario; R1 is terminal, and a two-human gp-u14-twop-win capture is a different scenario
+# with its own target/pins. A later authorized capture of this scenario would fill the nine
+# from tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING
+# is the report's missing-class count; coverage_check fails closed without it).
 # MIN_FIRST the first unexplained capture frame,
 # TRACE_MIN_FIRST the first differing traced f, MAX_START the window's first capture frame,
 # MIN_REACH the replay's last exhibited port frame, MILESTONES/WIN_MIN_FIRST gp_win.py path's
@@ -2595,6 +2704,10 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-draw-timeout-oracle
 	@echo "== live truth Task 5: the continue screen, countdown and expiry (skips without its capture; record §L5) =="
 	@$(MAKE) --no-print-directory gp-u28-continue-oracle
+	@echo "== final truth Task 4: the taken continue (0x0E -> 0x2791C; skips without its capture; record §F4) =="
+	@$(MAKE) --no-print-directory gp-u29-continue-taken-oracle
+	@echo "== final truth Task 5: the mode-0x25 bowling entry (0x455C3/0x263DE/0x4E11C; skips without its capture; record §F5) =="
+	@$(MAKE) --no-print-directory gp-bowling-oracle
 	@echo "== live truth Task 2: the KO-branch drawn match (0x0A/0x0B; skips without its capture; record §L2) =="
 	@$(MAKE) --no-print-directory gp-draw-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
@@ -2628,7 +2741,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_bowling tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_gp_side1 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_band tools.tests.test_gp_bowling tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_gp_side1 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims tools.tests.test_final_claims
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

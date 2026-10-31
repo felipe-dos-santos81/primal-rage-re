@@ -53,6 +53,32 @@ class TestSnapshot(unittest.TestCase):
         for k in range(len(gs.BAND_APERTURE)):
             self.assertEqual(rec[gs.APERTURE_FIELDS[k][0]], 0x40 + k)
 
+    def test_the_backbuffer_bytes_are_read_through_the_presented_pointer(self):
+        # Final truth Task 2 (record §F2.2): the 13 band bytes + control follow
+        # DSD(0xE87A0) -- the buffer 0x50188 swapped to the just-presented side --
+        # and the file offset is the stored linear pointer plus the pixel offset.
+        # A decoy at the base-relative address (a fixed-DS read) must not win.
+        m = _mem()
+        bbp, nxt = 0x300000, 0x301000
+        _put(m, gs.BAND_BACKBUFFER_PTR_DS, 4, bbp)
+        _put(m, gs.BAND_BACKBUFFER_NEXT_DS, 4, nxt)
+        for k, (r, x) in enumerate(gs.BAND_APERTURE):
+            name, off, _sz = gs.BACKBUFFER_FIELDS[k]
+            m[bbp + off] = 0x40 + k
+            m[BASE + gs.BAND_BACKBUFFER_PTR_DS - gs.DATA_BASE_VA + off] = 0x90 + k
+        v = gc.read_snap(m, BASE, fields=gs.SNAP_FIELDS + gs.BAND_DAC_EXTRA)
+        self.assertEqual((v['bbp0'], v['bbp1']), (bbp, nxt))
+        for k in range(len(gs.BAND_APERTURE)):
+            self.assertEqual(v[gs.BACKBUFFER_FIELDS[k][0]], 0x40 + k)
+        # the S record the poller writes carries them, and the parse round-trips
+        rec = gs.parse(gs.format_s(1, dict(v), 0, 0x1E, 0x1E,
+                                   fields=gs.SNAP_FIELDS + gs.BAND_DAC_EXTRA))
+        for k in range(len(gs.BAND_APERTURE)):
+            self.assertEqual(rec[gs.BACKBUFFER_FIELDS[k][0]], 0x40 + k)
+        # the next buffer is a different pointer: writing it must not move the read
+        m[nxt + gs.BACKBUFFER_FIELDS[0][1]] = 0xEE
+        self.assertEqual(gc.read_snap(m, BASE, fields=gs.BAND_DAC_EXTRA)['bb00'], 0x40)
+
     def test_the_device_words_are_read_through_the_block_pointer(self):
         # record §H6: dev1/dev2 are [DS_00101514] + 0x2D4/0x2D6, so read_snap needs the
         # block pointer; without it there is no address to read and the value is 0
@@ -620,13 +646,14 @@ class TestMemsize(unittest.TestCase):
     and gp-u26-side1-ending (Task 6) also set memsize=64: both reproduce the poked-KO /
     ending path that ran out of memory at 16 MB in the original (the §W.13 OOM), so
     they carry the same harness value. gp-u27-name-entry (Task 8) clones gp-u10-ending
-    and so carries the same value."""
+    and so carries the same value. gp-u13-band-dac (final truth Task 2) is
+    gp-u13-ending2's script, so it carries U13's value too."""
     MEM = ['-set', 'dosbox memsize=64']
     POKED_FINAL = ('gp-u10-ending', 'gp-u13-ending2', 'gp-u18-talon-ending',
                    'gp-u19-vertigo-ending', 'gp-u20-chaos-ending',
                    'gp-u21-armadon-ending', 'gp-u22-diablo-ending',
                    'gp-u25-endurance-end', 'gp-u26-side1-ending', 'gp-u13-band',
-                   'gp-u27-name-entry')
+                   'gp-u13-band-dac', 'gp-u27-name-entry')
 
     def cmd(self, name, root='/r'):         # as gp_capture.main builds it
         scn = gs.SCENARIOS[name]

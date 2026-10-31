@@ -41925,12 +41925,13 @@ D6A_CR_MUT(nostop, 11u) D6A_CR_MUT(base, 12u)  D6A_CR_MUT(setearly, 13u) D6A_CR_
 D6A_CR_MUT(noset, 16u) D6A_CR_MUT(set1, 17u)   D6A_CR_MUT(countcache, 18u) D6A_CR_MUT(seven, 19u) D6A_CR_MUT(cmode, 20u)
 D6A_CR_MUT(countsext, 21u) D6A_CR_MUT(gt, 22u) D6A_CR_MUT(second, 23u) D6A_CR_MUT(down, 24u)     D6A_CR_MUT(nostep, 25u)
 
-/* 0x2CADC config_set_defaults: no argument. The raw runs with its three calls the port leaves out (the
- * message draw, the 180-tick wait and the cell release, PORT in config.c) poked to nops. The mutants
- * restate config.c's body. */
+/* 0x2CADC config_set_defaults: no argument. The mutants restate config.c's body, the message draw
+ * (0x2F198(-1, 0xE, 0x809C8, 0xB000)), the wait (0x2EA78(0xB4)) and the release (0x2F280(-1, 0xE,
+ * 0x809F0, 0xB000)) included (final truth Task 1, record §F1). */
 static void d6a_2cadc_core(u32 mut)
 {
     if (mut == 13u) config_keys_apply_defaults();                                /* @keysfirst */
+    text_cursor_set(-1, 0xE, mem + 0x809C8u, 0xB000u);                           /* 0x2CAF3 */
     u32 v29 = config_menu_default_bits((mut == 1u) ? 0xA2EB0u : 0xA2EB4u);       /* @table */
     config_field_set((mut == 2u) ? 0x28u : 0x29u, (mut == 3u) ? (v29 & 0xFFu) : v29);   /* @f29 @v29 */
     config_field_set((mut == 4u) ? 0x37u : 0x35u, (mut == 5u) ? 0xA1u : 0xA0u);  /* @order @a0 */
@@ -41942,6 +41943,8 @@ static void d6a_2cadc_core(u32 mut)
     else v2a = (v2a & 0xFFFFFFFCu) | 3u;
     config_field_set((mut == 11u) ? 0x2Bu : 0x2Au, v2a);                         /* @f2a */
     if (mut != 12u && mut != 13u) config_keys_apply_defaults();                  /* @nokeys */
+    config_screen_wait(0xB4);                                                    /* 0x2CB5F */
+    text_cells_release(-1, 0xE, mem + 0x809F0u, 0xB000u);                        /* 0x2CB69 */
 }
 static void b_d6a_2cadc(const u32 *r, u32 *eax) { (void)r; config_set_defaults(); *eax = 0u; }
 #define D6A_SD_MUT(name, n) \

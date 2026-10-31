@@ -757,5 +757,109 @@ class AudioCompareTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('unexpected skip', r.stdout)
 
+    # ---- the requested-but-unclaimed bank residue (final-truth §F7.2) ----
+
+    def test_trace_residue_table_is_the_measured_partition(self):
+        """The shipped table: 12 claimed + 10 residue + 2 reset-only + 2
+        never-requested = 26 distinct banks; every non-zero first-diff tick
+        equals its section's pinned matched prefix; the measured 0x05E4/0x08
+        split is the claimed 0x08 bank."""
+        self.assertEqual(audio_compare.check_trace_residue(), [])
+        self.assertEqual(len(audio_compare.TRACE_CLAIMED_BANKS), 12)
+        self.assertEqual(len(audio_compare.TRACE_RESIDUE), 10)
+        self.assertEqual(len(audio_compare.TRACE_RESET_ONLY), 2)
+        self.assertEqual(len(audio_compare.TRACE_NEVER_REQUESTED), 2)
+        self.assertEqual(audio_compare.TRACE_CLAIMED_BANKS[0x5A56E385],
+                         's16grave.gra+0x08')
+        self.assertEqual(audio_compare.TRACE_RESET_ONLY[0x13211DEB][0],
+                         's16grave.gra+0x05E4')
+        for bank, row in audio_compare.TRACE_RESIDUE.items():
+            self.assertEqual(len(row), 5, bank)
+            _name, scenario, index, tick, cause = row
+            self.assertIn(cause, audio_compare.RESIDUE_CAUSES)
+            if tick:
+                self.assertEqual(
+                    audio_compare.TRACE_PREFIX_PINS[scenario][index], tick,
+                    'bank %08X' % bank)
+
+    def test_swapped_claim_and_reset_only_banks_fail(self):
+        """The 0x05E4/0x08 split guard: swapping the two measured banks in a
+        copy of the tables fails, because the claimed bank's pinned first
+        key-on (frame 5472 tick 60) would then belong to a reset-only bank."""
+        claimed = dict(audio_compare.TRACE_CLAIMED_BANKS)
+        reset = dict(audio_compare.TRACE_RESET_ONLY)
+        del claimed[0x5A56E385]
+        claimed[0x13211DEB] = reset[0x13211DEB][0]
+        del reset[0x13211DEB]
+        reset[0x5A56E385] = ('s16grave.gra+0x08', 'gp-u10-ending', 5443, 25, 1)
+        problems = audio_compare.check_bank_partition(claimed, reset)
+        self.assertTrue(problems)
+        self.assertTrue(any('measured key-on but is not claimed' in p
+                            or 'measured key-on but is reset-only' in p
+                            for p in problems), problems)
+
+    def test_reset_only_bank_forming_a_section_fails(self):
+        """The runtime guard with the swapped tables: the ending's 1,200-tick
+        section carries 0x5A56E385, which the old table called reset-only."""
+        class _S:
+            bank = 0x5A56E385
+        class _R:
+            index = 11
+            section = _S()
+            status = 'anchored'
+            first_diff = None
+        old_claimed = dict(audio_compare.TRACE_CLAIMED_BANKS)
+        old_reset = dict(audio_compare.TRACE_RESET_ONLY)
+        del old_claimed[0x5A56E385]
+        old_reset[0x5A56E385] = ('s16grave.gra+0x08', 'gp-u10-ending', 5443, 25, 1)
+        problems = audio_compare.bank_partition_violation(
+            'gp-u10-ending', [_R()], [], [], old_claimed, old_reset)
+        self.assertTrue(problems)
+        self.assertTrue(any('reset-only bank formed a section' in p
+                            for p in problems), problems)
+
+    def test_trace_residue_moved_one_tick_earlier_fails(self):
+        """The mutation: one first-diff tick one earlier no longer equals the
+        measured prefix pin, so the region guard fails (the 'move one
+        first-diff tick one earlier' mutation of the task)."""
+        table = dict(audio_compare.TRACE_RESIDUE)
+        bank = 0x8FE546D4                       # conti+0x08, tick 960
+        name, scenario, index, tick, cause = table[bank]
+        table[bank] = (name, scenario, index, tick - 1, cause)
+        problems = audio_compare.check_trace_residue(table)
+        self.assertTrue(problems)
+        self.assertTrue(any('does not equal the pinned prefix' in p
+                            for p in problems), problems)
+
+    def test_trace_residue_moved_first_difference_fails_a_run(self):
+        """The runtime guard: a run whose measured section differs one tick
+        earlier than the pin fails instead of silently reclassifying."""
+        class _S:
+            bank = 0x8FE546D4
+        class _R:
+            index = 9
+            section = _S()
+            status = 'diff-allowed'
+            first_diff = 959
+        problems = audio_compare.residue_violation('gp-idle-loss', [_R()])
+        self.assertTrue(problems)
+        self.assertTrue(any('first difference moved' in p for p in problems),
+                        problems)
+
+    def test_trace_residue_unanchored_row_lost_fails(self):
+        """A tick-0 row is the measured unanchored bank; if the port's run
+        anchors it (a stronger claim), the status no longer matches the pin."""
+        class _S:
+            bank = 0x20DA829D
+        class _R:
+            index = 3
+            section = _S()
+            status = 'anchored'
+            first_diff = None
+        problems = audio_compare.residue_violation('gp-twop', [_R()])
+        self.assertTrue(problems)
+        self.assertTrue(any('expected unanchored-allowed' in p for p in problems),
+                        problems)
+
 if __name__ == '__main__':
     unittest.main()

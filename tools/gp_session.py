@@ -90,6 +90,11 @@ SNAP_FIELDS = (
     ('b892', 0x108892, 2), ('b8c4', 0x1088C4, 1),
     ('b8a6', 0x1088A6, 2), ('b8bd', 0x1088BD, 1),
     ('b415', 0x104B15, 1), ('b8c0', 0x1088C0, 1),
+    # Final truth Task 5 (record §F5): slot 0's +0x53 (the 0x263DE entry gate's
+    # byte, set 7 by 0x455A0 at 0x455C3 and cleared by 0x367DC at 0x3680A) and
+    # the signed camera x DS_000F0AF0 (the 0x4E13D..0x4E151 gate). Appended, so
+    # every older poll.log's S lines lack them; only the bowling checks assert them.
+    ('s0_53', 0x107803, 1), ('camx', 0x0F0AF0, 4),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -129,6 +134,90 @@ APERTURE_FIELDS = tuple(
     ('ap%02d' % k, BAND_APERTURE_BASE + r * 320 + x, 1)
     for k, (r, x) in enumerate(BAND_APERTURE))
 APERTURE_FIELD_NAMES = frozenset(n for n, _, _ in APERTURE_FIELDS)
+
+# Final truth Task 2 (plan 2026-10-30-final-truth, design §3.4, record §F2): the
+# 5120 band's DAC-injection diagnostic. The Task 11 aperture read was INVALID
+# because the DOSBox-X memory file excludes the VGA aperture (record §D4), so
+# this diagnostic reads the game's own offscreen buffers instead. `0x50188`
+# swaps DS_000E87A0/DS_000E87A4 after the present copy (flow.c:7411), so at the
+# S record (the master loop's end-of-iteration spin) DSD(DS_000E87A0) is the
+# just-presented 0xFA00-byte index buffer and DSD(DS_000E87A4) the next one.
+# The 14 bytes are the 13 band offsets plus the control, at
+# `DSD(DS_000E87A0) + row*320 + x`: the stored buffer pointer is a linear
+# address and the memory file is the guest's physical RAM, the same
+# pointer-as-file-offset convention SLOT_RECORD_FIELDS uses.
+BAND_BACKBUFFER_PTR_DS = 0x000E87A0
+BAND_BACKBUFFER_NEXT_DS = 0x000E87A4
+BACKBUFFER_PTR_FIELDS = (('bbp0', BAND_BACKBUFFER_PTR_DS, 4),
+                         ('bbp1', BAND_BACKBUFFER_NEXT_DS, 4))
+BACKBUFFER_FIELDS = tuple(
+    ('bb%02d' % k, r * 320 + x, 1) for k, (r, x) in enumerate(BAND_APERTURE[:-1])
+) + (('bbc', BAND_APERTURE[-1][0] * 320 + BAND_APERTURE[-1][1], 1),)
+BACKBUFFER_FIELD_NAMES = frozenset(n for n, _, _ in BACKBUFFER_FIELDS)
+
+# The effect pool's two sentinels and the active count (effects.h: 24 records of
+# stride 0x814 from DS_000F0B00; {next@0; prev@4} links). eff0/eff1 read the
+# active list's head/tail, efffree the free list's head, effn the count.
+BAND_EFF_FIELDS = (('eff0', 0x000FCCE0, 4), ('eff1', 0x000FCCE4, 4),
+                   ('efffree', 0x000FCCE8, 4), ('effn', 0x0009AF3D, 1))
+BAND_DAC_EXTRA = BACKBUFFER_PTR_FIELDS + BACKBUFFER_FIELDS + BAND_EFF_FIELDS
+
+# The fade source and the injection (record §F2). `0x29B74` (frontend_darken_all,
+# flow.c:408) runs 0x13DF0 then spawns one 0x13D4C darken (byte_arg 3) per live
+# entry of the 24-slot palette table at DS_00107618 (0x33904's walk): each
+# 0x10-byte entry is {handle; refcount; first; len} (actors.c:1249). The type-4
+# record copies the resolved block's `len` colours into +0x10, and its
+# 0x134C0 case-4 body subtracts 8 per channel every third frame and re-enqueues
+# them through 0x33734; 0x1C470 then uploads them to the DAC (six-bit truncation,
+# 8-bit expansion). Measured on the U13 replay at the spin before iteration
+# 0x1826, i.e. the band's phase frame under gp-u13-ending2's entry 0x17D4 (gdb
+# on build/run_tests): the active list holds 12 records, all with +0x0E = 3;
+# the four band indices are covered by exactly two of them, the table entry 2
+# record (first 0x20, len 0x30: 0x32/0x2E/0x4D) and the entry 5 record (first
+# 0x52, len 0x3C: 0x65). The free-list pop order is the table order (the record
+# for entry 0 is 0xF0B00, the pristine head), so the record addresses are
+# 0xF0B00 + table index * 0x814.
+#
+# The band's frame is entry-relative: entry + 0x52 (0x1826 under the older
+# capture's 0x17D4; 0x1827 under gp-u13-band's 0x17D5 — the two existing runs
+# of this route differ by one frame at the mode-0x15 entry). 0x52 mod 3 = 1,
+# so the band's frame follows a natural case-4 body by one frame in either run:
+# the body does NOT run there (+0x0E 3 -> 2), so a colour-only write would not be
+# uploaded by that record at the band's frame; the injection writes +0x0E = 1 too,
+# which makes that iteration's body run once. The body darkens first, so each
+# sentinel word is pre-darkened (channel 0xFF -> 0xF7); after 0x1C470's
+# conversion (v = channel >> 2, display = (v << 2) | (v >> 4)) the presented
+# colour is 0xF7 per written channel: index 0x32 magenta, 0x2E cyan, 0x4D white,
+# 0x65 (the control) yellow.
+BAND_DAC_RECORDS = ((0x00107638, 0x000F1B28, 0x20, 0x30),   # palette entry 2 -> record
+                    (0x00107668, 0x000F3364, 0x52, 0x3C))   # palette entry 5 -> record
+BAND_DAC_SENTINEL_WORDS = ((0x32, 0x00FF00FF),         # magenta
+                           (0x2E, 0x00FFFF00),         # cyan
+                           (0x4D, 0x00FFFFFF),         # white
+                           (0x65, 0x0000FFFF))         # yellow (the control)
+BAND_DAC_WRITES = tuple(
+    (rec + 0x0E, b'\x01') for _src, rec, _first, _len in BAND_DAC_RECORDS
+) + tuple(
+    (rec + 0x10 + 4 * (idx - first), word.to_bytes(4, 'little'))
+    for idx, word in BAND_DAC_SENTINEL_WORDS
+    for _src, rec, first, ln in BAND_DAC_RECORDS if first <= idx < first + ln)
+
+
+def effect_darken_word(word):
+    """0x134C0's case-4 step (effects.c:effect_darken): each 8-bit channel - 8, floor 0."""
+    ch = [max(0, ((word >> s) & 0xFF) - 8) for s in (0, 8, 16)]
+    return ch[0] | (ch[1] << 8) | (ch[2] << 16)
+
+
+def dac_display(word):
+    """0x1C470's upload: r/g/b = bits 2..7/10..15/18..23, then the VGA's 6-bit
+    display expansion (v << 2) | (v >> 4) (gfx.c:gfx_flush_palette)."""
+    return bytes(((v << 2) | (v >> 4)) & 0xFF
+                 for v in ((word >> 2) & 0x3F, (word >> 10) & 0x3F, (word >> 18) & 0x3F))
+
+
+BAND_DAC_SENTINEL_RGB = {idx: dac_display(effect_darken_word(word))
+                         for idx, word in BAND_DAC_SENTINEL_WORDS}
 
 # BIOS keys: (scan, the BIOS word a press queues; record named-gaps-a §A.9).
 KEYS = {'enter': (0x1C, 0x1C0D), 'esc': (0x01, 0x011B)}
@@ -312,6 +401,49 @@ SCENARIOS['gp-bowling'] = dict(time_limit=90, steps=(
 # The corrected capture has its own name; gp-bowling.failed preserves the
 # one-attempt run. The steps tuple is immutable and shared, not rebuilt.
 SCENARIOS['gp-bowling-fix'] = dict(SCENARIOS['gp-bowling'])
+
+# Final truth Task 5 (record §F5): the staggered route. Same mirror-ARMADON
+# fight and same move 0 as gp-bowling-fix, played FIVE times on both sides
+# instead of three, 150 frames apart (142 after each attempt's last direction
+# press, the measured spacing of §L6.1), no poke. The trigger needs
+# DS_00108892 >= 6 at the frame the reaction's +0x53 clears (91 frames after the
+# application, §F5.2/§F5.3); the three-attempt route's last visible sample was
+# 5, and the fourth attempt's measured +1..+2 puts the count at 6..7 on its
+# clear frame. The fifth attempt is the margin if an attempt adds only +1.
+# stop_mode 0x25 with a 60-frame delay (gp-draw's arrangement) ends the capture
+# once the mode opens, so the entry screen's first 60 frames are the captured
+# content; when the mode never opens the final ('after', 300, ('end',)) ends
+# the script 300 frames after the fifth attempt's last press (209 past its
+# clear frame), so a .failed artifact still has a complete, replayable script.
+BOWLING_MOVE0_ATTEMPTS_5 = (
+    # attempt 1: 60 frames after the 30-frame walk-in
+    ('after', 60, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    # attempts 2-5: 142 frames after the previous attempt's last press
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+)
+SCENARIOS['gp-bowling-2'] = dict(
+    time_limit=90, stop_mode=0x25, stop_delay=60, steps=(
+        SCENARIOS['gp-bowling']['steps'][:12] + BOWLING_MOVE0_ATTEMPTS_5 + (
+            ('after', 300, ('end',)),
+        )))
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
 # Plan gameplay-u6b (record gameplay-u6 §U6.12): P1 (Sauron, character 0, the
@@ -521,6 +653,12 @@ WIN_EXTRA = (('afc', 0x104AFC, 2), ('ad4', 0x104AD4, 4), ('w2', 0x104AF2, 1), ('
              ('t104', 0x108104, 2), ('m106', 0x108106, 4), ('m10a', 0x10810A, 4),
              ('sc0', 0x1077EC, 4), ('c82', 0x107832, 1))
 WIN_FIELDS = tuple(n for n, _, _ in WIN_EXTRA)
+# The KO/death fields a W record must not cover: the two +0x5A damage bytes,
+# the round wins, the match result, the death-done byte and the seven land
+# marks (gp_twop.KO_POKES and gp_win.KO_DEATH_POKES share this one tuple, so a
+# field cannot silently diverge between the KO predicate and the win rules).
+KO_POKES = (0x10780A, 0x10789E, 0x104AF2, 0x104AF3, 0x104AD4,
+            0x104B0C, 0x108106, 0x10810A, 0x10810C)
 # P2's +0x5A damage byte (DS_0010789E) at 0x78: the KO the round-end checks test
 # (0x27FA8 `cmp 0x78`, 0x272DC's DS_00104B12 side), record §W.3.
 KO_P2 = ('poke', ((0x10789E, b'\x78'),))
@@ -651,6 +789,36 @@ SCENARIOS['gp-u28-continue'] = dict(
         ('after_entry', 0x0C, 1, 10, KO_P1),
     ))
 
+# Final truth Task 4 (design §3.6, record §F4): gp-u29-continue-taken, the
+# taken-continue branch the expiry capture deliberately did not reach. The same
+# route as gp-u28-continue (U10's LEFT PLAYER ARCADE through the two match-1 KOs
+# and the labelled incumbent 0x10780A=0x78 poke that opens mode 0x0E), plus one
+# p1.start at the PRESS START prompt: 0x27B59 draws the prompt only while the
+# signed count is below 0x0E, and the count is 0x0D from f=0x1540, so a press in
+# the spin of f=0x155F (the 0xA0th frame after the mode-0x0E entry 0x14C0;
+# iteration 0x1560 samples the key down) is the prompt path. 0x500C4's one-frame
+# debounce makes 0x4F644 report the newly pressed bit at iteration 0x1561, where
+# flow_continue_poll (0x42F60) spends one credit (0x2CA9C debits only while b1f
+# is 0, which it still is: 0x27A40 stores b1f after the poll) and
+# flow_continue_take (0x2791C) clears the prompt/countdown cells, restores both
+# snapshots, resets the incumbent's +0x5A (0x1D764) and stores mode 0x0C.
+# The frame-keyed end is 0x100 frames after the mode-0x0E entry (f=0x15C0), so
+# 0x5F frames of the restarted round are in the replayed window; nothing past it
+# is compared. No new poke: the route's four existing harness writes (the lands
+# pair and two KO P2 pokes in match 1, then the incumbent KO) are the same as
+# U28's and none lands at or after the continue screen's open. p1.start is the
+# F1 key slot (scan 0x3B) whose P1 byte bit 0 is the start mask 0x9ACBC[0] =
+# 0x01000000 (the table's first dword; the second is P2's 0x00000100). The
+# 6-frame hold and the 240 s limit are gp-u5-charsel's and gp-u28-continue's
+# harness values.
+CONTINUE_TAKEN_PRESS = ('after_entry', 0x0E, 1, 0xA0, ('pad', ('p1.start',), 6))
+SCENARIOS['gp-u29-continue-taken'] = dict(
+    time_limit=240, extra=WIN_EXTRA,
+    steps=SCENARIOS['gp-u28-continue']['steps'] + (
+        CONTINUE_TAKEN_PRESS,
+        ('after_entry', 0x0E, 1, 0x100, ('end',)),
+    ))
+
 # The fields the draw check (gp_draw.py) reads. adc (the best-of rounds, DS_00104ADC,
 # 0x25A14..0x25A28, §W.1) is the one WIN_EXTRA lacks; ad4/w2/w3/b1e are WIN_EXTRA's (§W.2)
 # and mode/s0_5a/s1_5a are SNAP_FIELDS'. The scenario logs WIN_EXTRA + adc.
@@ -724,6 +892,29 @@ SCENARIOS['gp-u13-ending2'] = dict(
 SCENARIOS['gp-u13-band'] = dict(
     time_limit=240, extra=WIN_EXTRA + APERTURE_FIELDS, memsize=64,
     steps=SCENARIOS['gp-u13-ending2']['steps'])
+
+# Final truth Task 2 (design §3.4, record §F2): gp-u13-band-dac, the band's
+# DAC-injection diagnostic. gp-u13-ending2's script through the ending, with the
+# last `until_mode 3` replaced by the injection and a stop two frames later. The
+# mode-0x15 entry is run-dependent by one frame: 0x17D4 in gp-u13-ending2's
+# capture, 0x17D5 in gp-u13-band's (the two existing runs of this route; the
+# boot's S sequence differs by one frame). The frames below are therefore
+# entry-relative, which is what after_entry is: n=82 targets entry+82, the
+# band's phase frame (0x1826 = 0x17D4+82; 0x1827 = 0x17D5+82), by firing at the
+# spin entry+81 (the W rows), and n=84 stops at entry+84 (0x1828 / 0x1829).
+# The W writes are BAND_DAC_WRITES (two record state bytes + four sentinel
+# colours, record §F2); the S record gains the back-buffer reads and the
+# effect-list fields (BAND_DAC_EXTRA). `gp_band.py --dac` derives its S frame
+# from the diagnostic W rows' f + 1, so neither run's absolute frame is baked
+# into the analysis. time_limit 240 and memsize 64 are U13's. No pin and no
+# oracle hang off this capture (a failure is preserved as .failed.N); the W
+# writes are harness writes, not a game claim.
+SCENARIOS['gp-u13-band-dac'] = dict(
+    time_limit=240, extra=WIN_EXTRA + BAND_DAC_EXTRA, memsize=64,
+    steps=SCENARIOS['gp-u13-ending2']['steps'][:-1] + (
+        ('after_entry', 0x15, 1, 82, ('poke', BAND_DAC_WRITES)),
+        ('after_entry', 0x15, 1, 84, ('end',)),
+    ))
 
 # Endgame truth Task 3 (record §E1.1): TALON's ending, character 2 on character-select
 # cell 1 (ending_menu(1): one p1.right from cell 0, then the confirm). The land marks are
@@ -1131,6 +1322,38 @@ SCENARIOS['gp-twop-ko'] = dict(
 )
 
 
+# Final truth Task 3 (plan 2026-10-30-final-truth.md; record §F3.2): the two-human
+# fought match win. U14's fought arcade win (R1) is terminal: the arcade AI's damage
+# race outruns the script (the .failed artifact: 10 sampled AI increments/113 -> 120
+# damage vs the script's 2/25 in round 1; 8/99 -> 120 vs 8/92 in round 2), and the
+# old live-win `b0c` clause cannot pass on a match-1 win (the split rules are
+# gp_win.live_match, no b0c, and gp_win.live_final, b0c on the final path). Two
+# humans, however, are a
+# controllable route with no pokes: gp-twop-ko's own start and 140-attempt 1A/1B
+# round KO the idle P2, and the same round is played again after the round result.
+# P2 is idle, so P1's health stays full and both rounds are KO wins inside the
+# round timer; the win is side 0's 2-0.
+#
+# The steps are gp-twop-ko's through round 1 (`[:9]` keeps the walk-in, whose
+# p2.left is the second side's fight press two_human requires), then the same
+# 140-attempt round anchored to the second mode-6 entry. skip_on_mode=(0x07, 0x08,
+# 0x09) drops a round's queued presses at its round/match/time-up result and resumes
+# at the next after_entry (the U14 builder's rule; without it the round-1 leftovers
+# fire onto the result screen). stop_mode=0x12 stops on the conquered-lands screen
+# after mode 9's hold (0x4142C), so the match result and the won land are recorded
+# and nothing past the stop is compared. time_limit 240 is gp-twop-ko's: boot to
+# the round-1 entry is ~1,250 frames, each KO ~1,670 frames, the round transition
+# ~365 and the mode-9 -> 0x12 hold ~840 (~107 s total), with margin. No poke:
+# `gp_twop.py check --win` judges the game's own writes.
+SCENARIOS['gp-u14-twop-win'] = dict(
+    time_limit=240, extra=WIN_EXTRA,
+    stop_mode=0x12, stop_delay=0, skip_on_mode=(0x07, 0x08, 0x09),
+    steps=steps_before_end(SCENARIOS['gp-twop']['steps'])[:9]
+    + _u16_round(140, 30)
+    + _u16_round(140, 30, anchor=(0x06, 2)),
+)
+
+
 # Host input truth U17 (plan 2026-10-21-host-input-truth Task 6; record §H6.6,
 # §H6.9): the K11 service-menu walk to MODIFY CONTROLS (k11_session.WALK's first
 # 24 keys -- the mode-3 Enter, the START MENU pair, back, GAME OPTIONS, the
@@ -1414,6 +1637,9 @@ class Schedule:
 # gp-twop-ko (fought-match truth Task 4) stops too: its end is 240 frames into the
 # first result mode (0x08/0x09, stop_mode/stop_delay), the KO's result window, and
 # nothing past it is compared.
+# gp-u14-twop-win (final truth Task 3) stops on the conquered-lands screen (mode
+# 0x12, stop_mode/stop_delay 0) after the two-round fought win, so the match result
+# and the won land are the last compared content.
 # gp-u24-u16-state (fought-match truth Task 5) stops too: its end is the
 # conquered-lands screen (mode 0x12, stop_mode, stop_delay 0), the marker the state
 # comparison anchors on; it is a diagnostic, not a gate-inventoried capture.
@@ -1435,6 +1661,13 @@ class Schedule:
 # 0x15), so the replay's script includes the entire prompt/countdown window.
 # gp-u27-name-entry (state coverage Task 8) stops too: its end is mode 3 after the
 # letter-driven high-score entry (u10's until_mode), and nothing past it is compared.
+# gp-u13-band-dac (final truth Task 2) stops too: its end is two frames after the
+# band's S record (after_entry 0x15 k=1 n=84), so the capture holds the sentinel
+# window and no post-ending content.
+# gp-u29-continue-taken (final truth Task 4) stops too: its end is 0x100 frames
+# after the mode-0x0E entry, 0x5F frames past the 0x2791C take in mode 0x0C, so
+# the take and the round restart are in the replayed window and nothing past it
+# is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1444,9 +1677,11 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                          'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                          'gp-u22-diablo-ending', 'gp-u23-u16-finisher',
-                         'gp-twop-ko', 'gp-harness-smoke', 'gp-u24-u16-state',
+                         'gp-twop-ko', 'gp-u14-twop-win', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
-                         'gp-u13-band', 'gp-u27-name-entry', 'gp-u28-continue', 'gp-bowling', 'gp-bowling-fix'})
+                         'gp-u13-band', 'gp-u13-band-dac', 'gp-u27-name-entry', 'gp-u28-continue',
+                         'gp-u29-continue-taken',
+                         'gp-bowling', 'gp-bowling-fix', 'gp-bowling-2'})
 
 
 class ScriptError(Exception):

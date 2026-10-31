@@ -21,7 +21,12 @@ Both streams are reduced the way the title oracle reduces them
     port writes every family unconditionally; the shadow is seeded from the
     capture's pre-anchor state on both sides);
   * drop `0xBD` and the carrier-TL registers `0x43..0x45/0x4B..0x4D/0x53..0x55`
-    on MIDI channels 1 and 4 only (the engine's per-channel volume residual).
+    on MIDI channels 1 and 4 only (the engine's per-channel volume residual:
+    the raw latch stores each channel's CC7 scaled by the sequence volume of
+    the arrival moment and re-scales the raw log only on a fade re-send, so the
+    two channels whose CC7 moves can hold different volumes; the capture
+    records no CC7 arrival time to recover it. The port's latch is the raw's,
+    pinned by test_sequencer's 4f case, record final-truth §F7.1).
     The capture records no MIDI channel, so a captured write inherits the
     attribution of the port's raw write at the same relative tick/register.
 
@@ -172,6 +177,98 @@ TRACE_PREFIX_PINS = {
 }
 # <<< PIN-BASELINE-END trace-prefix-pins
 
+# The 26 code-reachable music banks (record 2026-10-25-music-truth-derivations
+# §M1.6.7) partitioned by the measured 27-report inventory (final-truth record
+# §F7.2). The hash-keyed tables and the two names are disjoint and cover the 26.
+#
+# 12 whole-section-claimed (live-truth §L11.3, with the measured 0x05E4/0x08
+# correction of final-truth §F7.2: the played 1,200-tick section is
+# grave+0x08's bank 0x5A56E385, whose S record precedes its first key-on; the
+# 0x05E4 starts before it are reset-only):
+# >>> PIN-BASELINE-BEGIN trace-residue
+TRACE_CLAIMED_BANKS = {
+    0xFD94B4E3: 's16title.gra+0x36102',
+    0x286ED662: 's16selmo.gra+0x25C',
+    0xF1774E70: 's16selmo.gra+0x08',
+    0x87E7C2DE: 's16beach.gra+0x08',
+    0x86946EB7: 's16caves.gra+0x08',
+    0xBC44EF50: 's16jungl.gra+0x08',
+    0xF270182D: 's16stone.gra+0x08',
+    0x42BECD5B: 's16snd2.gra+0x21BFA',
+    0x3EA76262: 's16sound.gra+0x6EC8',
+    0x94C63685: 's16sound.gra+0x08',
+    0x26B142E7: 's16grave.gra+0x1A10',
+    0x5A56E385: 's16grave.gra+0x08',
+}
+
+# 10 requested but unclaimed as whole sections. Row:
+# (name, scenario, section index, first-diff tick, cause class).
+#  * The tick is the section's measured matched prefix (`claimed`), i.e. the
+#    first tick whose groups differ, and is the same value TRACE_PREFIX_PINS
+#    pins for that section. The two tick-0 rows are the convention for
+#    **unanchored** (no key-on to anchor, so no tick was compared), not a
+#    measured first difference: every one of their sections is unanchored
+#    (the measured section-boundary voice-cursor gap, §M4.4 item 1).
+#  * Cause class, measured at that tick:
+#      'tail-lag'       the port's group there is a proper subset of the
+#                       capture's: the capture keeps writing key-off/frequency
+#                       values past the port's section tail (the measured 0.8 %
+#                       music-clock span against the game-frame request
+#                       boundary, §M3.4);
+#      'voice-rotation' the groups contradict each other (a different operator
+#                       value, or a note/register write the other side does not
+#                       have), i.e. the driver's per-voice/register state.
+#    A bounded prefix never reclassifies a bank as whole-section claimed.
+TRACE_RESIDUE = {
+    0x20DA829D: ('s16citys.gra+0x08',   'gp-twop', 3, 0, 'voice-rotation'),
+    0x8FE546D4: ('s16conti.gra+0x08',   'gp-idle-loss', 9, 960, 'tail-lag'),
+    0x15B3F30E: ('s16hghsc.gra+0x08',   'gp-u10-ending', 13, 1437, 'tail-lag'),
+    0xBF1C78E2: ('s16himal.gra+0x08',   'gp-idle-loss', 3, 30, 'voice-rotation'),
+    0xB40FF4A6: ('s16sound.gra+0x335E', 'gp-u10-ending', 12, 120, 'voice-rotation'),
+    0x19AB8B2B: ('s16sound.gra+0x39F4', 'gp-idle-loss-run2', 10, 303, 'tail-lag'),
+    0x3D536DDE: ('s16sound.gra+0x3E64', 'gp-u12-endurance', 3, 180, 'voice-rotation'),
+    0x3BA4C376: ('s16sound.gra+0x5B88', 'gp-idle-loss', 4, 0, 'voice-rotation'),
+    0xE3533961: ('s16sound.gra+0x6CA8', 'gp-u10-ending', 5, 5, 'voice-rotation'),
+    0x1895A942: ('s16sound.gra+0x72D4', 'gp-u23-u16-finisher', 8, 177, 'voice-rotation'),
+}
+
+# 2 requested at runtime but unattributable by the section model: the ending's
+# mode-0x0D result alternation starts them for only the two tick-0 reset writes
+# (the 0x69250/0x69320 reset family) before the played song's first key-on, so
+# the anchor drops them and no section carries their bank. Measured S records
+# in gp-u10-ending (the same rows exist in the other six endings):
+# (name, scenario, first frame, first AIL_init_sequence count, S rows).
+TRACE_RESET_ONLY = {
+    0xC670CD36: ('s16grave.gra+0x0A8C', 'gp-u10-ending', 5323, 13, 3),
+    0x13211DEB: ('s16grave.gra+0x05E4', 'gp-u10-ending', 5311, 12, 7),
+}
+
+# The split's measured proof (final-truth §F7.2): the claimed bank's first
+# key-on in the trace that carries the 1,200-tick section (frame, tick,
+# register=value) and the reset-only bank's S-row count. check_bank_partition
+# requires the key-on row to be a claimed bank and the reset-only banks to have
+# no such row; a swapped claim/reset table therefore fails.
+TRACE_BANK_KEYON = {
+    0x5A56E385: ('gp-u10-ending', 5472, 60, '0xB3=0x27'),
+}
+
+# 2 never requested in the 27 replays (nor by the gp-u24-u16-state-t9-r5
+# replay). Value: (sound_voice id, the measured gate).
+TRACE_NEVER_REQUESTED = {
+    's16sound.gra+0x7714': ('0xE4', 'three reaction callbacks request it '
+                            '(0x37640/0x37774/0x37898, fighter.c:2942/2985/'
+                            '3027); t9-r5 reaches r0=0x33 (641 S rows), so the '
+                            '0x33 callback runs and the shared +0x42 bit-5/'
+                            '+0x43 bit-3 gate fails (the +0x43 input is not a '
+                            'SNAP_FIELD)'),
+    's16konsd.gra+0x1CCB0': ('0xEB', 'the 0x24508 handler (fighter.c:16937, '
+                             'request 0x24559), a stream/handler target'),
+}
+# <<< PIN-BASELINE-END trace-residue
+
+# The two measured residue causes (see TRACE_RESIDUE).
+RESIDUE_CAUSES = ('voice-rotation', 'tail-lag')
+
 # The expected per-scenario section identity/status inventory (the whole-song
 # guard, record §M4.5). Each entry is (bank hash, kind) in the port dump's
 # order, after the boot writes:
@@ -187,16 +284,16 @@ TRACE_SECTIONS = {
     'gp-keys-fight': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named'), (0xBF1C78E2, 'named')),
     'gp-pads': ((0xFD94B4E3, 'matched'),),
     'gp-twop': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named')),
-    'gp-u10-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u10-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x5A56E385, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
     'gp-u12-endurance': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x3D536DDE, 'named')),
-    'gp-u13-ending2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'matched'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u13-ending2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'matched'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x5A56E385, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
     'gp-u15-join': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named')),
     'gp-u16-twop2': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x42BECD5B, 'named')),
-    'gp-u18-talon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x87E7C2DE, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u19-vertigo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x3D536DDE, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x3D536DDE, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u20-chaos-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x86946EB7, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x86946EB7, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u21-armadon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'matched'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
-    'gp-u22-diablo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x13211DEB, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u18-talon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x87E7C2DE, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x5A56E385, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u19-vertigo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x3D536DDE, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x3D536DDE, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x5A56E385, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u20-chaos-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x86946EB7, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x86946EB7, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x5A56E385, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u21-armadon-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBC44EF50, 'matched'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBC44EF50, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'matched'), (0x94C63685, 'named'), (0x26B142E7, 'matched'), (0x5A56E385, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
+    'gp-u22-diablo-ending': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0xBF1C78E2, 'named'), (0x3EA76262, 'matched'), (0x42BECD5B, 'named'), (0x94C63685, 'matched'), (0x26B142E7, 'matched'), (0x5A56E385, 'matched'), (0xB40FF4A6, 'named'), (0x15B3F30E, 'named'), (0x15B3F30E, 'named'), (0x19AB8B2B, 'named')),
     'gp-u23-u16-finisher': ((0xFD94B4E3, 'matched'), (0x286ED662, 'named'), (0xF1774E70, 'named'), (0x20DA829D, 'named'), (0x3BA4C376, 'named'), (0xE3533961, 'named'), (0x20DA829D, 'named'), (0x3EA76262, 'named'), (0x1895A942, 'named'), (0x42BECD5B, 'named')),
     'gp-u5-charsel': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0x87E7C2DE, 'matched')),
     'gp-u6-moves': ((0xFD94B4E3, 'matched'), (0x286ED662, 'matched'), (0xF1774E70, 'matched'), (0xBF1C78E2, 'named')),
@@ -251,10 +348,16 @@ def documented_excluded(reg, attr):
     """The port deliberately does not reproduce these against a capture.
 
     `0xBD` unconditionally, and the carrier-TL registers on the residual MIDI
-    channels only: 1 and 4 in the first OPL bank (the engine's per-channel
-    volume residual, `port/spec/audio.md`), and 1/4/9/3 in the second bank (the
-    measured second-bank carrier-TL rows, record claim-coverage §C3). Modulator
-    TL and carrier TL under any other attribution are compared.
+    channels only: 1 and 4 in the first OPL bank, and 1/4/9/3 in the second
+    bank (the measured second-bank carrier-TL rows, record claim-coverage §C3).
+    The first-bank residual is the engine's **arrival-time volume latch**, not
+    a per-channel factor: the raw logs the received CC7 and the driver stores
+    it scaled by the sequence volume of that moment; 0x69320 re-sends the raw
+    log, re-scaling it, so the two channels whose CC7 moves hold the volume of
+    their own arrival moments (record named-gaps-f §F.5; the port's latch is
+    pinned by test_sequencer's 4f case, final-truth §F7.1). The capture records
+    no CC7 arrival time, so those rows are not comparable; the exclusion is
+    exactly those rows, and carrier TL under any other attribution is compared.
     """
     lo = reg & 0xFF
     if lo == 0xBD:
@@ -359,11 +462,15 @@ class Section:
 
 
 def parse_port(path):
-    """Returns (sections, s_lines). The `dc`/bank come from the first S record
-    at or after the section's first write frame (the S line is emitted after
-    the iteration's writes). A section with no such S record is unattributed:
-    its `dc`/bank stay 0 and `attributed` is False (it must not borrow the
-    preceding song's bank or allowances)."""
+    """Returns (sections, s_lines). The `dc`/bank come from the last S record
+    inside [the section's first write frame, its anchor (first key-on) frame],
+    because a song's S line is emitted when its start is requested, before its
+    first key-on; this credits the played song, not a reset-only start that
+    precedes it (the measured grave+0x05E4/grave+0x08 split). A section with no
+    key-on or no S in that range falls back to the first S at/after its first
+    write. A section with no S record is unattributed: its `dc`/bank stay 0 and
+    `attributed` is False (it must not borrow the preceding song's bank or
+    allowances)."""
     s_lines = []
     writes = []
     with open(path) as f:
@@ -399,7 +506,24 @@ def parse_port(path):
     groups.append(cur)
     sections = [Section(g) for g in groups]
     for s in sections:
-        rec = next((r for r in s_lines if r['frame'] >= s.first_frame), None)
+        # The song's `S` line is emitted in the iteration its start was
+        # requested, at or before the section's first key-on. Attribute from the
+        # LAST S inside [first write frame, anchor frame]; this credits the
+        # played song, not a reset-only start that precedes it (the measured
+        # grave+0x05E4/grave+0x08 split, record final-truth §F7.2). A section
+        # with no key-on (or no S in that range) falls back to the first S
+        # at/after its first write, as before; a section with no S at all stays
+        # unattributed.
+        anchor_frame = (s.writes[s.anchor_idx][0]
+                        if s.anchor_idx is not None else None)
+        rec = None
+        if anchor_frame is not None and anchor_frame >= s.first_frame:
+            inside = [r for r in s_lines
+                      if s.first_frame <= r['frame'] <= anchor_frame]
+            if inside:
+                rec = inside[-1]
+        if rec is None:
+            rec = next((r for r in s_lines if r['frame'] >= s.first_frame), None)
         if rec is not None:
             s.dc = rec['dc']
             s.bank = rec['bank']
@@ -898,7 +1022,7 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
                   allow_unanchored=(), allow_diff=(), game_dir=None,
                   verbose=False, json_out=None, expect_sections=None,
                   prefix_pins=None):
-    sections, _s_lines = parse_port(port_path)
+    sections, s_lines = parse_port(port_path)
     if prefix_pins is None and name in TRACE_PINS:
         prefix_pins = TRACE_PREFIX_PINS.get(name, {})
     missing = [p for p in capture_paths if not os.path.exists(p)]
@@ -1025,6 +1149,14 @@ def compare_trace(name, port_path, capture_paths, min_ticks=0,
                  sum(1 for r in results if r.status == 'diff-allowed')))
     if total < min_ticks:
         failed.append('claimed %d ticks, pinned minimum %d' % (total, min_ticks))
+    # The measured requested-but-unclaimed bank residue (final-truth §F7.2): a
+    # row's section must keep its pinned first-diff tick and status.
+    for p in residue_violation(name, results):
+        failed.append(p)
+    # The measured bank split (final-truth §F7.2): a reset-only bank must not
+    # form a section and a never-requested bank must not appear in an S record.
+    for p in bank_partition_violation(name, results, s_lines, index_names):
+        failed.append(p)
     ok = not failed
     print('audio-compare: %s: %s' % (name, 'ok' if ok else 'FAIL'))
     for f in failed:
@@ -1067,6 +1199,188 @@ def parse_prefix_pin(text):
     except ValueError:
         raise argparse.ArgumentTypeError(
             'expected INDEX:TICKS with non-negative integer values') from None
+
+
+def check_trace_residue(table=None, claimed=None, reset_only=None, never=None,
+                        keyon=None):
+    """Problems with the bank-residue pins (empty for the shipped table).
+
+    The partition is checked here too: the 12 claimed hashes, the 10 residue
+    hashes, the 2 reset-only hashes and the 2 never-requested names must be
+    distinct and cover the 26 code-reachable banks (§M1.6.7), and the
+    claimed/reset-only evidence (TRACE_BANK_KEYON) must not be swapped — see
+    check_bank_partition. A row's tick is the measured matched prefix, so it
+    must equal TRACE_PREFIX_PINS for the row's section; a tick-0 row must name
+    a section with no prefix pin. This is the guard that makes 'move one
+    first-diff tick one earlier' fail.
+    """
+    problems = []
+    rows = TRACE_RESIDUE if table is None else table
+    if set(rows) != set(TRACE_RESIDUE):
+        problems.append('residue table banks differ from the measured 10')
+    for bank in sorted(rows):
+        row = rows[bank]
+        if not isinstance(row, tuple) or len(row) != 5:
+            problems.append('bank %08X: row is not a 5-tuple' % bank)
+            continue
+        _name, scenario, index, tick, cause = row
+        if cause not in RESIDUE_CAUSES:
+            problems.append('bank %08X: cause %r is not a measured class'
+                            % (bank, cause))
+        if not isinstance(tick, int) or tick < 0:
+            problems.append('bank %08X: first-diff tick %r is not a tick'
+                            % (bank, tick))
+            continue
+        pins = TRACE_PREFIX_PINS.get(scenario)
+        if tick == 0:
+            if pins is not None and index in pins:
+                problems.append(
+                    'bank %08X: tick 0 but %s section %d pins a %d-tick prefix'
+                    % (bank, scenario, index, pins[index]))
+        elif pins is None or index not in pins:
+            problems.append('bank %08X: first-diff %d has no TRACE_PREFIX_PINS '
+                            'row at %s section %d' % (bank, tick, scenario, index))
+        elif pins[index] != tick:
+            problems.append('bank %08X: first-diff %d does not equal the pinned '
+                            'prefix %d at %s section %d'
+                            % (bank, tick, pins[index], scenario, index))
+    problems.extend(check_bank_partition(claimed, reset_only, never, keyon))
+    # The 26-bank coverage including the residue names.
+    claimed = TRACE_CLAIMED_BANKS if claimed is None else claimed
+    reset_only = TRACE_RESET_ONLY if reset_only is None else reset_only
+    never = TRACE_NEVER_REQUESTED if never is None else never
+    hashes = set(claimed) | set(rows) | set(reset_only)
+    names = ([claimed[b] for b in claimed]
+             + [rows[b][0] for b in rows]
+             + [reset_only[b][0] for b in reset_only]
+             + list(never))
+    if len(hashes) != 24:
+        problems.append('the hash-keyed bank sets do not hold 24 distinct banks')
+    if len(set(names)) != 26:
+        problems.append('the 12+10+2+2 bank names do not cover 26 distinct banks')
+    return problems
+
+
+def check_bank_partition(claimed=None, reset_only=None, never=None, keyon=None):
+    """The measured 12/10/2/2 split, with its S-record evidence.
+
+    Empty for the shipped tables. The claimed and reset-only hashes must be
+    disjoint, the two never-requested names must not be claimed or reset-only,
+    and every TRACE_BANK_KEYON row must belong to a claimed bank, never to a
+    reset-only one. That is what proves the 0x05E4/0x08 split: 0x5A56E385's
+    first key-on is pinned (frame 5472 tick 60) and 0x13211DEB has only the
+    tick-0 reset S rows, so a swapped claim/reset table fails here.
+    """
+    problems = []
+    claimed = TRACE_CLAIMED_BANKS if claimed is None else claimed
+    reset_only = TRACE_RESET_ONLY if reset_only is None else reset_only
+    never = TRACE_NEVER_REQUESTED if never is None else never
+    keyon = TRACE_BANK_KEYON if keyon is None else keyon
+    if len(claimed) != 12:
+        problems.append('the claimed set does not hold 12 banks')
+    if len(reset_only) != 2:
+        problems.append('the reset-only set does not hold 2 banks')
+    if len(never) != 2:
+        problems.append('the never-requested set does not hold 2 banks')
+    both = set(claimed) & set(reset_only)
+    if both:
+        problems.append('bank(s) both claimed and reset-only: %s'
+                        % ', '.join('%08X' % b for b in sorted(both)))
+    claimed_names = set(claimed.values())
+    reset_names = {row[0] for row in reset_only.values()}
+    if claimed_names & reset_names:
+        problems.append('a bank name is both claimed and reset-only')
+    if claimed_names & set(never) or reset_names & set(never):
+        problems.append('a never-requested bank name is claimed or reset-only')
+    for bank, row in sorted(keyon.items()):
+        if bank not in claimed:
+            problems.append('bank %08X has a measured key-on but is not claimed'
+                            % bank)
+        if bank in reset_only:
+            problems.append('bank %08X has a measured key-on but is reset-only'
+                            % bank)
+        if not isinstance(row, tuple) or len(row) != 4:
+            problems.append('bank %08X: key-on evidence is not a 4-tuple' % bank)
+    for bank, row in sorted(reset_only.items()):
+        if not isinstance(row, tuple) or len(row) != 5:
+            problems.append('bank %08X: reset-only row is not a 5-tuple' % bank)
+            continue
+        if not row[4]:
+            problems.append('bank %08X: reset-only row has no S records' % bank)
+        if bank in keyon:
+            problems.append('bank %08X: reset-only bank has a pinned key-on'
+                            % bank)
+    return problems
+
+
+def bank_partition_violation(name, results, s_lines, index_names,
+                             claimed=None, reset_only=None, never=None):
+    """The measured split against one scenario's sections and S records.
+
+    A reset-only bank must never carry a section (its whole request is the two
+    tick-0 reset writes before the played song's first key-on), and a
+    never-requested bank name must not appear in an S record. The swapped
+    0x05E4/0x08 table fails on the ending traces because 0x5A56E385 then forms
+    the 1,200-tick claimed section. `name` is the scenario for the message.
+    """
+    problems = []
+    claimed = TRACE_CLAIMED_BANKS if claimed is None else claimed
+    reset_only = TRACE_RESET_ONLY if reset_only is None else reset_only
+    never = TRACE_NEVER_REQUESTED if never is None else never
+    for r in results:
+        bank = r.section.bank
+        if not bank:
+            continue
+        if bank in reset_only:
+            problems.append('bank %08X: reset-only bank formed a section (%s)'
+                            % (bank, r.status))
+        elif bank in claimed and r.status in ('unattributed', 'unanchored',
+                                              'diff'):
+            problems.append('bank %08X: claimed bank section is %s'
+                            % (bank, r.status))
+    if index_names:
+        for s in s_lines:
+            nm = resource_name(s['dc'], index_names)
+            if nm in never:
+                problems.append('%s: the never-requested bank was requested'
+                                % nm)
+    return problems
+
+
+def residue_violation(name, results):
+    """The measured residue row(s) for `name` against a run's results.
+
+    A row's section must still be the measured diff-allowed section at the
+    pinned first-diff tick (a tick-0 row means the bank is unanchored, so the
+    section must stay unanchored-allowed). A moved first difference, a changed
+    status or a missing section is a failure, never a silent reclassification.
+    """
+    problems = []
+    by_index = {r.index: r for r in results}
+    for bank, row in sorted(TRACE_RESIDUE.items()):
+        _bank_name, scenario, index, tick, _cause = row
+        if scenario != name:
+            continue
+        r = by_index.get(index)
+        if r is None:
+            problems.append('bank %08X: residue section %d is absent from the '
+                            'port dump' % (bank, index))
+            continue
+        if r.section.bank != bank:
+            problems.append('bank %08X: residue section %d carries bank %08X'
+                            % (bank, index, r.section.bank))
+            continue
+        if tick == 0:
+            if r.status != 'unanchored-allowed':
+                problems.append('bank %08X: residue expected unanchored-allowed, '
+                                'got %s' % (bank, r.status))
+        elif r.status != 'diff-allowed':
+            problems.append('bank %08X: residue expected diff-allowed, got %s'
+                            % (bank, r.status))
+        elif r.first_diff != tick:
+            problems.append('bank %08X: first difference moved to tick %r '
+                            '(pinned %d)' % (bank, r.first_diff, tick))
+    return problems
 
 
 def cmd_compare(a):

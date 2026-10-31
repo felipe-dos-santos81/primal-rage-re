@@ -2071,8 +2071,11 @@ commands (design G3, Task 5 review).
 
 **Superseded coverage note:** the historical 16/5 cut-window bank wording below is
 superseded by live-truth §L11's 27-report **12 whole-section-claimed / 10
-requested-unclaimed / 4 never-requested** measurement and its per-section
-matched-prefix pins; the four never-requested banks are named there.
+requested-unclaimed** measurement and its per-section matched-prefix pins, and
+by final-truth §F7.2's corrected **12 claimed / 10 residue / 2
+requested-but-unattributable / 2 never-requested** inventory (the unattributable
+pair is `grave+0x0A8C` + `grave+0x05E4`; `grave+0x08` is the claimed 1,200-tick
+section; the never-requested pair is `sound+0x7714` + `konsd+0x1CCB0`).
 
 - **Rendered audibility / PCM vs the original** — not claimed; the OPL core and
   mixer are the port's invented model (§M1.7). The PCM pin is determinism only.

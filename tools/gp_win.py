@@ -8,11 +8,12 @@ without pokes: its match is fought, and the capture (its Task 11) measures the h
   check  evidence: the capture's S records show the scenario's raw-derived path, every
          MILESTONES row in order (each found in the k-th entry into its mode, from the
          first frame in mode 0x27 on), and every DEATH_DONE poke found the death-done
-         byte still 0 (the game had not ended a death animation itself). For
-         gp-u14-win-live also the live win's own proof (spec W5): an S record with
-         b0c = 1 at or after the round-2 KO row and no DEATH_DONE poke — the game
-         itself ended a KO'd fighter's death animation (0x37EA0 -> 0x37FF6). Exit 1 on
-         the first failure.
+         byte still 0 (the game had not ended a death animation itself). For a
+         MATCH_WIN scenario the match rule applies (no b0c; the match result must be a
+         2-0 win for its side and the KO'd side's +0x5A must have been live); for a
+         FINAL_WIN scenario the final-only rule requires b0c = 1 at or after mode 0x0F
+         (0x37EA0 -> 0x37FF6), which the U9/U10 DEATH_DONE poke replaced. Exit 1 on the
+         first failure.
   path   the port's T records (trace.txt) reach the same milestones at the same frame,
          judged over the frames the capture snapshotted (as gp_compare's trace claim);
          the leading count reproduced must be >= --min-milestones N (a ratchet). With
@@ -367,38 +368,147 @@ def death_done_set(lines, snaps):
     return out
 
 
-# Spec W5's live-win proof (gameplay truth II U14): a fought match must show the game's own
-# death-animation end. 0x37EA0 (the remains streams' 0xD100 target) sets DS_00104B0C = 1 at
-# 0x37FF6 when a KO'd fighter's death animation ends; the poked wins replaced that write.
-# The zero stores are mode 0x24's timer branch (0x2703D), mode 0x17's setup (0x271E0's
-# 0x27200), and the final's consumers (0x27582, 0x29744); so a set byte at the match-end screen
-# proves a game death animation ended by then, not that round 2's specifically did: the
-# frames and the WIN trace carry which animation ran (record §W.5, §W.9).
-LIVE_WIN = frozenset({'gp-u14-win-live'})
+# The live-win rules, split at Final Truth Task 3 (record §F3.1). 0x37EA0 (the remains
+# streams' 0xD100 target) sets DS_00104B0C = 1 at 0x37FF6 when a KO'd fighter's death
+# animation ends; the U9/U10 poked wins replaced that write. The byte's only consumer is
+# the final's 0x0C -> 0x0D -> 0x0F chain (game_mode_0d_step 0x274FC, flow_arena_ko_check
+# 0x272DC); a match-1 win (0x09 -> 0x17 -> 0x12) never enters 0x0D and mode 0x17's setup
+# clears the byte (0x271E0's 0x27200), so the match rule needs no b0c and only the final
+# rule requires it. The zero stores are mode 0x24's timer branch (0x2703D), mode 0x17's
+# setup (0x27200), and the final's consumers (0x27582, 0x29744); the final rule anchors
+# b0c on the mode-0x0F entry (record §W.5, §W.9).
+MATCH_WIN = frozenset({'gp-u14-win-live'})
+FINAL_WIN = frozenset()                 # no fought final is captured; a future one joins here
+MATCH_WINNER = {'gp-u14-win-live': 0}   # the match-1 path: P1 (side 0) wins
+
+# The KO/death fields a W record must not cover: the two +0x5A damage bytes, w2/w3,
+# ad4, b0c (DS_00104B0C), and the seven land marks. gp_session.KO_POKES is the one
+# tuple, shared with gp_twop.KO_POKES (no duplicated literals).
+KO_DEATH_POKES = gs.KO_POKES
 
 
-def live_death(name, frames, lines, snaps, out=print):
-    """The live win's death-done rule (LIVE_WIN): 0 ok, 1 FAIL. `frames` is
-    milestone_frames(name, ...). Fails when a W record wrote DS_00104B0C (the DEATH_DONE
-    poke) or when no S record at or after the round-2 KO row (mode 9, k = 1) has b0c = 1."""
-    addr = gs.DEATH_DONE[1][0][0]
-    poked = next((r['f'] for r in (gs.parse(l) for l in lines)
-                  if r and r['kind'] == 'W' and r['addr'] == addr), None)
-    if poked is not None:
-        out("gp_win: %s: evidence: FAIL: a DEATH_DONE poke at f=%X stands for the game's own "
-            'death-done byte (0x37FF6), which a fought win must reach itself' % (name, poked))
+def _poke_on(lines, addrs):
+    """(f, addr) of the first W record covering one of `addrs`, or None."""
+    for r in (gs.parse(l) for l in lines):
+        if r and r['kind'] == 'W':
+            hit = next((a for a in addrs if r['addr'] <= a < r['addr'] + r['len']), None)
+            if hit is not None:
+                return r['f'], hit
+    return None
+
+
+def _row_index(name, mode, k):
+    """The index of MILESTONES[name]'s (mode, k) row, or None."""
+    return next((i for i, (_, m, kk, _) in enumerate(MILESTONES[name]) if (m, kk) == (mode, k)),
+                None)
+
+
+def _named_side(res):
+    """The side a result's cumulative w2/w3 counters name, or None when they are level."""
+    if res['w2'] > res['w3']:
+        return 0
+    if res['w3'] > res['w2']:
         return 1
-    ko = next((f for (_, mode, k, _), f in zip(MILESTONES[name], frames) if (mode, k) == (0x09, 1)),
-              None)
-    if ko is None:
-        out('gp_win: %s: evidence: FAIL: no round-2 KO row (mode 9, k 1) to anchor the '
+    return None
+
+
+def live_match(name, frames, lines, snaps, out=print):
+    """The match rule (MATCH_WIN): a fought match-1 win, with no b0c requirement. 0 ok,
+    1 FAIL. `frames` is milestone_frames(name, ...). Fails when a W record wrote a
+    KO/death field (the DEATH_DONE poke included), when no match-result row (mode 9,
+    k 1) exists, when that record is not a 2-0 win for MATCH_WINNER[name] (ad4, the
+    w2/w3 counters and the KO'd side's +0x5A at 0x78), when the round-result row
+    (mode 8, k 1) does not name the winner at 1-0 with ad4 = NO_RESULT, when a mode-7
+    time-up record precedes it, or when the mode-6 entry before the result has no
+    live 0 < +0x5A < 0x78 value (the damage path adds to a live value, so a
+    0 -> 0x78 jump is poked). The rule reads the result/counter/damage rows, not the
+    input's b1f: the *two-human* gate is gp_twop.match_win's (it runs gp_twop.ko's
+    b1f = 3 check first)."""
+    hit = _poke_on(lines, KO_DEATH_POKES)
+    if hit is not None:
+        out("gp_win: %s: evidence: FAIL: a poke at f=%X covers %08X, a KO/death field: "
+            "the win must be the game's own writes" % (name, hit[0], hit[1]))
+        return 1
+    i = _row_index(name, 0x09, 1)
+    if i is None or i >= len(frames) or frames[i] is None:
+        out('gp_win: %s: evidence: FAIL: no match-result row (mode 9, k 1) to anchor the '
+            'win on' % name)
+        return 1
+    res = snaps.get(frames[i])
+    if res is None:
+        out('gp_win: %s: evidence: FAIL: the match-result row at f=%X has no S record'
+            % (name, frames[i]))
+        return 1
+    winner = MATCH_WINNER[name]
+    loser = 1 - winner
+    wf, lf = ('w2', 'w3') if winner == 0 else ('w3', 'w2')
+    w5, l5 = 's%d_5a' % winner, 's%d_5a' % loser
+    if (res['ad4'] != winner or res[wf] != 2 or res[lf] != 0
+            or res[l5] != 0x78 or res[w5] >= 0x78):
+        named = _named_side(res)
+        what = ('names side %d (w2 = %d, w3 = %d)' % (named, res['w2'], res['w3'])
+                if named is not None else 'names no side (w2 = %d, w3 = %d)' % (res['w2'], res['w3']))
+        out("gp_win: %s: evidence: FAIL: the match result at f=%X %s, not a 2-0 match win for "
+            'side %d: ad4 = %X, %s = %X, %s = %X'
+            % (name, res['f'], what, winner, res['ad4'], l5, res[l5], w5, res[w5]))
+        return 1
+    tout = next((f for f in sorted(snaps) if f < res['f'] and snaps[f]['mode'] == 0x07), None)
+    if tout is not None:
+        out('gp_win: %s: evidence: FAIL: time-out: mode 7 at f=%X before the match result at '
+            'f=%X: the match ended on the timer' % (name, tout, res['f']))
+        return 1
+    i8 = _row_index(name, 0x08, 1)
+    if i8 is None or i8 >= len(frames) or frames[i8] is None:
+        out('gp_win: %s: evidence: FAIL: no round-result row (mode 8, k 1) to anchor the '
+            'first round on' % name)
+        return 1
+    rr = snaps.get(frames[i8])
+    if (rr is None or rr['ad4'] != NO_RESULT
+            or rr[wf] < 1 or rr[wf] <= rr[lf]):
+        out("gp_win: %s: evidence: FAIL: the round result at f=%s does not name side %d "
+            '(ad4 = %s, w2 = %s, w3 = %s)'
+            % (name, '-' if rr is None else '%X' % rr['f'], winner,
+               '-' if rr is None else '%X' % rr['ad4'],
+               '-' if rr is None else rr['w2'], '-' if rr is None else rr['w3']))
+        return 1
+    run = []
+    for f in reversed([f for f in sorted(snaps) if f < res['f']]):
+        if snaps[f]['mode'] != 0x06:
+            break
+        run.append(snaps[f])
+    if not any(0 < r[l5] < 0x78 for r in run):
+        out('gp_win: %s: evidence: FAIL: no live 0 < %s < 78 in the mode-6 entry before the '
+            'match result at f=%X: the damage path adds to a live value, so the KO was poked '
+            'or never sampled' % (name, l5, res['f']))
+        return 1
+    out("gp_win: %s: evidence: the match result at f=%X names side %d (w2 = %d > w3 = %d); "
+        "the KO'd side's %s had a live 0 < value < 78 in the mode-6 entry, with no KO/death "
+        'poke and no time-out' % (name, res['f'], winner, res['w2'], res['w3'], l5))
+    return 0
+
+
+def live_final(name, frames, lines, snaps, out=print):
+    """The final-only rule (FINAL_WIN): b0c = 1 is required on the final path (mode
+    0x0C -> 0x0D -> 0x0F), where 0x37FF6's write is the one the U10 DEATH_DONE poke
+    replaced. 0 ok, 1 FAIL. `frames` is milestone_frames(name, ...). Fails when a W
+    record wrote a KO/death field (the DEATH_DONE poke included) or when no S record at
+    or after the mode-0x0F entry has b0c = 1."""
+    hit = _poke_on(lines, KO_DEATH_POKES)
+    if hit is not None:
+        out("gp_win: %s: evidence: FAIL: a poke at f=%X covers %08X, a KO/death field: "
+            "the final win must be the game's own writes" % (name, hit[0], hit[1]))
+        return 1
+    i = _row_index(name, 0x0F, 1)
+    if i is None or i >= len(frames) or frames[i] is None:
+        out('gp_win: %s: evidence: FAIL: no mode-0x0F row (the final path) to anchor the '
             'death-done byte on' % name)
         return 1
-    got = next((f for f in sorted(snaps) if f >= ko and snaps[f]['b0c'] == 1), None)
+    start = frames[i]
+    got = next((f for f in sorted(snaps) if f >= start and snaps[f]['b0c'] == 1), None)
     if got is None:
-        out("gp_win: %s: evidence: FAIL: no S record with b0c = 1 at or after the round-2 KO "
-            "(mode 9, f=%X): the game never ended a KO'd fighter's death animation "
-            '(0x37EA0 -> 0x37FF6), the write the U9/U10 DEATH_DONE poke replaced' % (name, ko))
+        out("gp_win: %s: evidence: FAIL: no S record with b0c = 1 at or after mode 0x0F "
+            '(f=%X): the game never ended a KO\'d fighter\'s death animation '
+            '(0x37EA0 -> 0x37FF6), the write the U10 DEATH_DONE poke replaced' % (name, start))
         return 1
     out("gp_win: %s: evidence: the game ended a KO'd fighter's death animation itself "
         '(b0c = 1 at f=%X, no DEATH_DONE poke)' % (name, got))
@@ -428,7 +538,9 @@ def evidence(name, lines, out=print):
     if bad:
         out('gp_win: %s: evidence: FAIL: the death-done poke at f=%X did not find a clear byte in the mode-0xD entry' % (name, bad[0]))
         return 1
-    if name in LIVE_WIN and live_death(name, frames, lines, snaps, out):
+    if name in MATCH_WIN and live_match(name, frames, lines, snaps, out):
+        return 1
+    if name in FINAL_WIN and live_final(name, frames, lines, snaps, out):
         return 1
     out('gp_win: %s: evidence: %d/%d milestones ok' % (name, len(MILESTONES[name]), len(MILESTONES[name])))
     return 0

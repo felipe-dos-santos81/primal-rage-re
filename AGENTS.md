@@ -5,6 +5,15 @@ artefacts. Read `port/RE_GUIDE.md` (address conventions), `port/PORTING.md`
 (the porting rules this file summarises), and `port/spec/game_flow.md` (the
 frame loop and pixel path) before changing engine code.
 
+**The terminal claim register is `docs/superpowers/specs/2026-10-30-final-claims.md`.**
+Every remaining gap has one measured status there (closed / gated / terminal /
+declared) with its address, file:line or capture; no row is "open". The docs
+test `tools/tests/test_final_claims.py` (in `make verify`) fails when a gap
+statement here has no register row, when its status disagrees with the row
+(outside a historical/superseded clause), when a terminal/declared row loses
+its evidence, or when a measured counter changes without the register. The
+final gate is Task 9 of the Final Truth plan.
+
 ## Commands
 
 ```bash
@@ -35,7 +44,7 @@ make gp-twop-ko-oracle     # live truth Task 3: gp-twop-ko's no-poke, hand-dealt
 make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
 make gp-u12-oracle         # Gameplay U12: gp-u12-endurance's team pass and fight; in make verify; skips without data/k11-captures/gp-u12-endurance
 make gp-u13-oracle         # Gameplay U13: gp-u13-ending2's non-character-0 ending; in make verify; skips without data/k11-captures/gp-u13-ending2
-make gp-u14-oracle         # Gameplay U14: gp-u14-win-live's fought win; in make verify; skips without data/k11-captures/gp-u14-win-live
+make gp-u14-oracle         # Gameplay U14: gp-u14-win-live's fought win (the match rule has no b0c; R1 terminal; final truth §F3); in make verify; skips without data/k11-captures/gp-u14-win-live
 make gp-u15-oracle         # Gameplay U15: gp-u15-join's mid-round join; in make verify; skips without data/k11-captures/gp-u15-join
 make gp-u16-oracle         # Gameplay U16: gp-u16-twop2's extended two-human match and frame evidence (finisher gap; §J8); in make verify; skips without data/k11-captures/gp-u16-twop2
 make gp-u17-oracle         # host input truth U17: gp-u17-device2 must reach MODIFY CONTROLS and select device 2 with no pad (tools/gp_u17.py check: the S-record clear, the label band's screen proof, the poll.log sha256 and frame count); in make verify; skips without the capture; the frame/trace ratchets are empty (the wall-paced walk has no replay, record §H6.9)
@@ -51,6 +60,8 @@ make gp-u27-oracle         # live truth U27: gp-u27-name-entry's letters and fin
 make gp-draw-oracle        # live truth Task 2: gp-draw's KO-branch drawn match (0x0A/0x0B under labelled poked KOs; record §L2); in make verify; skips without the capture
 make gp-draw-timeout-oracle # state coverage Task 7: gp-draw-timeout's timeout/health drawn round (record §D7); in make verify; skips without the capture
 make gp-u28-continue-oracle # live truth Task 5: gp-u28-continue's PRESS START prompt, 15→0 countdown and mode-0x15 expiry (record §L5); in make verify; skips without the capture
+make gp-u29-continue-taken-oracle # final truth Task 4: gp-u29-continue-taken takes the prompt (mode 0x0E→0x0C, cred 4→3, the 0x2791C restart; record §F4, register R07); in make verify; skips without the capture
+make gp-bowling-oracle     # final truth Task 5: gp-bowling-2's real-input mode-0x25 entry at f=0x832 (record §F5, register R06); in make verify; skips without the capture
 make coverage              # the PR_COVERAGE function census (build-cov + every driver with PR_HIT_TAG, then tools/coverage_census.py; NOT in make verify — it re-runs the drivers); COV_REASON="…" re-pins tools/coverage_baseline.txt
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (rendered audibility has no oracle)
@@ -353,7 +364,7 @@ consolidation gate).
   win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
   the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
   a poke replaced is not claimed: the KO by hits, the six earlier won matches, the final's death
-  animations. The U9/U10 captures cover character 0; character 1's BLIZZARD ending is captured and pinned by `gp-u13-oracle` (§J5), while the U14 live-win remains a distinct gap (R1, §J6). Both frame ratchets now pass round 1's mode-8 entry and the mode-0x17→0x12 loader strip by name (track G §G6/§G7): the strips at U9 2209 and U10 2062 are the loader's `- LOADING -` presentation — the same 166 px six-row strip (rows 192..197, x 0..85, sha a886c0f3.., glyph fingerprint de1c1bb2..) — composed over the entry screen, a host-owned-audio model artifact allowed by name in `OVERLAY_ALLOWED`, not a named gap; the first unexplained is U9 2452 (the replay's post-script tail) and U10 5437 (the replay's post-script tail), and the pixel claims now reach U9's replay end (f=0xDAE, the X record) and U10's replay end (capture 4662; the replay itself runs on to f=0x26E1), so the results screens, the following rounds' fights and U10's final through the replay's end are under them; U9's trace and WIN fields now agree to its replay's end too (3503, `0 differing through 3502`; the milestone frames, mostly mode changes driven by replayed pokes, do not check which opponent is fought); U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 5437. `gp-u10-ending` runs DOSBox-X with
+  animations. The U9/U10 captures cover character 0; character 1's BLIZZARD ending is captured and pinned by `gp-u13-oracle` (§J5), while the U14 live-win was a named gap in that phase (R1; now terminal, register R04). Both frame ratchets now pass round 1's mode-8 entry and the mode-0x17→0x12 loader strip by name (track G §G6/§G7): the strips at U9 2209 and U10 2062 are the loader's `- LOADING -` presentation — the same 166 px six-row strip (rows 192..197, x 0..85, sha a886c0f3.., glyph fingerprint de1c1bb2..) — composed over the entry screen, a host-owned-audio model artifact allowed by name in `OVERLAY_ALLOWED`, not a named gap; the first unexplained is U9 2452 (the replay's post-script tail) and U10 5437 (the replay's post-script tail), and the pixel claims now reach U9's replay end (f=0xDAE, the X record) and U10's replay end (capture 4662; the replay itself runs on to f=0x26E1), so the results screens, the following rounds' fights and U10's final through the replay's end are under them; U9's trace and WIN fields now agree to its replay's end too (3503, `0 differing through 3502`; the milestone frames, mostly mode changes driven by replayed pokes, do not check which opponent is fought); U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16); the replay now *reaches* the once-missed `0x29C78`/`0x37DD4` (P7 and P6 ported them — record §P7.8, §P6.12), but the traced fields cannot see their per-hit death-stream effects, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 5437. `gp-u10-ending` runs DOSBox-X with
   `memsize=64`, a harness value (the original ran out of memory in the poked final at 16 MB,
   record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The mode-8 entry frames the ratchets used to stop at (U9 346, U10 331, gp-idle-loss 2064) hold one screen three consecutive scans and then put two presents inside one 70.09 Hz scan-out: track G §G6 isolated that as the loop's own catch-up (an iteration whose compute overruns an ISR tick fails the 0x25643 gate and skips its present; the re-opened presents land sub-tick apart) — a comparison-model limit, not a port divergence, the loader re-sync hypothesis tested and rejected. Those frames are allowed by name in `SCAN3_ALLOWED` with per-frame byte recipes (a pinned hash row strip that an earlier dump frame must hold + one unique adjacent pair binding the rows below; mutation-tested per §G5's discipline), the U9/U10 entry strips in `OVERLAY_ALLOWED` (the same discipline, §G7), and the ratchets moved up to U9 2452 / U10 5437 / idle-loss 7559 (the idle-loss and U9 ones are past the replay script's end — how far the port got — and U10's 5437 is the replay's post-script tail; the 4113–4134 death-animation run is explained by the span-writer carry fix, record §W1). A P batch that ports
   a target in a miss set re-measures and re-pins (U10: `0x29C78` P7; record §W.16;
@@ -371,8 +382,8 @@ consolidation gate).
   TRACE and WIN pins rise 2364/3162 -> 3503 (MIN_FIRST 346 and MAX_START 100 unchanged and exact),
   and `0x29C78` P7: U10's set loses it (distinct=4) with every pin exact and unchanged — record
   2026-10-04-reverse-p7 §P7.8).
-- **The endgame truth phase: all seven endings and the U16 finisher are captured; U14 R1 stays
-  a named gap** (plan `docs/superpowers/plans/2026-10-23-endgame-truth.md`, record
+- **The endgame truth phase: all seven endings and the U16 finisher are captured; U14 R1 was
+  a named gap in that phase (now terminal; register R04)** (plan `docs/superpowers/plans/2026-10-23-endgame-truth.md`, record
   `2026-10-23-endgame-truth-derivations.md` §E2–§E11). Five ending captures clone U13's poked win
   path — `gp-u18-talon-ending` (TALON, character 2, cell 1), `gp-u19-vertigo-ending` (VERTIGO, 3,
   cell 2), `gp-u20-chaos-ending` (CHAOS, 6, cell 4), `gp-u21-armadon-ending` (ARMADON, 4, cell 5)
@@ -390,8 +401,9 @@ consolidation gate).
   `r0=0x27` where the capture advances to `0x33` (the capture also holds `0x27` at `f=0x14F7`).
   **The claims are the ending content and the finisher reaction, not the fight**: the WIN_MENU
   path, the seven land marks, the `0x10789E` damage and the `DEATH_DONE` pokes are harness writes,
-  so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) is
-  a named gap: the fought-match-truth phase's one authorized attempt (2026-10-26) lost the game's
+  so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) was
+  a named gap, now **terminal** (final truth Task 3, record `2026-10-30-final-truth-derivations.md`
+  §F3): the fought-match-truth phase's one authorized attempt (2026-10-26) lost the game's
   match (P1 KO'd in both rounds, P2 VERTIGO `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened)
   and also failed its harness checks, so its artifact is preserved as
   `data/k11-captures/gp-u14-win-live.failed`; the published target is absent, all nine `GP_U14_*`
@@ -404,14 +416,25 @@ consolidation gate).
   and `GP_U13_MIN_FIRST`/`MIN_REACH`/`TRACE`/`WIN` read 5904/4951/10069/10069. The game-set `b0c`
   is **not** a gap and needs no new capture: it is U10's `GP_ENDING_WIN_MIN_FIRST=9954` (the write
   at f=0x1602 in mode 0x0F, 190 frames after the mode-0x0F entry (`f=0x1544`) and 200 after the
-  seventh poked final KO's `S` — record §E1.3); only the
-  fought (no-poke) win is open (`live_death`'s `(0x09,1)` rule). The INT 8 tick item is done
+  seventh poked final KO's `S` — record §E1.3). The rule is split (final truth §F3.1-F3.3):
+  `gp_win.live_match` (the match rule) has no `b0c` clause — a match-1 win cannot reach the
+  final's `0x0C→0x0D` chain — and `gp_win.live_final` requires `b0c=1` at/after the mode-`0x0F`
+  entry, with no scenario in `FINAL_WIN` yet. The one authorized two-human `gp-u14-twop-win` run
+  reached the game's 2-0 fought win (`b1f=3`, no `W`, round-1 KO `f=0xB1B`, match result
+  `f=0x13A8`, mode `0x12` at `f=0x1693`) but failed `port script v2` at `f=0xB1B` (a missed
+  `S(0xB1A)`; 15 of 5,820 snapshots missed by the capture model), so it is preserved as
+  `data/k11-captures/gp-u14-twop-win.failed` and publishes no oracle, pin, miss set, manifest
+  entry or `CAPTURE_DIRS` path. The claim is game evidence only, not an arcade win; R1 is
+  terminal with the measured arcade damage race (AI 120 damage in each round vs the
+  script's 25/92). The INT 8 tick item is done
   (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
   is 19,887 (59.998 Hz), and `0x2D62C` is the counter the AIL callback `0x1BDF4` calls — the
-  installer stays host-owned. Named gaps left by the phase: U14 R1, the 5120 band (a byte-pinned
-  13-pixel allowance whose cause is INCONCLUSIVE — the state-coverage §D4 aperture read is invalid,
-  the DOSBox-X memory file excluding the VGA aperture), the differential frontier, and the poked-win
-  status above.
+  installer stays host-owned. The phase's remaining rows are in the terminal claim
+  register: U14 R1 is terminal; the 5120 band is PASS-A terminal (not the old
+  INCONCLUSIVE verdict; Final truth Task 2, record §F2.5); and the differential
+  frontier is terminal with its per-row reasons. The register
+  (`docs/superpowers/specs/2026-10-30-final-claims.md`) is the authority for
+  every row here.
 - **The input sampler and its readers are ported; the game logic has no joystick path.** `0x2D2F0`
   (`input_joystick_device`) is `xor eax,eax; ret` (raw `31 c0 c3`; it has its own differential
   row), so `0x4F644` stores 0 in `0x1088D4`/`0x1088DC`; its gate at `0x4F68B`
@@ -443,10 +466,12 @@ consolidation gate).
   §H6.7). `gp-u17-device2` pins the no-pad clear and the device-2 selection's screen proof
   (`make gp-u17-oracle`); its frame/trace ratchets are empty because the walk is wall-paced and
   the frame-keyed replay cannot follow it (§H6.9's named gap).
-- **The movie audio needs no port.** Both shipped movies declare zero audio tracks, so no stream
-  opens and the 13 deferred movie-audio rows are a zero-payload finding, not an implementation gap;
-  `0x10678` is the ms reader (`[0x81E10]*4`, not a buffer size), record §H1. A report-only
-  Alt-J/boot probe is optional and is not a `gp-*` fixture (record gameplay-truth-ii §J9).
+- **The movie audio needs no port.** Both shipped movies declare zero audio tracks
+  (`audio_descriptors=[(0,0) x7]` for `TWI5.SMK`/`TWG.SMK`): `0x1C740` asks for all seven tracks
+  and `0x63180` opens a stream only for a track with bit `0x40`, so no stream opens and the 13
+  deferred movie-audio rows are a zero-payload finding, not an implementation gap; `0x10678` is
+  the ms reader (`[0x81E10]*4`, not a buffer size), record §H1. A report-only Alt-J/boot probe is
+  optional and is not movie audio or a `gp-*` fixture (record gameplay-truth-ii §J9).
 - **The music truth phase: the in-match/menu music plays; the register stream is the claim**
   (plan `docs/superpowers/plans/2026-10-25-music-truth.md`, record
   `2026-10-25-music-truth-derivations.md` §M1–§M6). `0x1C930` is ported as
@@ -475,10 +500,21 @@ consolidation gate).
   `MAX_MISSING`/`MIN_REACH` pins were re-measured (record §M2.7). **Named gaps:** rendered
   audibility (the OPL core/mixer is an invented model); across the 27 reports, **12 of
   the 26 code-reachable banks are claimed by whole-section matches, 10 are requested
-  but unclaimed as whole sections** (some have the bounded prefix claim), and **4 are
-  never requested** — grave+0x0A8C, grave+0x08, sound+0x7714 and konsd+0x1CCB0 — and
-  need new captures; the unmatched diff-allowed remainders and the later
-  `0x31`/match sections the capture's cursor advanced past; and `0x1C930`/`0x1CF40` stay
+  but unclaimed as whole sections** (some have the bounded prefix claim), and **2 are
+  requested at runtime but unattributable by the section model** (grave+0x0A8C and
+  grave+0x05E4: every ending replay starts them for two tick-0 reset writes before the
+  played song's first key-on, so the S records prove the request and the section model
+  cannot attribute it — live-truth §L11.3's "4 never requested" is corrected by
+  final-truth record §F7.2; the played 1,200-tick section is grave+0x08's
+  `0x5A56E385`, whose S record precedes its first key-on), and **2 are never
+  requested** — sound+0x7714 (three reaction callbacks `0x37640`/`0x37774`/`0x37898`
+  request it behind the shared `+0x42` bit-5/`+0x43` bit-3 gate; t9-r5 reaches
+  `r0=0x33` but the gate fails) and
+  konsd+0x1CCB0 (the `0x24508` handler) — and need new captures; the 10 rows are
+  pinned in `TRACE_RESIDUE` with their first-diff tick and measured cause class
+  (`voice-rotation`/`tail-lag`) in the `trace-residue` pin region; the unmatched
+  diff-allowed remainders and the later `0x31`/match sections the capture's cursor
+  advanced past; and `0x1C930`/`0x1CF40` stay
   `UNROWED` (a row would fabricate the AIL handle and could not compare the hand-off). The
   PCM pin is **determinism, not audibility**: `make audio-render` renders the selected
   selmo (`0x0980025C`, volume `0x50`) at peak **2790**, sha256
@@ -494,7 +530,7 @@ consolidation gate).
   `2026-10-26-fought-match-truth-derivations.md` §F1–§F6; design
   `2026-10-25-fought-match-truth-design.md`, status **Partially implemented**). The harness gained
   the four fighter-slot state fields (`s0_30`/`s0_42`/`s1_30`/`s1_42` — the `+0x30` dword and the
-  `+0x42` word) and stop/skip-on-mode; no game code changed. **U14 R1 stays open:** the one
+  `+0x42` word) and stop/skip-on-mode; no game code changed. **U14 R1 was open in this phase; Final truth Task 3 made it terminal (register R04):** the one
   authorized capture (2026-10-26) lost the game's match (P1 KO'd both rounds, P2 VERTIGO
   `c1=3`/`afc=3`, `b0c` never 1, mode 0x12 never opened) and also failed its harness checks, so it
   is preserved as `data/k11-captures/gp-u14-win-live.failed`; the published target is absent and
@@ -529,7 +565,7 @@ consolidation gate).
   data identical and only their labels differing — 180 `W` frame labels one lower, two `W` tick
   labels 308→310 and one `S` `ticks` 2454→2456; no pin weakened); the remaining steps are green
   separately (record §F6.3).
-- **The one-human fought KO is game evidence only; U14 R1 stays declared** (live-truth record §L8).
+- **The one-human fought KO is game evidence only; U14 R1 is terminal** (live-truth record §L8).
   `gp_twop.py check --ko --arcade --winner 1 --capture data/k11-captures/gp-u14-win-live.failed`
   reads the failed artifact's one-human arcade round (`b1f=1`, no join): `ko f=898` (`s0_5a=78` at
   the round result, `s0_5a=71` in the mode-6 record at `f=894`), round result `f=898` (`w3=01`), match
@@ -537,11 +573,14 @@ consolidation gate).
   session checks (end frame, port script, unscripted input, stopped at the end), so it is not a
   capture: it adds no oracle, no pin and no capture path, and `GP_U14_*` stays empty. The claim is that
   the game's own damage path KO'd a fighter in a played arcade round; it does not claim the fought win.
-  Option (b), moving the rule to the final, is rejected: its `b0c=1` appears with all seven final KOs poked
-  (§E1.3), so it does not discriminate a fought KO.
-- **The out-of-scope content modes `0x21` (volleyball) and `0x25`
-  (the bowling easter egg, decoded string `0x61` = "BOWLING!") stay declared;
-  the continue screen `0x0E` is now captured** (state-coverage record
+  Option (b), moving R1's claim to the final, is rejected: its `b0c=1` appears with all seven final KOs
+  poked (§E1.3), so it does not discriminate a fought KO. Final truth Task 3 records the split instead
+  (record §F3): the match rule has no `b0c`, the final-only rule requires it, the two-human fought win
+  is game evidence in `gp-u14-twop-win.failed` (its port-script check failed), and R1 is terminal.
+- **The out-of-scope content mode `0x21` (volleyball) stays declared; `0x25`
+  (the bowling easter egg, decoded string `0x61` = "BOWLING!") is now published
+  by Final truth Task 5 (record §F5); the continue screen `0x0E` is now
+  captured** (state-coverage record
   `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2; live-truth
   §L5/§L6). `DS_00104ABC =
   (DS_00104B1F == 3) + 1` — written at `flow.c:1632` (`flow_player_join`) and `flow.c:2416`
@@ -553,61 +592,100 @@ consolidation gate).
   the two `0xBAB88`/`0xBAB9C` actor spawns and the `0x1E` timer `DS_001088AA`), and `0x25` at
   `0x4E11C` behind `DS_001078FA == 2`, `DS_00108892 >= 6`, slot 0's `+0x53 == 0`,
   `DS_00104B1D` not 2/3, the camera within `±0x3300`, `DS_00104AD8 <= 0`, `DS_00104ABC >= 2`,
-  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. Live-truth Task 6 made
-  two real-input attempts with no pokes: the one-attempt route reached `b892=2`,
-  and the review-corrected three-attempt route's last sample was 5 (+1/+2/+2);
-  the trace cannot distinguish stopping at 5 from reaching 6 and taking the
-  same-iteration rejection decrement. Mode `0x25` never opened, and the precise
-  remaining blocker is unresolved: the reaction-`0x22` callback installs the
-  increment hook and sets slot `+0x53=7` (`0x455C3`), the caller requires slot 0's
-  `+0x53==0` (`0x263DE`), and states 9/10 are no-ops, but the `+0x53` dispatcher's
-  case 7 can call `fighter_state_367dc` for character 4, reaction `0x21`/`0x22`
-  and a passing `+0x86` threshold (`fighter.c:3680-3693`), whose callee clears
-  `+0x52`/`+0x53` (`fighter.c:2690-2691`). Whether that clear can pass on every
-  relevant increment frame is not derived, so structural impossibility is not
-  claimed. The artifacts are preserved as `gp-bowling.failed` and
-  `gp-bowling-fix.failed`, with no replay, oracle or pin; no fourth execution of
-  the current route is authorized and no more captures are to be run. A staggered
-  route would be a new, unmeasured task (record §L6). The counter's increment
-  guard skips `hit_geometry` (flag 5) and reads the AF8 latch, the other record's
-  `+0x74/+0x76`, and its `+0x42` bit 3; the camera `0xF0AF0`, `0x104AD8`,
-  `0x107803` and `0x104ABC` inputs were not sampled. `0x0E` opens only in
+  both characters 4 (mirror-ARMADON) and `DS_001088C4 == 0`. **Final truth
+  Task 5 measured it** (record §F5): `gp-bowling-2` — the same mirror-ARMADON
+  move-0 route with five attempts scheduled on both sides 150 frames apart
+  (the fifth never fires — 28 of 32 steps — so four fire), no poke —
+  raised `DS_00108892` to 1/3/5/7 and opened the mode at `f=0x832`, the first
+  frame slot 0's `+0x53` was 0 with the count `>= 6` (the get-up's `0x35D6C`
+  clear; the `0x367DC` 91-frame arm was never reached). `s0_53` (`0x107803`)
+  and `camx` (`0xF0AF0`) are appended S/T fields; the camera measured
+  `-1433..4887`, `-606` at the entry, against the `±0x3300` gate, and
+  `0x104AD8` is 0 in a fight while `0x104ABC = (b1f == 3) + 1`. The published
+  capture is `data/k11-captures/gp-bowling-2` (1,491 frames, every session
+  check ok, sha256 `54d4c7d5…`); `gp-bowling-oracle` is in `make verify` and
+  `CAPTURE_DIRS` with `k_miss_gp_bowling`, the `GP_BOWLING_*` pins (N 1,422,
+  trace/moves 2,159, start 97, reach 1,137, 4 missing, 1,491 frames) and a
+  capture-443 three-present scan-out allowance (rows 19..32 port 301, rows
+  33..199 port 302, the measured pair 301 pinned). The claim boundary: the
+  entry stores, the counter's growth rules (+1/+2 a frame, only the `>= 6`
+  rejection's -1) and the **entry frame's** camera are the checker's
+  capture-side claims (the wider camera span is a record measurement, not a
+  gate; none is in the compare's trace/move field sets), the frame claim
+  reaches capture 1,421 (the entry + 70) and nothing past it,
+  and the later scoreboard is not claimed. The live-truth phase's two
+  real-input attempts and the old "stays declared / never opened / no oracle
+  or pin" register (live-truth §L6, record §L6.2-§L6.4) are **superseded by
+  Final truth Task 5**: `b892=2` and the last sample 5 (+1/+2/+2) are
+  preserved as `gp-bowling.failed` and `gp-bowling-fix.failed`, both still
+  failing `mode 0x25 never observed`; the count, not the camera, was the
+  residue. The counter's increment guard skips `hit_geometry` (flag 5) and
+  reads the AF8 latch, the other record's `+0x74/+0x76`, and its `+0x42` bit 3.
+  `0x0E` opens only in
   mode `0x0C` when the KO is on `DS_0010810D`'s side; the other side's KO takes
   the `0x0D` winner pose. Its countdown `DS_00108110` starts `0x0F`, decrements
   every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.
   A poked 1P scenario cannot open `0x21`/`0x25` (no poke writes
-  `b1f`/`DS_00104ABC`), so none is built. The pre-L5 census rows
-  `0x4BD98`/`0x4E11C`/`0x27A2C` are `NOT-HIT` (baseline l.696/714/255; the
-  trample `0x4B470` is `HIT`); Task 12b re-measured them. The L5 expiry capture
-  reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`.
+  `b1f`/`DS_00104ABC`), so none is built (`0x25` was reached by real two-human
+  input). The pre-L5 census rows
+  `0x4BD98`/`0x4E11C`/`0x27A2C` were `NOT-HIT` (baseline l.696/714/255; the
+  trample `0x4B470` is `HIT`); Task 12b re-measured them and Final truth
+  Task 5's re-pin made `0x4E11C` `HIT` (`HIT 675 / NOT-HIT 80 /
+  UNINSTRUMENTED 4`). The L5 expiry capture
+  reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`;
+  Final truth Task 4's `gp-u29-continue-taken` later took the prompt (register
+  R07) and improved `0x2791C`/`0x33B00` to HIT (record §F4.5).
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`
-  chain is re-derived in live-truth §L9 and stays declared: `b1d` is a
-  mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; 1 in 7
-  on the two-human pick, `flow.c:1350`), the entry's `+0x1F` count resets on spawn and landing
-  (`fight.c:1482`, `4942`), no capture's poll.log records that count, and state-coverage §9 is a stop rule
+  chain is re-derived in live-truth §L9 and Final truth Task 6 (record §F6)
+  keeps it **declared, with the candidate blocker refuted**: `b1d` is a
+  mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; the
+  two-human pick is `rng(7)` at `0x2587C` — 1-in-7, measured `m=0`/`b1f=3` at f=876 in `gp-twop`
+  → 5; the `0xA87C4[c] + rng(6) + 1` arm is the 1P pick, measured `b1f=1`/`2`), and the entry's
+  `+0x1F` count resets on spawn and landing
+  (`fight.c:1482`, `4942`). The count is **not** limited to 1: `0x4B470` sets
+  `actor+0x36 = 0x240` (`0x4B52E`), the same-pass case-6 decrement makes the
+  first motion step add `0x230`, and `motion_step` (`0x2A4FC`) adds `vy` to the
+  height every iteration, so `h(n) = 568n - 8n²` gives a 71-motion-step flight
+  (apex `0x2760`) with 35 passes of `vy < 0`, where `0x49F18` re-sets
+  `entry+0x1C` bit 7 (the six tumble streams `0xC9604[0..5]` carry no motion
+  opcode; the lift is the engine's). No run measures a second hit: the four
+  measured `0x4B470` calls — `gp-idle-loss` twice (the only capture) and the
+  demo twice — are all first hits (`+0x1F = 1`) on distinct lying entries, and
+  `gp-twop`/`gp-twop-ko`/`gp-draw-timeout`/`gp-keys-fight` call it zero times.
+  The trigger needs a stage-0 two-human match (1-in-7), a crowd lie
+  (a combo or a fighter state 7/2) and eight strikes each inside ~7 of the 71
+  motion steps, so no frame-exact route is derivable from the bytes and the
+  phase spends no capture; state-coverage §9 is a stop rule
   ("Do not build one; declare the modes with their gates"), so no poked 1P exhibit is built.
 - **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
   counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;
   14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none);
-  809/845 closed on full rows; 8 ported functions with no row`. **20 open rows over 19 distinct
+  810/845 closed on full rows; 8 ported functions with no row`. **20 open rows over 19 distinct
   addresses** (`TERMINAL_CENSUS`: 15 AIL runtime thunks, `sound_buffers_alloc` `0x1D0BC`,
   `input_sampler` `0x1BBAC`, and the three runtime exit-flush rows `config_file_load`/`config_file_save`/
   `menu_fatal_error` on the unrowed `0x6C4CF`; `attract_config_volumes_unscaled` and
-  `attract_config_volumes` are two specs at `0x2C8F0`), **13 rows are `WEAKER`**, and **8 portable
+  `attract_config_volumes` are two specs at `0x2C8F0`), **12 rows are `WEAKER`**, and **8 portable
   functions are `UNROWED`** — the three lists are the harness's `TERMINAL_CENSUS`/`WEAKER_CENSUS`/
   `UNROWED_CENSUS` tables in `tools/tests/test_diff_verify.py`, keyed to the counter by their tests.
   The span census is **417 slots / 392 distinct / 385 writer slots (384 reachable + dead `0x57E3C`)
   plus the out-of-table `0x5D110`** (`0x81110[128] == 0x81310[0]`, the 386th target, reachable), and
   the E2 triage has **388 `span-writer` rows plus the supplement `0x5D004`** (`0x81110[127]`, the one
   writer slot `>= RUNTIME_BASE`, named in the supplement). **U17** (the wall-paced walk, no
-  tick-keyed replay; its screens already covered by the K11 captures) and **U14** (the fought live
-  win) are declared, neither run; U14's `live_death` rule anchors on the match-1 round-2 KO but
-  `b0c`'s only setter (`0x37FF6` in `0x37EA0`) runs on the ending path, and the two re-scope options
-  are (a) drop the `b0c` clause and claim "fought KOs, no pokes", or (b) move to the final — with the
-  measured correction that `b0c`'s ending write is **not universal** (BLIZZARD U13 and ARMADON U21
-  keep `b0c = 0`). The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
-  measured NOT-HIT set (**98** addresses, §D7.5, §D8.3 and live-truth §L12; Task 3's original pin
+  tick-keyed replay; its screens already covered by the K11 captures) is terminal; **U14 R1**
+  (the fought live win) is terminal; final truth Task 3 split U14's old `live_death` rule (record §F3): `b0c`'s
+  only non-zero writer is `0x37FF6` in `0x37EA0` (a death-animation end), and the byte's only
+  consumer is the **final's** `0x0C→0x0D` chain (`game_mode_0d_step` `0x274FC`,
+  `flow_arena_ko_check` `0x272DC`/`game_mode_0c_step` `0x27380`); a match-1 win
+  (`0x09→0x17→0x12`) never enters `0x0D` and mode `0x17`'s setup clears the byte (`0x27200`).
+  The match rule
+  (`gp_win.live_match`) drops the `b0c` clause; the final-only rule (`gp_win.live_final`) keeps
+  `b0c=1` at/after the mode-`0x0F` entry, and no scenario is in `FINAL_WIN`. The two-human
+  `gp-u14-twop-win` run reached the game's 2-0 win but failed its port-script check and stays
+  `.failed`; R1 is terminal. The earlier `b0c` reading's measured correction stands: the game-set
+  `b0c` is **not universal** (BLIZZARD U13 and ARMADON U21 keep `b0c = 0`), and the U10
+  game-set byte is on a poked final. The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
+  measured NOT-HIT set (**80** addresses, §D7.5, §D8.3 and live-truth §L12; Task 3's original pin
   was 110) and the declared modes; the census baseline is a
   separate pin (its own `tools/coverage_baseline.txt`, not the `tools/pin_baseline.sha256`
   capture-pin tripwire). One `sprite_blit_aperture` (`0x51ED8`) pool mismatch was noted (three reruns
@@ -617,7 +695,7 @@ consolidation gate).
   `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
   two full `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs
   plus `make audio-render`, green 2026-10-29). **The census** (`make coverage`,
-  outside `verify`) now reads **HIT 657 / NOT-HIT 98 / UNINSTRUMENTED 4** (sums to
+  outside `verify`) now reads **HIT 675 / NOT-HIT 80 / UNINSTRUMENTED 4** (sums to
   759; the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`, pinned in
   `tools/coverage_baseline.txt`; Task 14 re-pinned it from the Task 3 baseline's
   `HIT 645 / NOT-HIT 110` to `HIT 653 / NOT-HIT 102` — R17/§D8.3 — the eight
@@ -625,7 +703,10 @@ consolidation gate).
   `0x292D4`/`0x29638`/`0x296B8` and `gp-draw-timeout`'s
   `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`; live truth Task 12b then
   re-pinned it with `gp-u27-name-entry` improving `0x20860` and
-  `gp-u28-continue` improving `0x27254`/`0x278B0`/`0x27A2C`, record §L12).
+  `gp-u28-continue` improving `0x27254`/`0x278B0`/`0x27A2C`, record §L12; Final
+  truth Task 4 then improved `0x2791C`/`0x33B00` (`gp-u29-continue-taken`, `HIT
+  659 / NOT-HIT 96`) and Task 5 the 16 mode-`0x25` rows (`gp-bowling-2`, `HIT
+  675 / NOT-HIT 80`); record §F4.5/§F5.6).
   **The exhibits:** ENDURANCE's team end
   (`gp-u25-endurance-end`, `af1` `0 → 4`, stop mode `0x17`, 1,360 frames), the
   side-1 tour (`gp-u26-side1-ending`, `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F`
@@ -637,11 +718,15 @@ consolidation gate).
   reads the IVT at linear 0 — fixed by `bios_ivt_stand_in()` seeding
   `mem[1] = 0xCA`/`mem[3] = 0xF0`; only `GP_U23_TRACE_MIN_FIRST` and
   `GP_U23_MOVES_MIN_FIRST` re-pinned (`5449`/`5467 → 6050`). **The 5120 band**
-  is **INCONCLUSIVE** (§D4): the DOSBox-X memory file excludes the VGA aperture,
-  so the diagnostic's 14 bytes read `0xFF` and the band stays a declared gap.
-  Live-truth Task 10 was not taken because the fade palette source was not
-  funded; no DAC injection ran, no cause is fitted, and the byte-pinned bounds
-  and every pin are unchanged (record §L10).
+  is **PASS-A terminal** (Final truth Task 2, record §F2.5): the one diagnostic
+  `data/k11-captures/gp-u13-band-dac` shows all 13 band pixels as the injected
+  sentinels and the S record's back-buffer bytes equal the port's
+  `0x32`×8/`0x2E`/`0x4D`×4, so the old capture 5120's `00001c` is the
+  capture/present-side class, not content. The exact palette/scan-out transient
+  is still not named; the allowance `(5120,1,5,56b900b1…)` is unchanged
+  (record §F2.5–§F2.6). The earlier state-coverage §D4 aperture read stays
+  invalid (the DOSBox-X memory file excludes the VGA aperture) and is no longer
+  the verdict (record §L10).
   **The OPL pitch test** (§D6) renders 439.9915 Hz (measured 439.0000 Hz)
   within the 1.7586 Hz derived tolerance. The two-human KO stayed
   game-evidence-only in that phase and is now published by live truth Task 3 (§L3).
@@ -659,7 +744,7 @@ consolidation gate).
   and moves 2915, start 100, reach 1685, 11 missing classes, and capture sha
   `d99571d3…`/2,132 frames, with `k_miss_gp_draw` using prefix 0. Both draw modes are
   inside the compared window. The `.dro` stays outside the 29-trace audio inventory
-  (no measured section or audio claim), and U14's fought live win stays declared.
+  (no measured section or audio claim), and U14's fought live win is terminal (R1; register R04).
 - **The no-poke two-human KO is captured and gated** (live truth Task 3, record §L3).
   `gp-twop-ko` reaches the game's hand-dealt side-0 KO at `f=0x0B63`: P2's `s1_5a`
   rises from live `0x73` to `0x78`, with `w2=1`/`w3=0`, `ad4=0xFFFFFFFF`, no `W`
@@ -670,8 +755,8 @@ consolidation gate).
   and capture sha `15705a3f…`/2,565 frames, with `k_miss_gp_twop_ko` and four
   byte-bound scan-out allowances (the repeated wipe's later pair is occurrence-pinned
   at 176). The oracle asserts the KO and round result; it does not claim a fought
-  match win or that the result naming is a fought win. U14's fought live win stays
-  declared. The `.dro` stays outside the 29-trace audio inventory, and the gate
+  match win or that the result naming is a fought win. U14's fought live win is
+  terminal (R1; register R04). The `.dro` stays outside the 29-trace audio inventory, and the gate
   reads 40/41 present with the same one declared U14 absence.
 - **The continue screen, countdown and expiry are captured and gated** (live truth
   Task 5, record §L5). `gp-u28-continue` reuses U10's route through match 1, then
@@ -680,15 +765,18 @@ consolidation gate).
   15→0 (64 frames apart), the PRESS START arm at 13 (`cnt < 0x0E`) and the first
   sampled expiry at `f=0x18C2 mode=0x15 b25=0` (the transition is `f=0x18C0`).
   The three KOs (four writes) are labelled harness
-  writes; neither a fought KO nor the taken-continue `0x2791C` path is claimed.
+  writes; for this capture neither a fought KO nor the taken-continue `0x2791C`
+  path is claimed. Final truth Task 4's `gp-u29-continue-taken` claims the take
+  (register R07; record §F4).
   `gp-u28-continue-oracle` is in `make verify` and `CAPTURE_DIRS`, with
   `k_miss_gp_u28_continue`, a 17/17 trace-carried-field path and capture 336's
   byte-bound scan-out (ports 216/218/219). The measured pins are frame 4596 (the
   post-script tail), trace/moves 6339, start 96, reach 3843, 17 missing classes
   and capture sha `96645e99…`/4,621 frames; every pin and the scan-out hash
   failed its mutation. The `.dro` stays outside the 29-trace audio inventory
-  (no measured section). The current inventory is **42 explicit capture paths,
-  41/42 present**, with only U14's fought live win declared absent. Live-truth
+  (no measured section). The current inventory is **44 explicit capture paths,
+  43/44 present**, with only U14's fought live win declared absent (`gp-u29-continue-taken`
+  and `gp-bowling-2` were added by Final truth Tasks 4–5). Live-truth
   Task 12a is docs-only; Task 12b re-pinned the census; Task 13 runs the full
   gate.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
@@ -775,7 +863,8 @@ consolidation gate).
    The 2026-10-24 proof-completion phase (record
    `docs/superpowers/plans/2026-10-24-proof-completion-derivations.md` §P5-§P8) re-pinned the
    counter at **`1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps; 825/845
-   rows with callees closed (188 have none); 809/845 closed on full rows; 8 ported functions with no
+   rows with callees closed (188 have none); 809/845 closed on full rows (810/845 after Final truth
+   Task 1); 8 ported functions with no
    row (45 FN_ ported-unrowed: 8 portable [5 registry-visible + 3 header-shape exceptions] + 37
    runtime; the scan-visible subset is 42 = 5 + 37)`** — +2 functions and +10 mutants (the two
    ported card-step rows, §P5); the rows that close are Task 5's twelve (§P6, one full sprintf row and
@@ -785,8 +874,9 @@ consolidation gate).
    `config_file_load`, `config_file_save` and `menu_fatal_error` (all on the unrowed `0x6C4CF`
    flush; `config_file_save` reopened by the short-write case). The 20 rows are 19 distinct
    addresses — `attract_config_volumes_unscaled` and `attract_config_volumes` are two specs at
-   `0x2C8F0`. `WEAKER` reads **13** (the proof-completion phase's 15 minus `0x51ED8` and `0x1BE30`,
-   which claim-coverage Task 6 closed, record §C1.10) and `UNROWED` stays **8**: `diff-verify` prints
+   `0x2C8F0`. `WEAKER` reads **12** (the proof-completion phase's 15 minus `0x51ED8` and `0x1BE30`,
+   which claim-coverage Task 6 closed, record §C1.10, and minus `0x2CADC`, whose three calls final
+   truth Task 1 wired so its row is full, record §F1) and `UNROWED` stays **8**: `diff-verify` prints
    0 named gaps, not 8. The phase's second
    proof is the **span-writer census** (§P2-§P4): 417 slots, 392 distinct targets (six renderers, one
    bare `ret`, 385 writer slots) plus the reachable out-of-table `0x81110[128] = 0x81310[0] =
@@ -798,7 +888,7 @@ consolidation gate).
    the residual `0x5D004` (`0x81110[127]`), named in the supplement because it is `>= RUNTIME_BASE`
    (claim-coverage §C1.5.1); `0x24B54` is live, `0x24B08` dead.
    The two new clauses count the explicit frozensets `tools/diff_verify.py`
-   keeps: `WEAKER` (13 — the rowed functions whose row is not full: a code poke, a reachable block left out,
+   keeps: `WEAKER` (12 — the rowed functions whose row is not full: a code poke, a reachable block left out,
    a declared terminal difference, or a declared byte difference; §P6.3/§P7.4) and `UNROWED` (8 — the ported functions with no differential row at
    all, none open; record §D.12, §S.8, §I.5, §N.4, §G2, §G3); the mutant moved by 1 in track G
    g4 (`game_loop`'s recorded RNG stub, `@rng`). The counter's unrowed clause no longer prints only
@@ -823,18 +913,19 @@ consolidation gate).
    the rule would have closed them on a row that can exist (716→774, +58). The 2026-10-22 plan gave
    all four E2-class entries rows (`0x28D68`, `0x3E484`, `0x29D04`, `0x3E4C4`), so no open row
    blocks on a port-code implementation now. The
-   counter does not tell a full row from a weaker one: **13** of the portable rowed functions have a row
+   counter does not tell a full row from a weaker one: **12** of the portable rowed functions have a row
    that runs the original under code pokes, leaves reachable blocks out, declares a terminal
    difference, or declares a byte difference on some or all of its cases (which then compare nothing
-   on the port's side, §G1's skip): the eleven the 2026-10-22 plan named that remain (`0x2CADC`, `game_loop`,
+   on the port's side, §G1's skip): the ten the 2026-10-22 plan named that remain (`game_loop`,
    `0x1AFE8`, `0x1B084`, `0x1C740`, `0x24C5C`, `0x2EA78`, `0x2EA74`, `0x2EA68`,
    `0x1B544`, `0x2EA30`), plus the two the phase added — `0x249F0` (its `0x24A9C` restart arm
    unexercised after the longjmp became scan-only, §P6.3) and `0x1D0BC` (its `0x1D10E`/`0x1D183`
    buffer-failure arms unhit, §P7.4). `0x1BE30` (of the twelve) and `0x51ED8` (the aperture row's
    declared renderer node-scratch `+0x14`/`+0x38` byte difference, §P7.4; the counter had counted it
-   full) left `WEAKER` when claim-coverage Task 6 closed them (record §C1.10). The one-line reason for
-   each of the 13 is the `WEAKER_CENSUS` table in `tools/tests/test_diff_verify.py` (the record's
-   §P8.3 table predates the two closures). A closed row may rest on a weaker callee row
+   full) left `WEAKER` when claim-coverage Task 6 closed them (record §C1.10); `0x2CADC` left when
+   final truth Task 1 wired its three omitted calls and its row became full (record §F1). The
+   one-line reason for each of the 12 is the `WEAKER_CENSUS` table in `tools/tests/test_diff_verify.py`
+   (the record's §P8.3 table predates the two closures). A closed row may rest on a weaker callee row
    (`attract_step` on `0x1C740`'s, `config_image_store` on `0x2EA68`'s).
    The still-open rows are measured, not asserted: after the closure rule **20 of the 845 rows stay
    open**, and every one is a declared terminal with a per-row reason (`TERMINAL_CENSUS`, record
@@ -883,7 +974,7 @@ consolidation gate).
   `docs/superpowers/`. A derivation record (`*-derivations.md`) is the
   authoritative raw-byte source for the tasks that implement from it.
 - `docs/PROGRESS.md` is the running, per-task status narrative (what's ported,
-  verified, and every named gap). Append a paragraph there, not to `README.md`,
+  verified, and every named gap in the terminal claim register). Append a paragraph there, not to `README.md`,
   which stays a short pointer.
 - **Keep `README.md`'s title percentage current.** It reads
   `— Reverse Engineering NN%`. Run `python3 tools/port_progress.py`: it prints

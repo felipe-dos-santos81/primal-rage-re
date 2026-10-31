@@ -259,16 +259,18 @@ u32 config_menu_default_bits(u32 table)
     return bits;
 }
 
-/* 0x2CADC. Order and values are the raw's. PORT: three of the raw's calls are
- * omitted: 0x2CAF3 0x2F198 (it draws the defaults message and stores the cursor
- * words 0x105F34/36), 0x2CB5F 0x2EA78(0xB4) and 0x2CB69 0x2F280 (it releases the
- * cells). This runs inside game_init, where 0x2EA78 (ported as
- * config_screen_wait, record §49-Y) would present frames and wait before the
- * loop starts, moving the frame-indexed oracles; the row of 0x2CADC runs the
- * raw with those three calls as nops (record 2026-10-13-reverse-d6a). */
+/* 0x2CADC. Order and values are the raw's. The message draw (0x2CAF3), the
+ * wait (0x2CB5F) and the release (0x2CB69) are the raw's own calls: the draw
+ * and release point at the data object's two copies of "SETTING CONFIGURATION
+ * DEFAULT VALUES" at 0x809C8/0x809F0 (file 0xC781C/0xC7844), and 0x2EA78's
+ * 0xB4 passes run inside game_init. See record §F1 for the derivation and the
+ * measured oracle comparison. */
 void config_set_defaults(void)
 {
     PR_SEAM0(0x2CADCu);
+    /* 0x2CAEE..0x2CAF3: EAX = -1 (col -1 centres), EDX = 0xE (row), EBX =
+     * 0x809C8 (the message), ECX = 0xB000 (mode). */
+    text_cursor_set(-1, 0xE, mem + 0x809C8u, 0xB000u);
     u32 v29 = config_menu_default_bits(0xA2EB4u);  /* 0x2CAF8: obj-1 menu table */
     config_field_set(0x29u, v29);
     config_field_set(0x35u, 0xA0u);
@@ -276,6 +278,13 @@ void config_set_defaults(void)
     u32 v2a = config_field_get(0x2Au);
     config_field_set(0x2Au, (v2a & 0xFFFFFFFCu) | 3u);   /* 0x2CB36/0x2CB38 `and al,0xfc; or al,3`: AL alone */
     config_keys_apply_defaults();                  /* 0x2CB50, record §50-C */
+    /* 0x2CB55..0x2CB5F: EAX = 0xB4; EDX = 0xE is loaded at 0x2CB5A for the
+     * release and survives 0x2EA78 (which pushes and pops EDX). The wait
+     * presents one frame and runs 0xB4 + 2 passes (record §49-Y). */
+    config_screen_wait(0xB4);
+    /* 0x2CB64/0x2CB69: EAX = -1, EDX = 0xE, EBX = 0x809F0 (the second copy of
+     * the message, preserved by 0x2DA0C/0x1AE20/0x2EA78), ECX = 0xB000. */
+    text_cells_release(-1, 0xE, mem + 0x809F0u, 0xB000u);
 }
 
 /* 0x2D638 — record 2026-10-13-reverse-s §S.5. No argument. The reader of an
