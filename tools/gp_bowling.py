@@ -27,7 +27,10 @@ gp-bowling-2). It adds the fields the live-truth phase did not sample
   0x45158 hooks, one increment each per frame), and every decrease is the
   single -1 of the rejection arm from a value >= 6 at a frame whose s0_53 is 0
   (0x4E131/0x4E189 only run behind the 0x263DE gate);
-* the entry snapshot has s0_53 = 0 (the gate's byte), the signed camx within
+* the entry snapshot has s0_53 in {0, 0x0C} (0x4E11C's own 0x38154 write: 0
+  through 0x367DC on its flag-set arm, 0x0C on the flag-clear arm; the 0x263DE
+  gate's 0 is read earlier in that same iteration and is not in the end-of-frame
+  snapshot — the measured capture holds 0x0C), the signed camx within
   [-0x3300, 0x3300] (0x4E13D..0x4E151), and every fight_mode25_enter store
   (b892 = 0 at 0x4E1CB, b1f = 3, b1d not 2/3, c0 = c1 = 4, b25 = 0, b8c4 0 -> 1,
   b8a6 = 0xB4, b8bd = b415 = 0, b8c0 = 1);
@@ -46,6 +49,7 @@ The claim is the measured trigger and the mode entry/content inside the captured
 window. The later scoreboard is not claimed.
 """
 import argparse
+import hashlib
 import os
 import sys
 
@@ -88,6 +92,20 @@ def _fail(name, out, detail):
 def _s32(v):
     """A 32-bit value as the raw's signed compares see it (camx, 0x4E143)."""
     return v - 0x100000000 if v & 0x80000000 else v
+
+
+def sha_ok(name, cap_dir, sha, out=print):
+    """The pinned capture identity (the live-truth-recorded rule): an empty or
+    different poll.log sha256 fails, so a re-capture cannot reuse the pins."""
+    if sha is None:
+        return True
+    with open(os.path.join(cap_dir, 'poll.log'), 'rb') as f:
+        got = hashlib.sha256(f.read()).hexdigest()
+    if sha == '' or got != sha:
+        out('gp_bowling: %s: capture: FAIL: poll.log sha256 %s != the pinned %s: '
+            're-measure, then re-pin' % (name, got, sha or '(unpinned)'))
+        return False
+    return True
 
 
 def _entry_missing(name, out, snaps, fs):
@@ -255,8 +273,14 @@ def evidence_staggered(name, lines, out=print):
     if (not any(snaps[f]['b8c4'] == 0 for f in before)
             or any(snaps[f]['b8c4'] != 0 for f in before)):
         return _fail(name, out, 'b8c4 is not the required 0 -> 1 transition at f=%X' % entry_f)
-    if entry['s0_53'] != 0:
-        return _fail(name, out, 's0_53=%X at the mode-0x25 entry f=%X, want 0 (0x263DE)'
+    # 0x4E11C's own 0x38154(side) writes the entry frame's +0x53: the flag-clear
+    # arm stores 0x0C (0x38154's tail), the flag-set arm runs 0x367DC (0). The
+    # gate's 0 is the 0x263DE read earlier in the same iteration and is not
+    # observable in the end-of-frame snapshot (the measured capture holds 0x0C).
+    if entry['s0_53'] not in (0, 0x0C):
+        return _fail(name, out, 's0_53=%X at the mode-0x25 entry f=%X; 0x4E11C\'s 0x38154 '
+                     'writes 0 or 0xC there (0x367DC / its flag-clear arm), and the 0x263DE '
+                     'gate byte is 0 in that same iteration'
                      % (entry['s0_53'], entry_f))
     cam = _s32(entry['camx'])
     if cam < -CAM_LIMIT or cam > CAM_LIMIT:
@@ -283,10 +307,10 @@ def evidence_staggered(name, lines, out=print):
         'state-9 edges %d/%d, no poke ok'
         % (name, armed, rejections, reactions['r0'], reactions['r1'],
            len(edges['s0_52']), len(edges['s1_52'])))
-    out('gp_bowling: %s: staggered: mode 0x25 at f=%X: s0_53=0, camx=%+d within '
-        '[-%d, %d], b1f=3, b1d not 2/3, c0=c1=4, b25=0, b8c4 0 -> 1, b8a6=0xB4, '
-        'b8bd=b415=0, b8c0=1 ok'
-        % (name, entry_f, cam, CAM_LIMIT, CAM_LIMIT))
+    out('gp_bowling: %s: staggered: mode 0x25 at f=%X: s0_53=%X (0x4E11C\'s 0x38154 write), '
+        'camx=%+d within [-%d, %d], b1f=3, b1d not 2/3, c0=c1=4, b25=0, b8c4 0 -> 1, '
+        'b8a6=0xB4, b8bd=b415=0, b8c0=1 ok'
+        % (name, entry_f, entry['s0_53'], cam, CAM_LIMIT, CAM_LIMIT))
     return 0
 
 
@@ -300,6 +324,8 @@ def main():
     ap.add_argument('--scenario', default=None,
                     help='the scenario name to pin (default %s for --staggered)'
                          % STAGGERED_SCENARIO)
+    ap.add_argument('--capture-sha256',
+                    help='the pinned poll.log sha256 (a re-capture fails)')
     a = ap.parse_args()
     want = a.scenario or (STAGGERED_SCENARIO if a.staggered else None)
     if want is not None and os.path.basename(os.path.normpath(a.capture)) != want:
@@ -309,6 +335,9 @@ def main():
     if not os.path.isfile(path):
         print('gp_bowling: no capture at %s (skipped)' % path)
         return 0
+    if not sha_ok(os.path.basename(os.path.normpath(a.capture)), a.capture,
+                  a.capture_sha256):
+        return 1
     with open(path) as f:
         lines = f.read().splitlines()
     check = evidence_staggered if a.staggered else evidence

@@ -1243,6 +1243,31 @@ class Scan3Allowance(Dirs):
         self.assertTrue(any('FAIL: allowed capture 1' in line and
                             'no unique adjacent port pair' in line for line in out), out)
 
+    def test_the_bowling_recipe_pins_its_repeated_layout_occurrence(self):
+        # Final truth Task 5 (record §F5.5): gp-bowling-2's capture 443 (raw
+        # 2896), the second wipe-in's first presented frame: rows 0..18 black,
+        # rows 19..32 port 301's and rows 33..199 port 302's. The same byte
+        # layout sits at 31 and 255 (the first transition's identical wipe), so
+        # the measured occurrence 301 is the recipe's fifth field; the
+        # fixture below repeats the ambiguity and proves all three outcomes.
+        self.assertEqual(gc.SCAN3_ALLOWED['gp-bowling-2'],
+                         ((443, 19, 33,
+                           '558052a232c34e9c3607aab24451e103c2c7062885013197af9270ef18924539',
+                           301),))
+        R = tc.ROW
+        c = rgb(1)[:2 * R] + rgb(2)[2 * R:4 * R] + rgb(3)[4 * R:]
+        sha = hashlib.sha256(rgb(1)[:2 * R]).hexdigest()
+        # ports 1, 2, 3, 2, 3: both (1, 2) and (3, 4) bind the middle/bottom
+        self.write([1, 2, 3, 2, 3], [rgb(1), c])
+        rc, first, out = self.run_scan3(2, s3=((1, 2, 4, sha),))
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('no unique adjacent port pair' in line for line in out), out)
+        self.assertEqual(self.run_scan3(2, s3=((1, 2, 4, sha, 3),))[:2], (0, None))
+        rc, first, out = self.run_scan3(2, s3=((1, 2, 4, sha, 0),))
+        self.assertEqual((rc, first), (1, 1), out)
+        self.assertTrue(any('pinned adjacent port pair 0/1 does not bind' in line
+                            for line in out), out)
+
     def test_the_table_names_the_measured_scanouts(self):
         # the pinned recipes of record §G6: gp-idle-loss 2064 (ports 1666/1669/
         # 1670), gp-u9-win 346 (218/221, vacuous middle), gp-u10-ending 331

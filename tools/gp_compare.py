@@ -392,6 +392,22 @@ SCAN3_ALLOWED = {
         # binding. The one-row top's non-unique holder is the named limit (§J8).
         (4089, 1, 66, '8eeaad13ee80ed904df9a8d600d3972f34959d6d5a0692cdbd319003b80376f6'),
     ),
+    'gp-bowling-2': (
+        # Final truth Task 5 (record §F5.5): capture 443 (raw 2896), the first
+        # presented frame of the second mode-0x1B -> mode-5 wipe-in (the claw
+        # sprite), a scan-out that spanned two presents. Rows 0..18 are black
+        # (the S records bracket the frame at f=0x4DB ms=41013 -> f=0x4DC
+        # ms=41513 and the sprite's first row is 19), rows 19..32 are port 301's
+        # (f=0x4DD tick=000005CD mode=001B) and rows 33..199 are port 302's
+        # (f=0x4DE tick=000005D3 mode=001B); the neighbours are a splice (442,
+        # the loader strip) and a two-frame splice of (302, 303) at row 61 (444).
+        # The pair's byte layout repeats at 31 and 255 (the first transition's
+        # identical wipe), so the measured occurrence 301 is pinned. Named
+        # limits (as §G6): the top rows are bound by hash and by the EXISTENCE of
+        # an earlier holder (many all-black frames hold them) and the row splits
+        # 19/33 are capture-pinned bytes — the presents' timing is not claimed.
+        (443, 19, 33, '558052a232c34e9c3607aab24451e103c2c7062885013197af9270ef18924539', 301),
+    ),
     'gp-u18-talon-ending': (
         # Capture 4099 (raw 7759): the final's mode-0x0D -> 0x0C transition (record
         # §E3), the same three-present scan as U13's 4248/4320: rows 0..63 are port

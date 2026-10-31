@@ -74,7 +74,7 @@ def _stagger_log(counts=(1, 3, 5, 7), window=True, entry=True, reject=None, **en
         lines.append(_s(f + 1, mode=6, r0=0x22, r1=0x22, s0_53=st, b892=b))
         f += 2
     if entry:
-        vals = dict(mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1, b892=0)
+        vals = dict(mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1, b892=0, s0_53=0x0C)
         vals.update(entry_kw)
         lines.append(_s(f, **vals))
         lines.append(_s(f + 1, mode=0x25, b8c4=1, b8a6=0xB4, b8c0=1))
@@ -318,6 +318,7 @@ class TestStaggered(unittest.TestCase):
         self.assertIn('b892 max 7', text)
         self.assertIn('state-9 edges 8/8', text)
         self.assertIn('camx=+0', text)
+        self.assertIn('s0_53=C', text)
 
     def test_the_count_must_reach_six(self):
         # 1,3,5,5: the three-attempt route's shape one attempt short.
@@ -358,13 +359,21 @@ class TestStaggered(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn('measured per attempt', text)
 
-    def test_the_reaction_window_and_the_gate_byte_are_required(self):
+    def test_the_reaction_window_and_the_entry_write_are_required(self):
         rc, text = _check_staggered(_stagger_log(window=False))
         self.assertEqual(rc, 1)
         self.assertIn('never reads 7', text)
-        rc, text = _check_staggered(_stagger_log(s0_53=7))
-        self.assertEqual(rc, 1)
-        self.assertIn('0x263DE', text)
+        # 0x4E11C's own 0x38154 writes 0 on its flag-set arm and 0x0C on the
+        # flag-clear one (the measured capture: 0x0C); anything else is not the
+        # entry's write.
+        for v in (0, 0x0C):
+            with self.subTest(v=v):
+                self.assertEqual(_check_staggered(_stagger_log(s0_53=v))[0], 0)
+        for v in (7, 0x0B):
+            with self.subTest(v=v):
+                rc, text = _check_staggered(_stagger_log(s0_53=v))
+                self.assertEqual(rc, 1, text)
+                self.assertIn('0x38154', text)
 
     def test_a_poke_cannot_substitute_for_the_trigger(self):
         lines = _stagger_log()
@@ -410,6 +419,17 @@ class TestStaggered(unittest.TestCase):
             with mock.patch.object(sys, 'argv',
                                    ['gp_bowling.py', 'check', '--staggered', '--capture', cap]):
                 self.assertEqual(gb.main(), 1)
+            # the capture identity: a pinned sha passes only on the pinned bytes
+            with open(os.path.join(cap, 'poll.log'), 'wb') as f:
+                f.write(b'\n'.join(l.encode() for l in _stagger_log()) + b'\n')
+            import hashlib
+            sha = hashlib.sha256(open(os.path.join(cap, 'poll.log'), 'rb').read()).hexdigest()
+            for pinned, want in ((sha, 0), (sha[:-1] + ('0' if sha[-1] != '0' else '1'), 1),
+                                 ('', 1)):
+                with mock.patch.object(sys, 'argv',
+                                       ['gp_bowling.py', 'check', '--staggered', '--capture', cap,
+                                        '--capture-sha256', pinned]):
+                    self.assertEqual(gb.main(), want)
 
 
 if __name__ == '__main__':

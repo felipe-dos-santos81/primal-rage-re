@@ -84,6 +84,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-draw-timeout \
 	$(K11_CAPTURES)/gp-u28-continue \
 	$(K11_CAPTURES)/gp-u29-continue-taken \
+	$(K11_CAPTURES)/gp-bowling-2 \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -138,7 +139,7 @@ chunk ?= 0
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
         gp-u26-oracle gp-u27-oracle gp-draw-oracle gp-draw-timeout-oracle gp-u28-continue-oracle \
-        gp-u29-continue-taken-oracle \
+        gp-u29-continue-taken-oracle gp-bowling-oracle \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -1518,6 +1519,50 @@ GP_U29_MIN_REACH = 3649
 GP_U29_CAPTURE_SHA256 = cb0347c50cd257408b1c447c23b667991dedbf2c9ee4ce64fb9638dcc1136b9c
 GP_U29_CAPTURE_FRAMES = 4446
 # <<< PIN-BASELINE-END gp-u29-continue-taken
+
+# Final truth Task 5 (record §F5): the mode-0x25 bowling entry, reached by real
+# two-human input with no poke. gp-bowling-2 plays character 4's move 0 five
+# times on both sides 150 frames apart; the fourth attempt's +2 puts
+# DS_00108892 at 7 at the reaction's clear, and fight_mode25_enter (0x4E11C)
+# opens the mode at f=0x832 (the frame the get-up's +0x53 = 0 meets the >= 6
+# gate). All ten session checks pass (28/32 steps, stopped on mode 0x25,
+# 1,491/1,491 frames, no unscripted input, 0/0 pokes). The evidence checker
+# (`gp_bowling.py check --staggered`) proves the counter's 1/3/5/7 growth, the
+# 7-long +0x53 windows, the signed camera -606 inside [-0x3300,0x3300], the
+# entry stores and the absence of W records. Capture 443 (raw 2896) is the
+# wipe-in's two-present scan-out in SCAN3_ALLOWED (rows 19..32 port 301, rows
+# 33..199 port 302, the measured pair 301 pinned because the layout repeats at
+# 31/255). The port replay dumps 1,138 presented frames; trace and moves agree
+# through 2158 (the capture's X record is f=0x86E) with 0 differences, so both
+# ratchets pin at 2,159; the first unexplained capture frame is 1,422 (raw
+# 3962), the port dump's post-script tail, so the frame claim reaches the
+# entry's first 52 frames (the entry is capture 1,370). The window start 97
+# (raw 1735), the reach 1,137 (the dump's last presented frame) and the four
+# missing non-black classes [9, 11, 68, 255] are measured; an absent capture
+# skips.
+# >>> PIN-BASELINE-BEGIN gp-bowling-2
+GP_BOWLING_MIN_FIRST = 1422
+GP_BOWLING_TRACE_MIN_FIRST = 2159
+GP_BOWLING_MOVES_MIN_FIRST = 2159
+GP_BOWLING_MAX_START = 97
+GP_BOWLING_MIN_REACH = 1137
+GP_BOWLING_MAX_MISSING = 4
+GP_BOWLING_CAPTURE_SHA256 = 54d4c7d506c0835f8f94e1270029348cbb529d6313ba5759c0f69fe3134ad3b3
+GP_BOWLING_CAPTURE_FRAMES = 1491
+# <<< PIN-BASELINE-END gp-bowling-2
+gp-bowling-oracle: build ## Final truth Task 5 oracle: gp-bowling-2's mode-0x25 entry (skips without its capture)
+	@echo "== final truth Task 5: the mode-0x25 bowling entry (skips without its capture; record §F5) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_bowling
+	@if [ ! -d $(K11_CAPTURES)/gp-bowling-2 ]; then echo "gp-bowling-oracle: no capture at $(K11_CAPTURES)/gp-bowling-2 (skipped)"; else \
+		$(PYTHON) tools/gp_bowling.py check --staggered --scenario gp-bowling-2 --capture $(K11_CAPTURES)/gp-bowling-2 \
+			--capture-sha256 "$(GP_BOWLING_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-bowling-2 GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-bowling-2 --capture $(K11_CAPTURES)/gp-bowling-2 \
+			--port $(GP_DUMP)/gp-bowling-2 --min-first "$(GP_BOWLING_MIN_FIRST)" \
+			--trace-min-first "$(GP_BOWLING_TRACE_MIN_FIRST)" --moves-min-first "$(GP_BOWLING_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_BOWLING_MAX_START)" --min-reach "$(GP_BOWLING_MIN_REACH)" --max-missing "$(GP_BOWLING_MAX_MISSING)" \
+			--capture-sha256 "$(GP_BOWLING_CAPTURE_SHA256)" --capture-frames "$(GP_BOWLING_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-bowling-2; exit $$rc; fi
 gp-u29-continue-taken-oracle: build ## Final truth Task 4 oracle: gp-u29-continue-taken's take of the continue screen (skips without its capture)
 	@echo "== final truth Task 4: the taken continue (0x0E -> 0x2791C -> mode 0x0C; skips without its capture) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_continue
@@ -2660,6 +2705,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u28-continue-oracle
 	@echo "== final truth Task 4: the taken continue (0x0E -> 0x2791C; skips without its capture; record §F4) =="
 	@$(MAKE) --no-print-directory gp-u29-continue-taken-oracle
+	@echo "== final truth Task 5: the mode-0x25 bowling entry (0x455C3/0x263DE/0x4E11C; skips without its capture; record §F5) =="
+	@$(MAKE) --no-print-directory gp-bowling-oracle
 	@echo "== live truth Task 2: the KO-branch drawn match (0x0A/0x0B; skips without its capture; record §L2) =="
 	@$(MAKE) --no-print-directory gp-draw-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
