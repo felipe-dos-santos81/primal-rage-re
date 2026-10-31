@@ -1558,3 +1558,258 @@ Three corrections; no capture, no pin moved.
    start, the reach and every other pin are unchanged. The Makefile comment,
    this record and the report are corrected and §F5.6's table row carries the
    measured classification.
+
+## §F6 The `0x21` volleyball trigger: the `+0x1C` re-hit question, the refuted blocker and the declared outcome (Task 6)
+
+**Decision: `0x21` stays declared, and the design's candidate blocker is
+refuted: the eight-trample count is not limited to 1 per spawn.** No capture,
+no code change, no pin. The re-hit latch (`entry+0x1C` bit 7) returns during the
+tumble's **fall**, because the engine's own motion integration lifts the actor
+from the trample's `+0x36 = 0x240`; no animation stream is involved. The gate is
+therefore *mechanically* reachable, and every link but the composition is already
+pinned by a unit test or a differential row (§F6.4). What no byte sequence
+yields is a *frame-exact eight-hit route*: the trigger needs a two-human match
+whose stage word is one `rng(6)` draw away, a crowd-lie state (measured in one
+capture only), and eight strikes each inside a ~5-iteration window of a
+72-iteration flight, so the phase's one capture was not spent on an underived
+script (§F6.7-§F6.8). The mode's own pass and the eighth-hit tail stay
+`NOT-HIT` (§F6.6); no "structurally unreachable" register text is written
+(Task 8 owns the final register).
+
+### F6.1 The two `+0x1C` fields (they are different objects)
+
+| field | object | use |
+|---|---|---|
+| `entry+0x1C` (byte) | the fight-effect list entry (type at `+0x1E`, count at `+0x1F`, side at `+0x20/+0x21`, actor at `+8`) | bit 7 = the **re-hit latch** (`0x4B69C` tests it at `0x4B6A6..0x4B6B3`); bit 6 = held; bit 5 = the mode-`0x21` ball; bit 2/1/0 = the walk/flight flags |
+| `actor+0x1C` (dword) | the animation record (`DS_001014F4 + index*0x68`, pset at `0x1014EC + index*0x20`) | the **height** added to the depth y when the pset point is written (`0x2A690`'s `ysrc = (rec+0x30>>16) + rec+0x1C`); the vertical motion is the word at `actor+0x36` (`vy`), paired with `+0x34` (`vx`) in the dword at `+0x34` |
+
+The brief's "actor's `+0x1C`" and the "bit 7 of `+0x1C`'s word" are the two
+different fields above. `0x4B470` writes neither height nor latch-return: it
+writes `actor+0x36` and clears `entry+0x1C` bit 7 (`0x4B52E`, `0x4B544`).
+
+### F6.2 Every writer of the actor's `+0x1C` (height)
+
+Enumerated from the raw (addresses are the store instructions; the port line is
+in `port/src/game/fight.c`/`actors.c`):
+
+| # | writer | raw address | store | reaches the dust/worshipper actor? |
+|---|---|---|---|---|
+| 1 | `actor_spawn` (`0x2AE14`) | `0x2AF44` `mov [ecx+0x1c],eax` | `h = a4` (the 4th argument) | **yes** — both dust builders pass 0 (`0x4960F`, `0x4D04E`), and `0x4B470`'s shadow spawn passes 0 too (`0x4B4D2`) |
+| 2 | `motion_step` (`0x2A4FC`) | `0x2A524 mov edx,[eax+0x34]` / `0x2A52A sar edx,0x10` / `0x2A531 add ecx,edx` / `0x2A537 mov [eax+0x1c],ecx` | `h += (s32)DSD(+0x34)>>16` = the word at `+0x36` (`vy`), **every iteration** | **yes** — its gate `0x2A501..0x2A510` tests the byte `+0x2B` bit 0x80, which the spawn sets at `0x2AF66/0x2AF6C`, and the dust descriptor's flags word is `0x1000` (bit 0x200, the `actor_sync` skip, clear: `0xBB470..0xBB4E4`) |
+| 3 | `motion_step`'s gravity landing | `0x2A5BC`/`0x2A60D` (`mov [eax+0x1c],edx` with edx = 0) | `h = 0`, in the `+0x44 != 0` arm | **no** — the spawn zeroes `+0x44` and no dust path writes it (the gravity arm is dead for this actor) |
+| 4 | the grab arm `0x4B788` | `0x4B8E8` | the held actor's `h = oy + holder h` | only on a **grab** (returns 0; does not count) |
+| 5 | the mode-`0x22` grab arm `0x4D898` | `0x4DA19` | the same | mode `0x22` only |
+| 6 | `0x49C78` case 6 landing | `0x49F9A` `mov dword [ebx+0x1c],0` | `h = 0` on landing | **yes** (§F6.4) |
+| 7 | `0x4D2D0` case 6 landing | `0x4D727` | `h = 0` | mode `0x22` only |
+| 8 | `0x4BF18` case 6 landing | `0x4C1D3` | `h = 0` | mode `0x21` only (the ball) |
+| 9 | the stream interpreter's **opcode 0x21** | `0x2B7B8` `cwde; mov edi,[esi+0x1c]; shl eax,6; add edi,eax; mov [esi+0x1c],edi` | `h += (s16)operand * 64` | only if a stream executes it |
+| 10 | the child derivation in the sync | `0x2A898..0x2A8A0` | `h = parent_h + (the +0x34 word >> 16) * 64` | **no** — the dust actors are not children (`a5 = 0`; `0x2AE14`'s `0x400` arm) |
+| 11 | the other actor families | `0x19BE0` (debris), `0x29137` (type `0x0A`/`0x19`) | `h = 0` | no (different records) |
+
+**The stream answer.** The interpreter *can* write the height (opcode `0x21`)
+and the velocity (`0x25` `0x2B7E9` `vx +=`, `0x26` `0x2B7FF` `vy +=`, `0x28`
+`0x2B825` `vx =`, `0x29` `0x2B850` `vy =`, `0x2A` `0x2B860` `+0x38 =`), but the
+six **tumble** streams `0xC9604[0..5]` (`0xEE160`, `0xEE512`, `0xEE87C`,
+`0xEEC44`, `0xEF00E`, `0xEF400`) contain **no motion opcode at all**: each is a
+sprite-hold loop `[0xCD40 <id-base>][loop up var 0x40 for N][sprite 0x000E]
+[0x8E40 var 0x40 = 0][0xC300 <own head>]`, N = 7/6/6/11/6/6, i.e. 6..11 sprites
+then a one-hold filler, looped. The same is true of the walk (`0xC9544`) and the
+lie (`0xC9634`, `0xC9724`) streams used around the trample. So **no stream
+restores `+0x1C` or bit 7 after a counted trample** — and none is needed.
+
+### F6.3 Every writer of `entry+0x1C` bit 7 (the latch)
+
+| effect | raw address | context |
+|---|---|---|
+| **set** | `0x49F18` `or byte [ecx+0x1c],0x80` | `0x49C78` case 6, `actor+0x36 < 0` (`0x49F11 cmp word [ebx+0x36],0` / `0x49F16 jge`) |
+| set | `0x4D650` | `0x4D2D0` case 6, same test |
+| set | `0x49E52` (`or dl,0x80`; type 4 at `0x49E47`) | the main pass's case 3 landing: the **lie** (type 3 is set by `0x4B5A8` at `0x4B656`, the crowd reaction gate `0x4B5A8`'s `DS_001088B6[side]`/`+0x52==7,+0x53==2`) |
+| set | `0x4D4FA` | mode `0x22` case 3 → type 4 |
+| set | `0x4C14F`, `0x4C227` | the mode-`0x21` pass (`0x4BF18`) case 6 and shared tail |
+| **clear** | `0x4B544` `and byte [esi+0x1c],0x7f` | **`0x4B470`** (every trample, counted or not) |
+| clear | `0x4CC05` | `0x4CB18` (the launch) |
+| clear | `0x4C0D5` (the mode-`0x21` cases 3/4), `0x4A16F`/`0x4A172` (case 10's get-up), `0x4D5ED` (mode-`0x22` case 4) | the other transitions |
+
+Only `0x49F18` (main pass) and `0x4D650` (mode-`0x22`) restore the latch on a
+*tumble*; both require `vy < 0`, i.e. the **fall**. `0x4B69C` is called per
+entry per iteration *before* the type dispatch (`0x49CFE` → the switch at
+`0x49D03`), so a latch set on iteration *n* is seen by the prelude on *n+1*.
+
+### F6.4 The flight, the re-hit window, and why the count is not 1
+
+**The flight.** `0x4B470` sets `actor+0x36 = 0x240` (`0x4B52E`) and leaves the
+height alone (it is 0 for a lying entry: `0x2AF44` with `a4 = 0`). Case 6 then
+runs every iteration:
+
+1. `0x49F11..0x49F18`: if `vy < 0`, set the latch;
+2. `0x49F3A..0x49F47`: `(s32)DSD(actor+0x34)>>16 + DSD(actor+0x1C) > 0` → still
+   airborne: `0x49FB8 sub word [ebx+0x36],0x10`; else land;
+3. after the mode step, `actors_update` (`0x2A31C`) runs `actor_sync`
+   (`0x2A1FC`) → `motion_step` (`0x2A4FC`), which adds `vy` to the height
+   (`0x2A537`). (The order is the raw's: the effects pass runs inside the mode step
+   (`0x2639B`, `0x2652A`, `0x28847` are its fight-mode call sites) and
+   `actors_update`/`0x2A31C` in the master-loop tail, `flow.c:7947`.)
+
+With `vy(n) = 0x240 - 0x10·n` and `h(n) = Σ_{k<n} vy(k) = 576n - 8n(n-1)`, the
+landing test is `h(n) + vy(n) = -8(n-72)(n+1) > 0`, so the **flight is 72
+iterations** (72 up/down; apex `h = 0x29A0` = 166.5 px at n = 36) and the landing
+(`0x49F9A..0x49FAF`) runs at n = 72, zeroing `h`, `vy`, `vx` and **`+0x1F`**.
+
+**The window.** `vy < 0` from n = 37, so `0x49F18` sets the latch on iterations
+37..71 — **35 iterations** per flight. The *practical* window is narrower: the
+entry's pset point `(pset_x/64 - 0x18, pset_y/64 - 0x38)` (`0x17D64..0x17D97`)
+must fall inside a fighter's `0x30 x 0x38` attack box (`0x1790C`'s
+`DS_00100AC8 + side*4` box, the `0x15F48` bitplane). `0x38` = 56 px = 3,584
+units, and `h(67) = 3,216 < 3,584`, so the point is in vertical reach only for
+n = 67..71 — **~5 iterations** of the 72.
+
+**Why the count is not limited to 1.** A hit in that window needs only
+`entry+0x1C & 0x80` (`0x4B6A6..0x4B6B3`) and a fighter's box containing the
+point (`0x4B6E2`), so the prelude counts it (`0x4B716 inc byte [ecx+0x1f]`) and
+`0x4B470` re-launches: `vy = 0x240` again, latch cleared again, another 72-
+iteration flight. The count is zeroed **only** by the landing (`0x49FAF`) or a
+spawn/rebuild (`0x49622`, `0x4D061`, `0x4E4E8`), so it accumulates across
+consecutive flights: hits at ~72-iteration intervals, 8 needed for `+0x1F > 7`
+(`0x4B579`). The trample's `vx` also reverses on hits 2+ (`0x4B50F..0x4B525`:
+`vx == -0x80` → `+0x80`, else `-0x80`), which is what bounces the worshipper
+between two fighters ≈144 px (0x90; 72 iterations x 2 px) apart — the intended
+two-player "volleyball".
+
+**Every link is already pinned.** `test_fight.c`'s effects-pass test:
+case G (the demo's trample: `+0x1F = 1`, `vy = 0x230` after the same-pass
+decrement, the shadow, `vx = -0x80`, type 6, bit 7 cleared), case H (`vy =
+0x100` with `h = 0x1000` keeps bit 7 clear; `vy = -0x20` sets it: `0x85`), case
+I (the landing zeroes `h`, `vy`, `vx` and `+0x1F`), case J (`+0x1F` 1 → 2 on a
+seeded latch, `vx` reversal). `0x2AE14` and `0x2A4FC` each have a differential
+row (`1033/1033 functions VERIFIED`). The *composition* (trample → flight →
+fall → latch → second hit) is what this record derives; no test drives it
+end-to-end, and no capture has measured it.
+
+### F6.5 The gate chain (all addresses re-read from the raw)
+
+`0x4B470`'s tail, after the increment (`0x4B716`) and the latch clear
+(`0x4B544`):
+
+| # | gate | raw | file |
+|---|---|---|---|
+| 1 | `b1d != 3 && != 2` | `0x4B547`/`0x4B54C` | `fight.c:3080` |
+| 2 | the stage word `DS_00104AFC == 0` | `0x4B559` | `fight.c:3081` |
+| 3 | `DS_001088C1 == 0` | `0x4B562` | `fight.c:3082` |
+| 4 | `(s8)DS_001088F2 > 1` (the round clock's top byte, `[0x1088EF]>>24`) | `0x4B564`/`0x4B56F` | `fight.c:3083` |
+| 5 | `entry+0x1F > 7` | `0x4B579` | `fight.c:3084` |
+| 6 | `DS_001088C5 == 0` | `0x4B582` | `fight.c:3085` |
+| 7 | `DS_00108864 == 0` | `0x4B58C` | `fight.c:3086` |
+
+then `0x4BD98` (`0x4B590`) and `0x4CB18` (`0x4B59E`). `0x4BD98`'s own gates:
+`DSD(DS_00104AD8) <= 0` (`0x4BDA7`), `DSD(DS_00104ABC) >= 2` (`0x4BDB4`, i.e.
+`b1f == 3`), `fight_13134` false (`0x4BDC1`, both fighters' x outside the same
+`±0x3300`); its stores: `DS_00108864 = entry`, `entry+0x1E = 6` (`0x4BDD9`),
+`DS_001088C1 = 1` (`0x4BDE1`), **`DS_00104B00 = 0x21` (`0x4BDE7`)**,
+`DS_001088C5 = 1` (`0x4BDEE`), the `0x1E` timer (`0x4BDF4`), the clears and
+`entry+0x1C |= 0x20` (`0x4BE3C`), then the two actors from `0xBAB88`/`0xBAB9C`
+with `+0x36 = 0x1A4`. `0x4CB18` runs whatever `0x4BD98` decided (it is called
+unconditionally after the gate): the launch that resets the entry to type 6 and
+clears bit 7 (`0x4CC05`) from the actor's height (`0x4CB84`).
+
+**The mode's own pass** (what a published capture would have to show):
+`game_mode_21_step` (`0x26540`) runs `0x4BF18` in place of `fight_effects_pass`
+— a *volleyball* pass over the same `0x10884C` list, with its own type
+dispatch (`0x4BEF4`), its own case 6 (the tumble, `0x4C135`, with the same
+landing that zeroes `+0x1F` at `0x4C27F`) and the ball strike `0x4C60C` (the
+point hit test, `+0x1F` count, `0x4CB18` launch with the flag 1 when the
+fighter's `+0x5F` is `0x0C..0x0F`), and the timeout end `0x4CD98` (mode 6, the
+score bytes, string `0x60` twice). So the eight tramples *enter* a game whose
+own rules are a second, different count over the same entry — the mode does not
+reuse `0x4B470`.
+
+### F6.6 The stage word is not a 1-in-7 gamble
+
+`0x4B470`'s gate 2 needs `DS_00104AFC == 0`. On the arcade path
+(`flow_stage_pick` `0x25848`, `DS_00104B17 == 0` and `b1f != 3`),
+`DSW(0x104AFC) = DSB(0xA87C4 + (s8)DSB(0x108169 + b1f)) + rng(6) + 1`, reduced
+once by 7 when `>= 7` (`0x2588C..0x258C6`). The table `0xA87C4` reads
+`{0,4,2,3,6,1,5}` for characters 0..6. The join writes `DS_00104B17 = 2`
+(`0x28E58`), so the two-human match keeps the word the arcade pick left. Therefore:
+
+- the word is a **function of the character and one `rng(6)` draw**, six of the
+  seven values for each character, and value 0 is reachable for every character
+  whose base is non-zero (bases 4,2,3,6,1,5) with the matching draw;
+- **character 0 (base 0) can never have stage 0** on that path (`1..6` only);
+- measured: `gp-twop` has `c0 = 2` (base 2) and the stage word **5**
+  (`0x104AFC = 5` at f = 1320..1500 of the replay), i.e. `rng(6) = 2`;
+  `gp-idle-loss`'s tramples are in stage **4**.
+
+So a stage-0 match is a matter of picking a character with a non-zero base and
+landing the right draw — deterministic given the script, but not derivable
+without a port-side search over the draw's frame.
+
+### F6.7 The measured evidence
+
+**The trample is reached in a real capture — twice.** `gp-idle-loss` (the 1P
+arcade capture where P1 idles and the AI fights; 2,565 frames) hits `0x4B470`
+twice. The port replay (`PR_GP_DUMP`, `PR_FT6_LOG` on a throwaway instrumented
+build, reverted) logs:
+
+```
+FT6 4b470 entry=108438 idx=3 if=1 ic=80 type=4 mode=6 stage=4 act=2a7eeb8 h=0 vy=0 vx=0
+FT6 4b470 entry=108414 idx=5 if=1 ic=80 type=4 mode=6 stage=4 act=2a7ee50 h=0 vy=0 vx=0
+```
+
+Both are **first** hits (`+0x1F = 1`) on **different** lying entries
+(`entry+0x1C = 0x80`, type 4), stage 4 — the crowd-lie path (`0x4B5A8` →
+`0x49E52`) reached by the AI's combo. The census's per-driver hit file agrees:
+`fn-hit gp-idle-loss 0x4B470 n=2` (`make coverage`'s `coverage/gp-idle-loss.hits`).
+The same instrumented replays of the other fights — `gp-twop`, `gp-twop-ko`,
+`gp-draw-timeout`, `gp-keys-fight` and the front-end demo (`PR_FRONTEND_DET`) —
+call `0x4B470` **zero** times and never sample an entry with bit 7 set. So the
+first hit is exhibited; **the second hit is not measured anywhere**.
+
+**The census rows** (`tools/coverage_baseline.txt`, Task 12b's pin, not moved):
+`0x4B470 HIT`, `0x4B69C HIT`, `0x4B5A8 HIT`, `0x4B144 HIT`, `0x4BD4C HIT`;
+`0x4BD98 NOT-HIT`, `0x4BF18 NOT-HIT`, `0x4C60C NOT-HIT`, `0x4C784 NOT-HIT`,
+`0x4CB18 NOT-HIT`, `0x4CD98 NOT-HIT`, `0x26540 NOT-HIT`, `0x13134 NOT-HIT`.
+The `HIT` rows are *not* gameplay evidence on their own: `run_tests`' unit cases
+call `0x4B470`/`0x4B69C` directly (G/H/I/J and the grab-arm rows), and the
+coverage driver that reaches it in gameplay is `gp-idle-loss` (above). The
+`NOT-HIT` rows are the tail and the mode, and they stay `NOT-HIT`: no measured
+run has eight counted tramples.
+
+### F6.8 Why the one capture was not taken
+
+The brief allows one capture **only if the derivation survives**. It yields the
+window (`n = 67..71` of a 72-iteration flight), the stream/phase chain and the
+stage formula, but not a frame-exact route:
+
+1. **The strike frames are not in the static bytes.** Whether a strike lands is
+   `camera_point_hit` against the *fighter's* current attack box, whose 4-byte
+   `DS_00100AC8` box is written per attack frame from that character's stream
+   data; the derivation cannot pin "press at F".
+2. **Eight windows, 72 iterations apart.** Each hit needs one of ~5 iterations;
+   a miss lands the entry (`0x49FAF` zeroes the count) and restarts the chain.
+   A scripted first attempt has no margin to discover the phase.
+3. **The set-up is a chain of its own.** A stage-0 two-human match (§F6.6), the
+   crowd lie (§F6.3: a combo or a fighter state 7/2 — measured in gp-idle-loss
+   but not in any two-human capture), and both fighters ~0x90 apart.
+4. **The budget is one.** `.failed` publishes nothing, so a blind attempt would
+   spend the phase's only `gp-u21-volley` on a measured "no trample" — a weaker
+   record than this derivation, with no second attempt possible.
+
+The honest route to publishing `0x21` is a **port-side search** (the port is
+deterministic and its fight is frame-verified against captures): script the
+two-human join, a character with a non-zero stage base, a combo to lie the
+crowd, and two spammers, then read `+0x1F`/`+0x1C` from the port until an
+eight-count appears; that script would then be a *derived* capture route. That
+is a new task (and a new capture authorization), not this brief.
+
+### F6.9 The outcome and the doc changes
+
+- `0x21` stays declared, with the corrected statement: the count is **not**
+  limited to 1 (the design's §3.2 blocker is refuted), the gate is mechanically
+  reachable, and no measurable or scriptable route exists in this phase; the
+  tail `0x4BD98` and the pass `0x4BF18` stay `NOT-HIT`.
+- No capture, no code change, no S field, no oracle, no pin, no miss set; the
+  census baseline is untouched (all the rows above are cited, not re-pinned).
+- Docs updated: the design's §3.2 gains the outcome paragraph; `AGENTS.md`'s
+  `0x21` bullet states the corrected verdict and the measured boundary;
+  `docs/PROGRESS.md` gains the Task 6 paragraph. Task 8's register reconciles
+  the remaining "stays declared / structurally unreachable" wording.

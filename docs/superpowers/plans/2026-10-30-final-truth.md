@@ -348,6 +348,19 @@ if a window exists, one two-human capture; otherwise terminal.
 **Abort/fallback:** stage not 0, `b1d` 2/3, no `+0x1F>7`, or any session
 failure → `.failed`; terminal.
 
+**Measured outcome (Final truth Task 6, record §F6): the Step-2 capture was
+not taken.** The Step-1 derivation refutes the premise's blocker: the count is
+**not** limited to 1 (the tumble's flight is 72 iterations, the latch returns
+on iterations 37..71 because `motion_step` lifts the actor, and `0x4B470`
+re-launches on every hit), so the chain is mechanically reachable — but no
+frame-exact route is derivable (the strike frames are the fighters' attack-box
+data, the stage is `0xA87C4[c] + rng(6) + 1` mod 7 and 0 is impossible for
+character 0, and the crowd lie is measured in `gp-idle-loss` only). With one
+capture and `.failed` publishing nothing, the phase spent none; `0x21` stays
+declared and the mode's pass `0x4BF18` and tail `0x4BD98` stay `NOT-HIT`. A
+port-side frame-keyed route search is the new task that would enable the
+capture.
+
 ## Task 7 — audio truth
 
 **Goal:** re-derive the one unproven audio exclusion, close the bank residue

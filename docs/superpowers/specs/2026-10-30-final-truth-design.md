@@ -100,6 +100,27 @@ requires `b1d∉{2,3}`, `DS_00104AD8<=0`, `DS_00104ABC>=2` and
 `fight_13134==0`. A poked 1P exhibit is barred by state-coverage §9; a poked
 two-human exhibit would need a new operator reversal, not this phase.
 
+**Outcome (Final truth Task 6, record §F6): `0x21` stays declared and the
+candidate blocker is refuted; no capture.** The stream does not restore the
+height (the six tumble streams `0xC9604[0..5]` are sprite-hold loops with no
+motion opcode), but the engine does: `0x4B470` sets `actor+0x36 = 0x240`
+(`0x4B52E`) and `motion_step` (`0x2A4FC`, `0x2A524..0x2A537`) adds `vy` to
+`actor+0x1C` every iteration, so the tumble flies 72 iterations and its last
+35 have `vy < 0`, where `0x49F18` re-sets `entry+0x1C` bit 7; `0x4B470` then
+re-launches on every hit and the count is zeroed only on landing (`0x49FAF`).
+The count therefore **accumulates across a flight chain** and the eight-hit
+tail (`0x4B579`) is mechanically reachable — the existing unit cases G/H/I/J of
+`test_fight.c` pin every link but the composition. What is not derivable is a
+frame-exact route: the trigger needs a stage-0 two-human match (the stage is
+`0xA87C4[c] + rng(6) + 1`, mod 7 — 0 is impossible for character 0, measured 5
+in `gp-twop` with `c0=2` and 4 in `gp-idle-loss`), a crowd lie (measured in
+`gp-idle-loss` only: its two `0x4B470` calls are both first hits, `+0x1F=1`,
+on distinct lying entries), and eight strikes each inside ~5 of the 72
+iterations. With one capture and `.failed` publishing nothing, the phase does
+not spend it on an underived script; the mode's pass `0x4BF18` and the tail
+`0x4BD98` stay `NOT-HIT`. A port-side route search (a derived, frame-keyed
+script) is the route to exhibit the mode, and it is a new task.
+
 ### 3.3 0x25 — the staggered route opened the mode; the residue was the count
 
 **Outcome (Final truth Task 5, record §F5): `0x25` is published.** The one

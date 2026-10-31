@@ -606,10 +606,26 @@ consolidation gate).
   reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`.
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`
-  chain is re-derived in live-truth §L9 and stays declared: `b1d` is a
-  mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; 1 in 7
-  on the two-human pick, `flow.c:1350`), the entry's `+0x1F` count resets on spawn and landing
-  (`fight.c:1482`, `4942`), no capture's poll.log records that count, and state-coverage §9 is a stop rule
+  chain is re-derived in live-truth §L9 and Final truth Task 6 (record §F6)
+  keeps it **declared, with the candidate blocker refuted**: `b1d` is a
+  mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; it is
+  `0xA87C4[c] + rng(6) + 1`, mod 7 — six of seven values per character, 0 impossible for character
+  0 — taken on the arcade pick (`b1f != 3`) before the join, which sets `DS_00104B17 = 2` so the
+  two-human match keeps it; not the design's 1-in-7 `rng(7)` arm at `0x2587C`), and the entry's
+  `+0x1F` count resets on spawn and landing
+  (`fight.c:1482`, `4942`). The count is **not** limited to 1: `0x4B470` sets
+  `actor+0x36 = 0x240` (`0x4B52E`), `motion_step` (`0x2A4FC`) adds `vy` to the
+  height every iteration, so the tumble flies 72 iterations and its last 35 have
+  `vy < 0`, where `0x49F18` re-sets `entry+0x1C` bit 7 (the six tumble streams
+  `0xC9604[0..5]` carry no motion opcode; the lift is the engine's). No capture
+  measures a second hit: `gp-idle-loss`'s two `0x4B470` calls are both first
+  hits (`+0x1F = 1`) on distinct lying entries, and the other five fight
+  replays measured here (`gp-twop`, `gp-twop-ko`, `gp-draw-timeout`,
+  `gp-keys-fight`, the front-end demo) call it zero times. The trigger needs a
+  stage-0 two-human match, a crowd lie
+  (a combo or a fighter state 7/2) and eight strikes each inside ~5 of the 72
+  iterations, so no frame-exact route is derivable and the phase spends no
+  capture; state-coverage §9 is a stop rule
   ("Do not build one; declare the modes with their gates"), so no poked 1P exhibit is built.
 - **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
   counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;
