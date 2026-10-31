@@ -348,18 +348,20 @@ if a window exists, one two-human capture; otherwise terminal.
 **Abort/fallback:** stage not 0, `b1d` 2/3, no `+0x1F>7`, or any session
 failure → `.failed`; terminal.
 
-**Measured outcome (Final truth Task 6, record §F6): the Step-2 capture was
-not taken.** The Step-1 derivation refutes the premise's blocker: the count is
-**not** limited to 1 (the tumble's flight is 72 iterations, the latch returns
-on iterations 37..71 because `motion_step` lifts the actor, and `0x4B470`
-re-launches on every hit), so the chain is mechanically reachable — but no
-frame-exact route is derivable (the strike frames are the fighters' attack-box
-data, the stage is `0xA87C4[c] + rng(6) + 1` mod 7 and 0 is impossible for
-character 0, and the crowd lie is measured in `gp-idle-loss` only). With one
-capture and `.failed` publishing nothing, the phase spent none; `0x21` stays
-declared and the mode's pass `0x4BF18` and tail `0x4BD98` stay `NOT-HIT`. A
-port-side frame-keyed route search is the new task that would enable the
-capture.
+**Measured outcome (Final truth Task 6, record §F6; fix round 1 corrects the
+flight arithmetic and the evidence).** The Step-1 derivation refutes the
+premise's blocker: the count is **not** limited to 1 (the tumble's flight is 71
+motion steps — the same-pass case-6 decrement makes the first step add `0x230`,
+so `h(n) = 568n - 8n²` — the latch returns on the 35 passes with `vy < 0`, and
+`0x4B470` re-launches on every hit), so the chain is mechanically reachable —
+but no frame-exact route is derivable from the checked-in bytes (the strike
+frames are the fighters' attack-box data; the two-human stage is the design's
+1-in-7 `rng(7)` draw at `0x2587C`, measured in `gp-twop`; the crowd lie is
+measured in `gp-idle-loss` and the demo, and all four measured `0x4B470` calls
+are first hits on distinct entries). With one capture and `.failed` publishing
+nothing, the phase spent none; `0x21` stays declared and the mode's pass
+`0x4BF18` and tail `0x4BD98` stay `NOT-HIT`. A port-side frame-keyed route
+search is the new task that would enable the capture.
 
 ## Task 7 — audio truth
 
@@ -418,7 +420,12 @@ docs agree.
    if aborted.
 3. Update `AGENTS.md`, `docs/PROGRESS.md`, `README.md`, `port/RE_GUIDE.md`
    to point at the register; the README title percentage stays 66% (the raw
-   figure; the portable figure is 100%).
+   figure; the portable figure is 100%). Also reconcile the pre-existing
+   `0x21` passages that Task 6 refuted: `docs/superpowers/specs/2026-10-29-live-truth-design.md`
+   §2.6 and `docs/superpowers/plans/2026-10-29-live-truth-derivations.md` §L9.3
+   (both carry superseded notes now — the counter/landing blocker is refuted,
+   the stage is a 1-in-7 retry, not a blocker), so the register never repeats
+   the refuted blockers.
 4. Add `tools/tests/test_final_claims.py` (or extend
    `test_check_docs_claims.py`): every "named gap"/"declared"/"INCONCLUSIVE"
    row in AGENTS is in the register, and every terminal register row names an

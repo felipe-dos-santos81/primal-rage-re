@@ -608,24 +608,24 @@ consolidation gate).
   (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`
   chain is re-derived in live-truth §L9 and Final truth Task 6 (record §F6)
   keeps it **declared, with the candidate blocker refuted**: `b1d` is a
-  mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; it is
-  `0xA87C4[c] + rng(6) + 1`, mod 7 — six of seven values per character, 0 impossible for character
-  0 — taken on the arcade pick (`b1f != 3`) before the join, which sets `DS_00104B17 = 2` so the
-  two-human match keeps it; not the design's 1-in-7 `rng(7)` arm at `0x2587C`), and the entry's
+  mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; the
+  two-human pick is `rng(7)` at `0x2587C` — 1-in-7, measured `m=0`/`b1f=3` at f=876 in `gp-twop`
+  → 5; the `0xA87C4[c] + rng(6) + 1` arm is the 1P pick, measured `b1f=1`/`2`), and the entry's
   `+0x1F` count resets on spawn and landing
   (`fight.c:1482`, `4942`). The count is **not** limited to 1: `0x4B470` sets
-  `actor+0x36 = 0x240` (`0x4B52E`), `motion_step` (`0x2A4FC`) adds `vy` to the
-  height every iteration, so the tumble flies 72 iterations and its last 35 have
-  `vy < 0`, where `0x49F18` re-sets `entry+0x1C` bit 7 (the six tumble streams
-  `0xC9604[0..5]` carry no motion opcode; the lift is the engine's). No capture
-  measures a second hit: `gp-idle-loss`'s two `0x4B470` calls are both first
-  hits (`+0x1F = 1`) on distinct lying entries, and the other five fight
-  replays measured here (`gp-twop`, `gp-twop-ko`, `gp-draw-timeout`,
-  `gp-keys-fight`, the front-end demo) call it zero times. The trigger needs a
-  stage-0 two-human match, a crowd lie
-  (a combo or a fighter state 7/2) and eight strikes each inside ~5 of the 72
-  iterations, so no frame-exact route is derivable and the phase spends no
-  capture; state-coverage §9 is a stop rule
+  `actor+0x36 = 0x240` (`0x4B52E`), the same-pass case-6 decrement makes the
+  first motion step add `0x230`, and `motion_step` (`0x2A4FC`) adds `vy` to the
+  height every iteration, so `h(n) = 568n - 8n²` gives a 71-motion-step flight
+  (apex `0x2760`) with 35 passes of `vy < 0`, where `0x49F18` re-sets
+  `entry+0x1C` bit 7 (the six tumble streams `0xC9604[0..5]` carry no motion
+  opcode; the lift is the engine's). No run measures a second hit: the four
+  measured `0x4B470` calls — `gp-idle-loss` twice (the only capture) and the
+  demo twice — are all first hits (`+0x1F = 1`) on distinct lying entries, and
+  `gp-twop`/`gp-twop-ko`/`gp-draw-timeout`/`gp-keys-fight` call it zero times.
+  The trigger needs a stage-0 two-human match (1-in-7), a crowd lie
+  (a combo or a fighter state 7/2) and eight strikes each inside ~7 of the 71
+  motion steps, so no frame-exact route is derivable from the bytes and the
+  phase spends no capture; state-coverage §9 is a stop rule
   ("Do not build one; declare the modes with their gates"), so no poked 1P exhibit is built.
 - **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
   counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;

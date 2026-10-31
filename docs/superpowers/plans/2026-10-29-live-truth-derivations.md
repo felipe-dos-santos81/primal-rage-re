@@ -1060,6 +1060,10 @@ the `DS_00104B17 == 0` path of `flow_stage_pick` (`flow.c:1343-1350`), `b1f == 3
 picks the stage as `rng_next(7u)` (`flow.c:1350`, `0x2587C`), so the stage word is
 0 with probability 1/7 per pick. I did not trace which of the four callers of
 `0x25848` runs at an arcade match's setup, so the 1-in-7 is per pick on that path.
+**Confirmed by Final truth Task 6 (record §F6.6):** the caller is the arcade
+stage hook `fight_hook_430e8` (`0x430FE`), and `gp-twop`'s single pick reads
+`m = 0`/`b1f = 3` and takes `0x2587C` (word 5). A 1/7 draw is a retry
+condition, not a structural blocker.
 
 **(c) The trample counter resets on landing.** `+0x1F` is zeroed when an entry spawns
 (`fight.c:1482`, `0x49622`) and when a tumbling entry lands in the case-6 arm
@@ -1068,6 +1072,13 @@ while `+0x36 < 0` (`fight.c:4912-4913`). So eight hits must land on one entry du
 its fall; a landing ends the count. Two other writers also increment `+0x1F`
 (`fight.c:3455`, `0x4D81C`; `fight.c:4320`, `0x4C6DE`). This record does not trace
 whether they reach the `0x4B590` tail.
+**Superseded in part by Final truth Task 6 (record §F6.4):** the "during its fall"
+clause is the whole chain, not a blocker. The trample's `+0x36 = 0x240` plus
+`motion_step`'s lift give a 71-motion-step flight whose 35 negative-`vy` passes
+re-set bit 7 (`0x49F18`), and `0x4B470` re-launches on every hit before the live
+entry can land, so the count accumulates across consecutive flights. What is not
+derivable is a frame-exact route; no run measures a count of two or more (the four
+measured `0x4B470` calls are first hits on distinct entries).
 
 **(d) No capture measures a count of two or more.** Every `poll.log` S row carries
 `ent=`, which is entry 1's pointer (`DS_0010741C`, `tools/gp_session.py:44`), not a

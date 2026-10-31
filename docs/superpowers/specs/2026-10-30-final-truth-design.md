@@ -105,20 +105,22 @@ candidate blocker is refuted; no capture.** The stream does not restore the
 height (the six tumble streams `0xC9604[0..5]` are sprite-hold loops with no
 motion opcode), but the engine does: `0x4B470` sets `actor+0x36 = 0x240`
 (`0x4B52E`) and `motion_step` (`0x2A4FC`, `0x2A524..0x2A537`) adds `vy` to
-`actor+0x1C` every iteration, so the tumble flies 72 iterations and its last
-35 have `vy < 0`, where `0x49F18` re-sets `entry+0x1C` bit 7; `0x4B470` then
-re-launches on every hit and the count is zeroed only on landing (`0x49FAF`).
-The count therefore **accumulates across a flight chain** and the eight-hit
-tail (`0x4B579`) is mechanically reachable — the existing unit cases G/H/I/J of
-`test_fight.c` pin every link but the composition. What is not derivable is a
-frame-exact route: the trigger needs a stage-0 two-human match (the stage is
-`0xA87C4[c] + rng(6) + 1`, mod 7 — 0 is impossible for character 0, measured 5
-in `gp-twop` with `c0=2` and 4 in `gp-idle-loss`), a crowd lie (measured in
-`gp-idle-loss` only: its two `0x4B470` calls are both first hits, `+0x1F=1`,
-on distinct lying entries), and eight strikes each inside ~5 of the 72
-iterations. With one capture and `.failed` publishing nothing, the phase does
-not spend it on an underived script; the mode's pass `0x4BF18` and the tail
-`0x4BD98` stay `NOT-HIT`. A port-side route search (a derived, frame-keyed
+`actor+0x1C` every iteration. The same-pass case-6 test/decrement runs first,
+so the first step adds `0x230` and `h(n) = 568n - 8n²`: a 71-motion-step flight
+(landing on the 72nd effects pass, apex `0x2760`, 157.5 px), with 35 passes of
+`vy < 0` where `0x49F18` re-sets `entry+0x1C` bit 7. `0x4B470` re-launches on
+every hit and the count is zeroed only on landing (`0x49FAF`), so the count
+**accumulates across a flight chain** and the eight-hit tail (`0x4B579`) is
+mechanically reachable — the existing unit cases G/H/I/J of `test_fight.c` pin
+every link but the composition. What is not derivable is a frame-exact route:
+the trigger needs a stage-0 two-human match (the two-human pick is `rng(7)` at
+`0x2587C`, 1-in-7, measured `m=0`/`b1f=3` at f=876 in `gp-twop` → 5; the
+`0xA87C4[c] + rng(6) + 1` arm is the 1P pick), a crowd lie (four measured
+`0x4B470` calls — `gp-idle-loss` twice and the demo twice — all first hits,
+`+0x1F=1`, on distinct lying entries), and eight strikes each inside ~7 of the
+71 motion steps. With one capture and `.failed` publishing nothing, the phase
+does not spend it on an underived script; the mode's pass `0x4BF18` and the
+tail `0x4BD98` stay `NOT-HIT`. A port-side route search (a derived, frame-keyed
 script) is the route to exhibit the mode, and it is a new task.
 
 ### 3.3 0x25 — the staggered route opened the mode; the residue was the count

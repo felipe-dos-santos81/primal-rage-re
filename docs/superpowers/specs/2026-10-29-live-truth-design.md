@@ -148,7 +148,13 @@ task that consumes it. "Measured" means a file/`poll.log`/binary read today;
   `b1f==3` join route satisfies `DS_00104ABC>=2`. The real blockers are the
   eight-trample chain (the counter resets on landing; no capture measures that
   count, and no capture evidences a count of two or more) and the 1-in-7 stage
-  RNG. A poke can force `+0x1F=8`, but the
+  RNG. **Superseded in part by Final truth Task 6 (record §F6):** the landing
+  reset is real but is *not* a blocker — `0x4B470` re-launches on every hit and
+  `motion_step`'s lift makes the latch return on the 35 passes with `vy < 0`, so
+  the count accumulates across a flight chain (no frame-exact route is derivable
+  and no run measures a count of two or more, so the mode stays declared with no
+  capture); and the stage is a 1-in-7 `rng(7)` draw — a retry condition, not a
+  blocker (measured `m=0`/`b1f=3` at f=876 in `gp-twop` → 5). A poke can force `+0x1F=8`, but the
   state-coverage design §9 is a stop rule for a poked 1P scenario ("Do not build
   one; declare the modes with their gates"); reversing that is an operator
   decision, not this phase's call.
