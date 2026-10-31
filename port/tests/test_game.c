@@ -13743,6 +13743,7 @@ static void gp_trace_line(void)
             "af0=%02X af1=%02X c82b=%02X clock=%02X "
             "ab4=%08X rec_y=%08X anchor=%08X s0_57=%02X rec8=%08X rec34=%04X rec36=%04X rec44=%04X "
             "b892=%04X b8c4=%02X b8a6=%04X b8bd=%02X b415=%02X b8c0=%02X "
+            "s0_53=%02X camx=%08X "
             "lat=%08X spz=%02X mpz=%02X "
             "afc=%04X ad4=%08X w2=%02X w3=%02X b1e=%02X b21=%02X b14=%02X b0c=%02X t104=%04X "
             "m106=%08X m10a=%08X sc0=%08X c82=%02X\n",
@@ -13797,6 +13798,10 @@ static void gp_trace_line(void)
             (unsigned)DSW(DS_00108892), (unsigned)DSB(DS_001088C4),
             (unsigned)DSW(DS_001088A6), (unsigned)DSB(DS_001088BD),
             (unsigned)DSB(DS_00104B15), (unsigned)DSB(DS_001088C0),
+            /* Final truth Task 5 (record §F5): slot 0's +0x53 (the 0x263DE gate
+             * byte) and the signed camera x DS_000F0AF0 (the 0x4E13D gate),
+             * gp_session.SNAP_FIELDS' last two. */
+            (unsigned)DSB(DS_00107803), (unsigned)DSD(DS_000F0AF0),
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */

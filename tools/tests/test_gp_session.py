@@ -40,7 +40,7 @@ class TestTables(unittest.TestCase):
         # plan gameplay-u6b, record gameplay-u6 §U6.11: after every U1 field, so older
         # poll.log lines are a prefix of the new format (U17's device words and the
         # fought-match phase's slot fields follow them)
-        self.assertEqual(gs.SNAP_FIELDS[-29:-24], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
+        self.assertEqual(gs.SNAP_FIELDS[-31:-26], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
                                                    ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
                                                    ('s0_43', 0x1077F3, 1)))
         self.assertEqual(gs.MOVE_FIELDS, ('c0', 'c1', 'r0', 'r1', 's0_43'))
@@ -50,7 +50,7 @@ class TestTables(unittest.TestCase):
         # host input truth U17, record §H6: dev1/dev2 follow the U1/U6 fields (older S
         # lines lack them) and live behind the key-config pointer DS_00101514, not at a
         # fixed DS address (their offsets are below DATA_BASE_VA)
-        self.assertEqual(gs.SNAP_FIELDS[-24:-22], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
+        self.assertEqual(gs.SNAP_FIELDS[-26:-24], (('dev1', gs.KB_DEV1, 2), ('dev2', gs.KB_DEV2, 2)))
         self.assertEqual((gs.KB_DEV1, gs.KB_DEV2), (0x2D4, 0x2D6))
         self.assertEqual(gs.DEV_FIELDS, ('dev1', 'dev2'))
         self.assertEqual(set(gs.DEV_FIELDS), set(gs.POINTER_FIELDS))
@@ -65,7 +65,7 @@ class TestTables(unittest.TestCase):
         self.assertEqual(snaps[3]['rng'], 3)
 
     def test_the_state_fields_are_appended_with_their_addresses_and_widths(self):
-        self.assertEqual(gs.SNAP_FIELDS[-22:-18],
+        self.assertEqual(gs.SNAP_FIELDS[-24:-20],
                          (('s0_30', 0x1077E0, 4), ('s0_42', 0x1077F2, 2),
                           ('s1_30', 0x107874, 4), ('s1_42', 0x107886, 2)))
         vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
@@ -85,7 +85,7 @@ class TestTables(unittest.TestCase):
         # of WIN_EXTRA's c82) is appended after them, also in SNAP_FIELDS not WIN_EXTRA.
         # state coverage Task 7 (report task-7-report.md): clock (DS_001088F2) is appended after
         # c82b, also in SNAP_FIELDS.
-        self.assertEqual(gs.SNAP_FIELDS[-18:-15],
+        self.assertEqual(gs.SNAP_FIELDS[-20:-17],
                          (('af0', 0x104AF0, 1), ('af1', 0x104AF1, 1), ('c82b', 0x1078C6, 1)))
         self.assertNotIn('af0', gs.WIN_FIELDS)
         self.assertNotIn('af1', gs.WIN_FIELDS)
@@ -114,7 +114,7 @@ class TestTables(unittest.TestCase):
         # state coverage Task 7 (report task-7-report.md): clock is the round timer's top byte
         # DS_001088F2 (a byte, not the dword DS_001088EF), appended after c82b; Task 9's
         # eight U16 component fields follow it.
-        self.assertEqual(gs.SNAP_FIELDS[-15], ('clock', 0x1088F2, 1))
+        self.assertEqual(gs.SNAP_FIELDS[-17], ('clock', 0x1088F2, 1))
         self.assertNotIn('clock', gs.TRACE_FIELDS)          # not ratcheted
         self.assertNotIn('clock', gs.MOVE_FIELDS)
         vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
@@ -126,7 +126,7 @@ class TestTables(unittest.TestCase):
     def test_the_u16_component_fields_are_appended_with_their_widths(self):
         # State coverage Task 9: the latch's two addends and the reaction record's
         # motion/cursor state. These follow c82b, so older S records stay prefixes.
-        self.assertEqual(gs.SNAP_FIELDS[-14:-6],
+        self.assertEqual(gs.SNAP_FIELDS[-16:-8],
                          (('ab4', 0x100AB4, 4), ('rec_y', 0x1C, 4),
                           ('anchor', 0x100AF0, 4), ('s0_57', 0x107807, 1),
                           ('rec8', 0x08, 4), ('rec34', 0x34, 2),
@@ -264,7 +264,7 @@ class TestTables(unittest.TestCase):
             # (record gameplay-u11 §K.3), the twelve U9/U10 win fields and the four
             # 2026-10-26 slot-state fields (record §F1) read the field's address
             if (n in gs.MOVE_FIELDS or n in gs.SLOT_STATE_FIELDS
-                    or n in ('c82b', 'ab4', 'anchor', 's0_57')
+                    or n in ('c82b', 'ab4', 'anchor', 's0_57', 's0_53', 'camx')
                     or (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA):
                 m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
                 self.assertIsNotNone(m, (n, arg))

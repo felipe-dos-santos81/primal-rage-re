@@ -1141,3 +1141,201 @@ inventory (the `GP_TRACES` list is fixed and has no gp-u29 entry): no audio
 section was measured, so no section minimum or audio claim is fabricated.
 The claim is the take and the restart, not a fought KO or a win: the route's
 KOs are harness writes and the credit spend is the game's own `0x2CA9C` debit.
+
+## §F5 The mode-`0x25` bowling trigger: the `+0x53` machine, the count window and the staggered route (Task 5)
+
+**Decision:** pending the one capture (§F5.5). This section is the raw derivation
+(Task 5 Step 1) and the field/scenario/checker design; the capture's measured
+result and either the published oracle or the terminal declaration follow in
+§F5.5.
+
+### F5.1 The reaction, the hook, and the one-sided impossibility
+
+`0x455A0` is character 4's **reaction-`0x22` callback** (the dword at `0xA4BD0`,
+entry `(4 << 6) + 0x22` of the `0xA3528` reaction rows). The only path that
+applies a reaction is `0x34E2C` (`hit_reaction_apply`), whose callers are
+`0x350D0` (`0x352CD`, inside the `+0x53` dispatcher's default case),
+`0x3CE58` (`0x3CF2E`, the hitbox/reaction drive) and none else
+(`prage.calls.csv`). It
+
+* zeroes the applying slot's `+0x88` counter — `0x34E9E` `mov word [eax+0x88],0`;
+* stores the reaction byte in the slot's `+0x5F` — `0x34EE7` `mov [eax+0x5f],cl`
+  — and mirrors it in `DS_001088A8 + side` (`0x34EF6`, the S fields `r0`/`r1`);
+* then runs the per-(char, reaction) callback.
+
+`0x455A0` writes the performing slot's **`+0x53 = 7`** (`0x455C3`
+`mov byte [ecx+0x53],7`) and `+0x52 = 9` (`0x455C7`), plays the `0xEB516`
+stream (`0x455B2..0x455BE`) and, outside mode `0x25` (`0x455DB` `cmp eax,0x25`,
+`0x455DE` `jne`), installs `+0x0C = 0x452E4`, **`+0x18 = 0x45158`**
+(`0x45602`) and `+0x1C = 0x451EC` (`0x45609`).
+
+`0x45158` is the per-slot `+0x18` hook `0x19020` calls every fight frame
+(`0x1903F` `call [ebx+0x877C8]`, EAX = side, EAX returned; `0x1904C`/`0x1905C`
+store the result latch). It runs `0x18C14` with flag 0 = 1, flags 1 and 8 = 0
+and every other flag 2 (`0x45169..0x4518B`) and increments the **word
+`DS_00108892`** at `0x451C6` (`inc word [0x88892]`) only when all of:
+
+| # | condition | raw |
+|---|---|---|
+| 1 | the `0x18C14` result is 0 | `0x45190` `test eax,eax` / `0x45192` `jne` |
+| 2 | `DS_00100AF8[side] > 0` (the projected-overlap latch) | `0x18C49` `cmp [eax*4+0x80AF8],0` / `0x18C51` `setle`; the flag-1 arm returns 1 while it is `<= 0` (`0x18C62`/`0x18C6B`) |
+| 3 | the other slot's word `+0x74 == 0` and `+0x76 <= 1` | `0x18CC0` `cmp word [eax+0x74],0` `ja`; `0x18CD4` `cmp eax,1` `jg` |
+| 4 | the other slot's `+0x42` bit 3 clear | `0x18E4E` `test byte [eax+0x42],8` `jne` |
+| 5 | the mode is not `0x25` | `0x4519D` `cmp edx,0x25` / `0x451A0` `je` |
+| 6 | `ctx[3]` (the **other** slot) `+0x5F == 0x22` | `0x451AF` `cmp edx,0x22` |
+| 7 | `ctx[3]` `+0x7A == 4` | `0x451C1` `cmp edx,4` |
+| 8 | (the increment) | `0x451C6` `inc word [0x88892]` |
+
+`ctx[3]` is the other side (`0x33950`'s context; `0x45158` reads
+`[esp+0xc]`, its fourth dword). Condition 2 is the **pixel-overlap latch**:
+`0x1756F` (inside `camera_unfreeze`, called from `camera_decay` `0x176AC`/
+`0x176BF`) writes `DS_00100AF8[side] = DS_00100B54`, the shared count of set
+bits of the two projected fighters' AND-ed bit-planes (`0x16FDE..0x17001`),
+scaled at `0x1703E..0x1706F`; it is non-zero only when the two sprites overlap
+on screen, and only when the `0x140E4` box-overlap gate passed and the other
+slot's `+0x74 == 0`/`+0x76 <= 1` (`0x170C5`/`0x170E2`) — the same two words as
+condition 3.
+
+**The one-sided route is dead.** The hook installed by a slot's own reaction
+(`0x455A0` `0x45602`) counts *the other* slot's reaction. If only P2 performs,
+`fighter_19020(1)` calls P2's hook, which reads P1's `+0x5F` (not `0x22`) →
+no increment; P1's `+0x18` is 0 from the spawn reset (`0x33C78`'s `0x33E07`
+`mov dword [slot+0x18],0`, next to `0x33DC3`'s `+0x88 = 0`), so
+`fighter_19020(0)` returns at `0x19032` and no second hook exists. Zero
+increments. The prior symmetric route (both sides play character 4's move 0)
+is therefore the raw's own shape, not a harness convenience: both slots must be
+in `+0x5F == 0x22` for either hook to count, and each hook then counts the
+other.
+
+### F5.2 The `+0x53` machine and the 91-frame clear
+
+The `+0x53` dispatcher `0x3531C` (called only from `0x35658` at `0x35803`, inside
+`fight_hud_pass`) switches on the slot's `+0x53` (`0x353E9`, table `0x352DC`).
+Case 7 (`0x3541B..0x3546B`) is the reaction's own arm:
+
+```
+03541B  or byte [slot+0x41],0x80
+035422  and byte [slot+0x43],0xcf
+03542B  test ebp,ebp / 0x35431 call [ecx+0xc]   ; the +0x0C callback (0x452E4)
+035436  mov al,[ecx+0x7a] / 0x35439 cmp eax,4 / 0x3543C jne 0x354e5
+035444  mov al,[ecx+0x5f] / 0x35447 cmp eax,0x21 / 0x3544A je
+03544C  cmp eax,0x22 / 0x3544F jne 0x354e5
+035455  mov eax,[ecx+0x86] / 0x3545B sar eax,0x10 / 0x3545E cmp eax,0x5a / 0x35461 jle 0x354e5
+035467  mov eax,ecx / 0x35469 mov edx,[ecx] / 0x3546B call 0x367dc
+```
+
+`0x367DC` restarts the record's animation and clears the slot:
+
+```
+036806  mov byte [ebx+0x52],0
+03680A  mov byte [ebx+0x53],0
+03680E  mov byte [ebx+0x5f],0xff
+```
+
+The dword at `+0x86`'s high word is the slot's `+0x88` word, which `0x34E2C`
+zeroes when the reaction is applied (`0x34E9E`) and `0x35658` increments once
+per frame at `0x356D6` (`mov word [ebx+0x87838],dx`), **before** the same
+function's `0x35803 call 0x3531C`. So the case-7 clear fires on the frame whose
+increment makes `+0x88 = 0x5B = 91 > 0x5A`, i.e. **91 frames after the
+application frame** (`F`): the apply frame leaves `+0x88 = 0` (the apply runs in
+the same `fight_hud_pass`, after `0x356D6`, through `0x350D0` → `0x352CD`), and
+frames `F+1 .. F+91` carry `+0x53 = 7`; at `F+91` the clear runs.
+
+The other three `0x367DC` callers cannot fire during this window: `0x359E0`
+(state 1's command gate, `0x35A21`) and `0x399CC` (`+0x52 == 7`, `0x399FC`)
+need another `+0x52` state, and our measured `+0x52` series is
+`9 → 0x10 → {4,0x14,9} → 0` (`gp-bowling-fix.failed`), never `7` or `1`;
+`0x38154` is mode `0x25`'s own per-side spawn, which cannot run before the
+entry. And because `0x3531C` dispatches on `+0x53`, no other state handler runs
+while it is `7`, so nothing else can clear it. The capture's appended `s0_53`
+field measures the window directly (91 samples of `7`, then `0`).
+
+### F5.3 The count window: the gate and the clear share one frame
+
+`game_mode_04_step` (`0x26254`) runs, in this order: `camera_decay` (`0x262E9`,
+writes the overlap latch), `fighter_pass_a` (`0x262EE` → `0x19020` → `0x45158`,
+the increments), `fighter_pass_b`, `fighter_think` (`0x2633D`),
+`fight_slot_pass` (`0x26385`), **`fight_hud_pass(0)` then `(1)`** (`0x2638A`/
+`0x26391` → `0x35658`: the `+0x88` increment at `0x356D6`, then `0x3531C` at
+`0x35803`, hence the case-7 clear at `0x3546B`), effects/scene/HUD pulse, the
+round-end check, and finally the entry gate (`0x263BA..0x263E8`):
+
+```
+0263CB  cmp edx,2 / 0x263CE jne 0x263ef        ; DS_001078FA == 2
+0263D2  mov dx,[0x88892] / 0x263D9 cmp edx,6 / 0x263DC jl 0x263ef
+0263DE  mov dl,[0x87803] / 0x263E4 test dl,dl / 0x263E6 jne 0x263ef   ; slot 0's +0x53
+0263EA  call 0x4e11c
+```
+
+`0x4E11C` then rejects on `b1d ∈ {2,3}` (`0x4E127..0x4E131` `dec word
+[0x88892]`) or on any of the camera/`0x104AD8`/`0x104ABC`/both-character-4/
+`b8c4` gates (`0x4E13D..0x4E189`, the same decrement), and otherwise stores its
+entry set including the count reset `0x4E1CB` `mov word [0x88892],0` and the
+mode `0x4E1E9` (`mov word [0x84b00],0x25`).
+
+So the count is only *visible to the gate* when slot 0's `+0x53 == 0`, and the
+only frame inside a reaction where that holds is the clear frame `F+91`
+(§F5.2) — the increments happen earlier, in `fighter_pass_a`, while `+0x53` is
+still `7`. **The count must already be `>= 6` at `F+91`'s `fighter_pass_a`, and
+the gate reads it later in that same iteration.** The increments and the clear
+can therefore never be separated by a frame: a capture that samples `b892 = 5`
+and no mode entry is genuinely one increment short, not a frame-boundary
+artifact.
+
+The gate's other inputs:
+
+| input | derived value in this route | raw |
+|---|---|---|
+| `DS_001078FA == 2` | both slots live: `fighter_spawn_slot` increments it per spawn (`0x33CDA..0x33CEA`) | `0x263CB` |
+| `b1d` not 2/3 | the capture's `b1d = 0` (the two-human non-demo match) | `0x4E127` |
+| `camx` `in [-0x3300,0x3300]` (signed) | **unmeasured before this task** | `0x4E13D..0x4E151` |
+| `DS_00104AD8 <= 0` (signed) | `0` in a fight: its only increment is mode `0xB`'s tick `0x28C47`, and the round reset `0x25C1C` stores `0` (`0x25C2A`) | `0x4E153` |
+| `DS_00104ABC >= 2` | `(b1f == 3) + 1` at `0x28DCF..0x28DE7` (match start) and `0x25EB2..0x25EC5` (round-end case 3); `b1f = 3` gives 2 | `0x4E15C` |
+| both characters 4 | `c0 = c1 = 4` in every capture snapshot | `0x4E165..0x4E17D` |
+| `b8c4 == 0` before | `0x494FE` clears it at the round entrance; the entry sets it to 1 (`0x4E1AE`) | `0x4E17F` |
+
+So four of the five gate inputs the live-truth phase left unsampled are now
+derived (`0x104ABC`, `0x104AD8`, `0x107803`, and the latch via the clear
+timing); only the camera remains, which is why the capture appends it.
+
+### F5.4 The measured attempts and the exact residue
+
+Both prior artifacts are real-input two-human runs of the same move-0 route
+(both sides play character 4's move 0; the move's reaction is `0x22` by
+`tools/gp_moves.py list --char 4`):
+
+| capture | attempts | visible `b892` samples (mode 6) | state-9 edges/side | mode `0x25` |
+|---|---|---:|---:|---|
+| `gp-bowling.failed` | 1 | `0 -> 2` at `f=0x5C2` | 2 | no |
+| `gp-bowling-fix.failed` | 3 | `1@0x5F9, 3@0x69C, 5@0x732` | 6 | no |
+
+(The fix capture's +1/+2/+2 is the number of frames in each 91-frame window
+where the §F5.1 conjunction held; the single-attempt run's +2 is the same
+conjunction on both slots.) Its last sample is **5**, and the capture then runs
+~2,300 frames of idle mode-6 fight through the `until_mode 0x25, 300` step with
+`b892 = 5` and `s0_53` (as we now know) back to `0`, so the gate was evaluated
+for thousands of frames with the count one short: the route was one attempt (or
+one increment) short, not blocked.
+
+**The exact residue this task's one capture settles:**
+
+1. **The count.** With a fourth attempt's `+2` at `F4` the count is `7` at
+   `F4+91`; the visible pre-entry series must then read `1, 3, 5, 7` and the
+   entry frame must hold `b892 = 0`. A fifth attempt is the margin if an
+   attempt yields `+1`. If no attempt adds an increment, the visible series
+   stops at `5` and the count — not the camera — is the residue.
+2. **The camera.** The entry snapshot's `camx` must lie in
+   `[-0x3300, 0x3300]` (signed). If the count reaches `>= 6` at a clear frame
+   and the mode still does not open, the camera is the failing input: the
+   rejection arm then decrements, so the visible series shows `...,5,7,6` (the
+   `7` sampled at `F4+90`, the `6` after `0x4E189`) and the measured `camx`
+   names the reason. That is the terminal declaration instead of an unresolved
+   blocker.
+3. **The `+0x53` window.** The appended `s0_53` samples must show `7` for the
+   91 frames `F..F+90` after each application and `0` at the clear, which
+   turns §F5.2's raw timing into a measurement (or corrects it).
+
+A one-sided route cannot produce (1) (§F5.1), and no poke can (§F5.3's gate is
+the game's own), so the route stays the symmetric move-0 route with 4-5
+attempts at the measured 150-frame spacing.
+

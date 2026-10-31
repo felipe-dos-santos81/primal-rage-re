@@ -90,6 +90,11 @@ SNAP_FIELDS = (
     ('b892', 0x108892, 2), ('b8c4', 0x1088C4, 1),
     ('b8a6', 0x1088A6, 2), ('b8bd', 0x1088BD, 1),
     ('b415', 0x104B15, 1), ('b8c0', 0x1088C0, 1),
+    # Final truth Task 5 (record §F5): slot 0's +0x53 (the 0x263DE entry gate's
+    # byte, set 7 by 0x455A0 at 0x455C3 and cleared by 0x367DC at 0x3680A) and
+    # the signed camera x DS_000F0AF0 (the 0x4E13D..0x4E151 gate). Appended, so
+    # every older poll.log's S lines lack them; only the bowling checks assert them.
+    ('s0_53', 0x107803, 1), ('camx', 0x0F0AF0, 4),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -396,6 +401,49 @@ SCENARIOS['gp-bowling'] = dict(time_limit=90, steps=(
 # The corrected capture has its own name; gp-bowling.failed preserves the
 # one-attempt run. The steps tuple is immutable and shared, not rebuilt.
 SCENARIOS['gp-bowling-fix'] = dict(SCENARIOS['gp-bowling'])
+
+# Final truth Task 5 (record §F5): the staggered route. Same mirror-ARMADON
+# fight and same move 0 as gp-bowling-fix, played FIVE times on both sides
+# instead of three, 150 frames apart (142 after each attempt's last direction
+# press, the measured spacing of §L6.1), no poke. The trigger needs
+# DS_00108892 >= 6 at the frame the reaction's +0x53 clears (91 frames after the
+# application, §F5.2/§F5.3); the three-attempt route's last visible sample was
+# 5, and the fourth attempt's measured +1..+2 puts the count at 6..7 on its
+# clear frame. The fifth attempt is the margin if an attempt adds only +1.
+# stop_mode 0x25 with a 60-frame delay (gp-draw's arrangement) ends the capture
+# once the mode opens, so the entry screen's first 60 frames are the captured
+# content; when the mode never opens the final ('after', 300, ('end',)) ends
+# the script 300 frames after the fifth attempt's last press (209 past its
+# clear frame), so a .failed artifact still has a complete, replayable script.
+BOWLING_MOVE0_ATTEMPTS_5 = (
+    # attempt 1: 60 frames after the 30-frame walk-in
+    ('after', 60, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    # attempts 2-5: 142 frames after the previous attempt's last press
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+    ('after', 142, ('pad', ('p1.right', 'p2.left'), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2', 'p2.b0', 'p2.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down', 'p2.down'), 4)),
+    ('after', 4, ('pad', ('p1.left', 'p2.right'), 4)),
+)
+SCENARIOS['gp-bowling-2'] = dict(
+    time_limit=90, stop_mode=0x25, stop_delay=60, steps=(
+        SCENARIOS['gp-bowling']['steps'][:12] + BOWLING_MOVE0_ATTEMPTS_5 + (
+            ('after', 300, ('end',)),
+        )))
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
 # Plan gameplay-u6b (record gameplay-u6 §U6.12): P1 (Sauron, character 0, the
@@ -1633,7 +1681,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
                          'gp-u13-band', 'gp-u13-band-dac', 'gp-u27-name-entry', 'gp-u28-continue',
                          'gp-u29-continue-taken',
-                         'gp-bowling', 'gp-bowling-fix'})
+                         'gp-bowling', 'gp-bowling-fix', 'gp-bowling-2'})
 
 
 class ScriptError(Exception):
