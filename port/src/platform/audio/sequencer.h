@@ -110,13 +110,15 @@ int seq_playing(void);
  * by the game path. */
 u32 seq_tick_count(void);
 
-/* Test seam: the FM driver's install-time voice state (its rotation cursor,
- * SBPRO2.MDI 0x1408, initialised at 0x306e). The cursor is driver state and
- * persists across songs: neither AIL_start_sequence (0x6A780) nor the sequence
- * reset (0x69250) touches it, so seq_start must not reset it either (record
- * §M3's capture evidence: the selmo bank's first note is OPL channel 4 after
- * the title's four notes on 0..3). A unit oracle comparing a stream from a
- * pristine process calls this; the game path never does. */
+/* Test seam: the FM driver's install state (SBPRO2.MDI 0x3000-0x3084: the 18
+ * voice slots, the per-MIDI-channel program/bank and controller arrays, the
+ * percussion patch cache and the two rotation cursors). All of it is driver
+ * state and persists across songs: neither AIL_start_sequence (0x6A780) nor the
+ * sequence reset (0x69250) touches it, so seq_start must not reset it either
+ * (record §M3's cursor evidence and the 2026-10-31 Driver Truth record §D1).
+ * The AIL sequence volume is engine state and is not part of it. A unit oracle
+ * comparing a stream from a pristine process calls this; the game path never
+ * does. */
 void seq_driver_reset(void);
 
 /* PORT: a test seam, not sequencer state (the pattern of flow.c's sound_voice

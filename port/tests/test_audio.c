@@ -1056,6 +1056,10 @@ int test_sequencer(void)
             u16 cent_a0 = 0, bend_a0 = 0, new_a0 = 0;
             int saw_cent = 0, saw_bend = 0, saw_new = 0;
 
+            /* PORT: the driver state persists across starts now, so this case
+             * must begin from the install state or a wheel left by an earlier
+             * case makes the "centred" key-on bent too. */
+            seq_driver_reset();
             opl_reset();
             len = build_xmi(bank, ev, sizeof ev);
             CHECK_EQ_INT(seq_load(bank, len), 1);
@@ -1139,6 +1143,109 @@ int test_sequencer(void)
                     break;
                 }
             CHECK_EQ_INT(reset, 0);
+        }
+
+        /* 0h. AIL_start_sequence preserves the per-MIDI-channel program: the
+         *     raw's 0x69250 writes the sequence record only (record §D1), and
+         *     gp-u12-endurance section 3 proves it (ch3 keeps program 0x0C from
+         *     the earlier selmo section). A bank sets program 5 on ch0, then a
+         *     second bank keys a note with no program change: the note must use
+         *     program 5's patch. Observable: program 0's modulator EG byte
+         *     (FAT.OPL p[5]) is 0xf2, program 5's is 0xf1, and the EG family is
+         *     written verbatim (SBPRO2.MDI 0x3184 0x60 family). */
+        {
+            static const u8 set5[] = { 0xC0, 0x05, 0x90, 0x30, 0x40, 0x01,
+                                       0xFF, 0x2F, 0x00 };
+            static const u8 note[] = { 0x90, 0x30, 0x40, 0x01, 0xFF, 0x2F, 0x00 };
+            u32 n;
+            u8 *fb = read_file(FAT_OPL, &n);
+
+            if (fb == NULL) {
+                printf("SKIP program-persistence case (need " FAT_OPL ")\n");
+            } else {
+                u8 p0 = 0, p5 = 0, keep = 0;
+
+                CHECK_EQ_INT(patches_load(fb, n), 1);
+                free(fb);
+                seq_driver_reset();
+                opl_reset();
+                len = build_xmi(bank, set5, sizeof set5);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                seq_start();
+                seq_tick();
+                for (u32 i = 0; i < opl_write_count(); i++)
+                    if ((opl_trace_reg(i) & 0xff) == 0x60) {
+                        p5 = opl_trace_val(i);
+                        break;
+                    }
+                /* The second bank: no program change, so the carried one keys. */
+                len = build_xmi(bank, note, sizeof note);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                seq_start();
+                seq_tick();
+                for (u32 i = 0; i < opl_write_count(); i++)
+                    if ((opl_trace_reg(i) & 0xff) == 0x60) {
+                        keep = opl_trace_val(i);
+                        break;
+                    }
+                /* A fresh install state: the note uses program 0. */
+                seq_driver_reset();
+                opl_reset();
+                len = build_xmi(bank, note, sizeof note);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                seq_start();
+                seq_tick();
+                for (u32 i = 0; i < opl_write_count(); i++)
+                    if ((opl_trace_reg(i) & 0xff) == 0x60) {
+                        p0 = opl_trace_val(i);
+                        break;
+                    }
+                CHECK(p5 != 0 && p0 != 0 && keep != 0,
+                      "the note's EG write was captured");
+                CHECK_EQ_INT(keep, p5);       /* the program persisted */
+                CHECK(keep != p0, "the carried program differs from the install program");
+            }
+        }
+
+        /* 0i. A note whose FAT.OPL entry is absent still consumes a voice and
+         *     writes the frequency family only. Measured: gp-u18-talon-ending
+         *     section 7's capture keys the same percussion note three voice
+         *     slots later, exactly the three 0x7F0B misses (record §D2), so the
+         *     note consumes a voice; the port's patchless form is the frequency
+         *     family with no operator payload. Percussion channel 9 note 11 is
+         *     key 0x7F0B, absent from the shipped bank. */
+        {
+            static const u8 ev[] = { 0x99, 0x0B, 0x40, 0x01, 0x05 };
+            u32 n;
+            u8 *fb = read_file(FAT_OPL, &n);
+
+            if (fb == NULL) {
+                printf("SKIP missing-patch case (need " FAT_OPL ")\n");
+            } else {
+                int patch_writes = 0, freq_writes = 0;
+
+                CHECK_EQ_INT(patches_load(fb, n), 1);
+                free(fb);
+                CHECK(patches_lookup(PATCH_KEY(PATCH_BANK_PERCUSSION, 0x0B)) == NULL,
+                      "key 0x7F0B is absent from the shipped bank");
+                seq_driver_reset();
+                opl_reset();
+                len = build_xmi(bank, ev, sizeof ev);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                seq_start();
+                opl_reset();              /* drop seq_start's 0x01/0x105 writes */
+                seq_tick();
+                for (u32 i = 0; i < opl_write_count(); i++) {
+                    u16 r = (u16)(opl_trace_reg(i) & 0xFF);
+                    if (r >= 0xA0 && r <= 0xB8)
+                        freq_writes++;
+                    else
+                        patch_writes++;
+                }
+                CHECK_EQ_INT(seq_active_track(), 1);
+                CHECK(patch_writes == 0, "a missing patch writes no operator setup");
+                CHECK(freq_writes > 0, "the note still keys the frequency family");
+            }
         }
     }
 
@@ -1896,6 +2003,10 @@ int test_ail(void)
         u32 call;
 
         (void)build_xmi(bank, ev, sizeof ev);
+        /* PORT: AIL_start_sequence no longer resets the per-channel driver
+         * state, so the "never received a CC7" zero must come from the install
+         * state, not from a start. */
+        seq_driver_reset();
         seq_set_sequence_volume(0x20);               /* sentinel: init must reseed */
         CHECK_EQ_INT(AIL_init_sequence(seq, bank, 0), 1);
         CHECK_EQ_INT(seq_sequence_volume(), 0x7F);   /* 0x6A5B7 preference 12 */

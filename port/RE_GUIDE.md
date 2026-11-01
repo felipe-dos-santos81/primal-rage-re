@@ -481,8 +481,10 @@ true original, and ported the divergence. Two pieces:
   aperture read stays invalid (the DOSBox-X memory file excludes the VGA
   aperture) and is no longer the verdict (record §L10). The OPL pitch test
   (§D6) renders 439.9915 Hz (measured 439.0000 Hz) within the 1.7586 Hz
-  derived tolerance. Live truth Task 11 pins **74 diff-allowed audio section
-  prefixes / 29,656 leading matched ticks**; unmatched remainders stay named and
+  derived tolerance. Live truth Task 11 pins **84 diff-allowed audio section
+  prefixes / 44,103 leading matched ticks** (Driver Truth re-pinned the
+  74/29,656 set after the per-channel driver-state fix — record
+  `2026-10-31-driver-truth-derivations.md` §D3); unmatched remainders stay named and
   rendered audibility is terminal (record §L11 and §F7.4, register R13). Final truth Task 7 re-derives the CC7
   latch and pins the bank residue: the inventory is **12 claimed + 10 residue +
   2 requested-but-unattributable (`grave+0x0A8C`, `grave+0x05E4`) + 2 never

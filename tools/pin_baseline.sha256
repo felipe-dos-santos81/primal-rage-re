@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: final truth Task 7 fix 1: correct the measured bank split (0x5A56E385 claimed, 0x13211DEB reset-only) and add the key-on evidence
-d3b6969f60a489c910ca1fa0f8daafb0dbead9b0fc172dda193260d3b6cd3c07
+# reason: Driver Truth: re-pin the audio residue rows (ticks 5..1634), the diff allowances (3BA4C376/20DA829D/BF1C78E2) and the matched-prefix pins (84 sections / 44,103 ticks) after the per-channel driver-state fix; no capture changed
+25202638bdf696a4602cead3aef826a9070996a957e9e9528c096def8254662c

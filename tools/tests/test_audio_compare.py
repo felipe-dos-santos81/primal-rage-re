@@ -846,9 +846,28 @@ class AudioCompareTests(unittest.TestCase):
         self.assertTrue(any('first difference moved' in p for p in problems),
                         problems)
 
+    def test_trace_residue_row_status_change_fails(self):
+        """A residue row's section must keep its measured diff-allowed status;
+        if the port's run anchors it, the pin fails rather than the row
+        silently reclassifying (the 2026-10-31 Driver Truth re-pin moved every
+        row off tick 0, so the tick-0 branch below uses a synthetic table)."""
+        class _S:
+            bank = 0x20DA829D
+        class _R:
+            index = 6
+            section = _S()
+            status = 'anchored'
+            first_diff = None
+        problems = audio_compare.residue_violation('gp-u10-ending', [_R()])
+        self.assertTrue(problems)
+        self.assertTrue(any('expected diff-allowed' in p for p in problems),
+                        problems)
+
     def test_trace_residue_unanchored_row_lost_fails(self):
-        """A tick-0 row is the measured unanchored bank; if the port's run
-        anchors it (a stronger claim), the status no longer matches the pin."""
+        """The tick-0 branch: an unanchored bank that anchors is a stronger
+        claim than the pin, and the row fails instead of moving silently."""
+        table = {0x20DA829D: ('s16citys.gra+0x08', 'gp-twop', 3, 0,
+                              'voice-rotation')}
         class _S:
             bank = 0x20DA829D
         class _R:
@@ -856,7 +875,7 @@ class AudioCompareTests(unittest.TestCase):
             section = _S()
             status = 'anchored'
             first_diff = None
-        problems = audio_compare.residue_violation('gp-twop', [_R()])
+        problems = audio_compare.residue_violation('gp-twop', [_R()], table=table)
         self.assertTrue(problems)
         self.assertTrue(any('expected unanchored-allowed' in p for p in problems),
                         problems)

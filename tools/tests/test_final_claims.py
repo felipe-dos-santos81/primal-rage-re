@@ -42,8 +42,8 @@ EXPECTED = {
     'R06': ('closed', ('gp-bowling-2', '0x832')),
     'R07': ('closed', ('gp-u29-continue-taken', '0x2791C')),
     'R08': ('closed', ('gp-u28-continue', '0x18C2')),
-    'R09': ('gated', ('TRACE_CLAIMED_BANKS', '29,656')),
-    'R10': ('terminal', ('TRACE_RESIDUE', '1,437')),
+    'R09': ('gated', ('TRACE_CLAIMED_BANKS', '44,103')),
+    'R10': ('terminal', ('TRACE_RESIDUE', '1,634')),
     'R11': ('declared', ('0x0A8C', '0x05E4')),
     'R12': ('declared', ('0x37640', '0x24559')),
     'R13': ('terminal', ('port/src/platform/audio/opl/opal.c:3', '49716')),
@@ -62,19 +62,20 @@ EXPECTED = {
     'R26': ('terminal', ('W.13', 'gp-u10-ending')),
     'R27': ('declared', ('43/44', 'gp-u14-win-live')),
     'R28': ('declared', ('M6.6', 'music-truth')),
-    'R29': ('terminal', ('TRACE_PREFIX_PINS', '29,656')),
+    'R29': ('terminal', ('TRACE_PREFIX_PINS', '44,103')),
     'R30': ('declared', ('0x4BD98', 'flow.c:1632')),
     'R31': ('terminal', ('UNROWED_CENSUS', 'AGENTS.md:511')),
     'R32': ('terminal', ('0x29D60', '0x2EA30')),
     'R33': ('closed', ('TWI5.SMK', 'audio_descriptors')),
     'R34': ('closed', ('0x68B0E', 'sequencer.c')),
+    'R35': ('closed', ('driver_install_state', '0x69250')),
 }
 
 # Counter strings that must appear in the register (its §3 and §2 rows).
 MUST_MENTION = (
     '1033/1033', '14993/14993', '825/845', '810/845', 'WEAKER` 12',
     '8 unrowed', 'HIT 675 / NOT-HIT 80 / UNINSTRUMENTED 4',
-    'd3b6969f60a489c910ca1fa0f8daafb0dbead9b0fc172dda193260d3b6cd3c07',
+    '25202638bdf696a4602cead3aef826a9070996a957e9e9528c096def8254662c',
     '43/44', '798 1203 66', '759 759 100', '44 explicit paths',
     '0x29D60', '0x2EA30', '0x2EA64', '0x500BB',
     '0x37FF6', '0x2587C', '0x4E11C', '0x2791C', '0x2CADC', '0x0EAE',

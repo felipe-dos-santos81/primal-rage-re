@@ -83,6 +83,7 @@ static struct {
     int playing;
     u32 age;
     u32 next;          /* rotation cursor: the last slot tried (driver 0xffff) */
+    int installed;     /* the driver install state has been applied (0x3000) */
     /* PORT: a test seam, not sequencer state: the FNV-1a of the last bank a
      * seq_load accepted (the bytes handed to AIL_init_sequence). A wrong-bank
      * hand-off changes it while the playing status alone does not. */
@@ -137,6 +138,47 @@ static struct {
 static u32 rd_be32(const u8 *p)
 {
     return ((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | (u32)p[3];
+}
+
+/* PORT: the driver install state (SBPRO2.MDI 0x3000-0x3084). The install zeroes
+ * the 16-entry per-MIDI-channel arrays at 0x1989/0x1999/0x19a9/0x1a39, the 18
+ * voice slots at 0x1a49 (0xff = free), the 20 voice records at 0x1485 and the
+ * 0x80 percussion-patch cache at 0x19b9, then seeds the two rotation cursors
+ * 0x1408/0x140a with 0xffff (0x306e/0x3074). It runs once, when the driver is
+ * installed, and AIL_start_sequence never repeats it: 0x69250 writes the
+ * sequence record only (record §D1). The per-channel defaults the port's first
+ * song needs are the captured first-key-on state: expression 0x7f and wheel MSB
+ * 0x40 are the 0x3ccc controller-reset values, pan 0x40 is the measured default
+ * (spec §5); the title sends those controllers at tick 0, so the first-song
+ * output is unchanged. */
+static void driver_install_state(void)
+{
+    S.next = SEQ_OPL_CHANNELS - 1;
+    S.svc = 0;
+    S.cc7_logged = 0;
+    for (int c = 0; c < SEQ_MIDI_CHANNELS; c++) {
+        S.program[c] = 0;
+        S.bank[c] = 0;
+        S.wheel_lsb[c] = 0;
+        S.wheel_msb[c] = 0x40;
+        S.bend_scale[c] = 0;
+        S.volume[c] = 0;
+        S.expression[c] = 0x7f;
+        S.pan[c] = 0x40;
+        S.mod[c] = 0;
+        S.sustain[c] = 0;
+    }
+    for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
+        S.voice[v].note = SEQ_NOTE_FREE;
+        S.voice[v].midi = 0;
+        S.voice[v].release = 0;
+        S.voice[v].age = 0;
+        S.voice[v].b0 = 0;
+        S.voice[v].level = 0;
+        S.voice[v].patch = NULL;
+        S.voice[v].index = 0;
+    }
+    S.installed = 1;
 }
 
 static int id4(const u8 *p, char a, char b, char c, char d)
@@ -406,6 +448,16 @@ static void key_on(int midi, int note, int vel, u32 dur)
 
     v = alloc_voice();
 
+    /* PORT: a note whose patch key is absent still consumes a voice and writes
+     * the frequency family only. The driver's 0x3a61 check jumps to the return
+     * on a 0xff patch byte, but the measured gp-u18-talon-ending section 7
+     * allocation shows the raw consumed a voice for each 0x7F0B note (the
+     * capture's key-on sits three slots later, exactly the three misses), so
+     * the raw's 0x2ca6 lookup resolves a key the port's FAT.OPL parse does not.
+     * The port keeps the note (frequency family only) rather than inventing a
+     * payload; the missing operator setup is a measured byte difference. */
+    p = patches_lookup(key);
+
     /* PORT: the driver does not key a note at its MIDI pitch. Its note-on
      * path (SBPRO2.MDI 0x35fa-0x36a6) builds the fnum table index from the
      * patch's base byte ([di+2], stored at 0x3aac-0x3ac1): melodic adds the
@@ -417,7 +469,6 @@ static void key_on(int midi, int note, int vel, u32 dur)
      * selects the fnum/block. The payload pointer and index are cached on the
      * voice so a later controller re-apply (0x3184) can rebuild the writes
      * without the key. */
-    p = patches_lookup(key);
     idx = note;
     if (p != NULL)
         idx = (midi == 9) ? (int)p[2] : note + (int)p[2];
@@ -620,6 +671,8 @@ int seq_load(const u8 *data, u32 len)
     if (evnt == NULL)
         return 0;
 
+    if (!S.installed)
+        driver_install_state();          /* 0x3000, once, before any sequence */
     halt();                             /* release the previous bank's voices */
     S.evnt = evnt;
     S.evnt_len = evnt_len;
@@ -706,24 +759,14 @@ void seq_start(void)
         S.voice[v].patch = NULL;
         S.voice[v].index = 0;
     }
-    for (int c = 0; c < SEQ_MIDI_CHANNELS; c++) {
-        S.program[c] = 0;
-        S.bank[c] = 0;
-        S.wheel_lsb[c] = 0;
-        S.wheel_msb[c] = 0x40;
-        S.bend_scale[c] = 0;
-        S.volume[c] = 0;
-        S.expression[c] = 0x7f;
-        /* PORT: the driver's reset (0x3cc0) does not touch pan, and BSS-zero
-         * would give 0x24, but the capture's tick-0 0xC0 = 0x34 needs
-         * [ch+0x1919] in [0x1c, 99]. The exact default is not readable from the
-         * DRO; 0x40 (MIDI centre) is a documented choice inside that evidenced
-         * band and yields the captured 0x30 bits. The title also sends CC10 =
-         * 0x40 on every channel at tick 0, so the default is not exercised. */
-        S.pan[c] = 0x40;
-        S.mod[c] = 0;
-        S.sustain[c] = 0;
-    }
+    /* PORT: the per-MIDI-channel driver state is NOT reset here. The original's
+     * start (0x5DE79 -> 0x6A780 -> 0x69250) writes the sequence record only; the
+     * per-channel program/bank and controllers (0x18f9, 0x1909, 0x1919, 0x1929,
+     * 0x1939, 0x1949, 0x1959, 0x1969) are driver state that outlives every
+     * sequence. The capture proves it: gp-u12-endurance section 3's first MIDI
+     * ch3 note uses program 0x0C's FAT.OPL patch, set by the earlier selmo
+     * section (record §D1/§D2), and gp-twop section 3's ch5 carries the title
+     * bank's program 116. They are initialised once by driver_install_state(). */
     /* The captured driver's cached state opens with waveform-select enable
      * (0x01 = 0x20) then the OPL3-mode enable (0x105 = 0x01); the port writes
      * both, in that order, matching the capture. The port needs 0x01 because
@@ -803,7 +846,7 @@ u32 seq_tick_count(void)
  * stream restores it here instead of seq_start doing so. Not used by the game. */
 void seq_driver_reset(void)
 {
-    S.next = SEQ_OPL_CHANNELS - 1;
+    driver_install_state();
 }
 
 u32 seq_loaded_bank_hash(void)

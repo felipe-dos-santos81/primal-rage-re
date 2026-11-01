@@ -486,6 +486,13 @@ consolidation gate).
   voice-rotation cursor — the raw's `AIL_start_sequence` resets the sequence record only,
   so a second song continues the cursor (the capture's selmo first note is OPL channel 4
   after the title's 0..3); `seq_driver_reset()` is the test-only pristine seam. The
+  same start routine resets the sequence record only for the **per-MIDI-channel driver
+  state** too (Driver Truth, record `2026-10-31-driver-truth-derivations.md` §D1): the
+  program/bank (`0x19a9`/`0x1989`) and the controllers (`0x18f9`, `0x1909`, `0x1919`,
+  `0x1929`, `0x1939`, `0x1949`, `0x1959`, `0x1969`) are initialised once by the driver
+  install (`SBPRO2.MDI 0x3000`) and persist across starts. The fix takes
+  `gp-u12-endurance` section 3 from a tick-180 diff to a 608-tick whole-section match,
+  `gp-twop` section 3 from unanchored to 647 and `gp-u16-twop2` section 3 to 5,294. The
   register-stream oracle `tools/audio_compare.py` (`make audio-oracle`, in `make verify`)
   compares `PR_AUDIO_DUMP` against the 29 gameplay `gp-*` `.dro` traces, anchored at each
   section's first key-on, tolerance-free across ticks (sorted per-tick multisets for the
@@ -494,14 +501,18 @@ consolidation gate).
   the selmo section is per-tick exact in 24 of the 26 music traces
   (`gp-u8-attract-start`'s tick-57 jitter and `gp-u23-u16-finisher`'s capture tick split;
   `gp-u22-diablo-ending`'s title is a separate label-slack/stop named gap). Live-truth
-  §L11's `TRACE_PREFIX_PINS` separately pins the measured **74 diff-allowed sections'
-  29,656 leading matched ticks**; a one-tick-short prefix fails, the unmatched remainder
+  §L11's `TRACE_PREFIX_PINS` separately pins the measured **84 diff-allowed sections'
+  44,103 leading matched ticks** (Driver Truth re-pinned the 74/29,656 set); a
+  one-tick-short prefix fails, the unmatched remainder
   stays named, and the existing `TRACE_PINS` totals do not move. The nine ending
   captures' loader `OVERLAY_ALLOWED` entries retired as clean matches and their
   `MAX_MISSING`/`MIN_REACH` pins were re-measured (record §M2.7). **Named gaps:** rendered
   audibility (the OPL core/mixer is an invented model); across the 27 reports, **12 of
   the 26 code-reachable banks are claimed by whole-section matches, 10 are requested
-  but unclaimed as whole sections** (some have the bounded prefix claim), and **2 are
+  but unclaimed as whole sections** (some have the bounded prefix claim; Driver Truth
+  moved six rows' first differences later — `sound+0x335E` 120 → 1,634, `sound+0x3E64`
+  tick 180 → a 608-tick match, `citys` unanchored → 647/5,294 — and the remaining
+  difference is the voice-rotation/tail model), and **2 are
   requested at runtime but unattributable by the section model** (grave+0x0A8C and
   grave+0x05E4: every ending replay starts them for two tick-0 reset writes before the
   played song's first key-on, so the S records prove the request and the section model
@@ -512,7 +523,8 @@ consolidation gate).
   request it behind the shared `+0x42` bit-5/`+0x43` bit-3 gate; t9-r5 reaches
   `r0=0x33` but the gate fails) and
   konsd+0x1CCB0 (the `0x24508` handler) — and need new captures; the 10 rows are
-  pinned in `TRACE_RESIDUE` with their first-diff tick and measured cause class
+  pinned in `TRACE_RESIDUE` with their first-diff tick (5..1,634 after the Driver Truth
+  re-pin) and measured cause class
   (`voice-rotation`/`tail-lag`) in the `trace-residue` pin region; the unmatched
   diff-allowed remainders and the later `0x31`/match sections the capture's cursor
   advanced past; and `0x1C930`/`0x1CF40` stay

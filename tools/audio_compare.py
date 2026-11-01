@@ -113,26 +113,26 @@ EXPECTED_TOTAL = sum(len(v) for v in EXPECTED_FILES.values())
 # §H6.9) and its `.dro` is the 248 ms boot fragment, so it is skipped by name.
 # >>> PIN-BASELINE-BEGIN trace-pins
 TRACE_PINS = {
-    'gp-idle-loss': (2144, (0x3BA4C376, 0xBF1C78E2, 0xE3533961,), (0x19AB8B2B, 0x8FE546D4, 0xBF1C78E2,)),
-    'gp-idle-loss-run2': (2144, (0x3BA4C376, 0xE3533961,), (0x19AB8B2B, 0x8FE546D4, 0xBF1C78E2, 0xE3533961,)),
+    'gp-idle-loss': (2144, (0x3BA4C376, 0xBF1C78E2, 0xE3533961), (0x19AB8B2B, 0x3BA4C376, 0x8FE546D4, 0xBF1C78E2, 0xE3533961)),
+    'gp-idle-loss-run2': (2144, (0x3BA4C376, 0xE3533961), (0x19AB8B2B, 0x3BA4C376, 0x8FE546D4, 0xBF1C78E2, 0xE3533961)),
     'gp-keys-fight': (2144, (0xBF1C78E2,), (0xBF1C78E2,)),
     'gp-pads': (30, (), ()),
     'gp-twop': (956, (0x20DA829D,), ()),
-    'gp-u10-ending': (5679, (0x20DA829D, 0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0xB40FF4A6, 0xE3533961,)),
+    'gp-u10-ending': (5679, (0x20DA829D, 0x3BA4C376), (0x15B3F30E, 0x19AB8B2B, 0x20DA829D, 0x3BA4C376, 0x42BECD5B, 0xB40FF4A6, 0xE3533961)),
     'gp-u12-endurance': (1436, (), (0x3D536DDE,)),
-    'gp-u13-ending2': (6307, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0xB40FF4A6, 0xE3533961,)),
+    'gp-u13-ending2': (6307, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3BA4C376, 0x42BECD5B, 0xB40FF4A6, 0xE3533961)),
     'gp-u15-join': (2144, (0xBF1C78E2,), ()),
-    'gp-u16-twop2': (956, (0x20DA829D, 0x3BA4C376,), (0xE3533961,)),
+    'gp-u16-twop2': (956, (0x20DA829D, 0x3BA4C376), (0x3BA4C376, 0xE3533961)),
     'gp-u17-device2': (0, (), ()),
-    'gp-u18-talon-ending': (3991, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0x87E7C2DE, 0x94C63685, 0xB40FF4A6, 0xE3533961,)),
-    'gp-u19-vertigo-ending': (3805, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3D536DDE, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961,)),
-    'gp-u20-chaos-ending': (4142, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0x86946EB7, 0x94C63685, 0xB40FF4A6, 0xE3533961,)),
-    'gp-u21-armadon-ending': (5161, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x94C63685, 0xB40FF4A6, 0xBC44EF50, 0xE3533961,)),
-    'gp-u22-diablo-ending': (6013, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x42BECD5B, 0xB40FF4A6, 0xBF1C78E2, 0xE3533961,)),
-    'gp-u23-u16-finisher': (30, (0x20DA829D, 0x3BA4C376,), (0x1895A942, 0x286ED662, 0x3EA76262, 0xE3533961, 0xF1774E70,)),
+    'gp-u18-talon-ending': (3991, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3BA4C376, 0x42BECD5B, 0x87E7C2DE, 0x94C63685, 0xB40FF4A6, 0xE3533961)),
+    'gp-u19-vertigo-ending': (3805, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3BA4C376, 0x3D536DDE, 0x42BECD5B, 0x94C63685, 0xB40FF4A6, 0xE3533961)),
+    'gp-u20-chaos-ending': (4142, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3BA4C376, 0x42BECD5B, 0x86946EB7, 0x94C63685, 0xB40FF4A6, 0xE3533961)),
+    'gp-u21-armadon-ending': (5161, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3BA4C376, 0x94C63685, 0xB40FF4A6, 0xBC44EF50, 0xE3533961)),
+    'gp-u22-diablo-ending': (6013, (0x3BA4C376,), (0x15B3F30E, 0x19AB8B2B, 0x3BA4C376, 0x42BECD5B, 0xB40FF4A6, 0xBF1C78E2, 0xE3533961)),
+    'gp-u23-u16-finisher': (30, (0x20DA829D, 0x3BA4C376), (0x1895A942, 0x20DA829D, 0x286ED662, 0x3BA4C376, 0x3EA76262, 0xE3533961, 0xF1774E70)),
     'gp-u5-charsel': (1603, (), ()),
     'gp-u6-moves': (2144, (), (0xBF1C78E2,)),
-    'gp-u6-moves-b': (2144, (0xBF1C78E2,), ()),
+    'gp-u6-moves-b': (2144, (0xBF1C78E2,), (0xBF1C78E2,)),
     'gp-u8-attract-start': (2144, (), (0x86946EB7,)),
     'gp-u8-endurance': (613, (), ()),
     'gp-u8-handicap': (2966, (), ()),
@@ -140,10 +140,8 @@ TRACE_PINS = {
     'gp-u8-right-arcade': (2968, (), ()),
     'gp-u8-right-training': (2486, (), (0xF1774E70,)),
     'gp-u8-tug-of-war': (2966, (), ()),
-    'gp-u9-win': (2831, (0x20DA829D, 0x3BA4C376,), (0x86946EB7, 0xE3533961,)),
+    'gp-u9-win': (2831, (0x20DA829D, 0x3BA4C376), (0x20DA829D, 0x86946EB7, 0xE3533961)),
 }
-
-
 
 # <<< PIN-BASELINE-END trace-pins
 
@@ -157,24 +155,23 @@ TRACE_PINS = {
 # meet its minimum.
 # >>> PIN-BASELINE-BEGIN trace-prefix-pins
 TRACE_PREFIX_PINS = {
-    'gp-idle-loss': {3: 30, 9: 960, 10: 301},
-    'gp-idle-loss-run2': {3: 30, 5: 5, 6: 20, 9: 960, 10: 303},
-    'gp-keys-fight': {3: 30},
-    'gp-u10-ending': {5: 5, 8: 932, 12: 120, 13: 1437, 14: 826, 15: 118},
-    'gp-u12-endurance': {3: 180},
-    'gp-u13-ending2': {5: 5, 8: 932, 12: 120, 13: 1435, 14: 827, 15: 301},
-    'gp-u16-twop2': {5: 5, 8: 5},
-    'gp-u18-talon-ending': {5: 5, 6: 28, 8: 933, 9: 581, 12: 120, 13: 1435, 14: 827, 15: 302},
-    'gp-u19-vertigo-ending': {3: 180, 5: 5, 6: 180, 8: 930, 9: 14, 12: 120, 13: 1436, 14: 828, 15: 303},
-    'gp-u20-chaos-ending': {5: 5, 6: 180, 8: 932, 9: 581, 12: 120, 13: 1437, 14: 57, 15: 302},
-    'gp-u21-armadon-ending': {5: 5, 6: 204, 9: 581, 12: 120, 13: 1437, 14: 828, 15: 302},
-    'gp-u22-diablo-ending': {3: 30, 5: 5, 6: 30, 8: 931, 12: 120, 13: 1435, 14: 828, 15: 118},
-    'gp-u23-u16-finisher': {1: 25, 2: 21, 5: 5, 7: 425, 8: 177},
-    'gp-u6-moves': {3: 20},
+    'gp-idle-loss': {4: 252, 5: 5, 7: 106, 9: 960, 10: 301},
+    'gp-idle-loss-run2': {4: 253, 5: 5, 7: 106, 9: 960, 10: 303},
+    'gp-u10-ending': {4: 483, 5: 5, 6: 211, 8: 932, 12: 1634, 13: 1437, 14: 826, 15: 118},
+    'gp-u13-ending2': {4: 483, 5: 5, 8: 932, 12: 674, 13: 1435, 14: 827, 15: 301},
+    'gp-u16-twop2': {4: 94, 5: 5, 7: 93, 8: 5},
+    'gp-u18-talon-ending': {4: 483, 5: 5, 6: 28, 8: 933, 9: 581, 12: 1634, 13: 1435, 14: 827, 15: 302},
+    'gp-u19-vertigo-ending': {4: 483, 5: 5, 6: 234, 8: 930, 9: 14, 12: 1634, 13: 1436, 14: 828, 15: 303},
+    'gp-u20-chaos-ending': {4: 483, 5: 5, 6: 180, 8: 932, 9: 581, 12: 1634, 13: 1437, 14: 57, 15: 302},
+    'gp-u21-armadon-ending': {4: 483, 5: 5, 6: 204, 9: 581, 12: 1634, 13: 1437, 14: 828, 15: 302},
+    'gp-u22-diablo-ending': {3: 200, 4: 483, 5: 5, 6: 200, 8: 931, 12: 1634, 13: 1435, 14: 828, 15: 118},
+    'gp-u23-u16-finisher': {1: 25, 2: 21, 4: 94, 5: 5, 6: 417, 7: 425, 8: 177},
+    'gp-u6-moves-b': {3: 40},
     'gp-u8-attract-start': {3: 85},
     'gp-u8-right-training': {2: 21},
-    'gp-u9-win': {5: 5, 9: 170},
+    'gp-u9-win': {5: 5, 6: 211, 9: 170},
 }
+
 # <<< PIN-BASELINE-END trace-prefix-pins
 
 # The 26 code-reachable music banks (record 2026-10-25-music-truth-derivations
@@ -220,16 +217,16 @@ TRACE_CLAIMED_BANKS = {
 #                       have), i.e. the driver's per-voice/register state.
 #    A bounded prefix never reclassifies a bank as whole-section claimed.
 TRACE_RESIDUE = {
-    0x20DA829D: ('s16citys.gra+0x08',   'gp-twop', 3, 0, 'voice-rotation'),
-    0x8FE546D4: ('s16conti.gra+0x08',   'gp-idle-loss', 9, 960, 'tail-lag'),
-    0x15B3F30E: ('s16hghsc.gra+0x08',   'gp-u10-ending', 13, 1437, 'tail-lag'),
-    0xBF1C78E2: ('s16himal.gra+0x08',   'gp-idle-loss', 3, 30, 'voice-rotation'),
-    0xB40FF4A6: ('s16sound.gra+0x335E', 'gp-u10-ending', 12, 120, 'voice-rotation'),
-    0x19AB8B2B: ('s16sound.gra+0x39F4', 'gp-idle-loss-run2', 10, 303, 'tail-lag'),
-    0x3D536DDE: ('s16sound.gra+0x3E64', 'gp-u12-endurance', 3, 180, 'voice-rotation'),
-    0x3BA4C376: ('s16sound.gra+0x5B88', 'gp-idle-loss', 4, 0, 'voice-rotation'),
-    0xE3533961: ('s16sound.gra+0x6CA8', 'gp-u10-ending', 5, 5, 'voice-rotation'),
+    0x15B3F30E: ('s16hghsc.gra+0x08', 'gp-u10-ending', 13, 1437, 'tail-lag'),
     0x1895A942: ('s16sound.gra+0x72D4', 'gp-u23-u16-finisher', 8, 177, 'voice-rotation'),
+    0x19AB8B2B: ('s16sound.gra+0x39F4', 'gp-idle-loss', 10, 301, 'tail-lag'),
+    0x20DA829D: ('s16citys.gra+0x08', 'gp-u10-ending', 6, 211, 'voice-rotation'),
+    0x3BA4C376: ('s16sound.gra+0x5B88', 'gp-idle-loss-run2', 4, 253, 'voice-rotation'),
+    0x3D536DDE: ('s16sound.gra+0x3E64', 'gp-u19-vertigo-ending', 6, 234, 'voice-rotation'),
+    0x8FE546D4: ('s16conti.gra+0x08', 'gp-idle-loss', 9, 960, 'tail-lag'),
+    0xB40FF4A6: ('s16sound.gra+0x335E', 'gp-u10-ending', 12, 1634, 'voice-rotation'),
+    0xBF1C78E2: ('s16himal.gra+0x08', 'gp-u22-diablo-ending', 3, 200, 'voice-rotation'),
+    0xE3533961: ('s16sound.gra+0x6CA8', 'gp-idle-loss', 5, 5, 'voice-rotation'),
 }
 
 # 2 requested at runtime but unattributable by the section model: the ending's
@@ -1347,17 +1344,20 @@ def bank_partition_violation(name, results, s_lines, index_names,
     return problems
 
 
-def residue_violation(name, results):
+def residue_violation(name, results, table=None):
     """The measured residue row(s) for `name` against a run's results.
 
     A row's section must still be the measured diff-allowed section at the
     pinned first-diff tick (a tick-0 row means the bank is unanchored, so the
     section must stay unanchored-allowed). A moved first difference, a changed
     status or a missing section is a failure, never a silent reclassification.
+    `table` lets a test exercise the tick-0 branch: the shipped table's ten rows
+    are all anchored now (2026-10-31 Driver Truth re-pin).
     """
     problems = []
+    rows = TRACE_RESIDUE if table is None else table
     by_index = {r.index: r for r in results}
-    for bank, row in sorted(TRACE_RESIDUE.items()):
+    for bank, row in sorted(rows.items()):
         _bank_name, scenario, index, tick, _cause = row
         if scenario != name:
             continue

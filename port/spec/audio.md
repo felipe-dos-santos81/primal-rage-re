@@ -1229,8 +1229,10 @@ the compared window. The percussion allocator `0x30e1` (voice type 3) is
 unreachable for the shipped bank (all 181 `FAT.OPL` payloads have type
 `[0] = 0x0e`), so it is not modelled. `0x3b1e` (sustain-off) and `0x39cc`
 (all-notes-off) are modelled at the dispatch level only. The carrier-TL residual
-on MIDI channels 1 and 4 (item 1) is the engine's per-channel volume, provably
-unpinnable from the shipped image (rounds 2-3).
+on MIDI channels 1 and 4 (item 1) is the engine's per-channel volume; the capture
+records no CC7 arrival time, so those rows are excluded by name rather than
+fitted (record `2026-10-30-final-truth-derivations.md` §F7.1, correcting the
+earlier "provably unpinnable" wording).
 
 Task 9 result: `tools/opl_seq.py` and the C sequencer agree **byte-for-byte**
 (9866 writes: tick, register, value and order) — the tolerance-free governing
@@ -1339,7 +1341,14 @@ fixed: `seq_start` reset the FM driver's voice-rotation cursor (SBPRO2.MDI
 `0x1408` over `0x1a49`), so a second song restarted at OPL channel 0; the raw's
 `AIL_start_sequence` (`0x5DE79` → `0x6A780`/`0x69250`) resets the *sequence
 record* only, and the capture proves the cursor persists (the selmo bank's first
-note is OPL channel 4 after the title's four notes on 0..3).
+note is OPL channel 4 after the title's four notes on 0..3). The same rule covers
+the rest of the per-MIDI-channel driver state (Driver Truth, record
+`2026-10-31-driver-truth-derivations.md` §D1): the program/bank (`0x19a9`/
+`0x1989`) and the controllers (`0x18f9`, `0x1909`, `0x1919`, `0x1929`, `0x1939`,
+`0x1949`, `0x1959`, `0x1969`) are initialised once by the driver install
+(`SBPRO2.MDI 0x3000`) and persist across starts; `seq_start` resets only the
+sequence record. The AIL sequence volume (`seq+0x34` and its fade fields) is
+engine state and is not part of the install state.
 `seq_driver_reset()` restores the install state for unit oracles only; the game
 path never calls it. The 9866-write C-vs-Python title oracle and its capture first
 difference 430 are unchanged.
