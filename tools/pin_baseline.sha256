@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: Driver Truth: re-pin the audio residue rows (ticks 5..1634), the diff allowances (3BA4C376/20DA829D/BF1C78E2) and the matched-prefix pins (84 sections / 44,103 ticks) after the per-channel driver-state fix; no capture changed
-25202638bdf696a4602cead3aef826a9070996a957e9e9528c096def8254662c
+# reason: Driver Truth leftovers round 2: the 1895A942 sustain fix (SBPRO2.MDI 0x39CC/0x3B1E) moves gp-u23-u16-finisher section 8's first difference 177 -> 205 and the prefix pins 86 sections / 44,461 -> 44,489 ticks; register R36
+de1b01c3e84c4eb60b357239bcc8f2bab40fdcbccea01f409e039c3497cf59e0

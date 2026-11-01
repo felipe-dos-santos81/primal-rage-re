@@ -501,8 +501,10 @@ consolidation gate).
   the selmo section is per-tick exact in 24 of the 26 music traces
   (`gp-u8-attract-start`'s tick-57 jitter and `gp-u23-u16-finisher`'s capture tick split;
   `gp-u22-diablo-ending`'s title is a separate label-slack/stop named gap). Live-truth
-  §L11's `TRACE_PREFIX_PINS` separately pins the measured **84 diff-allowed sections'
-  44,103 leading matched ticks** (Driver Truth re-pinned the 74/29,656 set); a
+  §L11's `TRACE_PREFIX_PINS` separately pins the measured **86 diff-allowed sections'
+  44,489 leading matched ticks** (Driver Truth re-pinned the 74/29,656 set to
+  86/44,461; the `1895A942` sustain fix moved its section prefix 177 → 205 and
+  the total to 44,489); a
   one-tick-short prefix fails, the unmatched remainder
   stays named, and the existing `TRACE_PINS` totals do not move. The nine ending
   captures' loader `OVERLAY_ALLOWED` entries retired as clean matches and their
@@ -512,7 +514,8 @@ consolidation gate).
   but unclaimed as whole sections** (some have the bounded prefix claim; Driver Truth
   moved six rows' first differences later — `sound+0x335E` 120 → 1,634, `sound+0x3E64`
   tick 180 → a 608-tick match, `citys` unanchored → 647/5,294 — and the remaining
-  difference is the voice-rotation/tail model), and **2 are
+  difference is the voice-rotation/tail model; the driver's sustain note-off
+  gate is now modelled, record §D5), and **2 are
   requested at runtime but unattributable by the section model** (grave+0x0A8C and
   grave+0x05E4: every ending replay starts them for two tick-0 reset writes before the
   played song's first key-on, so the S records prove the request and the section model

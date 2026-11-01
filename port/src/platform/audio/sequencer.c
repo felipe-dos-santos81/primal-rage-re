@@ -70,6 +70,7 @@ typedef struct {
     u32 age;           /* allocation order, for stealing */
     u8 b0;             /* 0xB0 value without the key bit */
     u8 level;          /* key-on velocity level [v+0x1511], from 0xc27 */
+    u8 held;           /* PORT: sustain hold, driver [v+0x1525] (0x39F6) */
     const u8 *patch;   /* cached patch payload, for controller re-applies */
     int index;         /* cached fnum table index (note+base / base) */
 } seq_voice;
@@ -172,6 +173,7 @@ static void driver_install_state(void)
         S.voice[v].note = SEQ_NOTE_FREE;
         S.voice[v].midi = 0;
         S.voice[v].release = 0;
+        S.voice[v].held = 0;
         S.voice[v].age = 0;
         S.voice[v].b0 = 0;
         S.voice[v].level = 0;
@@ -303,6 +305,8 @@ static void fam_apply(int opl_ch, u8 mask)
     opl_set_write_attr(0xFF);
 }
 
+static void sustain_release(int midi);   /* 0x3B1E, defined with the note-offs */
+
 /* PORT: 0x3b54, the channel-controller handler. Stores the controller, then
  * re-applies the affected register family for every active voice on the same
  * MIDI channel (the raw's 0x3c53 loop). The no-re-apply controllers (6, 64,
@@ -337,19 +341,17 @@ static void midi_control(u8 status, u8 a, u8 b)
         case 11: S.expression[ch] = b; mask = FAM_TL; break;
         case 1:  S.mod[ch] = b; mask = FAM_AMVIB; break;
         case 10: S.pan[ch] = b; mask = FAM_CONN; break;
-        /* PORT: named gap, record §13 of 2026-09-29-todo-verify-derivations.md.
-         * The driver's sustain is not modelled: its note-off 0x39CC marks a
-         * voice held (0x39F6 `cmp [ch+0x1969],0x40; jge` -> [v+0x1525] = 1)
-         * instead of releasing it, and ctrl 64 below 0x40 (0x3C7D..0x3C8A) and
-         * ctrl 121 (0x3CC5) release the held voices through 0x3B1E. Only
-         * S16KONSD.GRA (4) and S16SOUND.GRA (2) send ctrl 64; the title bank,
-         * the only one the port plays, sends none. */
-        case 64: S.sustain[ch] = b; return;
+        /* PORT: SBPRO2.MDI 0x3C7D. Store the pedal; at or above 0x40 it only
+         * arms the hold, below it 0x3B1E releases every held voice. */
+        case 64:
+            S.sustain[ch] = b;                                  /* 0x3C7D */
+            if (b < 0x40) sustain_release(ch);                  /* 0x3C81..0x3C8D */
+            return;
         /* PORT: 0x3cc0-0x3ce2. The reset does not touch volume, pan or bend
-         * scale; it also calls 0x3b1e(ch), the sustain release that the
-         * named gap above (record §13) leaves unmodelled. */
+         * scale; 0x3b1e(ch) releases the held voices (above). */
         case 121:
-            S.sustain[ch] = 0;
+            S.sustain[ch] = 0;                                  /* 0x3CC0 */
+            sustain_release(ch);                                /* 0x3CC5/0x3CC9 */
             S.mod[ch] = 0;
             S.expression[ch] = 0x7f;
             S.wheel_lsb[ch] = 0;
@@ -379,6 +381,7 @@ static void key_off(int opl_ch)
     opl_set_write_attr(0xFF);
     S.voice[opl_ch].note = SEQ_NOTE_FREE;
     S.voice[opl_ch].release = 0;
+    S.voice[opl_ch].held = 0;
     /* PORT: the cached patch pointer and fnum index are valid only while the
      * voice holds a note; clear them on release so a re-loaded patch bank can
      * never leave a stale pointer for a later partial-mask fam_apply. */
@@ -386,18 +389,41 @@ static void key_off(int opl_ch)
     S.voice[opl_ch].index = 0;
 }
 
-/* Releases the voice on `midi`/`note`, oldest first. */
+/* PORT: SBPRO2.MDI 0x39CC's per-voice arm. With the channel's sustain (CC64,
+ * driver [ch+0x1969], 0x3C7D) at or above 0x40 it marks the voice held
+ * ([v+0x1525] = 1, 0x39F6/0x3A23) and writes nothing; otherwise it releases
+ * (0x3127 writes the key-off). A held voice stays allocated, so a later
+ * note-on cannot reuse it. */
+static void note_off_voice(int v)
+{
+    if (S.sustain[S.voice[v].midi] >= 0x40) {
+        S.voice[v].held = 1;
+        S.voice[v].release = 0;
+        return;
+    }
+    key_off(v);
+}
+
+/* PORT: SBPRO2.MDI 0x39CC, the driver's note-off. The raw scans its 20 voice
+ * records (the port has 18 OPL voices) and acts on every match, not the first. */
 static void key_off_note(int midi, int note)
 {
-    int best = -1;
-    for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
-        if (S.voice[v].note != note || S.voice[v].midi != midi)
-            continue;
-        if (best < 0 || S.voice[v].age < S.voice[best].age)
-            best = v;
-    }
-    if (best >= 0)
-        key_off(best);
+    for (int v = 0; v < SEQ_OPL_CHANNELS; v++)
+        if (S.voice[v].note == note && S.voice[v].midi == midi)
+            note_off_voice(v);
+}
+
+/* PORT: SBPRO2.MDI 0x3B1E, the sustain release the CC64 handler calls when the
+ * pedal drops below 0x40 (0x3C81..0x3C8D) and CC121 calls after zeroing the
+ * pedal (0x3CC0..0x3CC9). The raw calls 0x39CC for each held record, and 0x39CC
+ * releases every active record of that (channel, note), not the held one only;
+ * key_off_note is that same all-match note-off. */
+static void sustain_release(int midi)
+{
+    for (int v = 0; v < SEQ_OPL_CHANNELS; v++)
+        if (S.voice[v].note != SEQ_NOTE_FREE && S.voice[v].midi == midi
+                && S.voice[v].held)
+            key_off_note(midi, S.voice[v].note);
 }
 
 static int alloc_voice(void)
@@ -481,6 +507,7 @@ static void key_on(int midi, int note, int vel, u32 dur)
     S.voice[v].level = SEQ_VEL_LEVEL[(vel >> 3) & 0x0f];
     S.voice[v].release = dur;
     S.voice[v].age = ++S.age;
+    S.voice[v].held = 0;                            /* 0x3AE8 */
 
     fam_apply(v, FAM_ALL);
 }
@@ -753,6 +780,7 @@ void seq_start(void)
         S.voice[v].note = SEQ_NOTE_FREE;
         S.voice[v].midi = 0;
         S.voice[v].release = 0;
+        S.voice[v].held = 0;
         S.voice[v].age = 0;
         S.voice[v].b0 = 0;
         S.voice[v].level = 0;
@@ -799,7 +827,7 @@ void seq_tick(void)
         if (S.voice[v].note == SEQ_NOTE_FREE)
             continue;
         if (S.voice[v].release == 0 || --S.voice[v].release == 0)
-            key_off(v);
+            key_off_note(S.voice[v].midi, S.voice[v].note);  /* the AIL queue's note-off */
     }
     if (!(S.wait > 0 && --S.wait > 0))
         process();

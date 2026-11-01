@@ -1,7 +1,10 @@
 # Driver Truth — design
 
-**Status:** implemented (Tasks 1–3, 5–6) and gated; Task 4 (`0x21` spec) not
-taken. `make verify` exited 0 on 2026-10-31 (`gate: captures 43/44 present`,
+**Status:** implemented (Tasks 1–3, 5–6) and gated; Task 4 (`0x21` spec) was
+not taken in the phase, and both leftovers were taken on 2026-11-01 without
+subagents: the spec is `port/spec/volleyball.md`, and the §D3 `1895A942` row's cause
+is fixed by the driver's sustain model and the row is re-pinned 177 → 205
+(record §D5, register R36; the row stays a residue under R10). `make verify` exited 0 on 2026-10-31 (`gate: captures 43/44 present`,
 audio summary ok, `diff-verify` 1033/1033 / 14993/14993 / 0 named gaps,
 `symbols.h` 1304/1206 byte-identical, pin baseline `25202638…`), and
 `make audio-render` twice produced the unchanged title `515b7c94…` and selmo

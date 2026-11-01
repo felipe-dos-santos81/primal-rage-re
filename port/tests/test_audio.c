@@ -1247,6 +1247,109 @@ int test_sequencer(void)
                 CHECK(freq_writes > 0, "the note still keys the frequency family");
             }
         }
+
+        /* 0j. Sustain (SBPRO2.MDI 0x39CC/0x3B1E): a note-off while CC64 is
+         *     at or above 0x40 holds the voice with no key-off write; CC64
+         *     below 0x40 releases every held voice at once. This is the
+         *     driver's measured note-off gate and the cause of the 1895A942
+         *     residue row (gp-u23-u16-finisher section 8 sends CC64 one tick
+         *     before the note-offs). Two voices carry the same note;
+         *     an explicit note-off without the pedal and a duration expiry with
+         *     different durations are what exercise 0x39CC's release-all scan
+         *     (an oldest-only, or per-voice, note-off leaves one keyed).
+         *     The trailing long wait and
+         *     end-of-track keep the parser from halting on the same tick (a
+         *     halt would release the voices itself and hide the rule). */
+        {
+            static const u8 ev[] = {
+                0x00, 0x90, 0x30, 0x40, 0x04,   /* key ch0 note 0x30, dur 4 */
+                0x00, 0x90, 0x30, 0x40, 0x04,   /* the same note again */
+                0x00, 0xB0, 0x40, 0x7F,         /* sustain on ch0 */
+                0x00, 0x80, 0x30, 0x00,         /* the note-off: both held */
+                0x03, 0xB0, 0x40, 0x00,         /* sustain off ch0, 3 ticks on */
+                0x7F, 0xFF, 0x2F, 0x00 };       /* long wait, then EOT */
+            u32 w;
+
+            seq_driver_reset();
+            opl_reset();
+            len = build_xmi(bank, ev, sizeof ev);
+            CHECK_EQ_INT(seq_load(bank, len), 1);
+            seq_start();
+            opl_reset();              /* drop seq_start's 0x01/0x105 writes */
+            for (int i = 0; i < 5; i++) seq_tick();
+            CHECK_EQ_INT(seq_active_track(), 2);
+            w = opl_write_count();
+            {
+                int offs = 0;
+                for (u32 i = 0; i < w; i++)
+                    if ((opl_trace_reg(i) & 0xF8) == 0xB0
+                            && (opl_trace_val(i) & 0x20) == 0)
+                        offs++;
+                CHECK_EQ_INT(offs, 0);
+            }
+            for (int i = 0; i < 3; i++) seq_tick();   /* the sustain-off event */
+            {
+                int offs = 0;
+                for (u32 i = w; i < opl_write_count(); i++)
+                    if ((opl_trace_reg(i) & 0xF8) == 0xB0
+                            && (opl_trace_val(i) & 0x20) == 0)
+                        offs++;
+                CHECK_EQ_INT(offs, 2);
+            }
+            CHECK_EQ_INT(seq_active_track(), 0);
+
+            /* Without the pedal, an explicit note-off releases both voices of
+             * the same (channel, note): 0x39CC's all-match scan. An oldest-only
+             * note-off leaves one voice keyed. */
+            {
+                static const u8 ev2[] = {
+                    0x00, 0x90, 0x30, 0x40, 0x7F,   /* key ch0 note 0x30 */
+                    0x00, 0x90, 0x30, 0x40, 0x7F,   /* the same note again */
+                    0x00, 0x80, 0x30, 0x00,         /* one note-off */
+                    0x7F, 0xFF, 0x2F, 0x00 };
+                int offs = 0;
+
+                seq_driver_reset();
+                opl_reset();
+                len = build_xmi(bank, ev2, sizeof ev2);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                seq_start();
+                opl_reset();
+                for (int i = 0; i < 4; i++) seq_tick();
+                for (u32 k = 0; k < opl_write_count(); k++)
+                    if ((opl_trace_reg(k) & 0xF8) == 0xB0
+                            && (opl_trace_val(k) & 0x20) == 0)
+                        offs++;
+                CHECK_EQ_INT(offs, 2);
+                CHECK_EQ_INT(seq_active_track(), 0);
+            }
+
+            /* The AIL queue's duration expiry is the same (channel, note)
+             * note-off: when the shorter of two voices of one note expires, the
+             * driver releases both (0x39CC scans all matches). A per-voice
+             * expiry leaves the longer one sounding. */
+            {
+                static const u8 ev3[] = {
+                    0x00, 0x90, 0x30, 0x40, 0x02,   /* key ch0 note 0x30, dur 2 */
+                    0x00, 0x90, 0x30, 0x40, 0x08,   /* the same note, dur 8 */
+                    0x7F, 0xFF, 0x2F, 0x00 };
+                int offs = 0;
+
+                seq_driver_reset();
+                opl_reset();
+                len = build_xmi(bank, ev3, sizeof ev3);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                seq_start();
+                opl_reset();
+                for (int i = 0; i < 4; i++) seq_tick();
+                for (u32 k = 0; k < opl_write_count(); k++)
+                    if ((opl_trace_reg(k) & 0xF8) == 0xB0
+                            && (opl_trace_val(k) & 0x20) == 0)
+                        offs++;
+                CHECK_EQ_INT(offs, 2);
+                CHECK_EQ_INT(seq_active_track(), 0);
+            }
+        }
     }
 
     gra = read_file(TITLE_GRA, &gra_len);

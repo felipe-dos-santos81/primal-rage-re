@@ -1227,8 +1227,11 @@ voice-steal handler `0x36f6`-`0x3816` (quietest-voice, per-MIDI-channel counts
 oldest-voice steal; with 18 slots the allocator was not observed to exhaust in
 the compared window. The percussion allocator `0x30e1` (voice type 3) is
 unreachable for the shipped bank (all 181 `FAT.OPL` payloads have type
-`[0] = 0x0e`), so it is not modelled. `0x3b1e` (sustain-off) and `0x39cc`
-(all-notes-off) are modelled at the dispatch level only. The carrier-TL residual
+`[0] = 0x0e`), so it is not modelled. `0x3b1e` (sustain-off) and
+`0x39cc`'s sustain gate are modelled (record
+`2026-10-31-driver-truth-derivations.md` §D5); CC123's all-notes-off path
+(`0x3c9a..0x3cbd`) stays a named gap (the port's `case 123` writes no
+note-offs). The carrier-TL residual
 on MIDI channels 1 and 4 (item 1) is the engine's per-channel volume; the capture
 records no CC7 arrival time, so those rows are excluded by name rather than
 fitted (record `2026-10-30-final-truth-derivations.md` §F7.1, correcting the

@@ -165,7 +165,7 @@ TRACE_PREFIX_PINS = {
     'gp-u20-chaos-ending': {4: 483, 5: 5, 6: 180, 8: 932, 9: 581, 12: 1634, 13: 1437, 14: 57, 15: 302},
     'gp-u21-armadon-ending': {4: 483, 5: 5, 6: 204, 9: 581, 12: 1634, 13: 1437, 14: 828, 15: 302},
     'gp-u22-diablo-ending': {3: 200, 4: 483, 5: 5, 6: 200, 8: 931, 12: 1634, 13: 1435, 14: 828, 15: 118},
-    'gp-u23-u16-finisher': {1: 25, 2: 21, 4: 94, 5: 5, 6: 417, 7: 425, 8: 177},
+    'gp-u23-u16-finisher': {1: 25, 2: 21, 4: 94, 5: 5, 6: 417, 7: 425, 8: 205},
     'gp-u6-moves-b': {3: 40},
     'gp-u8-attract-start': {3: 85},
     'gp-u8-right-training': {2: 21},
@@ -218,7 +218,7 @@ TRACE_CLAIMED_BANKS = {
 #    A bounded prefix never reclassifies a bank as whole-section claimed.
 TRACE_RESIDUE = {
     0x15B3F30E: ('s16hghsc.gra+0x08', 'gp-u10-ending', 13, 1437, 'tail-lag'),
-    0x1895A942: ('s16sound.gra+0x72D4', 'gp-u23-u16-finisher', 8, 177, 'voice-rotation'),
+    0x1895A942: ('s16sound.gra+0x72D4', 'gp-u23-u16-finisher', 8, 205, 'voice-rotation'),
     0x19AB8B2B: ('s16sound.gra+0x39F4', 'gp-idle-loss', 10, 301, 'tail-lag'),
     0x20DA829D: ('s16citys.gra+0x08', 'gp-u10-ending', 6, 211, 'voice-rotation'),
     0x3BA4C376: ('s16sound.gra+0x5B88', 'gp-idle-loss-run2', 4, 253, 'voice-rotation'),

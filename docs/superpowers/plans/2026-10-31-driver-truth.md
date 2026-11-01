@@ -2,10 +2,16 @@
 
 **Status (2026-10-31):** Tasks 1–3 and 5–6 are implemented: the driver-state
 model is derived (record §D1), the fix and its unit cases are in, the 29-trace
-oracle is re-pinned and green (84 prefixes / 44,103 ticks), and the register
-gets R35. **Task 4 (`0x21` spec) was not taken**: the subagent fleet was
-unavailable (the provider reported insufficient account funds) and the audio
-derivation took the session; R05 stays declared with no capture.
+oracle is re-pinned and green (86 prefixes / 44,489 ticks after §D5), and the register
+gets R35. **Task 4 (`0x21` spec) was not taken in the phase**: the subagent
+fleet was unavailable (the provider reported insufficient account funds) and the
+audio derivation took the session; R05 stays declared with no capture. **Both
+leftovers were taken on 2026-11-01 without subagents:** the spec is
+`port/spec/volleyball.md` (R05's derivation half, no capture and no claim
+change), and the §D3 "Not fixed" `1895A942` row's cause is fixed by the driver's
+sustain model and the row is re-pinned (record §D5, register R36; the row's
+first difference 177 → 205
+and the prefix total 44,461 → 44,489).
 
 **Gate (Task 6):** `make verify` exited 0; the audio summary is `ok`, the
 pin baseline is `25202638…`, and `make audio-render` twice is byte-identical

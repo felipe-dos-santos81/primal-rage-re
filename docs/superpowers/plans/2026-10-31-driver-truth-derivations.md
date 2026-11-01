@@ -113,18 +113,23 @@ state for unit oracles) measures, over the 29-trace oracle:
 | `E3533961` | `s16sound.gra+0x6CA8` | `gp-u10-ending` 5, 5 | `gp-idle-loss` 5, 5 | `gp-u10` 5 **191-tick match**, as do the u16/u18/u20/u21/u23 sections |
 | `1895A942` | `s16sound.gra+0x72D4` | `gp-u23-u16-finisher` 8, 177 | unchanged | the release/retrigger row, unchanged |
 
-**Not fixed.** The `1895A942` (`sound+0x72D4`) release/retrigger row is
-unchanged at tick 177. The design predicted it from the port's
-release-before-events order, but the driver's note queue (`0x69372` decrements
-`[v+0x185]` before the tick's events) and the port's `seq_tick` agree on that
-order, so the divergence is in the retrigger path itself and was not derived
-this phase. It stays a residue row, not a claimed fix.
+**Not fixed in this phase; fixed on 2026-11-01 (§D5).** The `1895A942`
+(`sound+0x72D4`) release/retrigger row was unchanged at tick 177. The design
+predicted it from the port's release-before-events order, but the driver's note
+queue (`0x69372` decrements `[v+0x185]` before the tick's events) and the port's
+`seq_tick` agree on that order, so the divergence is not the queue order. §D5
+derives it: the driver's **sustain (CC64)** note-off gate, a recorded named gap,
+not a retrigger difference.
 
 **Counters.** The 12 whole-section-claimed banks are unchanged; the 10 residue
 rows are re-pinned at first-diff ticks **5..1,634**. The diff-allowed prefix
-claim grows from **74 sections / 29,656 ticks** to **84 sections / 44,103
+claim grows from **74 sections / 29,656 ticks** to **86 sections / 44,461
 ticks** (the sections that used to be unanchored now anchor and match a
-prefix). `TRACE_PINS`' whole-section tick minimums are unchanged except where
+prefix). **Correction (2026-11-01):** the phase's summary said 84 / 44,103;
+the table it pinned (and both gate logs) actually sum to 86 / 44,461 — the
+84/44,103 figure omitted `gp-idle-loss` sections 4 (252) and 7 (106). The
+table itself was never wrong; the live counters now read the measured
+86 / 44,461, and §D5 takes it to 44,489. `TRACE_PINS`' whole-section tick minimums are unchanged except where
 a scenario's total rose (a minimum, so no re-pin was needed), and four
 scenarios gained the `3BA4C376`/`20DA829D`/`BF1C78E2` diff allowance their
 sections now need (`gp-idle-loss`, `gp-idle-loss-run2`, `gp-u10-ending`,
@@ -145,3 +150,115 @@ aborted the fourth), and the audio derivation took the session. The mode's
 entry, gate chain and content remain the design's §3 and the
 `2026-10-30-final-truth-derivations.md` §F6 derivation; R05 stays declared,
 with no capture and no claim change.
+
+## D5. The `1895A942` row: the driver's sustain gate (2026-11-01)
+
+**Fixed, and the residue row moves 177 → 205.** The `1895A942`
+(`s16sound.gra+0x72D4`) row from §D3 is the driver's **sustain (CC64) note-off
+gate**: a note-off that arrives while the channel's pedal is at or above `0x40`
+holds the voice (no key-off write); the pedal below `0x40` releases it. The
+port stored `S.sustain` but never consulted it (the named gap in
+`port/src/platform/audio/sequencer.c` and record §13 of
+`2026-09-29-todo-verify-derivations.md`), so it wrote a key-off the driver
+withheld.
+
+### D5.1 The measured difference
+
+The section is `gp-u23-u16-finisher` section 8, anchor `0xB5=0x33` at tick 70,
+compared under the constant channel rotation k = 10 (anchor: capture
+`0x1B6=0x33`; the rotation model is `rotate_reg`). The first difference was at
+port relative tick 177:
+
+```
+port    [0x1b2=0x12 0x1b5=0x12]
+capture [0x1b2=0x12]
+```
+
+The port's extra write is the rotated image of its own `0xB4=0x12` key-off.
+The sequencer log (throwaway `PR_SEQ_LOG`, reverted) identifies the notes:
+
+```
+ON  t=241 v=1 midi=1 note=73 vel=127 dur=6
+ON  t=241 v=4 midi=7 note=73 vel=127 dur=6
+OFF t=247 v=1 midi=1 note=73
+OFF t=247 v=4 midi=7 note=73
+```
+
+Both notes are the same number with duration 6; the capture keys both (its
+`0x1B2=0x32` and `0x1B5=0x32` at rel 171) but writes only the ch1 image's off at
+177. Its `0x1B5` voice is next written at rel **513** (`0x12`), so it is held
+for 342 ticks.
+
+### D5.2 Why: the XMIDI sends sustain one tick before the note-offs
+
+The `EVNT` bytes of `S16SOUND.GRA+0x72D4` (the single XMIDI in the XDIR,
+`FORM XMID` at `0x72FA`, `EVNT` at `0x7334`) around the pair:
+
+```
+... 06 91 49 7f 06 97 49 7f 06 05 b7 40 7f ...
+```
+
+`06` is the delta; `91 49 7f 06` = note-on ch1 note 73 vel 127 dur 6; `97 49
+7f 06` = the same on ch7 (its `06` is that note's duration); `05` is the delta
+to `b7 40 7f` = **CC64 (sustain) = 127 on ch7**, i.e. the pedal arrives five
+ticks after the note-ons and **one tick before** their six-tick durations
+expire. Both notes' `dur` is genuinely 6; the divergence is the pedal, not a
+retrigger.
+
+### D5.3 The driver's rule (`SBPRO2.MDI`)
+
+| address | rule |
+|---|---|
+| `0x39CC..0x3A2E` | the note-off handler: scans all 20 voice records (`[si+0x1485] == 1`) and acts on every match of note (`[si+0x14E9]`) and channel (`[si+0x14C1]`). With the channel's pedal `[ch+0x1969] >= 0x40` it sets the held bit `[v+0x1525] = 1` (`0x39F6`/`0x3A23`) and writes nothing; otherwise, for state `[si+0x1499]` 0 or 3, it calls `0x3127`, which writes the key-off and frees the slot. For any other state it sets the **write-only** deferral word `[0x145D + slot*2] = 1` (`0x3A1B`; the only other access is the init clear at `0x3910` — the driver never reads it). |
+| `0x3C7D..0x3C8D` | CC64: store `[ch+0x1969]`; at or above `0x40` return, below it call `0x3B1E`. |
+| `0x3B1E..0x3B53` | release every held voice on the channel (a note-off call per match). |
+| `0x3CC0..0x3CC9` | CC121 (reset all controllers): `[ch+0x1969] = 0` then `0x3B1E`. |
+| `0x3AE8` | a note-on clears the held bit on the allocated voice. |
+| `0x3C9A..0x3CBD` | CC123 (all notes off): a note-off per active voice on the channel (still sustain-gated). |
+
+The note-off is per **(channel, note) queue entry**, not per voice: AIL's queue
+(`0x69372`) holds note/status/duration records and re-dispatches them; the
+driver's hold is what makes the queue entry's off visible as no write.
+
+### D5.4 The port fix
+
+`port/src/platform/audio/sequencer.c`:
+
+- `seq_voice` gains `held` (the driver's `[v+0x1525]`).
+- `note_off_voice` is the gate: `S.sustain[midi] >= 0x40` → `held = 1`,
+  `release = 0`, no write; else `key_off`.
+- `key_off_note` now scans **all** voices and applies `note_off_voice` to every
+  match (the driver's all-match scan; the port previously released only the
+  oldest).
+- `sustain_release` (the driver's `0x3B1E`) keys off every held voice of the
+  channel; called from CC64 below `0x40` and from CC121 after zeroing the
+  pedal.
+- `seq_tick`'s auto-release (the AIL queue's note-off) routes through
+  `key_off_note`, the raw's all-match `(channel, note)` dispatch, so a duration
+  expiry under the pedal is held too and a shorter duplicate releases both.
+- `key_on` clears `held` and `key_off` clears it on free.
+
+Unit case 0j in `port/tests/test_audio.c` has three sub-cases: the pedal holds
+two voices of one note and the pedal off releases both; an explicit note-off
+without the pedal releases both; and the shorter of two voices with different
+durations releases both at once. Mutations: removing the gate fails three
+assertions; a no-op `sustain_release`, an oldest-only `key_off_note`, and a
+per-voice duration expiry each fail two.
+
+### D5.5 The measured effect and re-pin
+
+- `gp-u23-u16-finisher` section 8: first difference **177 → 205**, claimed
+  matched prefix **177 → 205** (`TRACE_PREFIX_PINS`).
+- All other 28 traces are unchanged (the 29-trace oracle's only failure was
+  that one row); the prefix total grows **44,461 → 44,489** (86 sections
+  both before and after; §D3's 84/44,103 summary was corrected above).
+- The new 205 difference is the same `voice-rotation` class as before (the
+  port's group against the capture's; the held voice now matches through 204),
+  so the residue row keeps its cause class and gets the new tick.
+- `TRACE_RESIDUE[0x1895A942]` = (`s16sound.gra+0x72D4`,
+  `gp-u23-u16-finisher`, 8, **205**, `voice-rotation`); the pin baseline is
+  re-stamped with the reason.
+
+The rule is the driver's bytes, not a fitted constant: it applies to every
+bank that sends CC64 (`S16SOUND.GRA` and `S16KONSD.GRA`; the title bank sends
+none), and the port's note-off model is now the driver's for all of them.
