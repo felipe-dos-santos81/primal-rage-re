@@ -49,6 +49,13 @@ int  host_quit_requested(void);
  * SDL video init is fine). */
 void host_wait_vblank(void);
 
+/* PORT: test seam, no raw counterpart. When `on` is non-zero, host_wait_vblank()
+ * skips its SDL_Delay and still runs host_pump(), making a replay CPU-bound
+ * instead of paced at 60 Hz. The game and every default driver leave it 0, so
+ * their pacing is unchanged; the GP search driver sets it for PR_GP_FAST runs
+ * (plan 2026-11-01-volleyball-truth Task 2). */
+void host_set_vblank_fast(int on);
+
 /* PORT: test seam, no raw counterpart. When set, host_pump() calls fn(ctx)
  * once at the end of every call. The blocking menu loops reach the host only
  * through config_screen_wait's host_wait_vblank(); the unit tests script one

@@ -76,8 +76,9 @@ import opl_trace
 
 # The measured gameplay inventory (record 2026-10-25-music-truth-derivations
 # §M1.6.2): 28 `gp-*` capture directories holding 29 `.dro` files (gp-pads holds
-# two). The 8 other k11 captures and the 2 audio captures are not gameplay and
-# are named apart by `summary`.
+# two). The 9 other k11 `.dro` files (7 directories, one of them the mode-`0x21`
+# capture outside the audio inventory) and the 2 audio captures are named apart
+# by `summary` as outside the 29-trace gameplay inventory.
 GP_TRACES = [
     'gp-idle-loss', 'gp-idle-loss-run2', 'gp-keys-fight', 'gp-pads', 'gp-twop',
     'gp-u10-ending', 'gp-u12-endurance', 'gp-u13-ending2', 'gp-u15-join',
@@ -89,9 +90,12 @@ GP_TRACES = [
     'gp-u8-right-training', 'gp-u8-tug-of-war', 'gp-u9-win',
 ]
 
-# Not gameplay: the service-menu/save/diagnostic k11 captures (8 files across 6
-# directories) and the two title captures the report-only test reads.
-OTHER_K11_TRACES = ['de', 'diags', 'idle', 'menuesc', 'save-reload', 'walk']
+# Outside the 29-trace gameplay inventory: the service-menu/save/diagnostic k11
+# captures (8 files across 6 directories), the one gameplay capture whose `.dro`
+# is outside the audio inventory (`gp-u30-volleyball`, Volleyball truth Task 4:
+# no audio claim), and the two title captures the report-only test reads.
+OTHER_K11_TRACES = ['de', 'diags', 'idle', 'menuesc', 'save-reload', 'walk',
+                    'gp-u30-volleyball']
 
 # The expected per-directory `.dro` inventory (record §M1.6.2): 28 directories,
 # 29 files; gp-pads is the one directory whose capture restarted and holds two.
@@ -1527,10 +1531,11 @@ def cmd_summary(a):
                 if not r.get('skipped') and r.get('ok')]
     if measured:
         print('audio-compare: minimum measured claim: %d ticks' % min(measured))
-    print('audio-compare: not gameplay: %d k11 .dro file(s) (%s)'
+    print('audio-compare: other k11: %d .dro file(s) outside the 29-trace '
+          'gameplay inventory (%s)'
           % (len(others),
              ', '.join(os.path.relpath(p, a.captures) for p in others) or 'none'))
-    print('audio-compare: not gameplay: %d audio-capture .dro file(s) (%s)'
+    print('audio-compare: other captures: %d audio-capture .dro file(s) (%s)'
           % (len(audio), ', '.join(os.path.basename(p) for p in audio) or 'none'))
     if bad:
         for b in bad:

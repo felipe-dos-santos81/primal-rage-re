@@ -382,6 +382,17 @@
       "last_s_frame": 2217
     },
     {
+      "path": "data/k11-captures/gp-u30-volleyball",
+      "kind": "k11",
+      "poll_log_sha256": "42e131d1753c59e5a3420297a5efe977cfb28fed2eee8617f92a4d2d8ab8307c",
+      "frame_count": 4704,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 5704
+    },
+    {
       "path": "data/k11-captures/walk",
       "kind": "k11",
       "poll_log_sha256": "aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6f4adef391f",

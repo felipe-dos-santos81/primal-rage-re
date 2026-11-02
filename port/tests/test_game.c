@@ -13530,6 +13530,14 @@ int test_k11_oracle(void)
  * docs/superpowers/specs/2026-09-30-gameplay-ground-truth-design.md §4.2,
  * record §G.9) ----
  * PR_GP_DUMP=<dir> PR_GP_SCRIPT=<file> (tools/gp_session.py port-script, v2).
+ * PR_GP_FAST=1 skips the 60 Hz vblank sleep (host_set_vblank_fast) and
+ * PR_GP_VOLLEY=1 adds the V/Vg observer lines before each T line (plan
+ * 2026-11-01-volleyball-truth Task 2, tools/vb_search.py). Both are inert when
+ * unset: PR_GP_VOLLEY writes no V/Vg line and PR_GP_FAST only changes pacing.
+ * The frame dump and the preexisting T values are unchanged; Task 4 appended
+ * seven T fields (the mode-0x21 ball/clock/score/flag names), and the oracles
+ * parse by field name, so the trace bytes after those fields are not the
+ * pre-Task-4 bytes.
  * As the K11 driver it runs game_init() and the master loop from boot with
  * the title pin's opcode-8 mirror. Before the iteration that raises the frame
  * counter DS_000EF6DC to F it queues the script's `key F` lines (in script
@@ -13547,6 +13555,7 @@ static u32 gp_n, gp_next, gp_nkeys, gp_keys_sent, gp_enter_frame, gp_enter_state
 static u32 gp_dumped, gp_hash_last, gp_idle_pumps, gp_missed, gp_iters;
 static u32 gp_trace_lines, gp_first_f;
 static int gp_armed, gp_done, gp_failed;
+static int gp_volley;              /* PR_GP_VOLLEY=1: the Task 2 V/Vg observer */
 static int gp_arm_pad;              /* `arm pad` (record gameplay-u8 §U8.3): the arm is a pad press in mode 3 */
 static char gp_dir[1024];
 static FILE *gp_log, *gp_frames, *gp_trace;
@@ -13729,6 +13738,68 @@ static void gp_loader(void)
     if (gp_armed && !gp_done && !gp_failed) gp_dump_if_new();
 }
 
+/* PR_GP_VOLLEY=1 (plan 2026-11-01-volleyball-truth Task 2): the volleyball
+ * observer. Before each T line it writes one V line per active fight-effect
+ * entry and one Vg line with the trigger's globals:
+ *
+ *   V f=<frame> e=<entry> ty=<+0x1E> fl=<+0x1C> n=<+0x1F> x=<actor+0x18>
+ *     h=<actor+0x1C> d=<actor+0x30> vx=<actor+0x34> vy=<actor+0x36>
+ *   Vg f=<frame> b60=<DS_001088B6[0]> b61=<DS_001088B6[1]>
+ *     ball=<DS_00108864> abc=<DS_00104ABC> s0=<DS_0010889C>
+ *     s1=<DS_0010889D> clk=<DS_001088AA> c1=<DS_001088C1> c5=<DS_001088C5>
+ *     s0x/s0h/s0d=<slot 0 actor +0x18/+0x1C/+0x30>
+ *     s1x/s1h/s1d=<slot 1 actor +0x18/+0x1C/+0x30>
+ *
+ * The list head is DSD(DS_0010884C), the sentinel itself; the active entries
+ * are the 32 pool nodes at 0x1083CC + k*0x24 (fight_list_init, fight.c), so a
+ * head outside that range is a broken list rather than a node and ends the
+ * walk. The actor fields come from the entry's +8 record, whose x is +0x18,
+ * height +0x1C, depth +0x30 (dword) and vx/vy the words +0x34/+0x36. Read-only:
+ * no game state changes; with the env unset no V/Vg line is written and the
+ * preexisting T values and the frame dump are unchanged (Task 4's seven
+ * appended T fields are the only trace difference; the gp-* oracles parse by
+ * field name). */
+#define GP_EFFECT_POOL 0x001083CCu   /* first fight-effect node (0x24 stride) */
+static void gp_volley_lines(void)
+{
+    const u32 f = DSW(DS_000EF6DC);
+    u32 e = DSD(DS_0010884C);
+    for (u32 i = 0; i < 32u && e != DS_0010884C; i++) {
+        if (e < GP_EFFECT_POOL || e >= DS_0010884C || (e - GP_EFFECT_POOL) % 0x24u != 0u)
+            break;                                   /* not a pool node: stop, not a node */
+        const u32 actor = DSD(e + 8u);
+        const int have = actor != 0u && actor < MEM_SIZE - 0x40u;
+        fprintf(gp_trace,
+                "V f=%04X e=%08X ty=%02X fl=%02X n=%02X x=%08X h=%08X d=%08X vx=%04X vy=%04X\n",
+                (unsigned)f, (unsigned)e, (unsigned)DSB(e + 0x1Eu),
+                (unsigned)DSB(e + 0x1Cu), (unsigned)DSB(e + 0x1Fu),
+                have ? (unsigned)DSD(actor + 0x18u) : 0u,
+                have ? (unsigned)DSD(actor + 0x1Cu) : 0u,
+                have ? (unsigned)DSD(actor + 0x30u) : 0u,
+                have ? (unsigned)DSW(actor + 0x34u) : 0u,
+                have ? (unsigned)DSW(actor + 0x36u) : 0u);
+        e = DSD(e);
+    }
+    const u32 a0 = DSD(DS_001077B0), a1 = DSD(DS_001077B0 + 0x94u);
+    const int h0 = a0 != 0u && a0 < MEM_SIZE - 0x40u;
+    const int h1 = a1 != 0u && a1 < MEM_SIZE - 0x40u;
+    fprintf(gp_trace,
+            "Vg f=%04X b60=%02X b61=%02X ball=%08X abc=%08X s0=%02X s1=%02X "
+            "clk=%04X c1=%02X c5=%02X "
+            "s0x=%08X s0h=%08X s0d=%08X s1x=%08X s1h=%08X s1d=%08X\n",
+            (unsigned)f, (unsigned)DSB(DS_001088B6), (unsigned)DSB(DS_001088B6 + 1u),
+            (unsigned)DSD(DS_00108864), (unsigned)DSD(DS_00104ABC),
+            (unsigned)DSB(DS_0010889C), (unsigned)DSB(DS_0010889D),
+            (unsigned)DSW(DS_001088AA), (unsigned)DSB(DS_001088C1),
+            (unsigned)DSB(DS_001088C5),
+            h0 ? (unsigned)DSD(a0 + 0x18u) : 0u,
+            h0 ? (unsigned)DSD(a0 + 0x1Cu) : 0u,
+            h0 ? (unsigned)DSD(a0 + 0x30u) : 0u,
+            h1 ? (unsigned)DSD(a1 + 0x18u) : 0u,
+            h1 ? (unsigned)DSD(a1 + 0x1Cu) : 0u,
+            h1 ? (unsigned)DSD(a1 + 0x30u) : 0u);
+}
+
 /* One T line per master-loop iteration, the capture's S field names and
  * widths (tools/gp_session.py SNAP_FIELDS, spec §4.1). */
 static void gp_trace_line(void)
@@ -13744,6 +13815,9 @@ static void gp_trace_line(void)
             "ab4=%08X rec_y=%08X anchor=%08X s0_57=%02X rec8=%08X rec34=%04X rec36=%04X rec44=%04X "
             "b892=%04X b8c4=%02X b8a6=%04X b8bd=%02X b415=%02X b8c0=%02X "
             "s0_53=%02X camx=%08X "
+            /* Plan 2026-11-01-volleyball-truth Task 4 (record §2.4): the
+             * mode-0x21 state, gp_session.SNAP_FIELDS' last seven. */
+            "ball=%08X abc=%08X s0=%02X s1=%02X clk=%04X b8c1=%02X b8c5=%02X "
             "lat=%08X spz=%02X mpz=%02X "
             "afc=%04X ad4=%08X w2=%02X w3=%02X b1e=%02X b21=%02X b14=%02X b0c=%02X t104=%04X "
             "m106=%08X m10a=%08X sc0=%08X c82=%02X\n",
@@ -13800,8 +13874,15 @@ static void gp_trace_line(void)
             (unsigned)DSB(DS_00104B15), (unsigned)DSB(DS_001088C0),
             /* Final truth Task 5 (record §F5): slot 0's +0x53 (the 0x263DE gate
              * byte) and the signed camera x DS_000F0AF0 (the 0x4E13D gate),
-             * gp_session.SNAP_FIELDS' last two. */
+             * gp_session.SNAP_FIELDS' last two before the volleyball fields. */
             (unsigned)DSB(DS_00107803), (unsigned)DSD(DS_000F0AF0),
+            /* Plan 2026-11-01-volleyball-truth Task 4 (record §2.4): the
+             * mode-0x21 ball, selector, scores, clock and entry flags,
+             * gp_session.SNAP_FIELDS' last seven. */
+            (unsigned)DSD(DS_00108864), (unsigned)DSD(DS_00104ABC),
+            (unsigned)DSB(DS_0010889C), (unsigned)DSB(DS_0010889D),
+            (unsigned)DSW(DS_001088AA), (unsigned)DSB(DS_001088C1),
+            (unsigned)DSB(DS_001088C5),
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */
@@ -13876,6 +13957,21 @@ int test_gp_replay(void)
             opl_set_write_hook(gp_audio_hook);
         }
     }
+    /* Plan 2026-11-01-volleyball-truth Task 2: PR_GP_FAST skips the 60 Hz
+     * vblank sleep (the loop still pumps) and PR_GP_VOLLEY adds the V/Vg
+     * observer lines. Both are inert when their env is unset: no V/Vg line is
+     * written and PR_GP_FAST only changes pacing, so the frame dump and the
+     * preexisting T values are unchanged. Task 4 appended seven T fields
+     * (the mode-0x21 ball/clock/score/flag names) and the oracles parse by
+     * field name, so trace.txt is not byte-for-byte the pre-Task-4 text. The
+     * seam is armed only after every fopen that can return early above, so no
+     * error path can leave it set. */
+    const char *fast = getenv("PR_GP_FAST");
+    const int fast_run = fast != NULL && fast[0] != '\0';
+    const char *volley = getenv("PR_GP_VOLLEY");
+    gp_volley = volley != NULL && volley[0] != '\0';
+    if (fast_run) host_set_vblank_fast(1);
+
     game_init();
     actors_pin_anim_tick_zero(1);
     host_set_pump_hook(gp_hook, NULL);
@@ -13905,6 +14001,7 @@ int test_gp_replay(void)
         if (gp_armed && input_has_key())
             fprintf(gp_log, "left-queued after f=%u\n", (unsigned)DSW(DS_000EF6DC));
         if (gp_armed) {
+            if (gp_volley) gp_volley_lines();       /* Task 2: before each T line */
             gp_trace_line();
             gp_dump_if_new();                        /* a present in an iteration that never pumped */
         }
@@ -13922,6 +14019,7 @@ int test_gp_replay(void)
     res_set_screen_hook(NULL);
     (void)host_set_fault_hook(prev_fault);
     k11_key_bits(0u);
+    if (fast_run) host_set_vblank_fast(0);
     fclose(gp_log);
     fclose(gp_frames);
     fclose(gp_trace);

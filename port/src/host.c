@@ -772,9 +772,18 @@ _Noreturn void host_cpu_fault(u32 exc, u32 eip, const char *msg, int status)
     exit(status);
 }
 
+/* PORT: the no-pace seam (host.h). 0, the game's value, keeps the 60 Hz sleep;
+ * the search driver sets it so a replay is CPU-bound instead of sleeping. */
+static int g_vblank_fast;
+
+void host_set_vblank_fast(int on)
+{
+    g_vblank_fast = on != 0;
+}
+
 void host_wait_vblank(void)
 {
-    if (g_tick_started) {
+    if (!g_vblank_fast && g_tick_started) {
         uint64_t now = now_ns();
         uint64_t elapsed = now >= g_tick_base_ns ? now - g_tick_base_ns : 0;
         if (elapsed < HOST_TICK_NS) {

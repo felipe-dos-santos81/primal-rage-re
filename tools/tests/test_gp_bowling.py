@@ -93,7 +93,7 @@ class TestSnapshotFields(unittest.TestCase):
     def test_the_mode25_fields_are_appended_with_their_widths(self):
         # A missing/inserted field, a wrong address, or a word read as a byte
         # breaks both the DOS snapshot and the port's T-record contract.
-        self.assertEqual(gs.SNAP_FIELDS[-8:], (
+        self.assertEqual(gs.SNAP_FIELDS[-15:-7], (
             ('b892', 0x108892, 2), ('b8c4', 0x1088C4, 1),
             ('b8a6', 0x1088A6, 2), ('b8bd', 0x1088BD, 1),
             ('b415', 0x104B15, 1), ('b8c0', 0x1088C0, 1),

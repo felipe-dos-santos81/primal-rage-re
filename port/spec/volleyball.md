@@ -1,17 +1,28 @@
 # Spec: the volleyball sub-game (mode `0x21`)
 
-Status: **derived, never exhibited.** Every statement below is read from the
-ported code (which carries a differential row or a unit test), but **no capture
-has ever shown the mode**; register row R05 stays `declared`. Addresses are
+Status: **derived and exhibited.** Every statement below is read from the
+ported code (which carries a differential row or a unit test), and the mode was
+published by Volleyball truth Task 4: `data/k11-captures/gp-u30-volleyball`
+reaches `entry+0x1F = 8`, the mode entry `0x4BD98` at `f=0x0F04`, a real point
+and the return to mode 6 at `f=0x15B9`, with `gp-u30-volleyball-oracle` and
+`tools/gp_volley.py check` pinning it; register row R05 is `closed` (record
+`../docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §2).
+Addresses are
 linear (Ghidra/LE), and the `DS_xxxx` labels are linear too: a Ghidra
 `DAT_0008xxxx` is the linear `0x8xxxx`, i.e. DS offset `0x8xxxx - 0x80000`.
 
-The mode's own functions are `NOT-HIT` in the coverage census
-(`tools/coverage_baseline.txt`): `0x4BD98`, `0x4BF18`, `0x4C60C`, `0x4C784`,
-`0x4CB18`, `0x4CC0C`, `0x4CD98`, `0x26540`, `0x13134`. The entry tail's
+The mode's own functions were `NOT-HIT` in the coverage census before the
+capture (`tools/coverage_baseline.txt`): `0x4BD98`, `0x4BF18`, `0x4C60C`, `0x4C784`,
+`0x4CB18`, `0x4CC0C`, `0x4CD98`, `0x26540`, `0x13134`; Volleyball truth Task 5
+re-pinned the baseline from the measured run and the nine rows the capture's
+replay exercises are now `HIT` (`0x13134`, `0x26540`, `0x43738`, `0x4BD98`,
+`0x4BF18`, `0x4C60C`, `0x4CB18`, `0x4CC0C`, `0x4CD98`; HIT 684 / NOT-HIT 71 /
+UNINSTRUMENTED 4, register R18). `0x4C784` (the eat path) stays `NOT-HIT`. The
+entry tail's
 siblings are `HIT`: the measured `0x4B470` calls (`gp-idle-loss` twice, the
 demo twice) are all first hits, and `0x4B69C`/`0x4B5A8` are the trample
-prelude and the crowd-lie gate — see §10.
+prelude and the crowd walk-in spawner (`0x4B5A8`; the lie itself is the effects
+pass's case-3 landing, `0x49E47`/`0x49E52`, §2) — see §10.
 
 ## 1. What it is
 
@@ -76,24 +87,66 @@ Court setup (`0x4BE3F..0x4BEE5`):
 - Two actors spawn from the descriptors at `0xBAB88` and `0xBAB9C`, both at
   `x = DS_00108884`, `y = DS_00108880 - 0x3140`, layer word `DS_000BD898`
   (`0x4BE90`, `0x4BEBC`); they are stored in `DS_00108868` / `DS_0010886C`.
-  The second takes stream `0xEF66A` at 1.0 (`0x4BED0`). Both get
-  `+0x36 = 0x1A4` (`0x4BEDA`, `0x4BEE5`) — the walk-on velocity the pass's
+  The second takes stream `0xEF66A` at 1.0 (`0x4BED0`). Both actors get
+  `actor+0x36 = 0x1A4` (`0x4BEDA`, `0x4BEE5`) — the walk-on velocity the pass's
   preamble later snaps to 0.
 - The ball entry is launched by `0x4CB18` (`fight.c:2987`): voice
-  `0xD0`/`0xD1` by the actor's `+0x48` char range (`0x4CB1F..0x4CB3E`), stream
-  `0xC9604[index]` at 3.0 (`0x4CB52`), horizontal speed
+  `0xD0`/`0xD1` by the ball actor's `+0x48` char range (`0x4CB1F..0x4CB3E`),
+  stream `0xC9604[index]` at 3.0 (`0x4CB52`), the ball actor's horizontal speed
   `+0x34 = ±min(|x0 - x1|, 0x3F00) / 0x70` (`0x4CB63..0x4CBB5`; the sign is
-  negated when `0x1A570(side)` holds, i.e. the striker faces right), vertical
-  speed `+0x36 = (0x3BC0 - the actor's height) / 0x16` (`0x4CB84..0x4CBF0`),
-  type 6 (`0x4CBFE`), and `entry+0x1C` bit 7 cleared (`0x4CC05`).
-  `motion_step` (`0x2A4FC`) integrates `+0x34` into x and `+0x36` into the
-  height, so these are the ball's horizontal and vertical launch speeds.
+  negated when `0x1A570(side)` holds — the §7 pset-hflip reading), the ball
+  actor's vertical speed `+0x36 = (0x3BC0 - the actor's height) / 0x16`
+  (`0x4CB84..0x4CBF0`), type 6 (`0x4CBFE`), and `entry+0x1C` bit 7 cleared
+  (`0x4CC05`). `motion_step` (`0x2A4FC`) integrates the ball actor's `+0x34`
+  into x and `+0x36` into the height, so these are the ball's horizontal and
+  vertical launch speeds.
 
-`0x4B470`'s trample that feeds the count is the normal fight's: `0x4B69C`
-prelude (`0x4B6A6` tests the re-hit latch `entry+0x1C` bit 7, `0x4B716`
-increments `+0x1F`). The full trigger geometry (the 71-motion-step flight,
-`h(n) = 568n - 8n²`, the seven-pass re-hit window `n = 65..71`, why the count is
-not limited to 1) is derived in the final-truth record §F6 and is not repeated
+`0x4B470`'s trample that feeds the count is the normal fight's. `0x4B69C` is
+called once per effects entry at the top of `0x49C78`'s loop (`0x49CFE`),
+before the type dispatch. It tests only the re-hit latch (`0x4B6A6`,
+`entry+0x1C` bit 7), finds the fighter whose point box contains the entry
+actor's pset point (`0x17D30`; both sides fold to side 0), and calls `0x4B788`
+(`0x4B705`). Only when `0x4B788` returns 1 (`0x4B70A`/`0x4B70C`) does it store
+`entry+0x20 = hit - 1` (`0x4B713`), increment `+0x1F` (`0x4B716`) and call
+`0x4B470` (`0x4B779`). `0x4B788` returns 1 when `DS_00105B3A > 1` (`0x4B7A0`),
+when the other side's slot `+0x54 == 3` (`0x4B7DC`), or when the fighter's
+`+0x5F` is not his character's grab-move id `0xC97F2[ch]` (`0x2D` for characters
+0..6, `0x4B7EF`/`0x4B7F5`); its return-0 arm is the grab (bit 6 set at
+`0x4B845`, the body linked at `actor+0x4A` by `0x4B94A`/`0x4B956`) and does not
+count. This is why a touch can do nothing.
+
+The crowd supply is a two-step event, not a latch written by `0x4B5A8`. A side's
+2+ hit combo makes `0x39040` copy the consecutive-hit byte `0x107D2C[side]` into
+the per-side budget `DS_001088B6[side]` (`0x39056`/`0x3907B`). The type-0 crowd
+body `0x4AAD0` calls `0x4B5A8` (`0x4AB45`); when `DS_001088B6[actor+0x51] != 0`
+(the slot actor's `+0x51`) or the slot is in the dizzy state `slot+0x52 == 7 &&
+slot+0x53 == 2` (set by `0x36BC8` at `0x36C8F`/`0x36C96`), it turns one crowd
+entry into a walk-in: stream `0xC95BC[index]` at 3.0 (`0x4B5D7`/`0x4B5E6`),
+`entry+0x1A = actor+0x32` (`0x4B5F2`), `actor+0x38 = -0x40` (`0x4B5F9`),
+`actor+0x34 = ±0x40` (`0x4B614`/`0x4B62F`), `entry+0x14` = the fighter's x
+±0x1800 (`0x4B627`/`0x4B642`, stored at `0x4B650`), type 3 (`0x4B656`), and
+`DS_001088B6` decremented (`0x4B68B`). `0x4B5A8` writes nothing to
+`entry+0x1C`. The lie arrives on the next frame from the effects pass's case-3
+landing (`0x49E47`/`0x49E52`): type 4, `entry+0x1C |= 0x80`,
+`entry+0x18 = rng(0x3C) + 0x3C` (60..119 frames, `0x49E3A`/`0x49E4E`); the
+latch clears when the type-4 timer rises (`0x49EB5`/`0x49EB8`).
+
+Derived vs measured: the raw latch (`entry+0x1C` bit 7) is set at `T+37`
+(the first `vy < 0` pass, `0x49F18`); the prelude runs before the type
+dispatch, so it sees the latch from `T+38`. The 35 `vy < 0` passes are
+`T+37..T+71`. The practical body-contact window is `T+65..T+71` (7 passes):
+the entry's pset point must fall in a fighter's 56 px (`0x38`) box (`0x1790C`),
+and `h(65) = 3,120 < 3,584`. **The label is the motion-step index and is
+approximate**: the prelude at pass `T+k` evaluates the height left by the
+`k-1`th motion step, so the height-only window is passes `T+66..T+72`; the
+contact also depends on the fighters' horizontal boxes and the attack's active
+frame, and the eight measured hit-frame gaps from the previous hit are 66, 72,
+68, 70, 68, 78 and 63 (Volleyball truth Task 4, `gp-u30-volleyball`). The
+measured hit frames are the authority. The ~142 px separation of the two
+fighters is the zero-`+0x42` throw: 71 motion steps × `0x80` units = 2 px/frame
+× 71; `+0x42`/`+0x43` can lengthen it (record §F6.4). The flight
+`h(n) = 568n - 8n²`, the same-pass `0x230` first step and why the count is not
+limited to 1 are derived in the final-truth record §F6 and are not repeated
 here.
 
 ## 3. The frame
@@ -136,9 +189,11 @@ write. The mode therefore has exactly one exit: `0x4CD98` (§8).
 
 `fight_4bf18` (`fight.c:4477`) is the mode's per-frame game driver.
 
-**Preamble** (`0x4BF21..0x4BF53`): when `DS_00108868+0x36` (the walk-on
-velocity) is non-zero and the distance to `DS_00108880` minus its `+0x34>>16`
-has closed to within its own `+0x1C`, both court actors' `+0x36` snap to 0.
+**Preamble** (`0x4BF21..0x4BF53`): when the first court actor's `+0x36` word
+(the walk-on velocity, `0x4BF26`) is non-zero and the distance to
+`DS_00108880` minus that actor's `+0x36` word (the high half of the dword at
+`+0x34`, `0x4BF2D`/`0x4BF30`) has closed to within its own `+0x1C` height, both
+court actors' `+0x36` snap to 0 (`0x4BF42`/`0x4BF48`).
 
 **List walk** (`0x4BF53..0x4C39C`): the *same* singly-linked effects list
 `DS_0010884C` that `fight_effects_pass` walks (`entry+0 = next`, `+8 = the actor
@@ -154,15 +209,16 @@ is also table entries 0 and 7 — so types 0, 7 and >8 share one body).
 | 2 | `entry+0x18` word counts down; reaching < 1 → `fight_4AC38` | `0x4C07E` |
 | 3, 4 | `rec+0x2C = fight_dust_clamp(rec+0x30>>16)`; `actors_anim_begin(rec, 0xC95EC[index], 3.0)`; `rec+0x38 = 0x40`; type 5; `entry+0x1C` bit 7 cleared | `0x4C0A1` |
 | 5 | same clamp; when the signed word `rec+0x32 >= entry+0x1A`: `actors_anim_begin(rec, 0xC9544[index], 3.0)`, `rec+0x38 = rec+0x34 = 0`, type 0 | `0x4C0E7` |
-| 6 | bit 5 clear only: `vy < 0` sets bit 7; a held actor gets rec `+0x18`/`+0x32`; landed (`vy + height <= 0`): free the held actor, take `0xC973C[index]` (type 8) or `0xC9544[index]` (type 4), zero rec `+0x1C/+0x36/+0x34` and `entry+0x1F`; else `rec+0x36 -= 0x10` | `0x4C135..0x4C1EE` |
+| 6 | bit 5 clear only: `vy < 0` sets bit 7; the shadow actor (`entry+0x10`) follows rec `+0x18`/`+0x32`; landed (`vy + height <= 0`): kill the shadow actor, take `0xC973C[index]` (type 8) or `0xC9544[index]` (type 4), zero rec `+0x1C/+0x36/+0x34` and `entry+0x1F`; else `rec+0x36 -= 0x10` | `0x4C135..0x4C1EE` |
 | 8 | no body (the table entry *is* the shared tail) | `0x4C1F3` |
 
 **Shared tail** (`0x4C1F3`, every type): if `entry+0x1C` bit 5 is set and the
-type is not 1 → `fight_4C60C(entry, index)` (§6); then `vy < 0` sets bit 7; a
-held actor gets rec `+0x18`/`+0x32`; then, when the type is 6 and
-`vy + height <= 0` (the ball was struck into the ground this same frame), the
-ball is landed (§7) — and a third point **returns from the whole function,
-abandoning the rest of the entry list** (`0x4C35B jmp 0x4C5AF`).
+type is not 1 → `fight_4C60C(entry, index)` (§6); then `vy < 0` sets bit 7; the
+shadow actor (`entry+0x10`) follows the ball actor's rec `+0x18`/`+0x32`; then,
+when the type is 6 and `vy + height <= 0` (the ball was struck into the ground
+this same frame), the ball is landed (§7) — and a third point **returns from
+the whole function, abandoning the rest of the entry list** (`0x4C35B jmp
+0x4C5AF`).
 
 **Post-loop** (`0x4C39C`, also the empty-list target):
 
@@ -179,8 +235,8 @@ abandoning the rest of the entry list** (`0x4C35B jmp 0x4C5AF`).
   and 0x16 on row 8 (`0x4C4A8..0x4C5AA`);
 - otherwise count `DS_001088AC` down (clearing `DS_00108898` with it) and, while
   `DS_00108898` is live, draw string `0x53` "POINT" at column 0x16 when
-  `0x1A570(DS_00108898 - 1)` holds (the scorer faces right), else at column 7,
-  row 8 (`0x4C4C0..0x4C528`).
+  `0x1A570(DS_00108898 - 1)` holds (the scorer faces right, the §7 reading),
+  else at column 7, row 8 (`0x4C4C0..0x4C528`).
 
 `DS_001088D0` is the fight's interval word, `(config[0x29] & 0xF) * 5 + 0x1E`
 (`0x20CB0`), so the match clock advances one `DS_001088AA` unit per 30..105
@@ -189,22 +245,35 @@ ticks.
 ## 5. The ball
 
 The ball is the effect entry in `DS_00108864`; its actor is the worshipper that
-was trampled eight times. Fields used by this mode:
+was trampled eight times. The entry is 0x24 bytes (the pool stride,
+`fight.c:56`); `entry+0x08` is its actor record (read at `0x4B478`/`0x4B52B`),
+and `rec` below is that actor. The `+0x34`/`+0x36` words are the actor's vx/vy
+integer words (`motion_step` `0x2A4FC` reads the dword at `+0x32`/`+0x34` and
+takes the high word), not entry fields. Fields used by this mode:
 
 | field | meaning |
 |---|---|
 | `entry+0x1E` | type: 6 while flying/lying, 8 when settled/held, 1 while walking in |
 | `entry+0x21` | the owner side (written by the eat path; the default type reads it) |
 | `entry+0x20` | the side that last struck it (written by `0x4C60C`) |
-| `entry+0x1F` | the strike/trample count (the strike path increments it at `0x4C6DE`; the landing and eat ends zero it; for a fight entry it is the trample count) |
+| `entry+0x1F` | the strike/trample count (incremented at `0x4B716`/`0x4C6DE`; zeroed at the sites listed below; for a fight entry it is the trample count) |
 | `entry+0x1C` bit 5 | "this is the mode-0x21 ball" (set at entry `0x4BE3C`; cleared/free via the type bodies) |
-| `entry+0x1C` bit 7 | the flight latch (set while `vy < 0`, cleared on every strike/launch) |
+| `entry+0x1C` bit 6 | "grabbed/held": set by `0x4B788` (`0x4B845`) with the body linked at `actor+0x4A`; cleared by the strike release (`0x4C727`) and by `0x4B69C`'s release (`0x4B760`) |
+| `actor+0x4A` | the held body's pset link to the fighter, set by `0x4B94A`/`0x4B956`, cleared on release (`0x4C718`, `0x4B751`) |
+| `entry+0x1C` bit 7 | the flight latch (set by the case-3 landing `0x49E52`, the type-6 body `0x4C14F`, the shared tail `0x4C227`, or while `vy < 0` at `0x49F18`; cleared on every strike/launch and by the type-4 rise `0x49EB8`) |
 | `entry+0x14` | the walk target x (set by the spawn and the walk-in) |
-| `entry+0x10` | the held actor, if any |
+| `entry+0x10` | the shadow actor: spawned at `0x4B4B6..0x4B4D7` (store `0x4B4D7`), follows the ball actor's x/y (`0x4C159..0x4C16F`), killed at `0x4B84E`/`0x49F52`/`0x4C273`; it is not the held body |
 | `rec+0x18` | the actor's x (the scoring comparison) |
 | `rec+0x1C` | the height (dword) |
-| `rec+0x34` | the horizontal speed (word) |
-| `rec+0x36` | the vertical speed (word; `vy < 0` = falling) |
+| `rec+0x34` | the actor's horizontal speed (word) |
+| `rec+0x36` | the actor's vertical speed (word; `vy < 0` = falling) |
+
+`entry+0x1F` is zeroed at `0x49622` (the dust/effects builder), `0x4D061` (the
+mode-0x23 six-entry sibling), `0x49FAF` (the fight's type-6 landing), `0x4C1E8`
+(the mode-0x21 type-6 body landing), `0x4C27F` (the shared-tail ball landing),
+`0x4C349` (the 3-point landing end), `0x4C904` (the eat path's 3-point end),
+`0x4CA59` (the eat path's new-ball spawn) and `0x4E4E5` (the ending audience
+spawn). `0x4E4E8` is that spawn's `+0x21`, not a `+0x1F` site.
 
 A new ball is created by the eat path (§7), never by the landing path;
 the landing path turns the *landed* ball into type 8 and leaves it there until
@@ -233,9 +302,9 @@ reaction index (`0xFF` = neutral, written by the reaction dispatchers), so
 "state 0/1" is declared, not described as an animation.
 
 **Strike** (`0x4C6B7..0x4C774`): `DS_00108898 = 0`; `entry+0x20 = the side`;
-`entry+0x1C` bit 3 cleared; `entry+0x1F += 1`; a held actor (`rec+0x4A`) is
-released (`+0x4A = 0`, the `+0x2A` bit 3 and `+0x29` bit 6 cleared,
-`0x1088AE[`entry+0x21`] += 1`, `entry+0x1C` bit 6 cleared); then
+`entry+0x1C` bit 3 cleared; `entry+0x1F += 1`; the held body (`actor+0x4A`,
+`entry+0x1C` bit 6) is released (`+0x4A = 0`, the `+0x2A` bit 3 and `+0x29` bit
+6 cleared, `0x1088AE[`entry+0x21`] += 1`, `entry+0x1C` bit 6 cleared); then
 `fight_4CB18(entry, index, flag, side)` with `flag = 1` and `entry+0x1C` bit 3
 set when the striker's state is `0x0C..0x0F`, else `flag = 0`. The flag selects
 the speed divisor (`0x38` vs `0x70`) and, at flag 1, `vy = 0`.
@@ -271,8 +340,8 @@ state is a fault. This is a distinct scoring path from the landing.
 In the shared tail, when the type is 6 and `vy + height <= 0`
 (`0x4C259..0x4C2B5`):
 
-- free the held actor and clear `entry+0x1F`, `rec+0x38`, `rec+0x34`,
-  `rec+0x36`;
+- kill the shadow actor (`entry+0x10`, `0x4C273`) and clear `entry+0x1F`
+  (`0x4C27F`), `rec+0x38`, `rec+0x34`, `rec+0x36`;
 - `side0 = 0x1A570(0)` (fighter 0 faces right); `mid = DS_00108884`;
   `idx = (s32)ballx < (s32)mid ? side0 ^ 1 : side0` — i.e. **the point goes to
   the player whose half the ball landed in** (the facing term maps the screen
@@ -288,6 +357,11 @@ In the shared tail, when the type is 6 and `vy + height <= 0`
   `DS_001088A0 == 0`; **return from the whole pass** (the rest of the frame's
   entries are skipped).
 
+The `0x1A570(0) == 1` step ("fighter 0 faces right") is the usual pset-hflip
+reading: the raw tests only bit `0x8000` of the pset word (`0x1A59C`), and the
+port does not independently measure which screen direction that bit means, so
+"whose half" is a reading of the raw's XOR, not an exhibited claim.
+
 The landing comparison runs after the shared tail's strike test, so a ball
 struck on the same frame is re-launched first and its new `vy` decides the
 landing test: the strike wins the frame.
@@ -296,7 +370,7 @@ landing test: the strike wins the frame.
 
 `fight_4cc0c` (`fight.c:4144`) is both ends' screen:
 
-- both court actors get `+0x36 = -0x1A4` (walk off) and `DS_001088A0 = 0x3C`
+- both court actors' `+0x36 = -0x1A4` (walk off) and `DS_001088A0 = 0x3C`
   (60 frames);
 - the static board: string `0x57` at (10, 8), `0x58` at (0x13, 4), `0x59` at
   (1, 7), `0x5A` at (0x26, 7), `0x5B` at (0x13, 1), `0x5C` at (7, 8), `0x5D`
@@ -343,25 +417,48 @@ clearable again, subject to the round clock and the two-human match).
 
 What is measured:
 
-- The trigger tail is **reached**, but never past gate #5. `gp-idle-loss`
-  (the only capture with a trample) hits `0x4B470` twice, both first counted
-  hits (`+0x1F = 1`, stage 4, `via=1`, mode 6) in one frame, on distinct lying
-  entries; the demo hits it twice at stage 0. `gp-twop`, `gp-twop-ko`,
-  `gp-draw-timeout` and `gp-keys-fight` call it zero times (final-truth record
-  §F6.7). The count is therefore measured only at 1; `+0x1F > 7` is a derived
-  reachable state, not a measured one.
+- The trigger tail was **reached, but never past gate #5** before Volleyball
+  truth (that boundary is historical): `gp-idle-loss`
+  (the only capture with a trample; 8,173 presented frames,
+  `tools/capture_manifest.json`'s `frame_count`; the counter's last `S` is
+  9,857; record §F6.7's 2,565 is superseded) hits `0x4B470` twice, both first
+  counted hits (`+0x1F = 1`, `via=1`, mode 6) in one frame, at trace `f=0x8BE`
+  (2,238 decimal; the record's `f=2238` is decimal, not hex), on distinct lying
+  entries `0x108414`/`0x108438` (type 4, `entry+0x1C = 0x80`), stage word 4.
+  The demo hits it twice at stage 0; the demo's stage 0 is the boot default
+  (`0x20C10`'s `0x20CDF` store clears `DS_00104AFC`), not a `flow_stage_pick`
+  result. `gp-twop`, `gp-twop-ko`, `gp-draw-timeout` and `gp-keys-fight` call
+  it zero times (final-truth record §F6.7). The count was therefore measured
+  only at 1 at that phase.
+- **The eight-count and the mode are now measured** (Volleyball truth Task 4,
+  record `../docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md`
+  §2): `gp-u30-volleyball` reaches `entry+0x1F` 1..8 by real two-human input —
+  the first counted trample at `f=0x0D1F` (3359), the eighth at `f=0x0F04`
+  (3844) — and the eighth enters mode `0x21` at `0x4BD98`. Its `S` records at
+  entry (`f=0x0F04`) read `b1f=3`, `afc=0` (stage 0), `abc=2`,
+  `clk=0x1E`, `C1=C5=1`, scores 0-0; the clock runs `0x1E → 0` over the mode's
+  1,717 records; the side-1 score takes one real point; and the return is
+  `f=0x15B9` (mode 6, `clk=0`, ball gone, scores 0-0). The port's own `V` line
+  carries the `+0x1F = 8` at entry `0x1083F0` (the 8th trample of the
+  eight-trample chain). The capture's S `ball` is a DOS4GW physical pointer
+  (`0x2EE3F0`), so the checker claims only non-zero at the entry and zero at
+  the return.
 - The entry's stage gate is a 1-in-7 draw for a two-human match
   (`flow_stage_pick` `0x2587C`, `rng(7)`; `gp-twop` measured word 5; record
-  §F6.6). No two-human capture has both fighters ~140 px apart on stage 0 with
-  a crowd lie.
-- Every function in the chain has a differential row (`0x4B470`, `0x4BD98`,
-  `0x4CB18`, `0x4C60C`, `0x4C784`, `0x4BF18`, `0x4CC0C`, `0x4CD98`,
-  `0x26540`), and the trample arithmetic, the flight, the latch and the landing
-  are unit-tested (`test_fight.c` cases G/H/I/J; record §F6.4). The **mode's
-  own pass, its score, its clock, its end screen and its strings have never
-  been rendered** by any measured run.
+  §F6.6). Route B keeps a 1P stage instead (§11): `gp-u30-volleyball`'s 1P
+  select confirms character 2 and `0xA87C4[2] = 2` plus `rng(6) = 4` gives
+  `7 → 0` at the vs.
+- Every function in the chain has a differential row (`0x4B5A8`, `0x4B69C`,
+  `0x4B788`, `0x4B470`, `0x4BD98`, `0x4CB18`, `0x4C60C`, `0x4C784`, `0x4BF18`,
+  `0x4CC0C`, `0x4CD98`, `0x26540`), and the trample arithmetic, the flight, the
+  latch and the landing are unit-tested (`test_fight.c` cases G/H/I/J; record
+  §F6.4). The **mode's own pass was rendered for the first time** by
+  `gp-u30-volleyball` (its court frames, clock and score); the capture's
+  pixels are the first exhibit, and the first unexplained capture frame (4,640)
+  is the replay's post-script tail, so nothing past capture 4,639 is claimed.
 
-What is not measured (named gaps, all declared):
+What the published capture does not claim (the mode's content is not widened by
+the exhibit):
 
 - that any ball type other than 6 behaves as the code says in a live game
   (types 1/2/3/4/5/8 are derived from the dispatch, not from a frame);
@@ -371,39 +468,96 @@ What is not measured (named gaps, all declared):
 - the mode's interaction with the fight HUD/health bars over the court;
 - the exact per-character `+0x5F` values that make the eat arm fire.
 
-## 11. The route to a capture (port-side search)
+## 11. The route to a capture (taken: Volleyball truth Task 4)
 
-The only honest route left is a search in the deterministic port, then one
-authorized capture replaying the found script (record §F6.8, final-truth plan
-Task 6; register R05):
+The trigger's mechanism is derived (§2-§8) and its four measured first-hit
+calls are §10's earlier boundary. This section's search was run in the
+deterministic port (Final truth record §F6.8, final-truth plan Task 6; register
+R05) and its route B produced the published `gp-u30-volleyball` capture
+(record `../docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md`
+§2). Route B is primary because the join
+keeps a stage chosen before it; route A is the fallback.
 
-1. script a two-human join and a stage-0 match (retry until `DS_00104AFC == 0`;
-   the pick is `rng(7)`, so ~7 attempts), then a combo that lies the crowd
-   (`0x4B5A8` → type 3 → latch);
-2. drive the two fighters to ~140 px apart (±0x80/0x70 x-speed swings), then
-   spam the two strike windows at 71-motion-step intervals, reading `+0x1F`
-   from the port, until it reaches 8;
-3. the eighth hit's frame sets the mode; from there the port's own replay is
-   the capture's expected frame path (the mode's pass is deterministic and its
-   functions have differential rows, but no frame of it has been measured —
-   §10 — so the capture is its first exhibit), and a capture that reaches it
-   can be pinned like the other `gp-*` oracles;
-4. the capture must show the court actors' walk-on, a point (landing or eat),
-   the score board and the return to mode 6 to publish an oracle claim; the
-   mode's *content* is what R05 would become.
+### Route B (primary): a mid-round join on the 1P stage
 
-Cost/risk: a new headless search driver plus one capture; the 1-in-7 stage is a
-retry, not a blocker; the eight-window timing is the real risk (a miss lands the
-entry and restarts the chain). The count is not limited to 1, so a script that
-finds the phase can repeat it.
+1. **Stage 0 from the 1P pick.** In the 1P character select choose a character
+   index `c` whose pick gives 0. The pick is
+   `DS_00104AFC = 0xA87C4[c] + rng(6) + 1`, reduced by 7 when the word is
+   `>= 7` (`0x25897..0x258C6`); `c` is the signed character byte at
+   `0x108169 + b1f` (`0x2588C`/`0x25892`; for the 1P/standby `b1f == 1` this
+   is `DS_0010816A`). The base table at `0xA87C4` is `{0,4,2,3,6,1,5}`:
+   character 0 can never give 0, and each of characters 1..6 can (for one
+   `rng(6)` value). The character cursor and the select timing are the knobs;
+   read `DS_00104AFC` at the vs/fight.
+2. **The join keeps it.** At mode 6 press P2 start (`0x28CC8`'s join poll);
+   its `0x28D02..0x28D13` arm ORs the joining side's bit into `DS_00104B1F`
+   (`b1f`), and `flow_player_join` (`0x28DA4`) sets `DS_00104B17 = 2`
+   (`0x28E6D`) and `DS_00104ABC = (b1f == 3) + 1` (`0x28DE7`), re-entering the
+   select/vs. `flow_stage_pick` returns on `m == 2` (`0x2585D`/`0x2585F`), so
+   the 1P stage word survives; the join's vs tail calls the pick (`0x430FE`)
+   but it writes nothing. The fight resumes on the same stage with `b1f = 3`
+   and `DS_00104ABC = 2` (the `0x4BD98` gate).
+3. **The lie.** Land a 2+ hit combo (P1 on P2) to set `DS_001088B6[0]` through
+   `0x3907B`; the side-0 crowd's type-0 body calls `0x4B5A8`, which turns one
+   worshipper into a type-3 walk-in (target the fighter ±0x1800,
+   `0x4B627`/`0x4B642`; `actor+0x34 = ±0x40`, `0x4B614`/`0x4B62F`), and its
+   case-3 landing (`0x49E47`/`0x49E52`) lies it: type 4, `entry+0x1C` bit 7,
+   `rng(0x3C)+0x3C` (60..119) frames. The dizzy state
+   `slot+0x52 == 7 && slot+0x53 == 2` (`0x36BC8`) is the alternative supply.
+4. **The eight tramples.** Put a fighter over the lying body: `0x4B69C` counts
+   the contact only when `0x4B788` returns 1 (not grabbing), and the first
+   trample launches the body (`vy = 0x240`, `0x4B52E`; `vx = ±0x80`,
+   `0x4B507..0x4B525`). The second fighter stands at the far end of the flight;
+   the entry's `+0x1F` advances on each landing-window contact until
+   `+0x1F > 7` enters `0x4BD98` (mode `0x21`). The trigger is positional, not a
+   strike. The practical window is `T+65..T+71` (the motion-step label; the
+   prelude's pass index is one later, `T+66..T+72`, and the eight measured hit
+   gaps 66, 72, 68, 70, 68, 78 and 63 make the label approximate; the 56 px
+   box, `0x1790C`); the raw latch is set at `T+37` (the prelude sees it from
+   `T+38`). A miss
+   lands the body and zeroes `+0x1F` (`0x49FAF`). The ~142 px separation is the
+   zero-`+0x42` 2 px/frame × 71 flight.
+
+### Route A (fallback): the front-end two-human `rng(7)` draw
+
+1. Script a two-human join and a stage-0 match (retry until `DS_00104AFC == 0`;
+   the pick is `rng(7)` at `0x2587C`, so ~7 attempts), then the 2+ hit combo
+   above: `0x4B5A8` turns a crowd entry into a walk-in and
+   `0x49E47`/`0x49E52` lies it.
+2. Drive the two fighters to the flight's ends (~142 px apart with `+0x42 = 0`,
+   ±0x80 x-speed swings, `0x4B507..0x4B525`), stand over the lying body, and
+   read `+0x1F` from the port; the trample is body contact, not a strike.
+   Repeat until it reaches 8.
+3. The eighth hit's frame sets the mode; from there the port's own replay is
+   the capture's expected frame path (measured by `gp-u30-volleyball`, §10).
+
+**The capture (either route).** A capture that reaches the mode can be pinned
+like the other `gp-*` oracles. It must show the court actors' walk-on, a point
+(landing or eat), the score board and the return to mode 6 to publish an oracle
+claim; the mode's *content* is what R05 would become. **Volleyball truth Task 4
+published it:** `data/k11-captures/gp-u30-volleyball`, `gp-u30-volleyball-oracle`
+and `tools/gp_volley.py check` (record
+`../docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §2).
+
+Cost/risk (as planned; the measured run's actual risk was the boot frame — the
+route's fight phase is RNG-seeded by the frames before the boot, so the scenario
+pins `at_frame 320`, the measured `gp-u15-join` press spin, and a missed `S(319)`
+fails the run): a new headless search driver plus one capture. Route B's stage is a
+character/timing search (each of characters 1..6 has one `rng(6)` value that
+gives 0); route A's 1-in-7 is a retry, not a blocker. The eight-window timing is
+the real risk (a miss lands the entry and restarts the chain). The count is not
+limited to 1, so a script that finds the phase can repeat it.
 
 ## 12. References
 
-- `port/src/game/fight.c`: `0x4BD98` 2940, `0x4CB18` 2987, `0x4B470` 3045,
-  `0x4CC0C` 4144, `0x4C784` 4186, `0x4C60C` 4284, `0x4CD98` 4354,
-  `0x4BF18` 4477; `port/src/game/flow.c`: `0x26540` 3256, dispatch 7807,
-  0x2545C tail 7982.
+- `port/src/game/fight.c`: `0x4B5A8` 2509, `0x4B788` 2861, `0x4BD98` 2940,
+  `0x4CB18` 2987, `0x4B470` 3045, `0x4B69C` 3101, `0x4CC0C` 4144,
+  `0x4C784` 4186, `0x4C60C` 4284, `0x4CD98` 4354, `0x4BF18` 4477;
+  `port/src/game/flow.c`: `flow_stage_pick` 1343, `flow_player_join` 1624,
+  `0x26540` 3256, dispatch 7807, 0x2545C tail 7982.
 - `docs/superpowers/plans/2026-10-30-final-truth-derivations.md` §F6 (the
   trigger geometry, the gate chain, the measured tramples and the route).
-- `docs/superpowers/specs/2026-10-30-final-claims.md` R05 (declared).
+- `docs/superpowers/specs/2026-10-30-final-claims.md` R05 (closed).
+- `docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §2 (the
+  measured route, the capture, the checker and the pins).
 - `port/decomp/prage.c` for the raw bodies; `mem.h` for the address model.

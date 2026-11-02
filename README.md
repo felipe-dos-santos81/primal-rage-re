@@ -42,7 +42,7 @@ endings, and the game-over/high-score flows. The measured claims:
   port's C functions: **1033/1033 functions**, **14993/14993 mutants**, **0 named
   gaps**; **825/845** callee rows closed, **810/845** full; **20 terminal rows**
   (19 addresses), **12 `WEAKER`**, **8 `UNROWED`**.
-- **Oracles:** **44 explicit capture paths**, **43/44 present** (only the
+- **Oracles:** **45 explicit capture paths**, **44/45 present** (only the
   declared U14 gap); the Smacker logo, title/attract, front end, demo, K11
   service menu and the gameplay replays are compared against the original's
   frames. These are bounded-missing claims, not complete coverage.
@@ -53,7 +53,7 @@ endings, and the game-over/high-score flows. The measured claims:
   tolerance-free against 29 `.dro` traces across 28 capture directories (the
   29th, `gp-u17-device2`, skips by name); the 26
   code-reachable banks split **12 claimed / 10 residue / 2 unattributable / 2
-  never-requested**, with **74 diff-allowed prefixes / 29,656 ticks** matched.
+  never-requested**, with **86 diff-allowed prefixes / 44,489 ticks** matched.
   Rendered audibility is terminal (the OPL core/mixer is an invented model); the
   game-owned claim is the register stream.
 - **Endgame:** all seven endings and the U16 finisher reaction are pinned under
@@ -64,17 +64,20 @@ endings, and the game-over/high-score flows. The measured claims:
 The single source of truth for every remaining gap is the **terminal claim
 register**:
 [`docs/superpowers/specs/2026-10-30-final-claims.md`](docs/superpowers/specs/2026-10-30-final-claims.md).
-It has 34 rows, each closed, gated, terminal or declared, with its address,
-file:line or capture. Named there: U14's fought arcade win (R1) is **terminal**
+It has 36 rows (R01–R36: 9 closed, 1 gated, 19 terminal, 7 declared), each
+with its address, file:line or capture. Named there: U14's fought arcade win
+(R1) is **terminal**
 (the two-human 2-0 win is game evidence only in
-`gp-u14-twop-win.failed`); `0x21` volleyball is **declared** (the count is not
-limited to 1, but no frame-exact route is derivable); the 5120 band is
+`gp-u14-twop-win.failed`); `0x21` volleyball is **closed** (the real-input
+`gp-u30-volleyball` capture reaches the eighth trample, the mode entry, a real
+point and the return to mode 6); the 5120 band is
 **PASS-A terminal** (the content is the port's; the old blue is the
 capture/present-side class); the 20 terminal differential rows, the 12 `WEAKER`
 and 8 `UNROWED`, the 4 `UNINSTRUMENTED` census addresses, the storage items,
 the zero-payload movie audio (R33), the 53/37/315 classification, and the
-oracle window/model limits. `0x25` bowling and the taken continue are **closed**
-(gated captures), and `0x2CADC`'s boot-defaults omission is **fixed**.
+oracle window/model limits. `0x21` volleyball, `0x25` bowling and the taken
+continue are **closed** (gated captures), and `0x2CADC`'s boot-defaults
+omission is **fixed**.
 
 The full gate is two consecutive
 `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs plus
@@ -128,7 +131,7 @@ make gate-check        # capture inventory, manifest, pin baseline, preflight
 pixel/ratchet oracles, the register-stream audio oracle and `audio-render`, the
 differential harness, the E2 triage, the tool unit tests (including the
 final-claims register guard) and `symbols.h` idempotence. `make gate-check`
-inventories the 44 explicit capture paths first; the full checkout is 43/44
+inventories the 45 explicit capture paths first; the full checkout is 44/45
 with only the declared U14 gap. `GATE_STRICT=1` (the default) fails an
 undeclared absence; `PR_PINS_EXACT` is strict by default, so an improvement
 requires a re-pin.

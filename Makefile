@@ -83,6 +83,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u28-continue \
 	$(K11_CAPTURES)/gp-u29-continue-taken \
 	$(K11_CAPTURES)/gp-bowling-2 \
+	$(K11_CAPTURES)/gp-u30-volleyball \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
 	$(K11_CAPTURES)/save-reload \
@@ -137,7 +138,7 @@ chunk ?= 0
         gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
         gp-u26-oracle gp-u27-oracle gp-draw-oracle gp-draw-timeout-oracle gp-u28-continue-oracle \
-        gp-u29-continue-taken-oracle gp-bowling-oracle \
+        gp-u29-continue-taken-oracle gp-bowling-oracle gp-u30-volleyball-oracle vb-search \
         diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
@@ -157,6 +158,8 @@ help: ## Print the quick start and main targets (help-all lists every target)
 	@printf "  gate-check test check run verify diff-verify entry-triage clean coverage deps help help-all\n\n"
 	@printf "\033[33mCaptures and oracles:\033[0m\n"
 	@printf "  smk-* title-* attract-* attract2-* frontend-* demo-* k11-* save-reload-* gp-* audio-*\n\n"
+	@printf "\033[33mSearch:\033[0m\n"
+	@printf "  vb-search      # tools/vb_search.py usage (the mode-0x21 route search; not in make verify)\n\n"
 	@printf "\033[33mRE:\033[0m\n"
 	@printf "  re-info re-gra re-render re-extract re-extract-test re-symbols re-cluster re-decompile re-analyze re-oracle re-original\n\n"
 	@printf "Every target: make help-all\n"
@@ -1578,6 +1581,59 @@ gp-bowling-oracle: build ## Final truth Task 5 oracle: gp-bowling-2's mode-0x25 
 			--max-start "$(GP_BOWLING_MAX_START)" --min-reach "$(GP_BOWLING_MIN_REACH)" --max-missing "$(GP_BOWLING_MAX_MISSING)" \
 			--capture-sha256 "$(GP_BOWLING_CAPTURE_SHA256)" --capture-frames "$(GP_BOWLING_CAPTURE_FRAMES)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-bowling-2; exit $$rc; fi
+
+# Volleyball truth Task 4 (plan 2026-11-01-volleyball-truth, design §5, record
+# 2026-11-01-volleyball-truth-derivations §2): the mode-0x21 entry on
+# gp-u30-volleyball, reached by real two-human input with no poke. The scenario
+# (gp_session.VOLLEY_ROUTE) is the Task 3 route (route.script) translated to the
+# step scheduler: the 1P select confirms character 2, the P2 joins at f=2097
+# (the capture's S mode 0x06 at 0x4BF -> 882 frames; the port's first 1P-fight
+# T at 0x444 -> 1,005 frames; record §2.1), the 2-hit combo lies the side-0
+# crowd, and eight tramples take
+# entry+0x1F 1..8 (the eighth at f=0x0F04 enters mode 0x21). The boot is
+# `at_frame 320`, the measured gp-u15-join boot press spin (f=319), because the
+# route's fight phase is a function of the boot's absolute frame (the 1P CPU's
+# RNG state at the join); the generated port script's `enter_frame` 321 (the H
+# record at f=321) pins it, so the wall-boot variance cannot move it (`late=0`,
+# no PinGuard gap). All eleven session checks pass (stopped on mode 0x21,
+# 4,704/4,704 frames, no unscripted input, 0/0 pokes). The checker
+# (`gp_volley.py check`) proves the entry stores
+# (b1f=3, afc=0 stage 0, abc=2, a live ball, clk=0x1E, C1=C5=1, 0-0), the clock
+# 0x1E -> 0 over the mode's 1,717 snapshots, the point (scores peak 0-1) and the
+# return to mode 6 at f=0x15B9 (clk=0, ball=0, C5=0, scores 0-0), with no W
+# record and real pad input on both sides; with --trace it also checks the
+# measured ball entry 0x1083F0's +0x1F=8 (the 0x4B579 > 7 gate) and the port
+# T/Vg entry and return stores. The port replay dumps 3,938
+# presented frames; trace and moves agree through the capture's X record
+# (f=0x160C, 5,644), so both ratchets pin at 5,645. The first unexplained
+# capture frame is 4,640 (raw 8,089), the port dump's post-script tail, so the
+# frame claim reaches capture 4,639; the window start 104 (raw 1,745), the reach
+# 3,936 (the dump's last exhibited frame) and the 13 missing non-black classes
+# are measured. An absent capture skips.
+# >>> PIN-BASELINE-BEGIN gp-u30-volleyball
+GP_U30_MIN_FIRST = 4640
+GP_U30_TRACE_MIN_FIRST = 5645
+GP_U30_MOVES_MIN_FIRST = 5645
+GP_U30_MAX_START = 104
+GP_U30_MIN_REACH = 3936
+GP_U30_MAX_MISSING = 13
+GP_U30_CAPTURE_SHA256 = 42e131d1753c59e5a3420297a5efe977cfb28fed2eee8617f92a4d2d8ab8307c
+GP_U30_CAPTURE_FRAMES = 4704
+# <<< PIN-BASELINE-END gp-u30-volleyball
+gp-u30-volleyball-oracle: build ## Volleyball truth Task 4 oracle: gp-u30-volleyball's mode-0x21 entry, point and return (skips without its capture)
+	@echo "== volleyball truth Task 4: the mode-0x21 entry, a real point and the return to mode 6 (skips without its capture; record §2) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_volley
+	@if [ ! -d $(K11_CAPTURES)/gp-u30-volleyball ]; then echo "gp-u30-volleyball-oracle: no capture at $(K11_CAPTURES)/gp-u30-volleyball (skipped)"; else \
+		PR_GP_VOLLEY=1 $(MAKE) --no-print-directory gp-replay scenario=gp-u30-volleyball GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_volley.py check --capture $(K11_CAPTURES)/gp-u30-volleyball \
+			--trace $(GP_DUMP)/gp-u30-volleyball/trace.txt \
+			--capture-sha256 "$(GP_U30_CAPTURE_SHA256)" && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u30-volleyball --capture $(K11_CAPTURES)/gp-u30-volleyball \
+			--port $(GP_DUMP)/gp-u30-volleyball --min-first "$(GP_U30_MIN_FIRST)" \
+			--trace-min-first "$(GP_U30_TRACE_MIN_FIRST)" --moves-min-first "$(GP_U30_MOVES_MIN_FIRST)" \
+			--max-start "$(GP_U30_MAX_START)" --min-reach "$(GP_U30_MIN_REACH)" --max-missing "$(GP_U30_MAX_MISSING)" \
+			--capture-sha256 "$(GP_U30_CAPTURE_SHA256)" --capture-frames "$(GP_U30_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u30-volleyball; exit $$rc; fi
 gp-u29-continue-taken-oracle: build ## Final truth Task 4 oracle: gp-u29-continue-taken's take of the continue screen (skips without its capture)
 	@echo "== final truth Task 4: the taken continue (0x0E -> 0x2791C -> mode 0x0C; skips without its capture) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_continue
@@ -2526,6 +2582,14 @@ gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts an
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario) --max-unexplained "$(GP_REPORT_MAX)"
 
+# The volleyball route search (plan 2026-11-01-volleyball-truth Task 2): usage
+# only. The tool inserts a key/bits grid into a gp port script v2, replays each
+# variant through the GP driver with PR_GP_FAST=1/PR_GP_VOLLEY=1 into a /tmp
+# workdir, and ranks the traces by stage afc, b1f, the lie frame, the entry
+# +0x1F count and mode 0x21. It is exploratory: not part of make verify.
+vb-search: ## Print the volleyball search tool's usage (tools/vb_search.py; not in make verify)
+	@$(PYTHON) tools/vb_search.py --help
+
 # Differential verification (spec 2026-09-30-reverse-completion-design §5): the original's own
 # bytes run in an emulator against the port's C functions from the same image; compares every
 # changed byte, the return register, the ordered list of calls into the call set with the memory changed
@@ -2587,8 +2651,9 @@ audio-render: build ## Render the title FM music and the selected menu song head
 # must anchor and match, and a one-write mutation fails. A missing capture is
 # skipped by name; gp-u17-device2 has no frame-keyed port script (wall-paced,
 # record §H6.9) and its `.dro` is the 248 ms boot fragment, so it is skipped by
-# name too. The 8 other k11 captures and the 2 title captures are named by the
-# summary as not gameplay.
+# name too. The 9 other k11 `.dro` files (7 directories, `gp-u30-volleyball`
+# among them, which is outside this inventory) and the 2 title captures are
+# named by the summary as outside the 29-trace gameplay inventory.
 # AUDIO_DUMP is a fixed shared /tmp path like GP_DUMP; a parallel lane must
 # override it (`make ... AUDIO_DUMP=/tmp/pr_audio_dump_<lane>`).
 AUDIO_DUMP ?= /tmp/pr_audio_dump
@@ -2722,6 +2787,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u29-continue-taken-oracle
 	@echo "== final truth Task 5: the mode-0x25 bowling entry (0x455C3/0x263DE/0x4E11C; skips without its capture; record §F5) =="
 	@$(MAKE) --no-print-directory gp-bowling-oracle
+	@echo "== volleyball truth Task 4: the mode-0x21 entry, a real point and the return to mode 6 (skips without its capture; record §2) =="
+	@$(MAKE) --no-print-directory gp-u30-volleyball-oracle
 	@echo "== live truth Task 2: the KO-branch drawn match (0x0A/0x0B; skips without its capture; record §L2) =="
 	@$(MAKE) --no-print-directory gp-draw-oracle
 	@echo "== gameplay oracle: gp-u13-ending2 (a non-character-0 ending; skips without its capture) =="
@@ -2755,7 +2822,7 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_band tools.tests.test_gp_bowling tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_gp_side1 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims tools.tests.test_final_claims
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_save_reload tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_band tools.tests.test_gp_bowling tools.tests.test_gp_volley tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys tools.tests.test_gp_u16_state tools.tests.test_gp_u17 tools.tests.test_gp_endurance tools.tests.test_gp_side1 tools.tests.test_title_pin tools.tests.test_tick_vector tools.tests.test_audio_compare tools.tests.test_capture_manifest tools.tests.test_port_progress tools.tests.test_coverage_census tools.tests.test_check_docs_claims tools.tests.test_final_claims
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

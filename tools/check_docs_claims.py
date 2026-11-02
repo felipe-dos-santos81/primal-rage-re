@@ -10,8 +10,9 @@ silently regress the claim back to "still a gap".
 
 Each phrase is the exact stale substring the task removed, scoped to the one
 file that held it, so a still-true named gap elsewhere is never flagged. The
-pairs are the task-8 report's list; a new pair needs that report's measured
-reason (the code/record that superseded the wording).
+pairs are the task-8 report's list plus later measured reconciliations (the
+README audio/row counters); a new pair needs its measured reason (the
+code/record that superseded the wording).
 
 Exit 0 on a clean tree, 1 on any stale phrase.
 """
@@ -54,6 +55,12 @@ CLAIMS = [
     ("README.md", "0x25` bowling route stays declared"),
     ("port/RE_GUIDE.md", "13 rows are `WEAKER`"),
     ("port/RE_GUIDE.md", "5120 band is **INCONCLUSIVE**"),
+    # The audio prefix total moved with Driver Truth (74 sections / 29,656 ticks
+    # -> 86 / 44,489; register R09/R29 and AGENTS.md); README's summary must
+    # carry the measured value. The row count moved with Driver Truth's R35/R36
+    # (34 -> 36 rows; register §2).
+    ("README.md", "74 diff-allowed prefixes"),
+    ("README.md", "It has 34 rows"),
 ]
 
 

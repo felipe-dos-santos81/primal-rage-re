@@ -1,4 +1,4 @@
-# reason: final truth Task 5: gp-bowling-2 reaches the mode-0x25 entry and its first 60 frames (fight_mode25_enter 0x4E11C and the mode-25 passes it calls)
+# reason: volleyball truth: gp-u30-volleyball hits the mode-0x21 chain (the 8-trample entry, the court/clock/score/return); re-pinned from the measured run
 0x10D70 HIT
 0x10DB0 HIT
 0x10E18 HIT
@@ -28,7 +28,7 @@
 0x12DF0 HIT
 0x12E3C HIT
 0x12FD8 HIT
-0x13134 NOT-HIT
+0x13134 HIT
 0x1317C HIT
 0x13244 HIT
 0x1324C NOT-HIT
@@ -237,7 +237,7 @@
 0x2604C HIT
 0x26254 HIT
 0x263F4 HIT
-0x26540 NOT-HIT
+0x26540 HIT
 0x266AC HIT
 0x26A50 HIT
 0x26C8C HIT
@@ -606,7 +606,7 @@
 0x433DC HIT
 0x43464 HIT
 0x435AC HIT
-0x43738 NOT-HIT
+0x43738 HIT
 0x43818 HIT
 0x438B4 HIT
 0x43928 NOT-HIT
@@ -693,13 +693,13 @@
 0x4B788 HIT
 0x4B9AC HIT
 0x4BD4C HIT
-0x4BD98 NOT-HIT
-0x4BF18 NOT-HIT
-0x4C60C NOT-HIT
+0x4BD98 HIT
+0x4BF18 HIT
+0x4C60C HIT
 0x4C784 NOT-HIT
-0x4CB18 NOT-HIT
-0x4CC0C NOT-HIT
-0x4CD98 NOT-HIT
+0x4CB18 HIT
+0x4CC0C HIT
+0x4CD98 HIT
 0x4CE70 NOT-HIT
 0x4CF20 HIT
 0x4D108 HIT

@@ -343,9 +343,9 @@ true original, and ported the divergence. Two pieces:
    is a fought win. U14's fought live win is the terminal gap (final
    truth Task 3, record §F3; the rule split and the failed two-human capture
    are below). The current
-   inventory is **44 explicit capture paths, 43/44 present**, with
-   only that U14 path absent (Final truth Tasks 4–5 added `gp-u29-continue-taken`
-   and `gp-bowling-2`). The failed U14 artifact is separately game
+   inventory is **45 explicit capture paths, 44/45 present**, with
+   only that U14 path absent (`gp-u30-volleyball` was added by Volleyball truth
+   Task 4; `gp-u29-continue-taken` and `gp-bowling-2` by Final truth Tasks 4–5). The failed U14 artifact is separately game
    evidence for a fought arcade KO, not a capture, oracle or pin (live truth
    Task 8, record §L8). Task 12a is docs-only; Task 12b re-pinned the census;
    Task 13 runs the full gate.
@@ -374,11 +374,25 @@ true original, and ported the divergence. Two pieces:
   `0x6627E` to the registered callback `0x1BDF4` is not traced byte by byte
   (record `2026-10-23-endgame-truth-derivations.md` §E1.6).
 - The out-of-scope content mode `0x21` (the volleyball easter egg, entered at
-  `0x4BD98` after the eighth worshipper trample `+0x1F > 7`) stays declared
-  (state-coverage record
-  `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2;
-  Final truth Task 6, record §F6, register R05: the count is not limited to 1,
-  but no frame-exact route is derivable from the checked-in bytes).
+  `0x4BD98` after the eighth worshipper trample `+0x1F > 7`) is now **published
+  by Volleyball truth Task 4** (register R05; record
+  `../docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §2):
+  `data/k11-captures/gp-u30-volleyball` (4,704 frames, every session check ok,
+  22/22 steps, zero pokes, sha256 `42e131d1…`) reached the mode by real
+  two-human input at `f=0x0F04` — route B's mid-round join keeps the 1P
+  stage-0 pick, the 2-hit combo lies the side-0 crowd and eight counted
+  tramples take `entry+0x1F` 1..8 — scored a real point and returned to mode 6
+  at `f=0x15B9`; `gp-u30-volleyball-oracle` is in `make verify`/`CAPTURE_DIRS`
+  with `k_miss_gp_u30_volleyball`, the `GP_U30_*` pins (N 4,640, trace/moves
+  5,645, start 104, reach 3,936, 13 missing classes) and `tools/gp_volley.py
+  check`, which also pins the port's `+0x1F = 8` V line at entry `0x1083F0`.
+  The Final truth Task 6 derivation stands (record §F6; the count is not
+  limited to 1, the two-human pick is `rng(7)` at `0x2587C`, the flight is
+  `h(n) = 568n - 8n²`); what that phase's record called "stays declared / no
+  capture / the port-side search is future work" is superseded by the capture.
+  The claim is the court pixels, one real point and the return; the S `ball`
+  value is a DOS4GW physical pointer (non-zero/cleared only), no audio is
+  claimed, and the mode's unmeasured content is not widened.
   `0x25` (the bowling easter egg, entered at `0x4E11C`; the game's decoder
   returns string `0x61` = "BOWLING!") is **published by Final truth Task 5**
   (record `../docs/superpowers/plans/2026-10-30-final-truth-derivations.md`
@@ -439,15 +453,16 @@ true original, and ported the divergence. Two pieces:
   `b0c=1` at/after the mode-`0x0F` entry (no scenario in `FINAL_WIN` yet), and
   the game-set `b0c` is **not universal** (BLIZZARD U13 and ARMADON U21 keep
   `b0c = 0`); the U10 game-set byte is a poked final. The claim-coverage design's undefined
-  **B2–B8 labels** are replaced by the census's measured NOT-HIT set (80
-  addresses, §D7.5, §D8.3, live-truth §L12 and Final truth Tasks 4–5) and the
+  **B2–B8 labels** are replaced by the census's measured NOT-HIT set (71
+  addresses after Volleyball truth Task 4's re-pin, §D7.5, §D8.3, live-truth
+  §L12 and Final truth Tasks 4–5) and the
   declared modes; the census baseline is a separate
   pin (its own `tools/coverage_baseline.txt`, not `tools/pin_baseline.sha256`).
 - The state-coverage phase is implemented and gated (spec
   `../docs/superpowers/specs/2026-10-28-state-coverage-design.md`, record
   `../docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
   two full gates plus `make audio-render`, green 2026-10-29). The census
-  (`make coverage`, outside `verify`) now reads **HIT 675 / NOT-HIT 80 /
+  (`make coverage`, outside `verify`) now reads **HIT 684 / NOT-HIT 71 /
   UNINSTRUMENTED 4** (the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`) —
   Task 14 re-pinned it from the Task 3 baseline's `HIT 645 / NOT-HIT 110` to
   `HIT 653 / NOT-HIT 102` (R17/§D8.3): the eight `improved:` addresses are
@@ -455,6 +470,12 @@ true original, and ported the divergence. Two pieces:
   `0x19820`/`0x19958`/`0x27ED8`/`0x28BD4`/`0x28C38`. Live truth Task 12b then
   re-pinned it with `gp-u27-name-entry` improving `0x20860` and
   `gp-u28-continue` improving `0x27254`/`0x278B0`/`0x27A2C` (record §L12).
+  Final truth Tasks 4–5 then improved `0x2791C`/`0x33B00` and the 16 mode-`0x25`
+  rows, and Volleyball truth Task 4's `gp-u30-volleyball` improved the nine
+  mode-`0x21` rows (`0x13134`/`0x26540`/`0x43738`/`0x4BD98`/`0x4BF18`/`0x4C60C`/
+  `0x4CB18`/`0x4CC0C`/`0x4CD98`; record
+  `../docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §3), so
+  the measured split is 684/71/4.
   The exhibits: ENDURANCE's team end (`gp-u25-endurance-end`, `af1` `0 → 4`,
   stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
   `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to

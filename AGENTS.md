@@ -593,7 +593,9 @@ consolidation gate).
   poked (§E1.3), so it does not discriminate a fought KO. Final truth Task 3 records the split instead
   (record §F3): the match rule has no `b0c`, the final-only rule requires it, the two-human fought win
   is game evidence in `gp-u14-twop-win.failed` (its port-script check failed), and R1 is terminal.
-- **The out-of-scope content mode `0x21` (volleyball) stays declared; `0x25`
+- **The out-of-scope content mode `0x21` (volleyball) is now published by
+  Volleyball truth Task 4 (register R05; record
+  `docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §2); `0x25`
   (the bowling easter egg, decoded string `0x61` = "BOWLING!") is now published
   by Final truth Task 5 (record §F5); the continue screen `0x0E` is now
   captured** (state-coverage record
@@ -642,19 +644,20 @@ consolidation gate).
   the `0x0D` winner pose. Its countdown `DS_00108110` starts `0x0F`, decrements
   every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.
   A poked 1P scenario cannot open `0x21`/`0x25` (no poke writes
-  `b1f`/`DS_00104ABC`), so none is built (`0x25` was reached by real two-human
-  input). The pre-L5 census rows
+  `b1f`/`DS_00104ABC`), so none is built (`0x21` and `0x25` were both reached by
+  real two-human input). The pre-L5 census rows
   `0x4BD98`/`0x4E11C`/`0x27A2C` were `NOT-HIT` (baseline l.696/714/255; the
   trample `0x4B470` is `HIT`); Task 12b re-measured them and Final truth
-  Task 5's re-pin made `0x4E11C` `HIT` (`HIT 675 / NOT-HIT 80 /
+  Task 5's re-pin made `0x4E11C` `HIT`; Volleyball truth Task 4's re-pin made
+  `0x4BD98` and its mode chain `HIT` (`HIT 684 / NOT-HIT 71 /
   UNINSTRUMENTED 4`). The L5 expiry capture
   reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`;
   Final truth Task 4's `gp-u29-continue-taken` later took the prompt (register
   R07) and improved `0x2791C`/`0x33B00` to HIT (record §F4.5).
   The KO-branch `0x0B` drawn winner pose is exhibited and pinned by `gp-draw`
   (live-truth §L2), a distinct claim from `gp-draw-timeout`'s timeout branch. The `0x21`
-  chain is re-derived in live-truth §L9 and Final truth Task 6 (record §F6)
-  keeps it **declared, with the candidate blocker refuted**: `b1d` is a
+  chain is re-derived in live-truth §L9 and Final truth Task 6 (record §F6),
+  with the candidate blocker refuted: `b1d` is a
   mode byte (arcade 0; `fight.c:3080` excludes 2/3), the stage word must be 0 (`fight.c:3081`; the
   two-human pick is `rng(7)` at `0x2587C` — 1-in-7, measured `m=0`/`b1f=3` at f=876 in `gp-twop`
   → 5; the `0xA87C4[c] + rng(6) + 1` arm is the 1P pick, measured `b1f=1`/`2`), and the entry's
@@ -665,15 +668,27 @@ consolidation gate).
   height every iteration, so `h(n) = 568n - 8n²` gives a 71-motion-step flight
   (apex `0x2760`) with 35 passes of `vy < 0`, where `0x49F18` re-sets
   `entry+0x1C` bit 7 (the six tumble streams `0xC9604[0..5]` carry no motion
-  opcode; the lift is the engine's). No run measures a second hit: the four
-  measured `0x4B470` calls — `gp-idle-loss` twice (the only capture) and the
-  demo twice — are all first hits (`+0x1F = 1`) on distinct lying entries, and
-  `gp-twop`/`gp-twop-ko`/`gp-draw-timeout`/`gp-keys-fight` call it zero times.
-  The trigger needs a stage-0 two-human match (1-in-7), a crowd lie
-  (a combo or a fighter state 7/2) and eight strikes each inside ~7 of the 71
-  motion steps, so no frame-exact route is derivable from the bytes and the
-  phase spends no capture; state-coverage §9 is a stop rule
-  ("Do not build one; declare the modes with their gates"), so no poked 1P exhibit is built.
+  opcode; the lift is the engine's). At that phase no run measured a second
+  hit: the four `0x4B470` calls — `gp-idle-loss` twice (its only capture) and the
+  demo twice — were all first hits (`+0x1F = 1`) on distinct lying entries, and
+  `gp-twop`/`gp-twop-ko`/`gp-draw-timeout`/`gp-keys-fight` called it zero times;
+  state-coverage §9's stop rule ("Do not build one; declare the modes with their
+  gates") was why that phase spent no capture and built no poked 1P exhibit.
+  **Volleyball truth Task 4 measured it with real input** (register R05; record
+  `2026-11-01-volleyball-truth-derivations.md` §2): route B's mid-round join
+  keeps a stage-0 1P pick (character 2, `rng(6) = 4` → 0 at `0x25897..0x258C6`),
+  the 2-hit combo lies the side-0 crowd, and eight counted tramples take
+  `entry+0x1F` 1..8 (first `f=0x0D1F`, eighth `f=0x0F04`, the mode entry
+  `0x4BD98`). `data/k11-captures/gp-u30-volleyball` (4,704 frames, `poll.log`
+  sha256 `42e131d1…`, every session check ok, 22/22 steps, zero pokes) is
+  published with `gp-u30-volleyball-oracle` (in `make verify`: N 4,640,
+  trace/moves 5,645, start 104, reach 3,936, 13 missing classes) and
+  `tools/gp_volley.py check`, which pins the entry stores, the clock `0x1E → 0`,
+  a real point and the return to mode 6 at `f=0x15B9`. The claim stays narrow:
+  the court pixels, the point and the return; the S `ball` value is a DOS4GW
+  physical pointer (non-zero/cleared only), the `+0x1F = 8` is the port's V line
+  at entry `0x1083F0`, no audio is claimed, and the mode's unmeasured content is
+  not widened.
 - **The proof debt is declared terminal** (state-coverage Task 13, record §D7; the measured
   counters, re-measured not copied): `make diff-verify` prints `1033/1033 functions VERIFIED;
   14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed (188 have none);
@@ -701,7 +716,8 @@ consolidation gate).
   `.failed`; R1 is terminal. The earlier `b0c` reading's measured correction stands: the game-set
   `b0c` is **not universal** (BLIZZARD U13 and ARMADON U21 keep `b0c = 0`), and the U10
   game-set byte is on a poked final. The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
-  measured NOT-HIT set (**80** addresses, §D7.5, §D8.3 and live-truth §L12; Task 3's original pin
+  measured NOT-HIT set (**71** addresses after Volleyball truth Task 4's
+  re-pin, §D7.5, §D8.3 and live-truth §L12; Task 3's original pin
   was 110) and the declared modes; the census baseline is a
   separate pin (its own `tools/coverage_baseline.txt`, not the `tools/pin_baseline.sha256`
   capture-pin tripwire). One `sprite_blit_aperture` (`0x51ED8`) pool mismatch was noted (three reruns
@@ -711,7 +727,7 @@ consolidation gate).
   `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D1–§D8;
   two full `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs
   plus `make audio-render`, green 2026-10-29). **The census** (`make coverage`,
-  outside `verify`) now reads **HIT 675 / NOT-HIT 80 / UNINSTRUMENTED 4** (sums to
+  outside `verify`) now reads **HIT 684 / NOT-HIT 71 / UNINSTRUMENTED 4** (sums to
   759; the 4 are `0x29D60`, `0x2EA30`, `0x2EA64`, `0x500BB`, pinned in
   `tools/coverage_baseline.txt`; Task 14 re-pinned it from the Task 3 baseline's
   `HIT 645 / NOT-HIT 110` to `HIT 653 / NOT-HIT 102` — R17/§D8.3 — the eight
@@ -722,7 +738,10 @@ consolidation gate).
   `gp-u28-continue` improving `0x27254`/`0x278B0`/`0x27A2C`, record §L12; Final
   truth Task 4 then improved `0x2791C`/`0x33B00` (`gp-u29-continue-taken`, `HIT
   659 / NOT-HIT 96`) and Task 5 the 16 mode-`0x25` rows (`gp-bowling-2`, `HIT
-  675 / NOT-HIT 80`); record §F4.5/§F5.6).
+  675 / NOT-HIT 80`); record §F4.5/§F5.6; Volleyball truth Task 4 then improved
+  the nine mode-`0x21` rows `0x13134`/`0x26540`/`0x43738`/`0x4BD98`/`0x4BF18`/
+  `0x4C60C`/`0x4CB18`/`0x4CC0C`/`0x4CD98`, record
+  `docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §3).
   **The exhibits:** ENDURANCE's team end
   (`gp-u25-endurance-end`, `af1` `0 → 4`, stop mode `0x17`, 1,360 frames), the
   side-1 tour (`gp-u26-side1-ending`, `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F`
@@ -790,11 +809,10 @@ consolidation gate).
   post-script tail), trace/moves 6339, start 96, reach 3843, 17 missing classes
   and capture sha `96645e99…`/4,621 frames; every pin and the scan-out hash
   failed its mutation. The `.dro` stays outside the 29-trace audio inventory
-  (no measured section). The current inventory is **44 explicit capture paths,
-  43/44 present**, with only U14's fought live win declared absent (`gp-u29-continue-taken`
-  and `gp-bowling-2` were added by Final truth Tasks 4–5). Live-truth
-  Task 12a is docs-only; Task 12b re-pinned the census; Task 13 runs the full
-  gate.
+  (no measured section). The current inventory is **45 explicit capture paths,
+  44/45 present**, with only U14's fought live win declared absent
+  (`gp-u30-volleyball` was added by Volleyball truth Task 4; `gp-u29-continue-taken`
+  and `gp-bowling-2` by Final truth Tasks 4–5).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`

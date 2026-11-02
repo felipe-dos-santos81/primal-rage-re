@@ -95,6 +95,18 @@ SNAP_FIELDS = (
     # the signed camera x DS_000F0AF0 (the 0x4E13D..0x4E151 gate). Appended, so
     # every older poll.log's S lines lack them; only the bowling checks assert them.
     ('s0_53', 0x107803, 1), ('camx', 0x0F0AF0, 4),
+    # Plan 2026-11-01-volleyball-truth Task 4 (record 2026-11-01-volleyball-truth-
+    # derivations §2.4): the mode-0x21 state the capture checker asserts -- the
+    # live ball entry DS_00108864 (0x4BDD3), the fight-emulation selector
+    # DS_00104ABC (2 for a two-human match, the 0x4BDB4 gate), the match clock
+    # DS_001088AA (0x1E at entry, 0x4BDF4), both scores DS_0010889C/9D (0x4BE19/
+    # 0x4BE21) and the entry flags DS_001088C1/C5 (0x4BDE1/0x4BDEE; C5 clears at
+    # the 0x4CD98 return). b8c1/b8c5 are the C1/C5 names, because `c1` is slot
+    # 1's character byte. Appended like the earlier fields, so every older
+    # poll.log's S lines lack them; only gp-u30-volleyball's checks assert them.
+    ('ball', 0x108864, 4), ('abc', 0x104ABC, 4),
+    ('s0', 0x10889C, 1), ('s1', 0x10889D, 1), ('clk', 0x1088AA, 2),
+    ('b8c1', 0x1088C1, 1), ('b8c5', 0x1088C5, 1),
 )
 # The S fields read through the key-config block pointer rather than a fixed DS
 # address (record §H6): a boot or a restart may move the block, so the address
@@ -653,6 +665,70 @@ WIN_EXTRA = (('afc', 0x104AFC, 2), ('ad4', 0x104AD4, 4), ('w2', 0x104AF2, 1), ('
              ('t104', 0x108104, 2), ('m106', 0x108106, 4), ('m10a', 0x10810A, 4),
              ('sc0', 0x1077EC, 4), ('c82', 0x107832, 1))
 WIN_FIELDS = tuple(n for n, _, _ in WIN_EXTRA)
+
+
+# Plan 2026-11-01-volleyball-truth Task 4 (design §5, record
+# 2026-11-01-volleyball-truth-derivations §2): the mode-0x21 volleyball entry.
+# The winning port-script v2 route is .superpowers/sdd/2026-11-01-volleyball-truth/
+# route.script, found by the Task 2/3 search; every absolute frame below is that
+# script's, translated to the step scheduler's mode-/previous-step-relative form.
+# Route B, as measured: LEFT PLAYER ARCADE's 1P select confirms character 2
+# (cells[1] = 2, `p1.right` then `p1.b0`) so the pick 0xA87C4[2] + rng(6) + 1
+# reduces to stage 0 (record §2.1); the P2 start joins 882 frames into the 1P
+# fight (the port's mode-6 entry f=0x4BF, the join at f=0x831), both fighters
+# walk in and P1 lands a 2-hit combo (f=3257/3277) that walks in the side-0
+# crowd (entries 0x1083CC/0x1083F0, type 3) and lies them at f=3331/3333; the
+# lying body is trampled eight times (the +0x1F 1..8 at f=0x0D1F, 0x0D61,
+# 0x0DA9, 0x0DED, 0x0E33, 0x0E77, 0x0EC5, 0x0F04; record §2.3) and the eighth
+# enters mode 0x21 at f=0x0F04. The route's one same-frame `p2.left` pair
+# (`bits 3781 0020` then `bits 3781 0000`, net 0) is not a capture input and is
+# omitted; every other press/hold reproduces the route's bitmap frames exactly.
+# The mode is the claim: a real (no-poke) point (DS_0010889D = 1 by f=0x1000),
+# the 0x1E clock's 1,717-frame timeout and the return to mode 6 at f=0x15B9
+# (record §2.4). stop_mode 0x21 ends the capture 1,800 frames after the entry,
+# 83 past the return, so the whole mode and the return are in the replayed
+# window; the 700-frame fallback end (the route's last press at 3836 + 700) keeps
+# a mode-less run replayable. Harness values: stop_delay 1,800 and the fallback
+# 700; the 5/8/20/28/30-frame holds and the 60/30/54/59/62/66/70/74/76/795/882
+# gaps are the route's measured frames (route.script), not fitted values.
+#
+# The boot is `at_frame 320`, not the wall `boot`: the route's fight phase is a
+# function of the boot's absolute frame (the 1P CPU's RNG state at the join and
+# the P2 reaction's rng calls), and a wall boot's frame varies with the guest's
+# boot time (the existing captures' enter_frame spans 248..327). gp-u15-join's
+# measured boot press is the spin of f=319 (I record f=0x13F; the mode 0x27
+# appears at f=321), so the at_frame target 320 makes that press at the spin of
+# 319 whatever the wall time, and the port script still reads enter_frame 321.
+# The PinGuard fails the run at once if S(319) is missed (a late press would
+# move the mode and the RNG state), so a gapped boot publishes nothing.
+VOLLEY_ROUTE = (
+    ('at_frame', 320, ('key', 'enter')),                        # press spin f=319, mode 0x27 f=321
+    ('after_mode', 0x27, 150, ('key', 'enter')),                # consumed f=474
+    ('after', 150, ('key', 'enter')),                           # consumed f=622, mode 0x2D
+    ('after_mode', 0x10, 57, ('pad', ('p1.right',), 5)),        # f=716 cursor 0 -> 1
+    ('after', 60, ('pad', ('p1.b0',), 5)),                      # f=776 confirm character 2
+    ('after_mode', 0x06, 882, ('pad', ('p2.start',), 5)),       # f=2097 join, b1f = 3
+    ('after', 275, ('pad', ('p1.b0',), 5)),                     # f=2372 join select P1 confirm
+    ('after', 30, ('pad', ('p2.b0',), 5)),                      # f=2402 P2 confirm
+    ('after', 795, ('pad', ('p1.right', 'p2.left'), 30)),       # f=3197 walk in
+    ('after', 60, ('pad', ('p1.b0',), 5)),                      # f=3257 hit 1
+    ('after', 20, ('pad', ('p1.b0',), 5)),                      # f=3277 hit 2 -> lie
+    ('after', 54, ('pad', ('p1.left',), 20)),                   # f=3331 under the body
+    ('after', 20, ('pad', ('p1.b2',), 5)),                      # f=3351 trample 1 (0x0D1F)
+    ('after', 8, ('pad', ('p2.left',), 28)),                    # f=3359
+    ('after', 59, ('pad', ('p2.b0',), 5)),                      # f=3418 trample 2 (0x0D61)
+    ('after', 66, ('pad', ('p1.b3',), 5)),                      # f=3484 trample 3 (0x0DA9)
+    ('after', 74, ('pad', ('p2.b0',), 5)),                      # f=3558 trample 4 (0x0DED)
+    ('after', 62, ('pad', ('p1.b3',), 5)),                      # f=3620 trample 5 (0x0E33)
+    ('after', 76, ('pad', ('p2.b0',), 5)),                      # f=3696 trample 6 (0x0E77)
+    ('after', 62, ('pad', ('p1.left',), 8)),                    # f=3758
+    ('after', 8, ('pad', ('p1.b3',), 5)),                       # f=3766 trample 7 (0x0EC5)
+    ('after', 70, ('pad', ('p2.b0',), 5)),                      # f=3836 trample 8 (0x0F04)
+    ('after', 700, ('end',)),                                   # a mode-less fallback
+)
+SCENARIOS['gp-u30-volleyball'] = dict(
+    time_limit=150, extra=WIN_EXTRA,
+    stop_mode=0x21, stop_delay=1800, steps=VOLLEY_ROUTE)
 # The KO/death fields a W record must not cover: the two +0x5A damage bytes,
 # the round wins, the match result, the death-done byte and the seven land
 # marks (gp_twop.KO_POKES and gp_win.KO_DEATH_POKES share this one tuple, so a
@@ -1449,9 +1525,16 @@ def expand(action):
 class Schedule:
     """Steps: ('boot', s, act) | ('after_mode', mode, n, act) | ('after', n, act)
     | ('after_entry', mode, k, n, act) | ('after_wall', seconds, act)
-    | ('until_mode', mode, n); an ('end',) action ends the scenario -- at its frame
-    for the frame-keyed steps, at its moment (end_wall) for a wall one. after_entry:
+    | ('at_frame', F, act) | ('until_mode', mode, n); an ('end',) action ends
+    the scenario -- at its frame for the frame-keyed steps, at its moment
+    (end_wall) for a wall one. after_entry:
     F = the frame of the k-th entry into `mode` (on_snap) + n.
+    at_frame: F is the game frame counter itself, not a delta: the step fires at
+    the first spin with f >= F - 1, so the press is made at the spin of F - 1.
+    It is the calibration gp-u30-volleyball's boot needs: the wall boot's frame
+    varies with the guest's boot time, and that route's RNG state is a function
+    of it (gp-u15-join's measured boot press is the spin of f=319, so its
+    at_frame target is 320).
     An action for frame F fires at the first spin snapshot with f >= F - 1, so
     iteration F samples it (spec §3.1).
 
@@ -1504,6 +1587,8 @@ class Schedule:
         if st[0] == 'after_entry':
             f0 = self.entry_frame.get((st[1], st[2]))
             return None if f0 is None else f0 + st[3]
+        if st[0] == 'at_frame':
+            return st[1]
         return None
 
     def on_mode(self, f, mode):
@@ -1668,6 +1753,10 @@ class Schedule:
 # after the mode-0x0E entry, 0x5F frames past the 0x2791C take in mode 0x0C, so
 # the take and the round restart are in the replayed window and nothing past it
 # is compared.
+# gp-u30-volleyball (volleyball truth Task 4) stops too: stop_mode 0x21 with a
+# 1,800-frame delay puts the end 83 frames past the mode's measured return to
+# mode 6 at f=0x15B9, so the whole mode (entry 0x0F04) and the return are in the
+# replayed window; the 150 s limit would otherwise run on through the fight.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
@@ -1680,7 +1769,7 @@ STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-twop-ko', 'gp-u14-twop-win', 'gp-harness-smoke', 'gp-u24-u16-state',
                          'gp-draw', 'gp-draw-timeout', 'gp-u25-endurance-end', 'gp-u26-side1-ending',
                          'gp-u13-band', 'gp-u13-band-dac', 'gp-u27-name-entry', 'gp-u28-continue',
-                         'gp-u29-continue-taken',
+                         'gp-u29-continue-taken', 'gp-u30-volleyball',
                          'gp-bowling', 'gp-bowling-fix', 'gp-bowling-2'})
 
 
