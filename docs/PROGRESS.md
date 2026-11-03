@@ -1218,3 +1218,17 @@ bit shared by two names set until both release, the k11 capture persists its
 `check=` lines and `k11_lang.py` honors `PR_GAME_DIR`/`--exe`, the gp_compare
 allowances are guarded against a frame before the window start, and R16's
 evidence, the P2 input sentence and the R12/R39 split are corrected.
+
+**Completion truth — 100% ported audit (2026-11-03).** A 14-agent read-only
+audit read all 315 addresses still listed as unported, every decompiled body in
+`port/decomp/prage.c`. The measured classes are 131 WATCOM libc, 104 AIL, 45
+x87/FPU, 17 DOS4GW/DPMI and 17 other runtime, plus **one game function**,
+`0x5D110`. That address is the stale bank-table dword `0x81310[0]` and the
+386th span-writer target: the port already models it (`sprite_bank_offset`
+maps bank 0 to no offset, the renderer implements the literal writer,
+`test_platform.c` pins the table dword, and the proof-completion span census
+proves 385/386 targets), so no unported or unmodelled game behaviour remains.
+The raw 66% (`798 1203 66`) is the index share of the 314 WATCOM/DOS4GW/AIL
+runtime functions, which R20 keeps terminal non-targets and the port serves
+from host libc/OPAL; `759 759 100` is the game's own code. No source, capture
+or pin changed.
