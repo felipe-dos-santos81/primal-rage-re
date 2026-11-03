@@ -617,7 +617,7 @@ k11-oracle: build ## K11 oracles: the walk, the menuesc restart and the k11-lang
 	@echo "== K11 language-reload oracle (pixel-exact, k11-lang: CONFIG OPTIONS' language 0 -> 1) =="
 	@$(PYTHON) -m unittest tools.tests.test_k11_lang
 	@if [ -d $(K11_CAPTURES)/k11-lang ]; then \
-		$(PYTHON) tools/k11_lang.py check --capture $(K11_CAPTURES)/k11-lang --exe $(GAME_DIR)/PRAGE.EXE && \
+		$(PYTHON) tools/k11_lang.py check --capture $(K11_CAPTURES)/k11-lang --exe $(GAME_DIR)/PRAGE.EXE || exit 1; \
 		rm -rf $(K11_DUMP)/k11-lang; mkdir -p $(K11_DUMP); \
 		$(PYTHON) tools/k11_session.py port-script --scenario k11-lang --capture $(K11_CAPTURES)/k11-lang --out $(K11_DUMP)/k11-lang.script && \
 		PR_K11_DUMP=$(K11_DUMP)/k11-lang PR_K11_SCRIPT=$(K11_DUMP)/k11-lang.script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
@@ -1934,6 +1934,7 @@ gp-win-one: build ## Run one win/ending replay (used by gp-win-oracle/gp-ending-
 			--port $(GP_DUMP)/$(scenario) --min-first "$(GP_$(GP_WIN_ID)_MIN_FIRST)" \
 			--trace-min-first "$(GP_$(GP_WIN_ID)_TRACE_MIN_FIRST)" --max-start "$(GP_$(GP_WIN_ID)_MAX_START)" \
 			--min-reach "$(GP_$(GP_WIN_ID)_MIN_REACH)" --max-missing "$(GP_$(GP_WIN_ID)_MAX_MISSING)" \
+			$(if $(GP_$(GP_WIN_ID)_MOVES_MIN_FIRST),--moves-min-first "$(GP_$(GP_WIN_ID)_MOVES_MIN_FIRST)") \
 			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" --capture-frames "$(GP_$(GP_WIN_ID)_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--port $(GP_DUMP)/$(scenario) --min-milestones "$(GP_$(GP_WIN_ID)_MILESTONES)" \
@@ -2125,19 +2126,8 @@ gp-u14-twop-win-oracle: build ## Gameplay U14 two-human win oracle (skips withou
 	@$(PYTHON) -m unittest tools.tests.test_gp_win tools.tests.test_gp_twop tools.tests.test_gp_session
 	@if [ ! -d $(K11_CAPTURES)/gp-u14-twop-win ]; then echo "gp-u14-twop-win-oracle: no capture at $(K11_CAPTURES)/gp-u14-twop-win (skipped)"; else \
 		$(PYTHON) tools/gp_twop.py check --win --capture $(K11_CAPTURES)/gp-u14-twop-win && \
-		$(PYTHON) tools/gp_win.py check --scenario gp-u14-twop-win --capture $(K11_CAPTURES)/gp-u14-twop-win \
-			--capture-sha256 "$(GP_U14_TWOP_WIN_CAPTURE_SHA256)" && \
-		$(MAKE) --no-print-directory gp-replay scenario=gp-u14-twop-win GP_OPTIONAL=1 && \
-		$(PYTHON) tools/gp_compare.py --scenario gp-u14-twop-win --capture $(K11_CAPTURES)/gp-u14-twop-win \
-			--port $(GP_DUMP)/gp-u14-twop-win --min-first "$(GP_U14_TWOP_WIN_MIN_FIRST)" \
-			--trace-min-first "$(GP_U14_TWOP_WIN_TRACE_MIN_FIRST)" --max-start "$(GP_U14_TWOP_WIN_MAX_START)" \
-			--min-reach "$(GP_U14_TWOP_WIN_MIN_REACH)" --max-missing "$(GP_U14_TWOP_WIN_MAX_MISSING)" \
-			--moves-min-first "$(GP_U14_TWOP_WIN_MOVES_MIN_FIRST)" \
-			--capture-sha256 "$(GP_U14_TWOP_WIN_CAPTURE_SHA256)" --capture-frames "$(GP_U14_TWOP_WIN_CAPTURE_FRAMES)" && \
-		$(PYTHON) tools/gp_win.py path --scenario gp-u14-twop-win --capture $(K11_CAPTURES)/gp-u14-twop-win \
-			--port $(GP_DUMP)/gp-u14-twop-win --min-milestones "$(GP_U14_TWOP_WIN_MILESTONES)" \
-			--win-min-first "$(GP_U14_TWOP_WIN_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U14_TWOP_WIN_CAPTURE_SHA256)"; \
-		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u14-twop-win; exit $$rc; fi
+		$(MAKE) --no-print-directory gp-win-one scenario=gp-u14-twop-win GP_WIN_ID=U14_TWOP_WIN; \
+	fi
 
 # Gameplay truth II U15 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 7;
 # gp_session.SCENARIOS['gp-u15-join']): P2 joins the gp-idle-loss fight mid-round with F2.
@@ -2779,7 +2769,7 @@ audio-one: ## Replay and compare one gameplay trace (scenario=gp-…; used by au
 	end=$$($(PYTHON) tools/audio_compare.py capture-end --capture $$cap --max $(AUDIO_END)); \
 	if [ "$$end" = "0" ]; then \
 		echo "audio-oracle: $(scenario) FAIL: no X record in $$cap/poll.log"; exit 1; fi; \
-	trust=""; [ "$(scenario)" = "gp-u6-moves" ] && trust=--trust-bitmap; \
+	trust='$(if $(filter gp-u6-moves,$(scenario)),--trust-bitmap)'; \
 	if ! $(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $$cap --out $$dir/script --end $$end $$trust > $$dir/script.log 2>&1; then \
 		if [ "$(scenario)" = "gp-u17-device2" ] && grep -q "wall-paced steps" $$dir/script.log; then \
 			printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no frame-keyed port script (wall-paced; record §H6.9)"}\n' $(scenario) > $$dir/report.json; \

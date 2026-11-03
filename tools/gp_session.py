@@ -257,6 +257,14 @@ PAD = {
     'p2.start': (0x3C, 0x3C00, 0x0001),
 }
 
+def scan_bits():
+    """The scan->key-bit map (PAD's third column): a key whose scan is a pad's
+    sets that pad's bit; two names can share a scan's bit."""
+    out = {}
+    for _scan, _word, _bit in PAD.values():
+        out[_scan] = out.get(_scan, 0) | _bit
+    return out
+
 # U11 (record 2026-10-01-gameplay-u11 §K.2): the keys the int 16h key loop
 # 0x24D08..0x24EE7 and its blocking readers (the prompt 0x24A64, the pause
 # 0x24E54) act on in a match. Space, y and n are the standard set-1 make words
@@ -1854,7 +1862,10 @@ def port_script(name, lines, end=None, end_to_last_s=False, trust_bitmap=False):
         raise ScriptError('wall-paced steps (the service menu\'s sub-loops freeze the frame '
                           'counter): the frame-keyed port script cannot follow them')
     recs = [r for r in (parse(l) for l in lines) if r]
-    snap = snapshots(lines)
+    snap = {}
+    for r in recs:
+        if r['kind'] == 'S':
+            snap.setdefault(r['f'], r)
     presses = [r for r in recs if r['kind'] == 'I' and 'press' in r and r.get('bios') is not None]
     for k, p in enumerate(presses):
         if p.get('ring') == 0:
@@ -1909,12 +1920,10 @@ def port_script(name, lines, end=None, end_to_last_s=False, trust_bitmap=False):
         # accepted S only as a cross-check; a poller gap over the change frame
         # (the U14 two-human win's missed S(0xB18..0xB1A) after the release I at
         # 0xB17) then no longer leaves the change unpinned. The scan->bit map is
-        # PAD's third column (gp_capture.SCAN_BIT's rule): a key whose scan is a
-        # pad's sets that pad's bit too, and two names can share a scan's bit, so
-        # a bit stays set while any of its scans is held.
-        scan_bit = {}
-        for _scan, _word, _bit in PAD.values():
-            scan_bit[_scan] = scan_bit.get(_scan, 0) | _bit
+        # PAD's third column (scan_bits' rule): a key whose scan is a pad's sets
+        # that pad's bit too, and two names can share a scan's bit, so a bit
+        # stays set while any of its scans is held.
+        scan_bit = scan_bits()
         held_scan, by_frame = {}, {}
         kb_now = 0
         for r in recs:

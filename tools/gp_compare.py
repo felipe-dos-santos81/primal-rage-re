@@ -1169,9 +1169,9 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                 bands=None, scan3=None, overlay=None, max_unexplained=REPORT_MAX,
                 max_missing=COVERAGE_NOT_REQUESTED):
     """Returns (rc, first_unexplained or None, next_after_last_classified, reach). In report
-    mode no ratchet verdict is printed and no pin is checked (rc stays 1 for
-    "window empty" and for a named allowance before the window start; main()
-    turns every report-mode rc into 0). `max_unexplained`
+    mode no ratchet verdict is printed and no pin is checked, but the measured
+    first/reach are kept (main() turns every report-mode rc into 0). The enforced
+    rc is 1 for "window empty" and for a named allowance before the window start. `max_unexplained`
     caps the report-mode unexplained list (0 lifts the cap; the enforced run
     always stops at the first). `bands`, `scan3` and `overlay` are the scenario's
     named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED, OVERLAY_ALLOWED); a
@@ -1198,14 +1198,17 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         return 1, None, 0, 0
     # Music truth Task 6 housekeeping (Completion truth final review Important 5):
     # a named allowance before the window start is never examined by the loop
-    # below, so it would silently do nothing; fail it by name.
+    # below, so it would silently do nothing; fail it by name. Continue the scan
+    # so report mode still measures the first unexplained frame and the reach.
+    early_bad = 0
     for _kind, _table in (('band', bands), ('scan-out', scan3), ('overlay', overlay)):
         _early = sorted(k for k in _table if k < start)
         if _early:
             out('gp_compare: %s: frames: FAIL: %s allowance capture %s is before the '
                 'window start %d' % (name, _kind,
                                      ', '.join(str(k) for k in _early[:5]), start))
-            return 1, None, 0, 0
+            early_bad = 1
+            break
     p, counts, black, unexpl, seen = 0, collections.Counter(), 0, [], set()
     allow_bad = 0
     j = start
@@ -1330,8 +1333,8 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
             out('gp_compare: %s: frames: FAIL: an allowance named its frame but not its bytes' % name)
         return 0, first, j, p
     rc = max(ratchet(name, 'frames', first, len(cap), min_first, out),
-             start_check(name, start, raws, max_start, min_first, out), allow_bad, order_rc,
-             coverage_rc)
+             start_check(name, start, raws, max_start, min_first, out), allow_bad, early_bad,
+             order_rc, coverage_rc)
     return rc, first, j, p
 
 

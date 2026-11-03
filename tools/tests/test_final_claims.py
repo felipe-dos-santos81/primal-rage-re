@@ -31,11 +31,6 @@ AGENTS_REL = 'AGENTS.md'
 
 STATUSES = ('closed', 'gated', 'terminal', 'declared')
 
-# The phase allows exactly one declared row (the measured no-route `0xEB`
-# finding); any other declared row is a regression (Completion truth final
-# review Important 4).
-ALLOWED_DECLARED = frozenset({'R39'})
-
 # id -> (expected status, one evidence token that must be in the evidence cell).
 # The tokens are address/file/capture fragments the register's §2 rows carry.
 EXPECTED = {
@@ -80,11 +75,23 @@ EXPECTED = {
     'R39': ('declared', ('0xE50E0', '0x24508')),
 }
 
+# The phase allows exactly one declared row (the measured no-route `0xEB`
+# finding); any other declared row is a regression (Completion truth final
+# review Important 4). Derive it from the expected statuses so the two cannot
+# drift apart.
+ALLOWED_DECLARED = frozenset(r for r, (status, _) in EXPECTED.items()
+                             if status == 'declared')
+
+# The current pin baseline digest is one measured value used by the register
+# check, the stale-digest guard and its mutation test.
+CURRENT_PIN_DIGEST = 'e66d8e24ff9778f348118a14bc5eb8a96ca5abcd449c7c8d1646f42871cb1753'
+STALE_PIN_DIGEST = 'c6d56fa3'
+
 # Counter strings that must appear in the register (its §3 and §2 rows).
 MUST_MENTION = (
     '1033/1033', '14993/14993', '825/845', '810/845', 'WEAKER` 12',
     '8 unrowed', 'HIT 684 / NOT-HIT 71 / UNINSTRUMENTED 4',
-    'e66d8e24ff9778f348118a14bc5eb8a96ca5abcd449c7c8d1646f42871cb1753',
+    CURRENT_PIN_DIGEST,
     '46/47', '47 explicit paths', '798 1203 66', '759 759 100', '39 rows',
     '1 `declared`',
     '0x29D60', '0x2EA30', '0x2EA64', '0x500BB',
@@ -321,9 +328,10 @@ def check_register(text):
     # c6d56fa3... in R27 while section 3 and --check-pins read e66d8e24...
     # (Completion truth review fix). The historical digest belongs in PROGRESS
     # and the records, not in the current-state register.
-    if 'c6d56fa3' in text:
-        problems.append('register: stale pin digest c6d56fa3... is present '
-                        '(the current --check-pins digest is e66d8e24...)')
+    if STALE_PIN_DIGEST in text:
+        problems.append('register: stale pin digest %s... is present '
+                        '(the current --check-pins digest is %s...)'
+                        % (STALE_PIN_DIGEST, CURRENT_PIN_DIGEST[:8]))
 
     if re.search(r'\|\s*open\s*\|', text):
         problems.append('register: an "open" status row exists')
@@ -431,7 +439,7 @@ class TestFinalClaims(unittest.TestCase):
         # The register must carry the current --check-pins digest; a stale one
         # in any row fails (the review found R27 still on c6d56fa3...).
         register = self._read(REGISTER_REL)
-        bad = register.replace('e66d8e24', 'c6d56fa3')
+        bad = register.replace(CURRENT_PIN_DIGEST, STALE_PIN_DIGEST)
         self.assertNotEqual(bad, register)
         problems = check_register(bad)
         self.assertTrue(any('stale pin digest' in p for p in problems), problems)

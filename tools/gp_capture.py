@@ -365,9 +365,7 @@ def run_checks(name, lines, sched, n_frames, n_want, guard=None):
 # 0x1BBAC fills [DS_00101514]+0x2D8/+0x2D9 from the key-state table (demo-pose
 # record, 0x1BBAC row), so a BIOS key whose scan is a pad's (U11's n, alt-s,
 # alt-m) sets that pad's bit too: an injection explains a bit by its scan.
-SCAN_BIT = {}
-for _scan, _word, _bit in gs.PAD.values():
-    SCAN_BIT[_scan] = SCAN_BIT.get(_scan, 0) | _bit
+SCAN_BIT = gs.scan_bits()
 # The int 16h ring when the poll.log does not say (it logs no BDA start/end):
 # kc.bios_insert's fallback 0x1E..0x3E, the BIOS default; every head and tail in
 # gp-pads, gp-idle-loss, gp-u5-charsel and gp-u6-moves lies in 0x1E..0x3C.

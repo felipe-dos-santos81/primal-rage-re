@@ -61,14 +61,11 @@
  * 0x47370; the port's fixed block must hold the largest shipped language file,
  * FRENCH.TXT (8,564 bytes; ITALIAN.TXT is 8,362 and ENGLISH.TXT 6,953). The
  * original keeps the handle in DAT_001082DC and the size in DAT_001082D8. */
-#define STRING_HANDLE LANG_STRING_HANDLE
-#define STRING_DATA   LANG_STRING_DATA
-#define STRING_CAP    LANG_STRING_CAP
 /* The loader's staging block, immediately above the table scratch: the file is
- * read here and copied to STRING_DATA only after the magic/length check, so a
- * bad file leaves the last good table intact (Completion truth final review
+ * read here and copied to LANG_STRING_DATA only after the magic/length check, so
+ * a bad file leaves the last good table intact (Completion truth final review
  * Important 1). */
-#define STRING_STAGE  (STRING_DATA + STRING_CAP)
+#define STRING_STAGE  (LANG_STRING_DATA + LANG_STRING_CAP)
 
 /* The raw's language file-name table at 0xC9418: eight dwords pointing into the
  * data object at 0x80C08, the file names 0x47370 opens by its AL index. Index 7
@@ -327,8 +324,8 @@ u32 string_decode(u32 id, u8 *out, u32 outlen)
  * the file through 0x61C60, reads and checks its 0x33340001 magic (0x61CF6), and
  * allocates the whole file from the 0x1C308 paged-memory manager, which is what
  * 0x1E75C/0x1E808/0x474E4 operate on. PORT: the port reads the bytes through the
- * host (host_read_file) into STRING_STAGE and only copies them to STRING_DATA
- * after the magic and length pass, then builds a small handle at STRING_HANDLE
+ * host (host_read_file) into STRING_STAGE and only copies them to LANG_STRING_DATA
+ * after the magic and length pass, then builds a small handle at LANG_STRING_HANDLE
  * in mem[], which 0x1E75C/0x1E808/0x474E4 operate on unchanged.
  * The name is tried in the shipped upper-case spelling first, then in the raw
  * table's lower-case one (the data directory is case-sensitive on this host).
@@ -349,8 +346,6 @@ void game_string_table_load(const char *dir, u32 language)
 {
     PR_HIT(0x47370u);
     if (dir == NULL || language >= 8u) return;
-    /* Both call sites bound the index: 0x20C77/0x20C7A masks the boot value with
-     * 0x7000000 and shifts 0x18; 0x336A2/0x336AB does the same for the reload. */
     const char *name = k_language_files[language];
     char upper[16];
     char path[512];
@@ -360,17 +355,17 @@ void game_string_table_load(const char *dir, u32 language)
     upper[i] = '\0';
     u32 n = 0;
     snprintf(path, sizeof path, "%s/%s", dir, upper);
-    if (!host_read_file(path, mem + STRING_STAGE, STRING_CAP, &n)) {
+    if (!host_read_file(path, mem + STRING_STAGE, LANG_STRING_CAP, &n)) {
         snprintf(path, sizeof path, "%s/%s", dir, name);
-        if (!host_read_file(path, mem + STRING_STAGE, STRING_CAP, &n)) return;
+        if (!host_read_file(path, mem + STRING_STAGE, LANG_STRING_CAP, &n)) return;
     }
     if (n < 4u || DSD(STRING_STAGE) != 0x33340001u) return;   /* the raw's magic check (0x61CF6) */
-    memcpy(mem + STRING_DATA, mem + STRING_STAGE, n);
-    DSD(STRING_HANDLE + 8) = STRING_DATA;       /* base */
-    DSD(STRING_HANDLE + 0xc) = n;               /* len */
-    DSB(STRING_HANDLE + 0x15) = 0;              /* flags */
-    DSD(DS_001082DC) = STRING_HANDLE;           /* 0x4738E */
-    DSD(DS_001082D8) = n;                       /* 0x473A3 */
+    memcpy(mem + LANG_STRING_DATA, mem + STRING_STAGE, n);
+    DSD(LANG_STRING_HANDLE + 8) = LANG_STRING_DATA;     /* base */
+    DSD(LANG_STRING_HANDLE + 0xc) = n;                  /* len */
+    DSB(LANG_STRING_HANDLE + 0x15) = 0;                 /* flags */
+    DSD(DS_001082DC) = LANG_STRING_HANDLE;              /* 0x4738E */
+    DSD(DS_001082D8) = n;                               /* 0x473A3 */
 }
 
 /* PORT: 0x336AE's reload (the language change at 0x3369C..0x336AE calls
