@@ -1,185 +1,97 @@
-# Primal Rage (DOS, 1995) — 66% ported / 100% analysed
+# Primal Rage (DOS, 1995) — fully playable SDL3 port
 
 ![Primal Rage](docs/intro.jpg)
 
-Reverse engineering of **Primal Rage**'s PC/DOS release (Time Warner
-Interactive / Probe Software / Teeny Weeny Games, 1995), targeting `PRAGE.EXE`
-and the `S16*.GRA` graphics set, plus an SDL3 port that reimplements the engine
-in C over a flat `mem[]` at the original addresses.
+A reverse engineering of **Primal Rage**'s PC/DOS release (Time Warner
+Interactive / Probe Software, 1995) and a native **SDL3 port** that runs the
+original game data. The port reimplements `PRAGE.EXE`'s engine in C over a flat
+`mem[]` that keeps every global at its original address.
 
-The original is a **32-bit protected-mode WATCOM C/C++32 program** shipped as a
-Microsoft DOS/4GW *bound* Linear Executable (LE): two LE objects (code + data),
-no 16-bit real-mode game code.
+**The game is complete and playable**: boot, intro movies, title and attract,
+menus and service menu, character select, one- and two-player matches, every
+game mode (including the volleyball and bowling secrets), continues, high
+scores, saves, music and all seven endings.
 
 ## Quick start
 
+The game files are **not included**. Get them (e.g. from
+[myabandonware](https://www.myabandonware.com/game/primal-rage-2vr)) and put
+`PRAGE.EXE`, `INDEX`, `S16*.GRA` and the sound drivers in `data/game/C/`.
+
 ```bash
-make deps                 # check the toolchain and game assets
-make build                # cmake -S port -B build && cmake --build build
-make run                  # windowed port
-make check frames=60      # headless frames -> frames/frame_*.ppm/.pal/.idx
-make verify               # the full gate
+make deps      # check the toolchain and game files
+make build     # build the port (needs CMake and SDL3)
+make run       # play (windowed; ESC quits)
 ```
 
-The original game files are **not included**. Download them (e.g. from
-[myabandonware](https://www.myabandonware.com/game/primal-rage-2vr)) and place
-them under `data/game/C/` (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers).
-`data/` is git-ignored and `data/game/` is read-only; the capture harness writes
-only its own directories under `data/`.
+Or directly: `./build/prageport --game-dir data/game/C`. The window opens at
+1024x768 and is resizable; the 320x200 frame is scaled with nearest-neighbour
+pixels. Audio is the original's FM music at 49716 Hz; if no audio device opens,
+the game runs silent. In the windowed run, settings and high scores are saved to
+SDL's per-user directory (or `--cmos FILE`).
 
-## Status
+## How complete is it?
 
-The port covers the whole game: boot, title, attract cycles, front end, service
-menu, character select, one- and two-player matches, the win path, all seven
-endings, and the game-over/high-score flows. **100% analysed** means every
-indexed function is accounted for (the identity below), not that all runtime
-code is ported: 315 WATCOM/DOS4GW/AIL runtime functions are declared
-non-targets (the AIL set is named unreproducible) and 8 portable functions
-remain `UNROWED` in the differential harness. The index boundary is declared:
-1,207 decomp rows = 1,203 `FN_` + 3 mnemonic + 1 data artifact (the 145
-`.image` rows are analysis noise); the span census's 388 span-writer entries and
-the 4 unindexed call targets are triaged outside it. The measured claims:
+| Measure | Figure | What it means |
+|---|---|---|
+| Game code ported | **759 / 759 (100%)** | Every function of the game's own code is reimplemented in C. |
+| All functions in the executable | 798 / 1,203 (66%) | The other 405 are not game logic: the WATCOM C library, the DOS/4GW extender, the AIL sound library and DOS hardware glue (timer, joystick port, the movie-audio path the shipped movies never use), all replaced by the host's libc and SDL3. |
+| Differential check | 1033 / 1033 functions | `make diff-verify` runs the original x86 bytes in an emulator and compares them with the C port, plus 14,993 mutants it must catch. |
+| Captured ground truth | 46 / 47 captures | Frames, game state and OPL music registers recorded from the original under DOSBox-X and compared with the port. |
 
-- **Port:** 798 of 1,203 indexed functions (**66%** raw); **759/759 portable
-  (100%)** — the game's own code is fully analysed. The 405 not ported are 53
-  classified host-owned/deferred (41
-  host-owned + 12 deferred; `tools/port_classification.txt`), 37 replaced
-  clean-room runtime and 315 WATCOM/DOS4GW/AIL runtime functions served by the
-  host (`tools/port_progress.py`). The identity is exact and measured:
-  **1,203 = 798 ported (759 portable + 39 runtime) + 41 host-owned + 12 deferred
-  + 37 replaced + 315 runtime**, 0 unclassified (Completion truth, design §1).
-- **Differential:** `make diff-verify` runs the original's bytes against the
-  port's C functions: **1033/1033 functions**, **14993/14993 mutants**, **0 named
-  gaps**; **825/845** callee rows closed, **810/845** full; **20 terminal rows**
-  (19 addresses), **12 `WEAKER`**, **8 `UNROWED`**.
-- **Oracles:** **47 explicit capture paths**, **46/47 present** (only the
-  U14 arcade gap declared absent); the Smacker logo, title/attract, front end,
-  demo, K11 service menu (including the service-menu language reload) and the
-  gameplay replays are compared against the original's frames. These are
-  bounded-missing claims, not complete coverage.
-- **Span census:** the independent census has 417 slots / 386 writer targets /
-  26 code-shape classes proved (385/386 writer targets); E2 reads 736 candidates
-  (732 by U0's rule), 388 span-writer.
-- **Audio:** the register-stream oracle compares the port's OPL writes
-  tolerance-free against 29 `.dro` traces across 28 capture directories (the
-  29th, `gp-u17-device2`, skips by name); the 26
-  code-reachable banks split **12 claimed / 10 residue / 2 unattributable / 2
-  never-requested**, with **86 diff-allowed prefixes / 44,489 ticks** matched.
-  Rendered audibility is terminal (the OPL core/mixer is an invented model); the
-  game-owned claim is the register stream.
-- **Endgame:** all seven endings and the U16 finisher reaction are pinned under
-  poked win paths. The claim is the ending content and finisher reaction, not
-  the KO by hits; the U16 gate is terminal (a measured 99-row `s1_42` window —
-  the finisher reaction lands after it, record Completion truth §4) and the old
-  U23 `r0=0x27`-vs-`0x33` divergence is closed by the IVT fix.
+So **66%** is a count of all functions in the binary, most of which belong to
+the 1995 compiler runtime and DOS drivers that a modern port does not need.
+`python3 tools/port_progress.py` prints both figures and the full breakdown.
 
-The single source of truth for every remaining gap is the **terminal claim
-register**:
-[`docs/superpowers/specs/2026-10-30-final-claims.md`](docs/superpowers/specs/2026-10-30-final-claims.md).
-It has 39 rows (R01–R39: 11 closed, 1 gated, 26 terminal, 1 declared), each
-with its address, file:line or capture. Named there: U14's fought arcade win
-(R1) is **terminal**, while the game's own 2-0 two-human win is **closed** on
-the real-input `gp-u14-twop-win` capture
-(`gp-u14-twop-win-oracle`, `gp_twop.py check --win`); `0x21` volleyball is
-**closed** (the real-input
-`gp-u30-volleyball` capture reaches the eighth trample, the mode entry, a real
-point and the return to mode 6); the service-menu language reload is **closed**
-(`k11-lang`); the 5120 band is
-**PASS-A terminal** (the content is the port's; the old blue is the
-capture/present-side class); the 20 terminal differential rows, the 12 `WEAKER`
-and 8 `UNROWED`, the 4 `UNINSTRUMENTED` census addresses, the storage items,
-the zero-payload movie audio (R33), the 53/37/315 classification, and the
-oracle window/model limits. **One row is `declared`** (R39, the `0xEB` audio
-route: its call site is in BLIZZARD's reaction-0x34 stream and no shipped route
-exhibits it); the remaining rows are
-closed (the two-human win, `0x21` volleyball, `0x25` bowling, the taken continue
-and the language reload), gated (the 12 audio banks) or terminal with a measured
-reason, and `0x2CADC`'s boot-defaults omission is **fixed**.
+What is *not* proven is listed, with evidence, in the terminal claim register
+[`docs/superpowers/specs/2026-10-30-final-claims.md`](docs/superpowers/specs/2026-10-30-final-claims.md)
+(39 rows: 11 closed, 1 gated, 26 terminal, 1 declared). These are limits of
+the proof (e.g. a fought arcade win was never captured, and audio is checked
+as register writes rather than sound), not missing game features.
+`docs/PROGRESS.md` holds the per-task history.
 
-The full gate is two consecutive
-`PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs plus
-`make audio-render`; the two runs and both audio renders passed on the gated
-tree (`b3a710cc`, merged as `43b79b30`; recorded in `docs/PROGRESS.md`).
+## Development
+
+```bash
+make help              # main targets; make help-all lists every target
+make check frames=60   # headless run -> frames/frame_NNNN.ppm/.pal/.idx
+make verify            # the full gate: tests, oracles, differential, audio
+```
+
+`make verify` needs `port/tests/ghidra_data.bin` (git-ignored; `make
+re-oracle` regenerates it), `unicorn` and `capstone`
+(`pip install -r tools/requirements-diff.txt`), the captures under `data/`,
+and `data/game/C/CMOS` absent or 2040 zero bytes. Oracles skip when their
+capture is missing. Contributor rules (address model, porting rules, how each
+oracle is pinned) are in `AGENTS.md`, `port/RE_GUIDE.md` and `port/PORTING.md`.
+
+The original is a 32-bit WATCOM C/C++ protected-mode program bound to DOS/4GW
+as a Linear Executable: one code object at `0x10000`, one data object at
+`0x80000`.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `docs/PROGRESS.md` | Running status and per-task history |
-| `docs/superpowers/specs/2026-10-30-final-claims.md` | Terminal claim register: every gap's measured status and evidence |
-| `port/` | SDL3 port: `RE_GUIDE.md` (address model), `PORTING.md` (rules), `spec/game_flow.md` |
-| `port/src/` | The port: `game/`, `platform/` (gfx, sprite, render, res, input, `audio/`), `mem.c`, `host.c` |
-| `port/decomp/` | Ghidra decompilation + function/string/symbol indexes |
-| `docs/FORMATS.md` | Decoded on-disk formats (LE layout, `INDEX`, `GRA`) |
-| `docs/THIRD_PARTY_LICENSES.md` | Vendored third-party code and licences |
-| `docs/superpowers/` | Sub-project specs, plans, derivation records and reports |
-| `tools/` | RE/oracle toolbox: `le_info.py`, `gra_render.py`, `gra_extract.py`, `gen_symbols.py`, the comparison tools |
-| `_tools/ghidra_scripts/` | Ghidra headless scripts used to produce the artefacts |
-| `data/game/C/` | Installed game (git-ignored); `data/game/CD/RAGECD.ISO` is the original CD |
-| `Makefile` | `make help` (quick) / `make help-all` (every target) |
-
-## Build and run
-
-```bash
-cmake -S port -B build && cmake --build build     # or: make build
-./build/prageport --game-dir data/game/C          # windowed; ESC to quit
-./build/prageport --game-dir data/game/C --check 60
-```
-
-The window opens at 1024x768 (4:3, the original's CRT aspect) and is
-user-resizable; the 320x200 frame is scaled to fill it with nearest-neighbour
-pixels (host policy, not the original — see the `PORT:` note in `host.c`). The
-windowed run opens the FM core's native 49716 Hz stereo; if no device opens it
-prints SDL's reason and continues silently. `SDL_AUDIODRIVER=dummy` exercises
-the open path headlessly.
-
-`--check N` runs exactly N master-loop iterations with no window or audio,
-writing `frame_NNNN.ppm` (RGB), `frame_NNNN.pal` (DAC) and `frame_NNNN.idx`
-(raw indices) per frame, and exits non-zero on an internal assertion failure.
-
-## Verify
-
-```bash
-make verify            # the gate (sets PR_ORACLE_REQUIRED=1)
-make gate-check        # capture inventory, manifest, pin baseline, preflight
-```
-
-`make verify` runs the headless `--check` smoke, the oracle-required tests, the
-pixel/ratchet oracles, the register-stream audio oracle and `audio-render`, the
-differential harness, the E2 triage, the tool unit tests (including the
-final-claims register guard) and `symbols.h` idempotence. `make gate-check`
-inventories the 47 explicit capture paths first; the full checkout is 46/47
-with only the U14 arcade gap declared absent. `GATE_STRICT=1` (the default) fails an
-undeclared absence; `PR_PINS_EXACT` is strict by default, so an improvement
-requires a re-pin.
-
-The full gate needs `port/tests/ghidra_data.bin` (git-ignored; `make re-oracle`
-regenerates it), `unicorn` and `capstone`
-(`pip install -r tools/requirements-diff.txt`), and `data/game/C/CMOS` absent
-or 2040 zero bytes; `make deps` checks them. The capture model (70.09 Hz
-captures vs the 60.05 Hz game) and the ratchets are described in `AGENTS.md`;
-each pin's provenance is in the `Makefile`.
-
-To reproduce the title/attract captures, see `make title-pin`,
-`make title-capture`, `make frontend-capture`, then the oracle targets.
+| `port/src/` | The port: `game/`, `platform/` (gfx, sprite, render, res, input, `audio/`), `mem.c`, `host.c`, `main.c` |
+| `port/tests/` | Assertion suite and env-gated oracle drivers |
+| `port/decomp/` | Ghidra decompilation and function/string/symbol indexes |
+| `port/spec/` | Frame loop, state machine and pixel path |
+| `tools/`, `_tools/ghidra_scripts/` | RE, capture and oracle tooling; Ghidra headless scripts |
+| `docs/` | `PROGRESS.md`, `FORMATS.md` (LE, `INDEX`, `GRA`), specs/plans/records in `superpowers/` |
+| `data/` | The game and its captures (git-ignored, read-only) |
 
 ## Toolchain
 
-* **Ghidra 12.2** with the
-  [`ghidra-lx-loader`](https://github.com/yetmorecode/ghidra-lx-loader)
-  extension (LE/LX loader, DOS/4GW aware). It maps object 0 to `0x10000` (code)
-  and object 1 to `0x80000` (data) and applies the LE fixups. Import and export
-  commands are in `port/RE_GUIDE.md`.
-* **JDK 25** (`temurin-25`) for Ghidra 12.2.
-* **dosbox-x** for ground truth (memory layout, runtime behaviour, captures).
-* Python 3 with `capstone` for ad-hoc disassembly and `Pillow` for
-  `tools/gra_extract.py`; `unicorn` + `capstone` for the differential harness.
+- CMake and SDL3 to build and play.
+- Python 3 (`capstone`, `unicorn`, `Pillow`) for the tools and the gate.
+- For RE work: Ghidra 12.2 with
+  [`ghidra-lx-loader`](https://github.com/yetmorecode/ghidra-lx-loader),
+  JDK 25, and `dosbox-x` for captures (see `port/RE_GUIDE.md`).
 
 ## Third-party
 
-The FM synthesiser is vendored: **opal 2.0.3**, MIT
-(`https://github.com/RealBitdancer/opal`, commit `7e829f33`); its synthesis core
-is by Shayde/Reality (Reality Adlib Tracker 2), public domain. It lives at
-`port/src/platform/audio/opl/` with its licence at
-`opl/LICENSE.opal.txt`; the files are byte-identical to upstream apart from a
-provenance banner. See `docs/THIRD_PARTY_LICENSES.md`.
+The FM synthesiser is **opal 2.0.3** (MIT,
+`https://github.com/RealBitdancer/opal`, commit `7e829f33`; its core is by
+Shayde/Reality, public domain), vendored byte-identical at
+`port/src/platform/audio/opl/`. See `docs/THIRD_PARTY_LICENSES.md`.

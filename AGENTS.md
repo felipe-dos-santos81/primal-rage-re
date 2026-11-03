@@ -5,6 +5,12 @@ artefacts. Read `port/RE_GUIDE.md` (address conventions), `port/PORTING.md`
 (the porting rules this file summarises), and `port/spec/game_flow.md` (the
 frame loop and pixel path) before changing engine code.
 
+**Status: the game is fully playable** end to end (boot through all seven
+endings, one and two players, every mode). All 759 functions of the game's own
+code are ported; the raw "798 of 1,203 (66%)" also counts 405 WATCOM
+runtime, DOS/4GW, AIL and DOS hardware-glue functions the host replaces, so do not describe the
+port as 66% done. The register below lists what is unproven, not what is missing.
+
 **The terminal claim register is `docs/superpowers/specs/2026-10-30-final-claims.md`.**
 Every remaining gap has one measured status there (closed / gated / terminal /
 declared) with its address, file:line or capture; no row is "open" and the one
@@ -1092,17 +1098,19 @@ consolidation gate).
 - `docs/PROGRESS.md` is the running, per-task status narrative (what's ported,
   verified, and every named gap in the terminal claim register). Append a paragraph there, not to `README.md`,
   which stays a short pointer.
-- **Keep `README.md`'s title figure current.** It reads
-  `— 66% ported / 100% analysed`. Run `python3 tools/port_progress.py`: it prints
+- **Keep `README.md`'s "How complete is it?" table current.** The README title
+  says the port is fully playable and leads with the portable figure (759/759,
+  the game's own code); the raw 66% is shown second with what the other 405
+  functions are, so a reader does not take 66% for an unfinished game. Run
+  `python3 tools/port_progress.py`: it prints
   `ported total percent`, counting only real functions (`symbols.h` `FN_`
   addresses) that have a column-0 `/* 0xADDR` header, an `fn_register` call, or
   a declared `PORT_PROGRESS_EXCEPTIONS` entry in `port/src` (the strict rule
   `tools/diff_verify.py`'s `NonPortable.ported` shares; the loose "anywhere in a
   comment" form reads prose mentions as implementations and is not used).
-  Update the README title and its `798 of 1,203 indexed functions (66%)`
-  status line after any merge that adds or removes a ported function.
-  It also prints the adjusted (portable) figure and the class breakdown; the
-  title states both the raw port share (66%) and the analysed figure (100%);
+  Update the table's two rows (`759 / 759`, `798 / 1,203 (66%)`) after any merge
+  that adds or removes a ported function.
+  It also prints the adjusted (portable) figure and the class breakdown;
   the exact identity is
   `1,203 = 798 ported (759 portable + 39 runtime) + 41 host-owned + 12 deferred
   + 37 replaced + 315 runtime` with 0 unclassified (design

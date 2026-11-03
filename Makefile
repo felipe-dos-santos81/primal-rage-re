@@ -1,4 +1,5 @@
-# Primal Rage (DOS, 1995) — reverse engineering + SDL3 port.
+# Primal Rage (DOS, 1995) — fully playable SDL3 port + reverse engineering.
+# Play: make deps build run.
 # `make help` is the quick target list; `make help-all` lists every target.
 # Pipelines: RE (info -> gra -> symbols -> decompile -> oracle) and PORT
 # (build -> check -> run -> verify).
@@ -148,22 +149,18 @@ chunk ?= 0
 # ── Environment ──────────────────────────────────────────────────────────────
 
 help: ## Print the quick start and main targets (help-all lists every target)
-	@printf '\033[01;32m${SERVICE} — reverse engineering + SDL3 port\033[00;37m\n\n'
-	@printf "\033[33mUsage:\033[0m\n  make [target] [arg=\"val\"...]\n\n"
-	@printf "\033[33mQuick start:\033[0m\n"
-	@printf "  make deps      # check the toolchain and game assets\n"
-	@printf "  make build     # configure and build the port\n"
-	@printf "  make check     # headless frames -> frames/\n"
-	@printf "  make run       # windowed port\n"
-	@printf "  make verify    # the full gate\n\n"
-	@printf "\033[33mMain targets:\033[0m\n"
-	@printf "  gate-check test check run verify diff-verify entry-triage clean coverage deps help help-all\n\n"
-	@printf "\033[33mCaptures and oracles:\033[0m\n"
-	@printf "  smk-* title-* attract-* attract2-* frontend-* demo-* k11-* save-reload-* gp-* audio-*\n\n"
-	@printf "\033[33mSearch:\033[0m\n"
-	@printf "  vb-search      # tools/vb_search.py usage (the mode-0x21 route search; not in make verify)\n\n"
-	@printf "\033[33mRE:\033[0m\n"
-	@printf "  re-info re-gra re-render re-extract re-extract-test re-symbols re-cluster re-decompile re-analyze re-oracle re-original\n\n"
+	@printf '\033[01;32m${SERVICE} — fully playable SDL3 port + reverse engineering\033[00;37m\n\n'
+	@printf "\033[33mPlay:\033[0m  (game files in $(GAME_DIR)/, see README.md)\n"
+	@printf "  make deps      # check the toolchain and game files\n"
+	@printf "  make build     # build the port into $(BUILD_DIR)/\n"
+	@printf "  make run       # play (windowed; ESC quits)\n\n"
+	@printf "\033[33mDevelop:\033[0m\n"
+	@printf "  make check frames=60   # headless run -> frames/\n"
+	@printf "  make verify            # the full gate (tests, oracles, differential, audio)\n"
+	@printf "  make diff-verify       # original x86 bytes vs the C port\n"
+	@printf "  make clean             # remove build outputs\n\n"
+	@printf "\033[33mOracles:\033[0m  smk-* title-* attract-* frontend-* demo-* k11-* save-reload-* gp-* audio-*\n"
+	@printf "\033[33mRE:\033[0m       re-info re-gra re-render re-extract re-symbols re-decompile re-analyze re-oracle re-original\n\n"
 	@printf "Every target: make help-all\n"
 
 help-all: ## Print every target with its description
@@ -2925,7 +2922,7 @@ run: build ## Run the port windowed, reading the original assets
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR)
 
 clean: ## Remove build outputs and locally generated oracles (keeps the SDD ledger)
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(COV_BUILD_DIR) $(COV_HITS_DIR)
 	rm -f $(PORT_DIR)/tests/ghidra_data.bin
 	rm -rf frames/
 	@echo "Cleanup complete. (.superpowers/ deliberately kept — it holds the plan ledger.)"

@@ -26,6 +26,7 @@ _tools/ghidra_proj/
 __pycache__/
 .pytest_cache/
 .worktrees/
+.claude/worktrees/
 .superpowers/
 
 # macOS
