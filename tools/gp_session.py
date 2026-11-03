@@ -257,7 +257,7 @@ PAD = {
     'p2.start': (0x3C, 0x3C00, 0x0001),
 }
 
-def scan_bits():
+def scan_bit_map():
     """The scan->key-bit map (PAD's third column): a key whose scan is a pad's
     sets that pad's bit; two names can share a scan's bit."""
     out = {}
@@ -1800,13 +1800,17 @@ class ScriptError(Exception):
     pass
 
 
-def snapshots(lines):
+def snapshots_of(recs):
+    """The S-record snapshots keyed by frame (the first record at a frame wins)."""
     out = {}
-    for l in lines:
-        r = parse(l)
-        if r and r['kind'] == 'S':
+    for r in recs:
+        if r['kind'] == 'S':
             out.setdefault(r['f'], r)
     return out
+
+
+def snapshots(lines):
+    return snapshots_of([r for r in (parse(l) for l in lines) if r])
 
 
 def pad_arm(snap, keys):
@@ -1862,10 +1866,7 @@ def port_script(name, lines, end=None, end_to_last_s=False, trust_bitmap=False):
         raise ScriptError('wall-paced steps (the service menu\'s sub-loops freeze the frame '
                           'counter): the frame-keyed port script cannot follow them')
     recs = [r for r in (parse(l) for l in lines) if r]
-    snap = {}
-    for r in recs:
-        if r['kind'] == 'S':
-            snap.setdefault(r['f'], r)
+    snap = snapshots_of(recs)
     presses = [r for r in recs if r['kind'] == 'I' and 'press' in r and r.get('bios') is not None]
     for k, p in enumerate(presses):
         if p.get('ring') == 0:
@@ -1923,7 +1924,7 @@ def port_script(name, lines, end=None, end_to_last_s=False, trust_bitmap=False):
         # PAD's third column (scan_bits' rule): a key whose scan is a pad's sets
         # that pad's bit too, and two names can share a scan's bit, so a bit
         # stays set while any of its scans is held.
-        scan_bit = scan_bits()
+        scan_bit = scan_bit_map()
         held_scan, by_frame = {}, {}
         kb_now = 0
         for r in recs:

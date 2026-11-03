@@ -1169,9 +1169,10 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                 bands=None, scan3=None, overlay=None, max_unexplained=REPORT_MAX,
                 max_missing=COVERAGE_NOT_REQUESTED):
     """Returns (rc, first_unexplained or None, next_after_last_classified, reach). In report
-    mode no ratchet verdict is printed and no pin is checked, but the measured
-    first/reach are kept (main() turns every report-mode rc into 0). The enforced
-    rc is 1 for "window empty" and for a named allowance before the window start. `max_unexplained`
+    mode no ratchet verdict is printed and no pin is checked; the measured first/reach
+    are returned for the caller (main() discards them and turns every report-mode rc
+    into 0). The enforced rc is 1 for "window empty" and for a named allowance before
+    the window start. `max_unexplained`
     caps the report-mode unexplained list (0 lifts the cap; the enforced run
     always stops at the first). `bands`, `scan3` and `overlay` are the scenario's
     named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED, OVERLAY_ALLOWED); a
@@ -1332,8 +1333,10 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
         if allow_bad:
             out('gp_compare: %s: frames: FAIL: an allowance named its frame but not its bytes' % name)
         return 0, first, j, p
+    if early_bad:
+        return 1, first, j, p
     rc = max(ratchet(name, 'frames', first, len(cap), min_first, out),
-             start_check(name, start, raws, max_start, min_first, out), allow_bad, early_bad,
+             start_check(name, start, raws, max_start, min_first, out), allow_bad,
              order_rc, coverage_rc)
     return rc, first, j, p
 

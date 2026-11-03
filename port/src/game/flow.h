@@ -344,10 +344,10 @@ void game_string_table_load(const char *dir, u32 language);
 void game_string_table_reload(u32 language);
 const u8 *game_string_get(u32 id);
 
-/* The localisation table's scratch addresses (flow.c's STRING_HANDLE/DATA/
- * CAP): the 0x1E75C handle block, the file block and its capacity (FRENCH.TXT,
- * 8,564 bytes, is the largest shipped file). Exported for the game tests; the
- * loader owns them. */
+/* The localisation table's scratch addresses (the loader's LANG_STRING_HANDLE/
+ * DATA/CAP): the 0x1E75C handle block, the file block and its capacity
+ * (FRENCH.TXT, 8,564 bytes, is the largest shipped file). Exported for the game
+ * tests; the loader owns them. */
 #define LANG_STRING_HANDLE 0x3800000u
 #define LANG_STRING_DATA   0x3800020u
 #define LANG_STRING_CAP    0x2200u

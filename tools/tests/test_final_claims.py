@@ -77,10 +77,9 @@ EXPECTED = {
 
 # The phase allows exactly one declared row (the measured no-route `0xEB`
 # finding); any other declared row is a regression (Completion truth final
-# review Important 4). Derive it from the expected statuses so the two cannot
-# drift apart.
-ALLOWED_DECLARED = frozenset(r for r, (status, _) in EXPECTED.items()
-                             if status == 'declared')
+# review Important 4). Keep this a literal pin: deriving it from EXPECTED would
+# let a new declared row pass by being added to both.
+ALLOWED_DECLARED = frozenset({'R39'})
 
 # The current pin baseline digest is one measured value used by the register
 # check, the stale-digest guard and its mutation test.

@@ -185,6 +185,18 @@ class TestFrames(Dirs):
         self.assertTrue(any('band allowance capture 1 is before the window start 2' in l
                             for l in out), out)
 
+    def test_a_report_keeps_the_early_allowance_measurement(self):
+        # The continuation must keep the measured first unexplained frame in
+        # report mode; the early `return 1, None, 0, 0` would lose it and only
+        # the enforced-only case above would stay green. The last capture frame
+        # is deliberately unexplained (rgb(9)) so the measurement is non-empty.
+        self.write([1, 2], [rgb(5), rgb(6), rgb(1), rgb(9)])
+        rc, first, out = self.run_claim(4, report=True, bands=[(1, 10, 200)])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(first, 3, out)
+        self.assertTrue(any('band allowance capture 1 is before the window start 2' in l
+                            for l in out), out)
+
     def test_an_earlier_window_start_is_said(self):
         self.write([1, 2], [rgb(1), rgb(2)])
         with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):

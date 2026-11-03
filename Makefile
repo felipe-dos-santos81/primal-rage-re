@@ -1925,7 +1925,7 @@ gp-ending-oracle: build ## Gameplay U10 oracle: ending evidence, frame/trace/mil
 	@echo "== gameplay oracle: gp-u10-ending (the ending under pokes; plan U9/U10) =="
 	$(PYTHON) -m unittest tools.tests.test_gp_win
 	@$(MAKE) --no-print-directory gp-win-one scenario=gp-u10-ending GP_WIN_ID=ENDING
-gp-win-one: build ## Run one win/ending replay (used by gp-win-oracle/gp-ending-oracle)
+gp-win-one: build ## Run one win/ending replay (used by gp-win-oracle/gp-ending-oracle/gp-u14-twop-win-oracle)
 	@if [ ! -d $(K11_CAPTURES)/$(scenario) ]; then echo "gp-win-one: no capture at $(K11_CAPTURES)/$(scenario) (skipped)"; else \
 		$(PYTHON) tools/gp_win.py check --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" && \
@@ -2123,6 +2123,7 @@ gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips
 # The claim is the game's own 2-0 two-human win, not an arcade win (R04 terminal).
 gp-u14-twop-win-oracle: build ## Gameplay U14 two-human win oracle (skips without data/k11-captures/gp-u14-twop-win)
 	@echo "== gameplay oracle: gp-u14-twop-win (the game's own 2-0 two-human win) =="
+	@$(if $(GP_U14_TWOP_WIN_MOVES_MIN_FIRST),:,$(error gp-u14-twop-win-oracle: GP_U14_TWOP_WIN_MOVES_MIN_FIRST is not set))
 	@$(PYTHON) -m unittest tools.tests.test_gp_win tools.tests.test_gp_twop tools.tests.test_gp_session
 	@if [ ! -d $(K11_CAPTURES)/gp-u14-twop-win ]; then echo "gp-u14-twop-win-oracle: no capture at $(K11_CAPTURES)/gp-u14-twop-win (skipped)"; else \
 		$(PYTHON) tools/gp_twop.py check --win --capture $(K11_CAPTURES)/gp-u14-twop-win && \
