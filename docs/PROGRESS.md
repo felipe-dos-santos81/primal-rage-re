@@ -8,37 +8,27 @@ Each paragraph corresponds to a stretch of work, generally cross-referencing
 a derivation record (`docs/superpowers/plans/<date>-…-derivations.md`), which
 holds the underlying raw-byte evidence.
 
-**Current state (2026-10-28).** The portable port is complete — `759 759 100`
-of the declared portable population — but the *proof* state is the measured
-differential/oracle figures below and the named gaps that remain (rendered
-audibility, U14's fought live win, the 5120 band, the 20 terminal differential
-rows). `python3 tools/port_progress.py` reads `798 1203 66` raw and
-`759 759 100` portable, with the class breakdown
-`ported 798 (759 portable + 39 runtime) · host-owned 41 · deferred 12 · replaced
-37 · runtime 315` — the claim-coverage classification-truth phase removed the
-`0x62003` false positive and declared the `replaced` clean-room runtime
-replacement layer, record §C4). Track D extended the
-differential verification from the 181 ported functions the callee scan reached,
-and tracks S, I, N, H, F, G, the host input truth phase and the 2026-10-22
-pixel-and-proof closure plan added the rest. The 2026-10-24 proof-completion
-phase re-pinned the counter: `make diff-verify` reads
-`1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps;
-825/845 rows with callees closed (188 have none); 807/845 closed on full rows;
-8 ported functions with no row (45 FN_ ported-unrowed: 8 portable [5
-registry-visible + 3 header-shape exceptions] + 37 runtime; the scan-visible
-subset is 42 = 5 + 37)` (the closure rule, record
-`2026-10-15-reverse-j-derivations.md` §J1). The **20 open rows are declared
-terminals** (record `2026-10-24-proof-completion-derivations.md` §P8.1), **15
-rows are `WEAKER`** (§P8.3) and the 8 without a row are `UNROWED` — `diff-verify`
-prints **0 named gaps**. The span-writer census (§P2–§P4) proves **26/26 code-shape
-classes** and **385/386 distinct writer targets** (385 reachable, one dead); the
-capture oracles claim content order (0 failures on all 24 scenarios) and a
-measured `--max-missing` coverage pin each, and `make gate-check` inventories 35
-capture paths with strict/partial modes. The endgame truth phase then captured
-and pinned the five remaining character endings and the U16 finisher reaction,
-claimed U13's post-script tail and documented the INT 8 tick vector, adding no
-ported function — `port_progress.py` is unchanged. The paragraphs below are
-the chronological log; a named gap stands until a later paragraph closes it.
+**Current state (2026-11-03).** **The game is fully playable** in the SDL3
+port: boot, movies, title and attract, menus and service menu, character
+select, one- and two-player matches, every mode (volleyball and bowling
+included), continues, high scores, saves, music and all seven endings. All of
+the game's own code is ported — `python3 tools/port_progress.py` reads
+`759 759 100` portable — and the raw `798 1203 66` also counts runtime code the
+port does not need: `ported 798 (759 portable + 39 runtime) · host-owned 41 ·
+deferred 12 · replaced 37 · runtime 315` (WATCOM libc, DOS/4GW, AIL and DOS
+hardware glue, served by the host libc, SDL3 and the clean-room decoders; the
+2026-11-03 audit below found no unmodelled game function among them).
+**The proof state:** `make diff-verify` reads `1033/1033 functions VERIFIED;
+14993/14993 mutants detected; 0 named gaps; 825/845 rows with callees closed
+(188 have none); 810/845 closed on full rows; 8 ported functions with no row`
+(20 rows terminal, 12 `WEAKER`, 8 `UNROWED`); `make gate-check` reads 46/47
+capture paths present (the one declared absence is U14's fought arcade win);
+the coverage census reads HIT 684 / NOT-HIT 71 / UNINSTRUMENTED 4. What is
+unproven, as distinct from missing, is the terminal claim register
+`docs/superpowers/specs/2026-10-30-final-claims.md` (39 rows: 11 closed,
+1 gated, 26 terminal, 1 declared). The paragraphs below are the chronological
+log; earlier counters in them are the values of their date, and a named gap
+stands until a later paragraph or the register closes it.
 
 **Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
 functions**, 0 failures. LE layout and `INDEX` verified; `S16*.GRA` chunk types
@@ -1231,4 +1221,14 @@ proves 385/386 targets), so no unported or unmodelled game behaviour remains.
 The raw 66% (`798 1203 66`) is the index share of the 314 WATCOM/DOS4GW/AIL
 runtime functions, which R20 keeps terminal non-targets and the port serves
 from host libc/OPAL; `759 759 100` is the game's own code. No source, capture
+or pin changed.
+
+**Docs: the playable status (2026-11-03).** `README.md` was rewritten to lead
+with the playable game and a "How complete is it?" table (759/759 game code,
+then the raw 798/1,203 with what the other 405 functions are), so the raw 66%
+is no longer read as an unfinished port; `AGENTS.md` carries the same status
+note and its README-maintenance bullet now names the table. `make help` is
+grouped as Play/Develop/Oracles/RE, `make clean` also removes `build-cov/` and
+`coverage/`, and `.gitignore` adds `.claude/worktrees/`. The "Current state"
+paragraph above was refreshed to the 2026-11-03 counters. No source, capture
 or pin changed.
