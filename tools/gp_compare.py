@@ -1169,8 +1169,9 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
                 bands=None, scan3=None, overlay=None, max_unexplained=REPORT_MAX,
                 max_missing=COVERAGE_NOT_REQUESTED):
     """Returns (rc, first_unexplained or None, next_after_last_classified, reach). In report
-    mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
-    "window empty"; main() turns every report-mode rc into 0). `max_unexplained`
+    mode no ratchet verdict is printed and no pin is checked (rc stays 1 for
+    "window empty" and for a named allowance before the window start; main()
+    turns every report-mode rc into 0). `max_unexplained`
     caps the report-mode unexplained list (0 lifts the cap; the enforced run
     always stops at the first). `bands`, `scan3` and `overlay` are the scenario's
     named per-frame allowances (BANDS_ALLOWED, SCAN3_ALLOWED, OVERLAY_ALLOWED); a

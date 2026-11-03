@@ -177,7 +177,7 @@ static const fnm_pair k_miss_gp_twop_ko[] = {
  * to its X record (f = 0x1693): the global 0x5D812 actor_spawn/set_dead pair
  * (3,726 and 3,384 hits) plus the two wipe hooks, 0x29D60 (the bare `ret`) and
  * 0x5D812 (the runtime stub), one hit each from frontend_mode_1b_step -- the
- * same four distinct pairs as gp-twop-ko. */
+ * same two distinct pairs as gp-twop-ko. */
 static const fnm_pair k_miss_gp_u14_twop_win[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },

@@ -520,11 +520,12 @@ consolidation gate).
   section's first key-on, tolerance-free across ticks (sorted per-tick multisets for the
   declared intra-tick order model; the measured one-tick capture-label model; a skipped
   group must be empty and every port write matched once), skipping absent traces by name;
-  the audio replay's port script is generated with `gp_session.py port-script
-  --trust-bitmap` (the capture's recorded S bitmap), the one caller allowed to: the
-  capture-validation model stays injector-derived and fail-closed, and the two derivations
-  agree on every clean capture (0/5,820 S mismatches), so the flag restores only the
-  contaminated `gp-u6-moves` trace's `.dro` replay (Completion truth Task 1/5; the audio
+  `make audio-one` generates the script with `gp_session.py port-script
+  --trust-bitmap` only for `gp-u6-moves` (the capture's recorded S bitmap); every
+  other trace uses the default injector-derived, fail-closed model, and the two
+  derivations agree on every clean capture (0/5,820 S mismatches), so the flag
+  restores only the contaminated `gp-u6-moves` trace's `.dro` replay (Completion
+  truth Task 1/5; the audio
   summary now accounts for all 12 other k11 `.dro` files in 9 directories, `k11-lang`
   and `gp-u14-twop-win` included);
   the selmo section is per-tick exact in 24 of the 26 music traces

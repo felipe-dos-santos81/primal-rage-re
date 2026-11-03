@@ -34,7 +34,6 @@
 #include "game/menu.h"
 #include <string.h>
 #include <ctype.h>
-#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,22 +78,24 @@ static void check_bank_guard(void)
  * the shipped ENGLISH.TXT (index 0) and FRENCH.TXT (index 1): 0x121A0's caption
  * is string 0x15, so pin the decode of that id and its neighbours (a non-zero
  * length-XOR and a plain string) against each file, plus the seven-name table at
- * 0xC9418. The buffer and the two globals are seeded with sentinels before every
- * load, so a loader that returns without reading, or that reports the wrong
- * length, fails a check. */
-#define SM_STRING_DATA  0x3800020u   /* flow.c's STRING_DATA */
-#define SM_STRING_CAP   0x2200u      /* flow.c's STRING_CAP */
-#define SM_STRING_HANDLE 0x3800000u  /* flow.c's STRING_HANDLE */
+ * 0xC9418. The buffer, the handle block and the two globals are seeded with
+ * sentinels before every load (none a post-condition), so a loader that returns
+ * without reading, or that reports the wrong length, fails a check. */
 static void check_localised_string(void)
 {
-    memset(mem + SM_STRING_DATA, 0xCC, SM_STRING_CAP);
-    DSD(DS_001082D8) = 0xDEADBEEFu;
+    memset(mem + LANG_STRING_DATA, 0xCC, LANG_STRING_CAP);
+    DSD(LANG_STRING_HANDLE + 8) = 0x11111111u;               /* base sentinel */
+    DSD(LANG_STRING_HANDLE + 0xCu) = 0x22222222u;            /* len sentinel */
+    DSB(LANG_STRING_HANDLE + 0x15u) = 0xA5u;                 /* flags sentinel */
+    DSD(DS_001082DC) = 0xDEADBEEFu;                          /* handle sentinel */
+    DSD(DS_001082D8) = 0xDEADBEEFu;                          /* size sentinel */
     game_string_table_load("data/game/C", 0u);
     CHECK_EQ_INT((int)DSD(DS_001082D8), 6953);                /* ENGLISH.TXT's size */
-    CHECK_EQ_INT((int)DSD(SM_STRING_HANDLE + 0xCu), 6953);
-    CHECK_EQ_INT((int)DSD(DS_001082DC), (int)SM_STRING_HANDLE);
-    CHECK_EQ_INT((int)DSB(SM_STRING_HANDLE + 0x15u), 0);
-    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 6953u), 0xCC);     /* beyond the file: seeded */
+    CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 8), (int)LANG_STRING_DATA);
+    CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 0xCu), 6953);
+    CHECK_EQ_INT((int)DSB(LANG_STRING_HANDLE + 0x15u), 0);
+    CHECK_EQ_INT((int)DSD(DS_001082DC), (int)LANG_STRING_HANDLE);
+    CHECK_EQ_INT((int)DSB(LANG_STRING_DATA + 6953u), 0xCC);   /* beyond the file: seeded */
     CHECK(strcmp((const char *)game_string_get(0x15u), "THE FUTURE...") == 0,
           "ENGLISH.TXT id 0x15 is the title caption");
     CHECK(strcmp((const char *)game_string_get(0x14u), "THE NEW URTH?") == 0,
@@ -106,12 +107,19 @@ static void check_localised_string(void)
     /* Index 1 is FRENCH.TXT (8,564 bytes, the largest shipped file). Every call
      * replaces the table: an idempotence guard would leave the English strings
      * here and fail these checks. */
-    memset(mem + SM_STRING_DATA, 0xCC, SM_STRING_CAP);
+    memset(mem + LANG_STRING_DATA, 0xCC, LANG_STRING_CAP);
+    DSD(LANG_STRING_HANDLE + 8) = 0x11111111u;
+    DSD(LANG_STRING_HANDLE + 0xCu) = 0x22222222u;
+    DSB(LANG_STRING_HANDLE + 0x15u) = 0xA5u;
+    DSD(DS_001082DC) = 0xDEADBEEFu;
     DSD(DS_001082D8) = 0xDEADBEEFu;
     game_string_table_load("data/game/C", 1u);
     CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);                /* FRENCH.TXT's size */
-    CHECK_EQ_INT((int)DSD(SM_STRING_HANDLE + 0xCu), 8564);
-    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 8564u), 0xCC);
+    CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 8), (int)LANG_STRING_DATA);
+    CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 0xCu), 8564);
+    CHECK_EQ_INT((int)DSB(LANG_STRING_HANDLE + 0x15u), 0);
+    CHECK_EQ_INT((int)DSD(DS_001082DC), (int)LANG_STRING_HANDLE);
+    CHECK_EQ_INT((int)DSB(LANG_STRING_DATA + 8564u), 0xCC);
     CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
           "FRENCH.TXT id 0x15 decodes from the reloaded table");
     CHECK(strcmp((const char *)game_string_get(0x14u), "SUR LA NOUVELLE URTH?") == 0,
@@ -132,37 +140,72 @@ static void check_localised_string(void)
     CHECK(strcmp((const char *)game_string_get(0x15u), "THE FUTURE...") == 0,
           "a missing language file leaves the previous table");
 
-    /* Final review Important 1: a bad-magic file must not overwrite the last
-     * good table. The loader reads into STRING_STAGE and copies only after the
-     * 0x33340001/length check, so the previous length and the byte past it
-     * survive. FRENCH is reloaded first, so the sentinel at +8,564 is the 0xCC
-     * the block was seeded with. */
+    /* A bad-magic file must not overwrite the last good table. The loader reads
+     * into STRING_STAGE and copies only after the 0x33340001/length check, so
+     * the handle fields, the size globals and the byte past the file keep the
+     * seeded values (none of which is a post-condition), and the French table
+     * is still there once its own handle fields are restored. */
     game_string_table_load("data/game/C", 1u);
     CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);
-    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 8564u), 0xCC);
-    CHECK(mkdir("/tmp/pr_lang_bad_test", 0777) == 0 || errno == EEXIST,
-          "the bad-magic fixture directory exists");
+    CHECK_EQ_INT((int)DSB(LANG_STRING_DATA + 8564u), 0xCC);
     {
-        FILE *f = fopen("/tmp/pr_lang_bad_test/FRENCH.TXT", "wb");
-        unsigned char bad[8600] = {0};                  /* past FRENCH's 8,564 */
-        bad[0] = 0; bad[1] = 0; bad[2] = 0; bad[3] = 0; /* a wrong magic */
-        CHECK(f != NULL, "the bad-magic fixture is writable");
-        if (f != NULL) {
-            CHECK_EQ_INT((int)fwrite(bad, 1, sizeof bad, f), (int)sizeof bad);
-            fclose(f);
+        char tmpl[] = "/tmp/pr_lang_XXXXXX";
+        char *dir = mkdtemp(tmpl);
+        CHECK(dir != NULL, "the bad-magic fixture directory is created");
+        if (dir != NULL) {
+            char path[256];
+            snprintf(path, sizeof path, "%s/FRENCH.TXT", dir);
+            FILE *f = fopen(path, "wb");
+            unsigned char bad[8600] = {0};                  /* past FRENCH's 8,564 */
+            bad[0] = 0; bad[1] = 0; bad[2] = 0; bad[3] = 0; /* a wrong magic */
+            CHECK(f != NULL, "the bad-magic fixture is writable");
+            if (f != NULL) {
+                CHECK_EQ_INT((int)fwrite(bad, 1, sizeof bad, f), (int)sizeof bad);
+                fclose(f);
+            }
+            DSD(LANG_STRING_HANDLE + 8) = 0x11111111u;
+            DSD(LANG_STRING_HANDLE + 0xCu) = 0x22222222u;
+            DSB(LANG_STRING_HANDLE + 0x15u) = 0xA5u;
+            DSD(DS_001082DC) = 0xDEADBEEFu;
+            DSD(DS_001082D8) = 0xDEADBEEFu;
+            game_string_table_load(dir, 1u);                /* the magic is 0 */
+            CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 8), 0x11111111);
+            CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 0xCu), 0x22222222);
+            CHECK_EQ_INT((int)DSB(LANG_STRING_HANDLE + 0x15u), 0xA5);
+            CHECK_EQ_INT((int)DSD(DS_001082DC), (int)0xDEADBEEFu);
+            CHECK_EQ_INT((int)DSD(DS_001082D8), (int)0xDEADBEEFu);
+            CHECK_EQ_INT((int)DSB(LANG_STRING_DATA + 8564u), 0xCC);
+            /* Restore the French handle only; the table bytes themselves are
+             * what the bad load must have left alone. */
+            DSD(LANG_STRING_HANDLE + 8) = LANG_STRING_DATA;
+            DSD(LANG_STRING_HANDLE + 0xCu) = 8564;
+            DSB(LANG_STRING_HANDLE + 0x15u) = 0;
+            DSD(DS_001082DC) = LANG_STRING_HANDLE;
+            DSD(DS_001082D8) = 8564;
+            CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
+                  "a bad-magic file leaves the previous table");
+            remove(path);
+            rmdir(dir);
         }
     }
-    game_string_table_load("/tmp/pr_lang_bad_test", 1u);   /* the magic is 0 */
-    CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);             /* the length survives */
-    CHECK_EQ_INT((int)DSD(SM_STRING_HANDLE + 0xCu), 8564);
-    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 8564u), 0xCC);  /* the sentinel survives */
-    CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
-          "a bad-magic file leaves the previous table");
-    remove("/tmp/pr_lang_bad_test/FRENCH.TXT");
 
     /* The defensive language bound: 8 is past the eight-dword table (0xC9418). */
+    DSD(LANG_STRING_HANDLE + 8) = 0x11111111u;
+    DSD(LANG_STRING_HANDLE + 0xCu) = 0x22222222u;
+    DSB(LANG_STRING_HANDLE + 0x15u) = 0xA5u;
+    DSD(DS_001082DC) = 0xDEADBEEFu;
+    DSD(DS_001082D8) = 0xDEADBEEFu;
     game_string_table_load("data/game/C", 8u);
-    CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);
+    CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 8), 0x11111111);
+    CHECK_EQ_INT((int)DSD(LANG_STRING_HANDLE + 0xCu), 0x22222222);
+    CHECK_EQ_INT((int)DSB(LANG_STRING_HANDLE + 0x15u), 0xA5);
+    CHECK_EQ_INT((int)DSD(DS_001082DC), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), (int)0xDEADBEEFu);
+    DSD(LANG_STRING_HANDLE + 8) = LANG_STRING_DATA;
+    DSD(LANG_STRING_HANDLE + 0xCu) = 8564;
+    DSB(LANG_STRING_HANDLE + 0x15u) = 0;
+    DSD(DS_001082DC) = LANG_STRING_HANDLE;
+    DSD(DS_001082D8) = 8564;
     CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
           "language 8 is ignored, not read out of the table");
 }

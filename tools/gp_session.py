@@ -284,6 +284,21 @@ def raw_to_kb(raw):
     return ((raw >> 24) & 0xFF) << 8 | (raw >> 8) & 0xFF
 
 
+def _bit_lines(changes, start, initial=0):
+    """The script's `bits` lines from (frame, bitmap) changes: `initial` is the
+    bitmap already held at `start` (a pad armed before it), then one line per
+    change at or after it. Shared by the injector-derived and the trusted-S
+    derivations, so the emit/dedupe rule exists once."""
+    bits = [(start, initial)] if initial else []
+    prev = initial
+    for f, kb in changes:
+        if f < start or kb == prev:
+            continue
+        bits.append((f, kb))
+        prev = kb
+    return bits
+
+
 def format_s(ms, vals, kb, head, tail, fields=SNAP_FIELDS):
     body = ' '.join('%s=%0*X' % (n, 2 * sz, vals[n]) for n, _, sz in fields)
     return 'S ms=%d %s kb=%04X head=%04X tail=%04X' % (ms, body, kb, head, tail)
@@ -1874,22 +1889,18 @@ def port_script(name, lines, end=None, end_to_last_s=False, trust_bitmap=False):
         if not keys or keys[0][0] != p27['f']:
             raise ScriptError('the first key (f=%s) is not the frame mode 0x27 appears (f=%X)'
                               % (keys[0][0] if keys else None, p27['f']))
-    bits, prev_kb = [], 0
     if trust_bitmap:
         # The capture's own S-record bitmap: the pre-2026-11-02 derivation.
         # `make audio-one` replays the game's recorded input; a trace whose
         # injector log cannot explain a bit (gp-u6-moves's 0xA52 0x0200, the
         # known unscripted contamination) is still a valid audio trace.
-        for f in sorted(snap):
-            if f < p27['f']:
-                continue
-            kb = raw_to_kb(snap[f]['raw'])
-            if kb != prev_kb:
-                if f - 1 not in snap:
-                    raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)'
-                                      % (f, f - 1))
-                bits.append((f, kb))
-                prev_kb = kb
+        frames = [(f, raw_to_kb(snap[f]['raw'])) for f in sorted(snap)
+                  if f >= p27['f']]
+        bits = _bit_lines(frames, p27['f'])
+        for f, _kb in bits:
+            if f - 1 not in snap:
+                raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)'
+                                  % (f, f - 1))
     else:
         # The bitmap is the injector's own write, not a game state: a press or
         # release in the spin of f changes the key-state table iteration f + 1
@@ -1939,19 +1950,11 @@ def port_script(name, lines, end=None, end_to_last_s=False, trust_bitmap=False):
                                   % (f, got, want))
         # A pad already held at the Enter/arm frame keeps its bit in the first
         # scripted iteration (the S record of that frame may itself be missing).
+        initial = 0
         for f, kb in events:
             if f <= p27['f']:
-                prev_kb = kb
-        if prev_kb != 0:
-            bits.append((p27['f'], prev_kb))
-        for f, kb in events:
-            if f < p27['f']:
-                continue
-            if f == p27['f'] or kb == prev_kb:
-                prev_kb = kb
-                continue
-            bits.append((f, kb))
-            prev_kb = kb
+                initial = kb
+        bits = _bit_lines(events, p27['f'], initial)
     pokes = []
     for k, w in enumerate(r for r in recs if r['kind'] == 'W'):
         if w['race']:

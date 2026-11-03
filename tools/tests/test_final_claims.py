@@ -317,6 +317,14 @@ def check_register(text):
         if token not in text:
             problems.append('register: measured token %r is absent' % token)
 
+    # A stale pin digest is a measured-value regression: the register once said
+    # c6d56fa3... in R27 while section 3 and --check-pins read e66d8e24...
+    # (Completion truth review fix). The historical digest belongs in PROGRESS
+    # and the records, not in the current-state register.
+    if 'c6d56fa3' in text:
+        problems.append('register: stale pin digest c6d56fa3... is present '
+                        '(the current --check-pins digest is e66d8e24...)')
+
     if re.search(r'\|\s*open\s*\|', text):
         problems.append('register: an "open" status row exists')
     return problems
@@ -418,6 +426,15 @@ class TestFinalClaims(unittest.TestCase):
         problems = check_register(bad)
         self.assertTrue(any('declared row' in p and 'R99' in p for p in problems),
                         problems)
+
+    def test_a_stale_pin_digest_fails(self):
+        # The register must carry the current --check-pins digest; a stale one
+        # in any row fails (the review found R27 still on c6d56fa3...).
+        register = self._read(REGISTER_REL)
+        bad = register.replace('e66d8e24', 'c6d56fa3')
+        self.assertNotEqual(bad, register)
+        problems = check_register(bad)
+        self.assertTrue(any('stale pin digest' in p for p in problems), problems)
 
     def test_a_missing_counter_fails(self):
         register = self._read(REGISTER_REL)

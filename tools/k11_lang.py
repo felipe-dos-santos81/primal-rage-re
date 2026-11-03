@@ -39,20 +39,20 @@ LANG_MASK = 0x7000000
 
 def parse(lines):
     """(keys, frames, mode27, pokes): keys [(ms, word)], frames [(ms, image)],
-    mode27 [ms the mode was 0x27 at], pokes count."""
+    mode27 [ms the mode was 0x27 at], pokes count. Reuses k11_session.parse
+    (the capture format's one parser) instead of a private field decode."""
     keys, frames, modes, pokes = [], [], [], 0
     for line in lines:
-        parts = line.split()
-        if not parts:
+        rec = ks.parse(line)
+        if not rec:
             continue
-        rec = dict(p.split('=', 1) for p in parts[1:] if '=' in p)
-        if parts[0] == 'K':
-            keys.append((int(rec['ms']), int(rec['key'], 16)))
-        elif parts[0] == 'F':
-            frames.append((int(rec['ms']), bytes.fromhex(rec['img'])))
-        elif parts[0] == 'P' and int(rec.get('mode', '0'), 16) == 0x27:
-            modes.append(int(rec['ms']))
-        elif parts[0] == 'W':
+        if rec['kind'] == 'K':
+            keys.append((rec['ms'], rec['key']))
+        elif rec['kind'] == 'F':
+            frames.append((rec['ms'], rec['img']))
+        elif rec['kind'] == 'P' and rec.get('mode', 0) == 0x27:
+            modes.append(rec['ms'])
+        elif rec['kind'] == 'W':
             pokes += 1
     return keys, frames, modes, pokes
 

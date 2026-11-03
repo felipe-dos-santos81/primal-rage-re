@@ -62,7 +62,7 @@ The register has 7 declared rows after Volleyball truth. Measured position
 
 ## 4. Acceptance
 
-1. `python3 tools/port_tests/test_final_claims.py` passes with **zero declared
+1. `python3 tools/tests/test_final_claims.py` passes with **zero declared
    rows** except R39 (the `0xEB` route, which the search found no shipped input
    for; the row states the measured no-route reason).
 2. `gp-u14-twop-win` is a clean capture in `CAPTURE_DIRS` with its oracle/pins;

@@ -617,7 +617,7 @@ k11-oracle: build ## K11 oracles: the walk, the menuesc restart and the k11-lang
 	@echo "== K11 language-reload oracle (pixel-exact, k11-lang: CONFIG OPTIONS' language 0 -> 1) =="
 	@$(PYTHON) -m unittest tools.tests.test_k11_lang
 	@if [ -d $(K11_CAPTURES)/k11-lang ]; then \
-		$(PYTHON) tools/k11_lang.py check --capture $(K11_CAPTURES)/k11-lang && \
+		$(PYTHON) tools/k11_lang.py check --capture $(K11_CAPTURES)/k11-lang --exe $(GAME_DIR)/PRAGE.EXE && \
 		rm -rf $(K11_DUMP)/k11-lang; mkdir -p $(K11_DUMP); \
 		$(PYTHON) tools/k11_session.py port-script --scenario k11-lang --capture $(K11_CAPTURES)/k11-lang --out $(K11_DUMP)/k11-lang.script && \
 		PR_K11_DUMP=$(K11_DUMP)/k11-lang PR_K11_SCRIPT=$(K11_DUMP)/k11-lang.script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
@@ -2756,14 +2756,14 @@ AUDIO_TRACES = gp-idle-loss gp-idle-loss-run2 gp-keys-fight gp-pads gp-twop \
 	gp-u9-win
 
 # One trace: the cut port script, the PR_AUDIO_DUMP replay, the comparison.
-# The script is generated with `--trust-bitmap`: the audio oracle replays the
-# capture's *recorded* key-state bitmap (the pre-2026-11-02 derivation; the two
-# derivations agree on every clean capture, 0/5,820 S mismatches, completion
-# truth Task 1). It is the only caller allowed to: the default model stays
-# injector-derived and fail-closed, so gp-u6-moves's known unscripted 0xA52
-# 0x0200 bit (the contaminated capture, not in CAPTURE_DIRS; its published
-# re-capture gp-u6-moves-b is) cannot reach a capture-validation path but its
-# `.dro` audio trace still replays.
+# The script uses the default injector-derived, fail-closed model (it
+# cross-checks every accepted S). Only gp-u6-moves, the one contaminated audio
+# trace, is replayed with `--trust-bitmap` (the capture's recorded key-state
+# bitmap): its known unscripted 0xA52 0x0200 bit cannot reach a
+# capture-validation path (gp-u6-moves is not in CAPTURE_DIRS; its published
+# re-capture gp-u6-moves-b is a clean default-model trace), but its `.dro` audio
+# trace still replays. The two derivations agree on every clean capture (0/5,820
+# S mismatches, completion truth Task 1).
 # No build dependency: `audio-oracle` builds once and the parallel workers only
 # read the binary (a parallel `make build` would race on the build directory).
 audio-one: ## Replay and compare one gameplay trace (scenario=gp-…; used by audio-oracle)
@@ -2779,7 +2779,8 @@ audio-one: ## Replay and compare one gameplay trace (scenario=gp-…; used by au
 	end=$$($(PYTHON) tools/audio_compare.py capture-end --capture $$cap --max $(AUDIO_END)); \
 	if [ "$$end" = "0" ]; then \
 		echo "audio-oracle: $(scenario) FAIL: no X record in $$cap/poll.log"; exit 1; fi; \
-	if ! $(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $$cap --out $$dir/script --end $$end --trust-bitmap > $$dir/script.log 2>&1; then \
+	trust=""; [ "$(scenario)" = "gp-u6-moves" ] && trust=--trust-bitmap; \
+	if ! $(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $$cap --out $$dir/script --end $$end $$trust > $$dir/script.log 2>&1; then \
 		if [ "$(scenario)" = "gp-u17-device2" ] && grep -q "wall-paced steps" $$dir/script.log; then \
 			printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no frame-keyed port script (wall-paced; record §H6.9)"}\n' $(scenario) > $$dir/report.json; \
 			echo "audio-oracle: SKIP $(scenario) (the declared wall-paced scenario; record §H6.9)"; exit 0; \

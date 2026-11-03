@@ -61,9 +61,9 @@
  * 0x47370; the port's fixed block must hold the largest shipped language file,
  * FRENCH.TXT (8,564 bytes; ITALIAN.TXT is 8,362 and ENGLISH.TXT 6,953). The
  * original keeps the handle in DAT_001082DC and the size in DAT_001082D8. */
-#define STRING_HANDLE 0x3800000u
-#define STRING_DATA   0x3800020u
-#define STRING_CAP    0x2200u
+#define STRING_HANDLE LANG_STRING_HANDLE
+#define STRING_DATA   LANG_STRING_DATA
+#define STRING_CAP    LANG_STRING_CAP
 /* The loader's staging block, immediately above the table scratch: the file is
  * read here and copied to STRING_DATA only after the magic/length check, so a
  * bad file leaves the last good table intact (Completion truth final review
