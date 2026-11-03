@@ -82,6 +82,9 @@ K11_OPEN_END = {
     'menuesc': (388, 'record named-gaps-b §B.12: after the MAIN MENU Esc restart the original runs on '
                      'until the capture\'s time limit (raw 4175); the port script ends 180 ticks '
                      '(k11_session END_TAIL_TICKS, a harness value) after the Esc'),
+    'k11-lang': (408, 'completion truth Task 2 (R28): after the second Esc the original runs on '
+                      'until the capture\'s 60 s time limit (raw 4087..); the port script ends 180 '
+                      'ticks (k11_session END_TAIL_TICKS, a harness value) after the Esc'),
 }
 # <<< PIN-BASELINE-END k11-open-end
 REPORT_MAX = 5

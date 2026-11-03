@@ -57,14 +57,29 @@
  * sit above the resource heap AND game_state_init's later movie loads (TWI5.SMK
  * is 1.2 MB, allocated by res_load_file after this loader, pushing the heap to
  * ~0x2BC0000), so it lives near the top of mem[]: 0x20 bytes for the 0x1E75C
- * handle and 0x2000 for the file (ENGLISH.TXT is 6953 bytes shipped). The
+ * handle and 0x2200 for the file. The original allocates the file's own size at
+ * 0x47370; the port's fixed block must hold the largest shipped language file,
+ * FRENCH.TXT (8,564 bytes; ITALIAN.TXT is 8,362 and ENGLISH.TXT 6,953). The
  * original keeps the handle in DAT_001082DC and the size in DAT_001082D8. */
 #define STRING_HANDLE 0x3800000u
 #define STRING_DATA   0x3800020u
-#define STRING_CAP    0x2000u
+#define STRING_CAP    0x2200u
+/* The loader's staging block, immediately above the table scratch: the file is
+ * read here and copied to STRING_DATA only after the magic/length check, so a
+ * bad file leaves the last good table intact (Completion truth final review
+ * Important 1). */
+#define STRING_STAGE  (STRING_DATA + STRING_CAP)
+
+/* The raw's language file-name table at 0xC9418: eight dwords pointing into the
+ * data object at 0x80C08, the file names 0x47370 opens by its AL index. Index 7
+ * repeats index 0 (the raw's own table). Six of the seven files ship
+ * (BRAZIL.TXT, index 6, is absent). */
+static const char *const k_language_files[8] = {
+    "english.txt", "french.txt", "german.txt", "italian.txt",
+    "spanish.txt", "portugal.txt", "brazil.txt", "english.txt",
+};
 
 static const char *s_game_dir;
-static int s_string_table_loaded;
 
 /* PORT: Task 10's dump hook bookkeeping. s_title_dump_n < 0 until 0x121A0's
  * entry frame arms it; each presented title frame then writes one
@@ -307,34 +322,63 @@ u32 string_decode(u32 id, u8 *out, u32 outlen)
     return ret;
 }
 
-/* 0x47370 — the string table. PORT: the original loads the loaded-config language file (index 0 =
- * english.txt, selected by the DS_00104528 byte 0x20C10 extracts) through the
- * 0x1C308/0x1E6D8 paged-memory manager and the 0x61xxx DOS file I/O, neither of
- * which the port has. The port replaces both with a direct stdio read into
- * STRING_DATA and a small handle at STRING_HANDLE, which is what 0x1E75C/
- * 0x1E808/0x474E4 operate on. Idempotent; a missing file leaves the table
- * empty (0x1C500 then returns ""). */
-void game_string_table_load(const char *dir)
+/* 0x47370 — the string table. EAX = the language index 0..7 into the table at
+ * 0xC9418 (0 = english.txt). The original frees the old handle (0x1E6D8), opens
+ * the file through 0x61C60, reads and checks its 0x33340001 magic (0x61CF6), and
+ * allocates the whole file from the 0x1C308 paged-memory manager, which is what
+ * 0x1E75C/0x1E808/0x474E4 operate on. PORT: the port reads the bytes through the
+ * host (host_read_file) into STRING_STAGE and only copies them to STRING_DATA
+ * after the magic and length pass, then builds a small handle at STRING_HANDLE
+ * in mem[], which 0x1E75C/0x1E808/0x474E4 operate on unchanged.
+ * The name is tried in the shipped upper-case spelling first, then in the raw
+ * table's lower-case one (the data directory is case-sensitive on this host).
+ * Every call replaces the table (the raw frees and reloads unconditionally, and
+ * both boot calls and 0x336AE's reload rely on that).
+ *
+ * PORT: a load that fails (missing file, short read, or a wrong magic) leaves the
+ * previous table in place — the staging block is why a bad file cannot corrupt
+ * the good one. The raw instead exits through 0x1D290 on a missing or
+ * short file (and closes silently, with the handle already freed, on a bad
+ * magic); BRAZIL.TXT (index 6) is not shipped, so the menu cannot reach it but a
+ * hand-edited config can. Declared difference (record §K11.3's language-reload
+ * named gap, R28). The `language >= 8` guard is defensive: both call sites mask
+ * the config nibble (0x20C77/0x20C7A, 0x336A2/0x336AB), but the table has
+ * exactly eight dwords (0xC9418, index 7 = index 0).
+ */
+void game_string_table_load(const char *dir, u32 language)
 {
     PR_HIT(0x47370u);
-    if (s_string_table_loaded) return;
-    s_string_table_loaded = 1;
-    if (dir == NULL) return;
+    if (dir == NULL || language >= 8u) return;
+    /* Both call sites bound the index: 0x20C77/0x20C7A masks the boot value with
+     * 0x7000000 and shifts 0x18; 0x336A2/0x336AB does the same for the reload. */
+    const char *name = k_language_files[language];
+    char upper[16];
     char path[512];
-    snprintf(path, sizeof path, "%s/ENGLISH.TXT", dir);
-    FILE *f = fopen(path, "rb");
-    if (f == NULL) {
-        snprintf(path, sizeof path, "%s/english.txt", dir);
-        f = fopen(path, "rb");
+    u32 i = 0;
+    for (; name[i] != '\0' && i + 1u < sizeof upper; i++)
+        upper[i] = (name[i] >= 'a' && name[i] <= 'z') ? (char)(name[i] - 'a' + 'A') : name[i];
+    upper[i] = '\0';
+    u32 n = 0;
+    snprintf(path, sizeof path, "%s/%s", dir, upper);
+    if (!host_read_file(path, mem + STRING_STAGE, STRING_CAP, &n)) {
+        snprintf(path, sizeof path, "%s/%s", dir, name);
+        if (!host_read_file(path, mem + STRING_STAGE, STRING_CAP, &n)) return;
     }
-    if (f == NULL) return;
-    size_t n = fread(mem + STRING_DATA, 1, STRING_CAP, f);
-    fclose(f);
+    if (n < 4u || DSD(STRING_STAGE) != 0x33340001u) return;   /* the raw's magic check (0x61CF6) */
+    memcpy(mem + STRING_DATA, mem + STRING_STAGE, n);
     DSD(STRING_HANDLE + 8) = STRING_DATA;       /* base */
-    DSD(STRING_HANDLE + 0xc) = (u32)n;          /* len */
+    DSD(STRING_HANDLE + 0xc) = n;               /* len */
     DSB(STRING_HANDLE + 0x15) = 0;              /* flags */
     DSD(DS_001082DC) = STRING_HANDLE;           /* 0x4738E */
-    DSD(DS_001082D8) = (u32)n;                  /* 0x473A3 */
+    DSD(DS_001082D8) = n;                       /* 0x473A3 */
+}
+
+/* PORT: 0x336AE's reload (the language change at 0x3369C..0x336AE calls
+ * 0x47370((now & 0x7000000) >> 24)). The dir stays in this module, so the menu
+ * layer calls this instead of resolving the host path itself. */
+void game_string_table_reload(u32 language)
+{
+    game_string_table_load(s_game_dir, language);
 }
 
 /* PORT: 0x1C500. EAX = string id, EDX = DS_00102760, EBX = 0x100; it calls
@@ -7064,9 +7108,8 @@ void game_init(void)
     /* 0x1C0B6 xor eax,eax; 0x1C0B8 0x47370(0): the string table, before
      * 0x1C0BD 0x20C10, so the loader screen of the master init's entry-7
      * resolve (0x2F9FC) draws `- LOADING -` (record 2026-10-13-reverse-i
-     * §I.4). The tail loads it again (0x20C7F); the port's loader returns at
-     * once the second time. */
-    game_string_table_load(s_game_dir);
+     * §I.4). The tail reloads it with the config's language (0x20C7F). */
+    game_string_table_load(s_game_dir, 0u);
     /* 0x20C15, before the setjmp (0x20C1F), so a 0x65431 longjmp does not
      * re-run it (record named-gaps-b §B.2). Its 0x2D6F8 (config_validate)
      * leaves the field 0x29 the tail reads as the defaults path wrote it. */
@@ -7095,9 +7138,14 @@ void game_init_resume(void)
      * derived from v. */
     u32 v = config_field_get(0x29u);                   /* 0x20C68 */
     DSD(DS_00104528) = v;                              /* 0x20C6D */
-    /* 0x20C84 0x1E824. The raw runs 0x47370 (the string table, loaded below
-     * in the port) first; 0x1E824 reads neither it nor the globals derived
-     * next. */
+    /* 0x20C72 and eax,0x7000000; 0x20C77 shr eax,0x18; 0x20C7A and eax,0xff;
+     * 0x20C7F 0x47370(EAX): the localisation table reloads from the loaded
+     * config's language nibble (0x20C10 selected it above at index 0). The port
+     * reads the file through the host rather than the DOS memory/file managers.
+     * 0x121A0's caption comes from this table. */
+    game_string_table_load(s_game_dir, (v & 0x7000000u) >> 24);
+    /* 0x20C84 0x1E824. The raw runs 0x47370 (the string table) first; 0x1E824
+     * reads neither it nor the globals derived next. */
     hiscore_init();                                    /* 0x20C84 */
     DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);        /* 0x20C9F */
     DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;        /* 0x20CB0 */
@@ -7124,11 +7172,6 @@ void game_init_resume(void)
     config_set_credit_row_init();
     (void)config_run_clock(0u);                        /* 0x20CD1/0x20CD5 0x32970 */
     DSW(DS_00104AFC) = 0u;  /* 0x20CD3 xor ebx,ebx; 0x20CDF (0x32970, 0x13ADC keep EBX) */
-    /* 0x20C7F 0x47370 reloads the localisation table (0x1C0B8 loaded it
-     * first, game_init above); the port reads ENGLISH.TXT directly rather
-     * than the DOS memory/file managers, once. 0x121A0's caption comes from
-     * it. */
-    game_string_table_load(s_game_dir);
 
     game_state_init();      /* 0x20C10's FUN_00010E80 */
     game_isr_word_reset();  /* 0x20CEB 0x5D808 */

@@ -175,6 +175,16 @@ class TestFrames(Dirs):
         self.assertEqual(rc, 1, out)
         self.assertTrue(any('window start 4 >= ratchet N 3' in l for l in out), out)
 
+    def test_an_allowance_before_the_window_start_fails(self):
+        # Music truth Task 6 housekeeping (Completion truth final review
+        # Important 5): a named allowance before the window start is never
+        # examined by the loop, so it silently does nothing; fail it by name.
+        self.write([1, 2], [rgb(5), rgb(6), rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(4, bands=[(1, 10, 200)])
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('band allowance capture 1 is before the window start 2' in l
+                            for l in out), out)
+
     def test_an_earlier_window_start_is_said(self):
         self.write([1, 2], [rgb(1), rgb(2)])
         with mock.patch.dict(os.environ, {'PR_PINS_EXACT': '0'}):

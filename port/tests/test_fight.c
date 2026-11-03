@@ -6143,7 +6143,7 @@ static void check_mode_17_hooks(void)
      * 0x2F4BC with 0x4000 draws others), 0x4246C, then mode
      * 0x17 with the countdowns 0xB4 and the hook 0x10E80. */
     MT_RESTORE();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     const u8 *s52 = game_string_get(0x52u);
     CHECK(s52[0] != 0u, "string 0x52 is not empty");
     mt_seed_record();
@@ -6549,7 +6549,7 @@ static void check_mode_switch(void)
     /* (c) Case 0x14 calls 0x25AE8: DS_00104B1D == 0 gives the hook 0x10E80,
      * mode 0x17 and the countdowns 0xB4, and DS_00104B14 = 0. */
     MS_RESTORE();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     mem_fill(DS_00105F38 + 0xDu * 0xACu, 0, 3u * 0xACu);
     DSB(DS_00104B14) = 0x77u;
     DSB(DS_00104B1D) = 0u;
@@ -7450,7 +7450,7 @@ static void check_char_select_pass(void)
     if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
         res_len == 0u || res_len > sizeof s_res)
         return;
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     tf_snap(s_data, 0x80000u, sizeof s_data);
     tf_snap(s_rec, rec_pool, sizeof s_rec);
     tf_snap(s_pset, pset_pool, sizeof s_pset);
@@ -8125,7 +8125,7 @@ static void check_join_poll(void)
     if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
         res_len == 0u || res_len > sizeof s_res)
         return;
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     tf_snap(s_data, 0x80000u, sizeof s_data);
     tf_snap(s_rec, rec_pool, sizeof s_rec);
     tf_snap(s_pset, pset_pool, sizeof s_pset);
@@ -8423,7 +8423,7 @@ static void check_char_team_pass(void)
     if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
         res_len == 0u || res_len > sizeof s_res)
         return;
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     tf_snap(s_data, 0x80000u, sizeof s_data);
     tf_snap(s_rec, rec_pool, sizeof s_rec);
     tf_snap(s_pset, pset_pool, sizeof s_pset);
@@ -22261,7 +22261,7 @@ static void check_33c18_callers_b(void)
     if (!mz_save()) { CHECK(0, "the §48-Q snapshot allocates"); return; }
     if (fn_resolve(Q_STUB_ENT) == NULL)
         fn_register(Q_STUB_ENT, (void (*)(void))q_ent_stub);
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on. */
     CHECK_EQ_INT((int)DSW(0x000A76D0u), 0x980);
@@ -22618,7 +22618,7 @@ static void check_2c2b0(void)
     u32 k[8], b0, b1, i;
     size_t w48;
     if (!mz_save()) { CHECK(0, "the §48-T snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     w48 = strlen((const char *)game_string_get(0x48u));
 
     /* The image values the checks rely on: the col bytes 0xBAB58 (side 0 at
@@ -22842,7 +22842,7 @@ static void check_mode5_a(void)
 {
     u32 i, r, r2;
     if (!mz_save()) { CHECK(0, "the §48-U snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on. */
     CHECK_EQ_INT((int)DSD(0x000A8884u), 0x1A1);
@@ -23129,7 +23129,7 @@ static void check_mode5_b(void)
     if (!mz_save()) { CHECK(0, "the §48-U snapshot allocates"); return; }
     if (fn_resolve(M5_STUB_ENT) == NULL)
         fn_register(M5_STUB_ENT, (void (*)(void))m5_ent_stub);
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on. */
     CHECK_EQ_INT((int)DSD(0x000A767Cu), 0xA7638);
@@ -23458,7 +23458,7 @@ static void check_mode_0c(void)
 {
     u32 i, s, rec, ps;
     if (!mz_save()) { CHECK(0, "the §48-C snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on: 0xE9050's first word is a plain
      * sprite word (no bit 15), so 0x2BC30 leaves +0x08 on it; 0xE904C's
@@ -23815,7 +23815,7 @@ static void check_mode_0e(void)
 {
     u32 i, s;
     if (!mz_save()) { CHECK(0, "the §48-E snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on: the start masks 0x9ACBC[side],
      * the button masks 0xC9898[n] (0x4F778) and string 0x41's length (the
@@ -24211,7 +24211,7 @@ static void check_mode_15(void)
     const u32 M0 = 0x0F000000u, M1 = 0x00000F00u;
     u32 k;
     if (!mz_save()) { CHECK(0, "the §48-X snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     CHECK_EQ_INT((int)DSD(DS_000C9898), (int)M0);
     CHECK_EQ_INT((int)DSD(DS_000C9898 + 4u), (int)M1);
 
@@ -24353,7 +24353,7 @@ static void check_mode_16(void)
 {
     const u32 M0 = 0x0F000000u, M1 = 0x00000F00u;
     if (!mz_save()) { CHECK(0, "the §49-G snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     CHECK_EQ_INT((int)DSD(DS_000C9898), (int)M0);
     CHECK_EQ_INT((int)DSD(DS_000C9898 + 4u), (int)M1);
 
@@ -24579,7 +24579,7 @@ static void check_volleyball(void)
     u32 bd, a, i, spit;
     if (!mz_save()) { CHECK(0, "the §43-A snapshot allocates"); return; }
     bd = DSW(DS_000BD898);
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
 #define MZ_BALL(c1c) do {                                               \
         mz_seed(4, (u8)(c1c));                                          \
@@ -28486,7 +28486,7 @@ static void check_fight_frame_a(void)
 {
     u32 i, r;
     if (!mz_save()) { CHECK(0, "the §48-K snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values: the four bonus descriptors (their +8 flags 0x2000 or
      * 0x2800, bit 13 set: a3 goes to +0x49), 0xE9196/0xE91C6 open with the
@@ -28694,7 +28694,7 @@ static void check_fight_frame_b(void)
 {
     u32 i, s, r;
     if (!mz_save()) { CHECK(0, "the §48-K snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     CHECK_EQ_INT((int)DSD(KF_BB6C8), 0xE909C);
     CHECK_EQ_INT((int)DSW(0x000E909Cu), 0x03AB);
     CHECK_EQ_INT((int)DSW(KF_BB6C8 + 8u), 0x2000);
@@ -29003,7 +29003,7 @@ static void check_fight_frame_c(void)
 {
     u32 i, s, r, ra, rb, rec;
     if (!mz_save()) { CHECK(0, "the §48-K snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values: 0xE9050 (0x1DA08's stream) and 0xE906A (0x367DC's
      * second stream) open with plain sprite words; 0xC980C (k) = 0x100 and
@@ -29448,7 +29448,7 @@ static void kwp_seed(u32 s0_5a, u32 s1_5a)
 static void check_mode_b(void)
 {
     if (!mz_save()) { CHECK(0, "the §48-B snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* (a) A non-zero remainder (count mod DS_00104AA8) leaves both sides'
      * +0x5A alone; the count itself always advances and wraps mod 0x10000
@@ -29733,7 +29733,7 @@ static void check_mode_13_a(void)
 {
     u32 i;
     if (!mz_save()) { CHECK(0, "the §48-D snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on: the characters' x words (read
      * as `[c*2 + T]` then `sar 0x10`, so the word at T + 2 + c*2), the a3
@@ -30101,7 +30101,7 @@ static void check_mode_13_b(void)
 {
     u32 i;
     if (!mz_save()) { CHECK(0, "the §48-D snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     CHECK_EQ_INT((int)DSW(0x000C97FAu + 4u), 0xD06);
     CHECK_EQ_INT((int)DSW(0x000C9800u + 4u), 0xA40);
     CHECK_EQ_INT((int)DSB(DS_000BAB58), 3);
@@ -30359,7 +30359,7 @@ static void check_mode_13_c(void)
 {
     u32 i;
     if (!mz_save()) { CHECK(0, "the §48-D snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* (j) Case 0: 0x2BAF4 (DS_00104AE8 0), 0x38B18(0xC87BC) into the row
      * table (id 0x3F11 at x 0), 0x428B8 (the count 9, both dropping
@@ -30690,7 +30690,7 @@ static void check_fight_effects_hold_all(void)
 static void check_mode_09_a(void)
 {
     if (!mz_save()) { CHECK(0, "the §48-Y snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* fight_slot_pass runs (0x3CB68 always ends with DS_00107ED8 = 0x20 and
      * DS_00107EDC = 2) only when neither side's +0x41 byte has bit 1 set. */
@@ -30778,7 +30778,7 @@ static void check_mode_09_a(void)
 static void check_mode_09_b(void)
 {
     if (!mz_save()) { CHECK(0, "the §48-Y snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* the gate is always open here (DS_000F0AFE == 4, DS_001078FC != 0). */
     #define M09_OPEN() do { \
@@ -31072,7 +31072,7 @@ static void m08_seed(void)
 static void check_mode_08_a(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-C snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* fight_slot_pass runs even with both sides' +0x41 bit 1 set — the
      * condition that would gate it off in mode 9 — proving the port carries
@@ -31163,7 +31163,7 @@ static void check_mode_08_a(void)
 static void check_mode_08_b(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-C snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     #define M08_OPEN() do { \
         DSB(DS_000F0AFE) = 4u; DSB(DS_001078FE) = 1u; \
@@ -31239,7 +31239,7 @@ static void m0a_seed(void)
 static void check_mode_0a(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-D snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* the position latches and camera_y_commit's tail store run every call,
      * and DS_00104B00's high word is never touched (the mode store is a
@@ -31669,7 +31669,7 @@ static void check_mode_1e_0a(void)
 static void check_mode_1e_bookkeeping(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     mem_fill(0x105E34u, 0, 153u);
     DSD(DS_00104528) = 0x142095u;
     hiscore_init();
@@ -31778,7 +31778,7 @@ static void check_mode_1e_bookkeeping(void)
 static void check_mode_21(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-O snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* the canary is live: 0x26254's fight_effects_pass moves it. */
     k48_seed();
@@ -31839,7 +31839,7 @@ static void check_mode_21(void)
 static void check_mode_25(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-P snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* --- game_mode_25_step: the shared preamble (DS_001077E8/DS_0010787C
      * plain copies, DS_00104AEC |= 2) and the empty-list fight_4e67c/
@@ -32535,7 +32535,7 @@ static void check_mode_30(void)
 {
     u32 i;
     if (!mz_save()) { CHECK(0, "the §49-K snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* (a) state 1's descriptor pick, all five combinations of
      * DS_00104B14/DS_00104B1E/DS_00104529 bit 1: DS_00104B14 == 0 selects
@@ -32775,7 +32775,7 @@ static void check_mode_31(void)
 {
     u32 slot1, rec1, ps_addr;
     if (!mz_save()) { CHECK(0, "the §49-K snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     slot1 = DS_001077B0 + 0x94u;
 
@@ -32967,7 +32967,7 @@ static void m07_seed(void)
 static void check_mode_07(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-E snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* the preamble runs on every call: the position latches, the
      * unconditional fight_slot_pass (0x3CB68 always ends DS_00107ED8 =
@@ -33125,7 +33125,7 @@ static void m0f_seed(void)
 static void check_mode_0f(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-F snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* the preamble (the position latches) and DS_00104AEC |= 2 run on every
      * call; the countdown decrements but, still positive, the fire logic
@@ -34957,7 +34957,7 @@ static void check_hud_meter_step(void)
 {
     u32 i, s;
     if (!mz_save()) { CHECK(0, "the §49-V snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on. */
     CHECK_EQ_INT((int)DSB(0x000A769Cu), 2);
@@ -35244,7 +35244,7 @@ static void check_pair_callbacks(void)
 {
     u32 i, k, s;
     if (!mz_save()) { CHECK(0, "the §49-V snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 
     /* The image values the checks rely on. */
     CHECK_EQ_INT((int)DSD(0x000BD882u), 0x16001180);
@@ -35752,7 +35752,7 @@ static void net_env(void)
     DSD(DS_001014EC) = M1F_PSET;
     actors_reset();
     DSB(DS_0009AF3D) = 0u;
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     mem_fill(NET_CELL(0), 0, 0x12u * 0x14u);
     mem_fill(NET_BUF, 0, 0x60u);
     DSD(DS_001044C4) = 4u;          /* name row */
@@ -35982,7 +35982,7 @@ static void check_nameentry_finish(void)
     if (!mz_save()) { CHECK(0, "the §49-T snapshot allocates"); return; }
 
     net_env();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     mem_fill(0x105E34u, 0, 153u);
     DSD(DS_00104528) = 0x142095u;
     hiscore_init();
@@ -42326,7 +42326,7 @@ static void vf_char_team_portrait(void) { vf_char_panel(5u); fight_char_team_por
 static void vf_char_confirm(void)
 {
     vf_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     mem_fill(VF_NODE, 0, 0x300u);
     mem_fill(DS_00105F38 + 0x19u * 0xACu, 0, 4u * 0xACu);
     DSB(DS_00108166) = 0u;
@@ -42544,7 +42544,7 @@ static void vf_idle_3c(void)    { vf_idle(0x3Cu); }
 static void vf_4e99c(u8 bd, u32 count)
 {
     vf_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     mem_fill(VF_NODE, 0, 0x300u);
     DSW(VF_THEM + 0x56u) = 0x100u;
     DSW(VF_REC + 0x56u) = 0x101u;
@@ -42934,7 +42934,7 @@ static void check_u0_bonus_count_step(void)
 {
     u32 k;
     if (!mz_save()) { CHECK(0, "the gameplay-u0 snapshot allocates"); return; }
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     CHECK(fn_resolve(0x4F5C8u) == flow_bonus_count_step,
           "0x4F5C8 is the render table's bit 4 entry");
     CHECK_EQ_INT((int)DSD(0x000A86D4u), 0x0004F5C8);

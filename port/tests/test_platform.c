@@ -173,6 +173,16 @@ static const fnm_pair k_miss_gp_twop_ko[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u14-twop-win (completion truth Task 1, R03), measured on the full replay
+ * to its X record (f = 0x1693): the global 0x5D812 actor_spawn/set_dead pair
+ * (3,726 and 3,384 hits) plus the two wipe hooks, 0x29D60 (the bare `ret`) and
+ * 0x5D812 (the runtime stub), one hit each from frontend_mode_1b_step -- the
+ * same four distinct pairs as gp-twop-ko. */
+static const fnm_pair k_miss_gp_u14_twop_win[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* Gameplay U8 (record 2026-10-01-gameplay-u8-derivations.md §U8.16): one set
  * per U8 scenario (an exact name), each pair measured on the full replay of its
  * capture and classified from the raw in the record.
@@ -499,6 +509,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-keys-fight", 0, k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight) },
     { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
     { "gp-twop-ko", 0, k_miss_gp_twop_ko, FNM_N(k_miss_gp_twop_ko) },
+    { "gp-u14-twop-win", 0, k_miss_gp_u14_twop_win, FNM_N(k_miss_gp_u14_twop_win) },
     { "gp-u8-right-arcade", 0, k_miss_gp_u8_right_arcade, FNM_N(k_miss_gp_u8_right_arcade) },
     { "gp-u8-left-training", 0, k_miss_gp_u8_left_training, FNM_N(k_miss_gp_u8_left_training) },
     { "gp-u8-right-training", 0, k_miss_gp_u8_right_training, FNM_N(k_miss_gp_u8_right_training) },
@@ -1162,7 +1173,7 @@ int test_res(void)
      * can see it. The capture's overlay is 166 non-zero pixels at rows
      * 192..197, columns 0..85; the box is asserted, not just the count, so a
      * string-id, font or position regression cannot pass. */
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     CHECK(strcmp((const char *)game_string_get(0x1E9u), "- LOADING -") == 0,
           "string 489 decodes to - LOADING -");
     {

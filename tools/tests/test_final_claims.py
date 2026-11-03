@@ -31,12 +31,17 @@ AGENTS_REL = 'AGENTS.md'
 
 STATUSES = ('closed', 'gated', 'terminal', 'declared')
 
+# The phase allows exactly one declared row (the measured no-route `0xEB`
+# finding); any other declared row is a regression (Completion truth final
+# review Important 4).
+ALLOWED_DECLARED = frozenset({'R39'})
+
 # id -> (expected status, one evidence token that must be in the evidence cell).
 # The tokens are address/file/capture fragments the register's §2 rows carry.
 EXPECTED = {
     'R01': ('closed', ('config.c', 'diff_verify.py')),
     'R02': ('terminal', ('gp-u13-band-dac', '56b900b1')),
-    'R03': ('declared', ('gp-u14-twop-win.failed', '0x13A8')),
+    'R03': ('closed', ('gp-u14-twop-win-oracle', '0x13A8')),
     'R04': ('terminal', ('gp-u14-win-live.failed', '0x73F')),
     'R05': ('closed', ('gp-u30-volleyball', '0x4BD98')),
     'R06': ('closed', ('gp-bowling-2', '0x832')),
@@ -44,12 +49,12 @@ EXPECTED = {
     'R08': ('closed', ('gp-u28-continue', '0x18C2')),
     'R09': ('gated', ('TRACE_CLAIMED_BANKS', '44,489')),
     'R10': ('terminal', ('TRACE_RESIDUE', '1,634')),
-    'R11': ('declared', ('0x0A8C', '0x05E4')),
-    'R12': ('declared', ('0x37640', '0x24559')),
+    'R11': ('terminal', ('0x0A8C', '0x05E4')),
+    'R12': ('terminal', ('0x37640', '0x37678')),
     'R13': ('terminal', ('port/src/platform/audio/opl/opal.c:3', '49716')),
     'R14': ('terminal', ('gp-u17-device2', 'H6.9')),
     'R15': ('terminal', ('0x1531', '0x0EAE')),
-    'R16': ('declared', ('gp-u23-u16-finisher', '0x27')),
+    'R16': ('terminal', ('0x149A', '0x27')),
     'R17': ('terminal', ('1033/1033', '810/845')),
     'R18': ('terminal', ('684', '0x29D60')),
     'R19': ('terminal', ('0x2EA68', 'S.10')),
@@ -60,28 +65,32 @@ EXPECTED = {
     'R24': ('terminal', ('SCAN3_ALLOWED', 'K.10')),
     'R25': ('terminal', ('180', 'gp-u18-talon-ending')),
     'R26': ('terminal', ('W.13', 'gp-u10-ending')),
-    'R27': ('declared', ('44/45', 'gp-u14-win-live')),
-    'R28': ('declared', ('M6.6', 'music-truth')),
+    'R27': ('terminal', ('46/47', 'gp-u14-win-live')),
+    'R28': ('closed', ('k11-lang', '0x47370')),
     'R29': ('terminal', ('TRACE_PREFIX_PINS', '44,489')),
-    'R30': ('declared', ('0x4BD98', 'flow.c:1632')),
+    'R30': ('terminal', ('0x28DE7', 'flow.c:1676')),
     'R31': ('terminal', ('UNROWED_CENSUS', 'AGENTS.md:511')),
     'R32': ('terminal', ('0x29D60', '0x2EA30')),
     'R33': ('closed', ('TWI5.SMK', 'audio_descriptors')),
     'R34': ('closed', ('0x68B0E', 'sequencer.c')),
     'R35': ('closed', ('driver_install_state', '0x69250')),
     'R36': ('closed', ('SBPRO2.MDI', '0x39CC')),
+    'R37': ('terminal', ('0x2BF08', '0x2C304')),
+    'R38': ('terminal', ('diff_verify.py', 'SpanCensusTests')),
+    'R39': ('declared', ('0xE50E0', '0x24508')),
 }
 
 # Counter strings that must appear in the register (its §3 and §2 rows).
 MUST_MENTION = (
     '1033/1033', '14993/14993', '825/845', '810/845', 'WEAKER` 12',
     '8 unrowed', 'HIT 684 / NOT-HIT 71 / UNINSTRUMENTED 4',
-    'b8479dd3586c3306b50071d163f8055bf14d92535647c84afe07b22468bcfc12',
-    '44/45', '45 explicit paths', '798 1203 66', '759 759 100',
+    'e66d8e24ff9778f348118a14bc5eb8a96ca5abcd449c7c8d1646f42871cb1753',
+    '46/47', '47 explicit paths', '798 1203 66', '759 759 100', '39 rows',
+    '1 `declared`',
     '0x29D60', '0x2EA30', '0x2EA64', '0x500BB',
     '0x37FF6', '0x2587C', '0x4E11C', '0x2791C', '0x2CADC', '0x0EAE',
-    '0x1531', '66% raw', 'TWI5.SMK', 'audio_descriptors=[(0,0) x7]',
-    '0x68B0E',
+    '0x1531', '66% ported / 100% analysed', 'TWI5.SMK',
+    'audio_descriptors=[(0,0) x7]', '0x68B0E',
 )
 
 # Every AGENTS gap statement, mapped to its register row. Each phrase must be
@@ -102,13 +111,13 @@ AGENTS_ANCHORS = (
     ('requested at runtime but unattributable', 'R11'),
     ('§H6.9\'s named gap', 'R14'),
     ('a separate label-slack/stop named gap', 'R25'),
-    ('Task 6 is declared, not taken', 'R28'),
+    ('Task 6\'s items are closed/terminal', 'R28'),
     ('The out-of-scope content mode `0x21` (volleyball) is now published', 'R05'),
     ('old "stays declared / never opened / no oracle', 'R06'),
     ('The proof debt is declared terminal', 'R17'),
     ('**U17** (the wall-paced walk', 'R14'),
     ('its screens already covered by the K11 captures)', 'R14'),
-    ('declared absent', 'R27'),
+    ('with only U14\'s fought live win absent', 'R27'),
     ('declared terminal difference on `0x2EA68`', 'R19'),
     ('gaps (record §S.10 and §S.8\'s PLAUSIBLE items, declared terminal by', 'R19'),
     ('a declared terminal difference, or a declared byte difference', 'R17'),
@@ -133,15 +142,20 @@ AGENTS_ANCHORS = (
     ('0x2CADC', 'R01'),
     ('0x7714', 'R12'),
     ('0x1CCB0', 'R12'),
+    ('R11 is terminal', 'R11'),
+    ('R12 is terminal', 'R12'),
+    ('R30 is terminal', 'R30'),
+    ('R39 is declared', 'R39'),
     ('0x0A8C', 'R11'),
     ('0x05E4', 'R11'),
     ('rendered audibility', 'R13'),
     ('host-owned/deferred', 'R20'),
     ('759 of 759', 'R20'),
     ('memsize=64', 'R26'),
-    ('44/45', 'R27'),
+    ('46/47', 'R27'),
     ('gp-u14-win-live.failed', 'R04'),
     ('gp-u14-twop-win.failed', 'R03'),
+    ('k11-lang', 'R28'),
     ('gp-bowling-2', 'R06'),
     ('gp-u13-band-dac', 'R02'),
     ('0x4E11C', 'R06'),
@@ -293,6 +307,12 @@ def check_register(text):
                     'file:line, capture or .failed'
                     % (row['line'], rid, row['status']))
 
+    declared = sorted(rid for rid, row in rows.items() if row['status'] == 'declared')
+    extra = sorted(set(declared) - ALLOWED_DECLARED)
+    if extra:
+        problems.append('register: declared row(s) %s are not the allowed %s'
+                        % (', '.join(extra), ', '.join(sorted(ALLOWED_DECLARED))))
+
     for token in MUST_MENTION:
         if token not in text:
             problems.append('register: measured token %r is absent' % token)
@@ -390,6 +410,15 @@ class TestFinalClaims(unittest.TestCase):
         self.assertNotEqual(bad, register)
         self.assertTrue(check_register(bad))
 
+    def test_a_new_declared_row_fails(self):
+        # The one allowed declared row is R39; anything else is a regression.
+        register = self._read(REGISTER_REL)
+        bad = register + ('\n| R99 | a made-up route | declared | '
+                          'data/k11-captures/gp-pads | measured | none |\n')
+        problems = check_register(bad)
+        self.assertTrue(any('declared row' in p and 'R99' in p for p in problems),
+                        problems)
+
     def test_a_missing_counter_fails(self):
         register = self._read(REGISTER_REL)
         bad = register.replace('810/845', '809/845')
@@ -412,17 +441,12 @@ class TestFinalClaims(unittest.TestCase):
         self.assertTrue(any('claims' in p or 'no register anchor' in p
                             for p in problems), problems)
 
-    def test_an_is_terminal_statement_must_match_its_row(self):
-        # "is terminal" is a status trigger: R03 (`gp-u14-twop-win.failed`) is
-        # declared, so a clause that calls it terminal must fail.
+    def test_a_terminal_statement_about_a_closed_row_fails(self):
+        # "is terminal" is a status trigger: R28 (`k11-lang`) is closed, so a
+        # clause that calls the capture terminal must fail its status check.
         agents = self._read(AGENTS_REL)
         register = self._read(REGISTER_REL)
-        old = ('is game evidence in `gp-u14-twop-win.failed` (its port-script '
-               'check failed), and R1 is terminal.')
-        bad = agents.replace(
-            old, old.replace('R1 is terminal',
-                             '`gp-u14-twop-win.failed` is terminal'), 1)
-        self.assertNotEqual(bad, agents)
+        bad = agents + '\n- The `k11-lang` capture is terminal.\n'
         problems = check_agents(bad, register)
         self.assertTrue(any('claims' in p for p in problems), problems)
 

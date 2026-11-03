@@ -30949,9 +30949,9 @@ UNROWED_CENSUS = {
         "The raw setjmp frame is split across those functions; entering only the resume tail lacks its stack frame, so no faithful single binding exists.",
         "reverse-n §N.1"),
     0x47370: (
-        "game_string_table_load's host file loader and fixed string handle",
-        "The port does not reproduce the raw allocator/pager, language index, free/reload or size stores; a row would validate an invented loader model.",
-        "reverse-n §N.3/§N.3.5"),
+        "game_string_table_load's host file loader and staging copy",
+        "The port reproduces the language index, the reload sites and the size stores, but not the raw allocator/pager or its fread-family runtime; a row would validate those.",
+        "reverse-n §N.3/§N.3.5; Completion truth final review"),
     0x4FBA2: (
         "int10h_query's host-window mode answer 0x13",
         "The raw returns BIOS AL from int 0x10; poking it would compare a harness-chosen constant with the port's constant and prove nothing about the BIOS.",

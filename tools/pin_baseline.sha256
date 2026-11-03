@@ -1,4 +1,4 @@
 # Pin-baseline tripwire. Regenerate ONLY with a measured reason:
 #   python3 tools/capture_manifest.py --update-pins --reason "..."
-# reason: volleyball truth Task 4: gp-u30-volleyball's mode-0x21 pins (frame/trace/moves/start/reach/missing/sha/frames) added
-b8479dd3586c3306b50071d163f8055bf14d92535647c84afe07b22468bcfc12
+# reason: completion truth final fix round 2: the TRACE_NEVER_REQUESTED 0xEB reachability wording corrected (the stream starts 0x0D, which ends the animation before the 0x18 hold); no comparison, value or capture changed
+e66d8e24ff9778f348118a14bc5eb8a96ca5abcd449c7c8d1646f42871cb1753

@@ -297,6 +297,13 @@ MILESTONES['gp-u26-side1-ending'] = start_char_side1(4, 5) + (
 # opponent is fought (c1) or how the hits landed: that is the capture's, Task 11's.
 MILESTONES['gp-u14-win-live'] = _START + _MATCH1
 
+# Completion truth Task 1 (R03): the two-human fought win, the same measured
+# match-1 rows with P1 on character-select cell 1 (class 2 TALON): the capture's
+# own c0 = 2 (the 2026-10-30 artifact's S rows), so start_char(2, 1) replaces
+# _START's character-0 row. The two-human gate is gp_twop.match_win's (b1f = 3);
+# this list is the port-side milestone and WIN-field ratchet.
+MILESTONES['gp-u14-twop-win'] = start_char(2, 1) + _MATCH1
+
 
 def entries(recs, start):
     """{(mode, k): [records of the k-th entry into mode]} over the records (by f) from
@@ -377,9 +384,9 @@ def death_done_set(lines, snaps):
 # rule requires it. The zero stores are mode 0x24's timer branch (0x2703D), mode 0x17's
 # setup (0x27200), and the final's consumers (0x27582, 0x29744); the final rule anchors
 # b0c on the mode-0x0F entry (record §W.5, §W.9).
-MATCH_WIN = frozenset({'gp-u14-win-live'})
+MATCH_WIN = frozenset({'gp-u14-win-live', 'gp-u14-twop-win'})
 FINAL_WIN = frozenset()                 # no fought final is captured; a future one joins here
-MATCH_WINNER = {'gp-u14-win-live': 0}   # the match-1 path: P1 (side 0) wins
+MATCH_WINNER = {'gp-u14-win-live': 0, 'gp-u14-twop-win': 0}   # the match-1 path: P1 (side 0) wins
 
 # The KO/death fields a W record must not cover: the two +0x5A damage bytes, w2/w3,
 # ad4, b0c (DS_00104B0C), and the seven land marks. gp_session.KO_POKES is the one

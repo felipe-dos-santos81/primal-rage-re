@@ -66,6 +66,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u12-endurance \
 	$(K11_CAPTURES)/gp-u13-ending2 \
 	$(K11_CAPTURES)/gp-u14-win-live \
+	$(K11_CAPTURES)/gp-u14-twop-win \
 	$(K11_CAPTURES)/gp-u15-join \
 	$(K11_CAPTURES)/gp-u16-twop2 \
 	$(K11_CAPTURES)/gp-u17-device2 \
@@ -86,6 +87,7 @@ CAPTURE_DIRS = \
 	$(K11_CAPTURES)/gp-u30-volleyball \
 	$(K11_CAPTURES)/walk \
 	$(K11_CAPTURES)/menuesc \
+	$(K11_CAPTURES)/k11-lang \
 	$(K11_CAPTURES)/save-reload \
 	$(K11_CAPTURES)/gp-pads \
 	$(SMK_CAPTURES)/twi5 \
@@ -135,7 +137,7 @@ chunk ?= 0
         save-reload-oracle \
         gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-twop-ko-oracle gp-modes-oracle gp-modes-one \
-        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u15-oracle gp-u16-oracle \
+        gp-win-oracle gp-ending-oracle gp-win-one gp-u12-oracle gp-u13-oracle gp-u14-oracle gp-u14-twop-win-oracle gp-u15-oracle gp-u16-oracle \
         gp-u17-oracle gp-u23-oracle gp-u18-oracle gp-u19-oracle gp-u20-oracle gp-u21-oracle gp-u22-oracle gp-u25-oracle \
         gp-u26-oracle gp-u27-oracle gp-draw-oracle gp-draw-timeout-oracle gp-u28-continue-oracle \
         gp-u29-continue-taken-oracle gp-bowling-oracle gp-u30-volleyball-oracle vb-search \
@@ -566,6 +568,12 @@ k11-capture: title-pin ## Capture the pinned original's service menu (scenario=w
 # (so 184). Raise a pin when its count grows; a measured count below the pin fails.
 # poll.log sha256 + the frame count pin each capture's identity (not every
 # pixel); the shared existential order check is enforced in k11_compare too.
+# k11-lang (completion truth Task 2, R28) is the same comparison for the
+# service-menu language reload: the CONFIG OPTIONS language row 0 -> 1 changes
+# field 0x29's bits 24..26, 0x336AE reloads FRENCH.TXT, and the OPTIONS MENU and
+# MAIN MENU redraw in French. Its END is open by name (K11_OPEN_END in
+# tools/k11_compare.py) because the original runs on to the capture's 60 s limit
+# after the port script's 180-tick end.
 # >>> PIN-BASELINE-BEGIN k11
 K11_WALK_MIN_EXH ?= 36
 K11_MENUESC_MIN_EXH ?= 184
@@ -573,8 +581,17 @@ K11_WALK_CAPTURE_SHA256 = aea00a7d523763d1ac4de19f0c5a65d663a8f9409378fde9c1bdf6
 K11_WALK_CAPTURE_FRAMES = 171
 K11_MENUESC_CAPTURE_SHA256 = aacd32423ac3879739c2f93bf8d87b44c5fb14803b7c69ad712173f5f70f161e
 K11_MENUESC_CAPTURE_FRAMES = 766
+# Completion truth Task 2 (R28): the service-menu language reload. MIN_EXH 200
+# is the port's distinct exhibited frames (k11_compare --min-exh 99999 prints
+# "port frames exhibited 200"); the capture is data/k11-captures/k11-lang
+# (460 frames, poll.log sha256 5aeb8266..a893b96e, every session check ok).
+# The END 408 pin lives in tools/k11_compare.py's K11_OPEN_END (the original runs
+# on to the 60 s capture limit after the script's 180-tick end).
+K11_LANG_MIN_EXH ?= 200
+K11_LANG_CAPTURE_SHA256 = 5aeb8266fe48fa0039f67e43e70d893a418a35dc770c1b0720103438a893b96e
+K11_LANG_CAPTURE_FRAMES = 460
 # <<< PIN-BASELINE-END k11
-k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips without its data/k11-captures/<scenario>)
+k11-oracle: build ## K11 oracles: the walk, the menuesc restart and the k11-lang language reload (each skips without its data/k11-captures/<scenario>)
 	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="
 	@if [ -d $(K11_CAPTURES)/walk ]; then \
 		rm -rf $(K11_DUMP)/walk; mkdir -p $(K11_DUMP); \
@@ -597,6 +614,19 @@ k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips w
 	@$(PYTHON) tools/k11_compare.py --scenario menuesc --capture $(K11_CAPTURES)/menuesc --port $(K11_DUMP)/menuesc \
 		--min-exh $(K11_MENUESC_MIN_EXH) \
 		--capture-sha256 $(K11_MENUESC_CAPTURE_SHA256) --capture-frames $(K11_MENUESC_CAPTURE_FRAMES)
+	@echo "== K11 language-reload oracle (pixel-exact, k11-lang: CONFIG OPTIONS' language 0 -> 1) =="
+	@$(PYTHON) -m unittest tools.tests.test_k11_lang
+	@if [ -d $(K11_CAPTURES)/k11-lang ]; then \
+		$(PYTHON) tools/k11_lang.py check --capture $(K11_CAPTURES)/k11-lang && \
+		rm -rf $(K11_DUMP)/k11-lang; mkdir -p $(K11_DUMP); \
+		$(PYTHON) tools/k11_session.py port-script --scenario k11-lang --capture $(K11_CAPTURES)/k11-lang --out $(K11_DUMP)/k11-lang.script && \
+		PR_K11_DUMP=$(K11_DUMP)/k11-lang PR_K11_SCRIPT=$(K11_DUMP)/k11-lang.script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "k11-oracle: no capture at $(K11_CAPTURES)/k11-lang, frames not compared"; \
+	fi
+	@$(PYTHON) tools/k11_compare.py --scenario k11-lang --capture $(K11_CAPTURES)/k11-lang --port $(K11_DUMP)/k11-lang \
+		--min-exh $(K11_LANG_MIN_EXH) \
+		--capture-sha256 $(K11_LANG_CAPTURE_SHA256) --capture-frames $(K11_LANG_CAPTURE_FRAMES)
 
 # The evidence scenarios (G1/G2/G3): the same driver and comparison, report-only
 # (menuesc is also enforced by k11-oracle).
@@ -2003,14 +2033,16 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # afc = 5, while the failed 2026-10-26 run measured c0 = 0, c1 = 3 (VERTIGO), afc = 3 (record
 # 2026-10-26-fought-match-truth §F2.6): the KO'd fighter's death stream is not U10's final
 # SAURON's, and a later capture's own S fields decide it.
-# The pins are EMPTY: the 2026-10-26 arcade run lost 0-2 (P1 KO'd in both rounds, mode 0x12
-# never opened; record 2026-10-26-fought-match-truth §F2), and final truth Task 3's one
+# The GP_U14_* pins are EMPTY: the 2026-10-26 arcade run lost 0-2 (P1 KO'd in both rounds,
+# mode 0x12 never opened; record 2026-10-26-fought-match-truth §F2). Final truth Task 3's one
 # authorized two-human gp-u14-twop-win run reached the game's 2-0 win (round-1 KO f=0xB1B,
-# match result f=0x13A8, mode 0x12 f=0x1693, no W, b0c=0) but failed port script v2 at f=0xB1B
-# (a missed S(0xB1A); 15 of 5,820 snapshots), so it is preserved as
-# data/k11-captures/gp-u14-twop-win.failed with no oracle/pin/CAPTURE_DIRS path (record
-# 2026-10-30-final-truth-derivations.md §F3.5). R1 (the arcade fought win) is terminal, so no
-# claim is made and GATE_NAMED_GAPS keeps this capture declared absent. The failed arcade
+# match result f=0x13A8, mode 0x12 f=0x1693, no W, b0c=0); its only failed check was the
+# port-script model's S(f-1) bitmap pin after the 3-snapshot gap S(0xB18..0xB1A).
+# Completion truth Task 1 fixed the model and promoted it to data/k11-captures/gp-u14-twop-win
+# with the gp-u14-twop-win-oracle/GP_U14_TWOP_WIN_* pins; the .failed artifact is preserved
+# (record 2026-10-30-final-truth-derivations.md §F3.5 and completion truth Task 1). R1 (the
+# arcade fought win) is terminal, so gp-u14-win-live stays absent and GATE_NAMED_GAPS keeps it
+# declared. The failed arcade
 # artifact is preserved as data/k11-captures/gp-u14-win-live.failed (the published target stays
 # absent); the run also failed the port-script/unscripted-input/end-frame checks after a
 # BIOS-ring burst. The
@@ -2020,7 +2052,8 @@ gp-u13-oracle: build ## Gameplay U13 oracle: gp-u13-ending2's non-character-0 en
 # stay outside tools/audio_compare.py's 29-trace inventory (unattributed; no audio claim). The target
 # skips on the absent directory. The nine GP_U14_* pins belong to this gp-u14-win-live
 # scenario; R1 is terminal, and a two-human gp-u14-twop-win capture is a different scenario
-# with its own target/pins. A later authorized capture of this scenario would fill the nine
+# with its own gp-u14-twop-win-oracle/GP_U14_TWOP_WIN_* pins (completion truth Task 1). A later
+# authorized capture of this scenario would fill the nine
 # from tools/gp_compare.py --report's and gp_win.py path's output, not arithmetic (MAX_MISSING
 # is the report's missing-class count; coverage_check fails closed without it).
 # MIN_FIRST the first unexplained capture frame,
@@ -2039,6 +2072,28 @@ GP_U14_CAPTURE_FRAMES =
 GP_U14_MILESTONES =
 GP_U14_WIN_MIN_FIRST =
 # <<< PIN-BASELINE-END gp-u14
+# Completion truth Task 1 (R03): the two-human fought win's pins, measured on the
+# promoted gp-u14-twop-win capture and its full port replay (record
+# docs/superpowers/plans/2026-11-02-completion-100.md Task 1): MIN_FIRST 5072
+# (the capture's last two post-script tail frames are the first unexplained),
+# TRACE/MOVES 5780 (0 differing through the replay's end f=0x1693=5779), MAX_START
+# 100 (gp_compare's window start), MIN_REACH 4269 (the replay's last exhibited
+# frame), MAX_MISSING 10 (gp_compare's measured missing classes), and the capture
+# identity (poll.log sha256 + 5,074 frame_*.raw.gz). MILESTONES 6 and WIN 5780
+# are gp_win.py path's two ratchets (start_char(2,1)+_MATCH1; WIN_FIELDS 0
+# differing through 5779). Raise them when they improve.
+# >>> PIN-BASELINE-BEGIN gp-u14-twop-win
+GP_U14_TWOP_WIN_MIN_FIRST = 5072
+GP_U14_TWOP_WIN_TRACE_MIN_FIRST = 5780
+GP_U14_TWOP_WIN_MOVES_MIN_FIRST = 5780
+GP_U14_TWOP_WIN_MAX_START = 100
+GP_U14_TWOP_WIN_MIN_REACH = 4269
+GP_U14_TWOP_WIN_MAX_MISSING = 10
+GP_U14_TWOP_WIN_CAPTURE_SHA256 = a96ca6f5de662159f43d61ae939c65be64d01dbed5441b324a12e8bfcfe728d9
+GP_U14_TWOP_WIN_CAPTURE_FRAMES = 5074
+GP_U14_TWOP_WIN_MILESTONES = 6
+GP_U14_TWOP_WIN_WIN_MIN_FIRST = 5780
+# <<< PIN-BASELINE-END gp-u14-twop-win
 gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips without data/k11-captures/gp-u14-win-live)
 	@echo "== gameplay oracle: gp-u14-win-live (a match won by fought hits) =="
 	@$(PYTHON) -m unittest tools.tests.test_gp_win
@@ -2055,6 +2110,34 @@ gp-u14-oracle: build ## Gameplay U14 oracle: gp-u14-win-live's fought win (skips
 			--port $(GP_DUMP)/gp-u14-win-live --min-milestones "$(GP_U14_MILESTONES)" \
 			--win-min-first "$(GP_U14_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U14_CAPTURE_SHA256)"; \
 		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u14-win-live; exit $$rc; fi
+
+# Completion truth Task 1 (R03): the two-human fought win. The capture is the
+# 2026-10-30 artifact promoted after the port-script model fix (plan
+# docs/superpowers/plans/2026-11-02-completion-100.md Task 1): its 11 session
+# checks were re-issued from the fixed model and read ok, the poll.log sha256 and
+# the 5,074 frames are unchanged. gp_twop.py check --win is the two-human game
+# evidence (b1f = 3, no W, both live KOs, the 1-0 round and 2-0 match results, the
+# X); gp_win.py check/path the match rule, the six milestones (start_char(2,1) +
+# _MATCH1) and the WIN_FIELDS ratchet; gp_compare the frame/trace/moves ratchets.
+# The claim is the game's own 2-0 two-human win, not an arcade win (R04 terminal).
+gp-u14-twop-win-oracle: build ## Gameplay U14 two-human win oracle (skips without data/k11-captures/gp-u14-twop-win)
+	@echo "== gameplay oracle: gp-u14-twop-win (the game's own 2-0 two-human win) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_win tools.tests.test_gp_twop tools.tests.test_gp_session
+	@if [ ! -d $(K11_CAPTURES)/gp-u14-twop-win ]; then echo "gp-u14-twop-win-oracle: no capture at $(K11_CAPTURES)/gp-u14-twop-win (skipped)"; else \
+		$(PYTHON) tools/gp_twop.py check --win --capture $(K11_CAPTURES)/gp-u14-twop-win && \
+		$(PYTHON) tools/gp_win.py check --scenario gp-u14-twop-win --capture $(K11_CAPTURES)/gp-u14-twop-win \
+			--capture-sha256 "$(GP_U14_TWOP_WIN_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=gp-u14-twop-win GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario gp-u14-twop-win --capture $(K11_CAPTURES)/gp-u14-twop-win \
+			--port $(GP_DUMP)/gp-u14-twop-win --min-first "$(GP_U14_TWOP_WIN_MIN_FIRST)" \
+			--trace-min-first "$(GP_U14_TWOP_WIN_TRACE_MIN_FIRST)" --max-start "$(GP_U14_TWOP_WIN_MAX_START)" \
+			--min-reach "$(GP_U14_TWOP_WIN_MIN_REACH)" --max-missing "$(GP_U14_TWOP_WIN_MAX_MISSING)" \
+			--moves-min-first "$(GP_U14_TWOP_WIN_MOVES_MIN_FIRST)" \
+			--capture-sha256 "$(GP_U14_TWOP_WIN_CAPTURE_SHA256)" --capture-frames "$(GP_U14_TWOP_WIN_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario gp-u14-twop-win --capture $(K11_CAPTURES)/gp-u14-twop-win \
+			--port $(GP_DUMP)/gp-u14-twop-win --min-milestones "$(GP_U14_TWOP_WIN_MILESTONES)" \
+			--win-min-first "$(GP_U14_TWOP_WIN_WIN_MIN_FIRST)" --capture-sha256 "$(GP_U14_TWOP_WIN_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/gp-u14-twop-win; exit $$rc; fi
 
 # Gameplay truth II U15 (plan docs/superpowers/plans/2026-10-20-gameplay-truth-ii.md Task 7;
 # gp_session.SCENARIOS['gp-u15-join']): P2 joins the gp-idle-loss fight mid-round with F2.
@@ -2651,9 +2734,10 @@ audio-render: build ## Render the title FM music and the selected menu song head
 # must anchor and match, and a one-write mutation fails. A missing capture is
 # skipped by name; gp-u17-device2 has no frame-keyed port script (wall-paced,
 # record §H6.9) and its `.dro` is the 248 ms boot fragment, so it is skipped by
-# name too. The 9 other k11 `.dro` files (7 directories, `gp-u30-volleyball`
-# among them, which is outside this inventory) and the 2 title captures are
-# named by the summary as outside the 29-trace gameplay inventory.
+# name too. The 12 other k11 `.dro` files (9 directories, `gp-u30-volleyball`,
+# `k11-lang` and `gp-u14-twop-win` among them, which are outside this inventory)
+# and the 2 title
+# captures are named by the summary as outside the 29-trace gameplay inventory.
 # AUDIO_DUMP is a fixed shared /tmp path like GP_DUMP; a parallel lane must
 # override it (`make ... AUDIO_DUMP=/tmp/pr_audio_dump_<lane>`).
 AUDIO_DUMP ?= /tmp/pr_audio_dump
@@ -2672,6 +2756,14 @@ AUDIO_TRACES = gp-idle-loss gp-idle-loss-run2 gp-keys-fight gp-pads gp-twop \
 	gp-u9-win
 
 # One trace: the cut port script, the PR_AUDIO_DUMP replay, the comparison.
+# The script is generated with `--trust-bitmap`: the audio oracle replays the
+# capture's *recorded* key-state bitmap (the pre-2026-11-02 derivation; the two
+# derivations agree on every clean capture, 0/5,820 S mismatches, completion
+# truth Task 1). It is the only caller allowed to: the default model stays
+# injector-derived and fail-closed, so gp-u6-moves's known unscripted 0xA52
+# 0x0200 bit (the contaminated capture, not in CAPTURE_DIRS; its published
+# re-capture gp-u6-moves-b is) cannot reach a capture-validation path but its
+# `.dro` audio trace still replays.
 # No build dependency: `audio-oracle` builds once and the parallel workers only
 # read the binary (a parallel `make build` would race on the build directory).
 audio-one: ## Replay and compare one gameplay trace (scenario=gp-…; used by audio-oracle)
@@ -2687,7 +2779,7 @@ audio-one: ## Replay and compare one gameplay trace (scenario=gp-…; used by au
 	end=$$($(PYTHON) tools/audio_compare.py capture-end --capture $$cap --max $(AUDIO_END)); \
 	if [ "$$end" = "0" ]; then \
 		echo "audio-oracle: $(scenario) FAIL: no X record in $$cap/poll.log"; exit 1; fi; \
-	if ! $(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $$cap --out $$dir/script --end $$end > $$dir/script.log 2>&1; then \
+	if ! $(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $$cap --out $$dir/script --end $$end --trust-bitmap > $$dir/script.log 2>&1; then \
 		if [ "$(scenario)" = "gp-u17-device2" ] && grep -q "wall-paced steps" $$dir/script.log; then \
 			printf '{"name":"%s","ok":true,"total_ticks":0,"min_ticks":0,"named_gaps":[],"skipped":"no frame-keyed port script (wall-paced; record §H6.9)"}\n' $(scenario) > $$dir/report.json; \
 			echo "audio-oracle: SKIP $(scenario) (the declared wall-paced scenario; record §H6.9)"; exit 0; \
@@ -2795,6 +2887,8 @@ verify: gate-check build ## Full ladder: capture preflight, --check frames, orac
 	@$(MAKE) --no-print-directory gp-u13-oracle
 	@echo "== gameplay oracle: gp-u14-win-live (a fought win; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u14-oracle
+	@echo "== gameplay oracle: gp-u14-twop-win (the game's own 2-0 two-human win; skips without its capture) =="
+	@$(MAKE) --no-print-directory gp-u14-twop-win-oracle
 	@echo "== gameplay oracle: gp-u15-join (a mid-round join; skips without its capture) =="
 	@$(MAKE) --no-print-directory gp-u15-oracle
 	@echo "== gameplay oracle: gp-u16-twop2 (extended two-human match and frame evidence; finisher gap; skips without its capture) =="

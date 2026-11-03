@@ -586,6 +586,7 @@ def main():
         print_checks(checks)
         if not all(ok for _, ok in checks):
             return 1
+        all_checks = list(checks)
         if writable:
             os.makedirs(os.path.join(stage, 'boot1'), exist_ok=True)
             shutil.copyfile(os.path.join(root, 'poll.log'), os.path.join(stage, 'boot1', 'poll.log'))
@@ -603,6 +604,7 @@ def main():
             print_checks(checks2)
             if not all(ok for _, ok in checks2):
                 return 1
+            all_checks.extend(checks2)
             final, final_limit = b2, scn['boot2']['time_limit']
         else:
             final, final_limit = b1, limit
@@ -642,6 +644,8 @@ def main():
                 f.write('boot1=%s\n' % shlex.join(b1['cmd']))
                 f.write('boot1_time_limit=%d wall_s=%.1f rc=%d reason=%s\n'
                         % (limit, b1['wall'], b1['rc'], b1['reason']))
+            for _name, _ok in all_checks:
+                f.write('check=%s %s\n' % ('ok' if _ok else 'FAIL', _name))
         publish_stage(stage, out)
         published = True
         print('k11_capture: wrote %d frames to %s (raw %d..%d), wall %.1fs'

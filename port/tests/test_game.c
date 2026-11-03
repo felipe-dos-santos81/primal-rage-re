@@ -34,6 +34,7 @@
 #include "game/menu.h"
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,12 +75,26 @@ static void check_bank_guard(void)
           "absent FORM/XMID is rejected");
 }
 
-/* The 0x47370/0x1C500/0x474E4 localisation reader over the shipped ENGLISH.TXT:
- * 0x121A0's caption is string 0x15, so pin the decode of that id and two
- * neighbours (a non-zero length-XOR, and a plain string) against the file. */
+/* The 0x47370/0x1C500/0x474E4 localisation reader and the 0x336AE reload over
+ * the shipped ENGLISH.TXT (index 0) and FRENCH.TXT (index 1): 0x121A0's caption
+ * is string 0x15, so pin the decode of that id and its neighbours (a non-zero
+ * length-XOR and a plain string) against each file, plus the seven-name table at
+ * 0xC9418. The buffer and the two globals are seeded with sentinels before every
+ * load, so a loader that returns without reading, or that reports the wrong
+ * length, fails a check. */
+#define SM_STRING_DATA  0x3800020u   /* flow.c's STRING_DATA */
+#define SM_STRING_CAP   0x2200u      /* flow.c's STRING_CAP */
+#define SM_STRING_HANDLE 0x3800000u  /* flow.c's STRING_HANDLE */
 static void check_localised_string(void)
 {
-    game_string_table_load("data/game/C");
+    memset(mem + SM_STRING_DATA, 0xCC, SM_STRING_CAP);
+    DSD(DS_001082D8) = 0xDEADBEEFu;
+    game_string_table_load("data/game/C", 0u);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 6953);                /* ENGLISH.TXT's size */
+    CHECK_EQ_INT((int)DSD(SM_STRING_HANDLE + 0xCu), 6953);
+    CHECK_EQ_INT((int)DSD(DS_001082DC), (int)SM_STRING_HANDLE);
+    CHECK_EQ_INT((int)DSB(SM_STRING_HANDLE + 0x15u), 0);
+    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 6953u), 0xCC);     /* beyond the file: seeded */
     CHECK(strcmp((const char *)game_string_get(0x15u), "THE FUTURE...") == 0,
           "ENGLISH.TXT id 0x15 is the title caption");
     CHECK(strcmp((const char *)game_string_get(0x14u), "THE NEW URTH?") == 0,
@@ -87,6 +102,69 @@ static void check_localised_string(void)
     CHECK(strcmp((const char *)game_string_get(0x01u),
                  "TM   1994 ATARI GAMES CORP.") == 0,
           "ENGLISH.TXT id 0x01 decodes");
+
+    /* Index 1 is FRENCH.TXT (8,564 bytes, the largest shipped file). Every call
+     * replaces the table: an idempotence guard would leave the English strings
+     * here and fail these checks. */
+    memset(mem + SM_STRING_DATA, 0xCC, SM_STRING_CAP);
+    DSD(DS_001082D8) = 0xDEADBEEFu;
+    game_string_table_load("data/game/C", 1u);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);                /* FRENCH.TXT's size */
+    CHECK_EQ_INT((int)DSD(SM_STRING_HANDLE + 0xCu), 8564);
+    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 8564u), 0xCC);
+    CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
+          "FRENCH.TXT id 0x15 decodes from the reloaded table");
+    CHECK(strcmp((const char *)game_string_get(0x14u), "SUR LA NOUVELLE URTH?") == 0,
+          "FRENCH.TXT id 0x14 decodes from the reloaded table");
+    CHECK(strcmp((const char *)game_string_get(0x1FDu), "Langage") == 0,
+          "FRENCH.TXT id 0x1FD is the CONFIG OPTIONS language label");
+
+    /* Index 7 repeats index 0 in the raw's eight-dword table (0xC9418). */
+    game_string_table_load("data/game/C", 7u);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 6953);
+    CHECK(strcmp((const char *)game_string_get(0x15u), "THE FUTURE...") == 0,
+          "index 7 reloads ENGLISH.TXT as the raw's table does");
+
+    /* Index 6 is BRAZIL.TXT, which does not ship. The raw exits through 0x1D290;
+     * the port keeps the last good table (the declared difference at 0x47370). */
+    game_string_table_load("data/game/C", 6u);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 6953);
+    CHECK(strcmp((const char *)game_string_get(0x15u), "THE FUTURE...") == 0,
+          "a missing language file leaves the previous table");
+
+    /* Final review Important 1: a bad-magic file must not overwrite the last
+     * good table. The loader reads into STRING_STAGE and copies only after the
+     * 0x33340001/length check, so the previous length and the byte past it
+     * survive. FRENCH is reloaded first, so the sentinel at +8,564 is the 0xCC
+     * the block was seeded with. */
+    game_string_table_load("data/game/C", 1u);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);
+    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 8564u), 0xCC);
+    CHECK(mkdir("/tmp/pr_lang_bad_test", 0777) == 0 || errno == EEXIST,
+          "the bad-magic fixture directory exists");
+    {
+        FILE *f = fopen("/tmp/pr_lang_bad_test/FRENCH.TXT", "wb");
+        unsigned char bad[8600] = {0};                  /* past FRENCH's 8,564 */
+        bad[0] = 0; bad[1] = 0; bad[2] = 0; bad[3] = 0; /* a wrong magic */
+        CHECK(f != NULL, "the bad-magic fixture is writable");
+        if (f != NULL) {
+            CHECK_EQ_INT((int)fwrite(bad, 1, sizeof bad, f), (int)sizeof bad);
+            fclose(f);
+        }
+    }
+    game_string_table_load("/tmp/pr_lang_bad_test", 1u);   /* the magic is 0 */
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);             /* the length survives */
+    CHECK_EQ_INT((int)DSD(SM_STRING_HANDLE + 0xCu), 8564);
+    CHECK_EQ_INT((int)DSB(SM_STRING_DATA + 8564u), 0xCC);  /* the sentinel survives */
+    CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
+          "a bad-magic file leaves the previous table");
+    remove("/tmp/pr_lang_bad_test/FRENCH.TXT");
+
+    /* The defensive language bound: 8 is past the eight-dword table (0xC9418). */
+    game_string_table_load("data/game/C", 8u);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);
+    CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
+          "language 8 is ignored, not read out of the table");
 }
 
 /* Task 3: 0x2BF08's per-frame message line. Drive the exported tail entry
@@ -8493,7 +8571,7 @@ static void ch_text_setup(void)
     if (res_count() != 69)
         CHECK(res_load_index("data/game/C", "data/game/C/INDEX") == 69,
               "index loaded");
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     actors_reset();
     DSD(DS_00105F34) = 0;
 }
@@ -9847,6 +9925,38 @@ static void sm_check_options(void)
     ch_expect(3, 4, 'D', 0xF000u, "row 3 is record 3, Difficulty");
     ch_expect(21, 4, 'R', 0x2000u, "record 9 highlighted on row 21");
     ch_expect(22, 5, 'Y', 0x2000u, "record 9 value 1: string 0x202");
+    /* (f) 0x336AE's language reload: five Downs select record 5 (string 0x1FD
+     * "Language", shift 24, six values), Right changes 0 -> 1 ("français") and
+     * Enter returns. The field's bits 24..26 differ, so 0x33578 calls 0x47370
+     * with the changed index and FRENCH.TXT replaces the English table. */
+    const u32 lang0 = config_field_get(0x29u) & ~0x7000000u;
+    config_field_set(0x29u, lang0);
+    static const sm_step_t language[] = {
+        { 0x5000u, 0u }, { 0x5000u, 0u }, { 0x5000u, 0u }, { 0x5000u, 0u },
+        { 0x5000u, 0u }, { 0x4D00u, 0u }, { 0x1C0Du, 0u } };
+    sm_begin(language, 7u);
+    (void)svc_config_options(SM_CONFIG_TABLE);
+    sm_end(7u, "CONFIG OPTIONS: five Downs, Right, Enter (language 0 -> 1)");
+    CHECK_EQ_INT((int)(config_field_get(0x29u) & 0x7000000u), (int)(1u << 24));
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 8564);                /* FRENCH.TXT */
+    CHECK(strcmp((const char *)game_string_get(0x1FDu), "Langage") == 0,
+          "0x336AE reloaded FRENCH.TXT: 0x1FD is Langage");
+    CHECK(strcmp((const char *)game_string_get(0x15u), "LE FUTUR...") == 0,
+          "0x336AE reloaded FRENCH.TXT: 0x15 is LE FUTUR...");
+    /* The next draw of the option rows uses the reloaded table: record 5 is on
+     * row 18, its value on row 19 ("fran" + the raw 0x80 + "ais"). */
+    actors_reset();
+    (void)svc_option_rows(SM_CONFIG_TABLE, 1u << 24, 0, 0xF000u, 0u);
+    ch_expect(18, 4, 'L', 0xF000u, "the reloaded language label: Langage");
+    ch_expect(18, 5, 'a', 0xF000u, "the reloaded language label: Langage");
+    ch_expect(19, 5, 'f', 0xF000u, "record 5 index 1: francais");
+    ch_expect(19, 9, 0x80u, 0xF000u, "the value text's raw 0x80 cedilla");
+    /* Back to English for the rest of the suite, which proves the reload works
+     * in both directions (a one-way latch would fail here). */
+    game_string_table_load("data/game/C", 0u);
+    CHECK_EQ_INT((int)DSD(DS_001082D8), 6953);
+    CHECK(strcmp((const char *)game_string_get(0x15u), "THE FUTURE...") == 0,
+          "the table reloads back to English");
     config_field_set(0x29u, f0);
     DSD(DS_0010740C) = s_740c;
 }
@@ -11351,7 +11461,7 @@ static void ra_env(void)
     DSD(DS_001014F4) = RA_POOL;
     DSD(DS_001014EC) = RA_PSET;
     actors_reset();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     mem_fill(HS_T0, 0, 153u);
     DSD(DS_00104528) = 0x142095u;
     hiscore_init();
@@ -12168,14 +12278,14 @@ static void vs_coin_divert(void) { vs_pools(); game_coin_divert(1u); }
 static void vs_player_join(void)
 {
     vs_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     flow_player_join(0u);
 }
 /* Row 166: 0x25AE8, the first statement. */
 static void vs_hook_25ae8(void)
 {
     vs_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     game_hook_25ae8();
 }
 /* Rows 172..174: state 4 (0x11578) phases 0, 1, 2. */
@@ -12313,7 +12423,7 @@ static const TfVoiceSite k12_a[] = {
 static void vs_text(void)
 {
     vs_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
 }
 /* Row 130: 0x41578 on an empty front-end list (no darken), mode 0 for
  * 0x32A3C. */
@@ -12804,7 +12914,7 @@ static u32 vs4_actor(void)
 static void vs4_ne_env(void)
 {
     vs_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     nameentry_reset();
     DSB(RA_PAD0) = 0u;
     DSB(RA_PAD1) = 0u;
@@ -12912,7 +13022,7 @@ static void vs4_mode12(u8 state)
 {
     u32 k;
     vs_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     for (k = 0; k < 7u; k++) DSD(DS_001080C0 + k * 4u) = vs4_actor();
     DSD(DS_001080F4) = vs4_actor();
     DSB(VS_B29) = 0u;
@@ -13083,7 +13193,7 @@ static void vs4_fight(void)
     u32 s;
     (void)tf_demo_fixture();
     vs_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     for (s = 0; s < 2u; s++) {
         DSD(DS_001028F0 + s * 4u) = vs4_actor();
         DSD(DS_001028F8 + s * 4u) = vs4_actor();
@@ -13124,7 +13234,7 @@ static void vs4_mode30_2(void)
 static void vs4_round_timer(void)
 {
     vs_pools();
-    game_string_table_load("data/game/C");
+    game_string_table_load("data/game/C", 0u);
     DSB(DS_00105B3B) = 0u;
     DSD(DS_001088D0) = 1u;
     DSW(DS_00104AF4) = 7u;

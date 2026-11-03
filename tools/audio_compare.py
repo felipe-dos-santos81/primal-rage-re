@@ -76,9 +76,10 @@ import opl_trace
 
 # The measured gameplay inventory (record 2026-10-25-music-truth-derivations
 # §M1.6.2): 28 `gp-*` capture directories holding 29 `.dro` files (gp-pads holds
-# two). The 9 other k11 `.dro` files (7 directories, one of them the mode-`0x21`
-# capture outside the audio inventory) and the 2 audio captures are named apart
-# by `summary` as outside the 29-trace gameplay inventory.
+# two). The 12 other k11 `.dro` files (9 directories, including the mode-`0x21`
+# capture, the language-reload capture and the promoted U14 two-human win, all
+# outside the audio inventory) and the 2 audio captures are named apart by
+# `summary` as outside the 29-trace gameplay inventory.
 GP_TRACES = [
     'gp-idle-loss', 'gp-idle-loss-run2', 'gp-keys-fight', 'gp-pads', 'gp-twop',
     'gp-u10-ending', 'gp-u12-endurance', 'gp-u13-ending2', 'gp-u15-join',
@@ -91,11 +92,12 @@ GP_TRACES = [
 ]
 
 # Outside the 29-trace gameplay inventory: the service-menu/save/diagnostic k11
-# captures (8 files across 6 directories), the one gameplay capture whose `.dro`
-# is outside the audio inventory (`gp-u30-volleyball`, Volleyball truth Task 4:
-# no audio claim), and the two title captures the report-only test reads.
-OTHER_K11_TRACES = ['de', 'diags', 'idle', 'menuesc', 'save-reload', 'walk',
-                    'gp-u30-volleyball']
+# captures (10 files across 7 directories, `k11-lang` included), the two gameplay
+# captures whose `.dro` is outside the audio inventory (`gp-u30-volleyball`,
+# Volleyball truth Task 4, and `gp-u14-twop-win`, Completion truth Task 1; no
+# audio claim), and the two title captures the report-only test reads.
+OTHER_K11_TRACES = ['de', 'diags', 'idle', 'k11-lang', 'menuesc', 'save-reload',
+                    'walk', 'gp-u30-volleyball', 'gp-u14-twop-win']
 
 # The expected per-directory `.dro` inventory (record §M1.6.2): 28 directories,
 # 29 files; gp-pads is the one directory whose capture restarted and holds two.
@@ -263,7 +265,13 @@ TRACE_NEVER_REQUESTED = {
                             '+0x43 bit-3 gate fails (the +0x43 input is not a '
                             'SNAP_FIELD)'),
     's16konsd.gra+0x1CCB0': ('0xEB', 'the 0x24508 handler (fighter.c:16937, '
-                             'request 0x24559), a stream/handler target'),
+                             'the sound_voice(0xEB) at 0x24559) is called by '
+                             'BLIZZARD\'s reaction-0x34 stream (0xC92D8[1] = '
+                             '0xE50D2; the D100 0x24508 at 0xE50E0; the stream '
+                             'starts 0x0D, which ends the animation before the '
+                             '0x18 hold); no capture carries r0/r1 0x34 '
+                             '(only 0x33), so no shipped route requests it '
+                             '(Completion truth R39 declared)'),
 }
 # <<< PIN-BASELINE-END trace-residue
 

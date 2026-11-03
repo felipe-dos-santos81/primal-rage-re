@@ -7,7 +7,9 @@ frame loop and pixel path) before changing engine code.
 
 **The terminal claim register is `docs/superpowers/specs/2026-10-30-final-claims.md`.**
 Every remaining gap has one measured status there (closed / gated / terminal /
-declared) with its address, file:line or capture; no row is "open". The docs
+declared) with its address, file:line or capture; no row is "open" and the one
+`declared` row is **R39** (the `0xEB` audio route; Completion truth, 2026-11-02:
+39 rows — 11 closed, 1 gated, 26 terminal, 1 declared). The docs
 test `tools/tests/test_final_claims.py` (in `make verify`) fails when a gap
 statement here has no register row, when its status disagrees with the row
 (outside a historical/superseded clause), when a terminal/declared row loses
@@ -395,11 +397,21 @@ consolidation gate).
   capture's measured per-frame allowances (`SCAN3_ALLOWED` three-present scans, the loader strip in
   `OVERLAY_ALLOWED`, ARMADON's `BANDS_ALLOWED` present-copy scan-outs and DIABLO's fade bands).
   `gp-u23-oracle` (record §E2) captures the U16 finisher reaction under the labelled poked-damage
-  fallback: the live KO could not be reconciled with the narrow `0x36F10` gate window (six
-  attempts, record §E2), so P2's damage byte `0x10789E` is poked to `0x77` and a real hit takes it
-  to `0x78`; `gp_twop.py check --finisher` runs without `--allow-missing-reaction` and the capture
-  reaches `r0=0x33`. Its moves ratchet records a measured port divergence: the replay leaves
-  `r0=0x27` where the capture advances to `0x33` (the capture also holds `0x27` at `f=0x14F7`).
+  fallback: the live KO could not be reconciled with the narrow `0x36F10` gate window, so P2's
+  damage byte `0x10789E` is poked to `0x77` and a real hit takes it to `0x78`;
+  `gp_twop.py check --finisher` runs without `--allow-missing-reaction` and the capture
+  reaches `r0=0x33`. **R16 (the U16 finisher) is terminal** (Completion truth
+  final fix, record §4): `data/k11-captures/gp-u24-u16-state-t9-r5` measures
+  mode 9 at `f=0x1485` (`s1_42=0x8010`, `r0=0x00`), the gate's 99
+  `s1_42=0x8830` S rows `f=0x149A..0x14FC` (`r0=0x11` on the first), the close
+  `0x8030` from `f=0x14FD` (`r0=0x27`) and the first `r0=0x33` at `f=0x155A`,
+  93 frames after the close; `f=0x15A1` is the `s1_42=0x8030→0x8014` phase
+  change. The three finisher entries' presses are `f=0x14E8`/`f=0x154C`/
+  `f=0x15B0` (entries `0x15`/`0x16`/`0x17`); `f=0x1485` is the prior round's
+  `p1.b2`/`p1.b3` press, not an entry press. The shared `+0x42` b5/`+0x43` b3
+  acceptor never sees the reaction open. The poked `r0=0x33` is a table reaction
+  whose callback returned early, and the old port `r0=0x27` divergence is closed
+  by the IVT fix (`GP_U23_MOVES_MIN_FIRST` 6,050).
   **The claims are the ending content and the finisher reaction, not the fight**: the WIN_MENU
   path, the seven land marks, the `0x10789E` damage and the `DEATH_DONE` pokes are harness writes,
   so the KO by hits and the six earlier won matches are not claimed. U14's fought live win (R1) was
@@ -422,10 +434,20 @@ consolidation gate).
   final's `0x0C→0x0D` chain — and `gp_win.live_final` requires `b0c=1` at/after the mode-`0x0F`
   entry, with no scenario in `FINAL_WIN` yet. The one authorized two-human `gp-u14-twop-win` run
   reached the game's 2-0 fought win (`b1f=3`, no `W`, round-1 KO `f=0xB1B`, match result
-  `f=0x13A8`, mode `0x12` at `f=0x1693`) but failed `port script v2` at `f=0xB1B` (a missed
-  `S(0xB1A)`; 15 of 5,820 snapshots missed by the capture model), so it is preserved as
-  `data/k11-captures/gp-u14-twop-win.failed` and publishes no oracle, pin, miss set, manifest
-  entry or `CAPTURE_DIRS` path. The claim is game evidence only, not an arcade win; R1 is
+  `f=0x13A8`, mode `0x12` at `f=0x1693`); its only failed check was the capture model's
+  `S(f-1)` bitmap pin after the 3-snapshot gap `S(0xB18..0xB1A)`. Completion truth Task 1 fixed
+  `port_script` to derive `bits` from the `I` records (a press/release in spin `f` changes
+  `S(f+1)`, cross-checked on every accepted `S`), proved the 42 existing scripts byte-identical,
+  and promoted the unchanged bytes to `data/k11-captures/gp-u14-twop-win`: all eleven session
+  checks re-issue ok (0 mismatches of 5,820 `S`), `gp-u14-twop-win-oracle` is in `make verify`
+  (N 5,072, trace/moves 5,780, start 100, reach 4,269, missing 10, sha `a96ca6f5…`, 5,074
+  frames) and `gp_twop.py check --win`/`gp_win.py check/path` pass (KO `f=0xB1B`, match
+  `f=0x13A8`, X `f=0x1693`, 6/6 milestones). **R03 is closed on the game's own 2-0 two-human
+  win, not an arcade win** (a real P2 join at `f=0x2CA`, `b1f=3`, zero `W`, the KOs from the
+  game's damage path; the P2's only in-fight input is the scenario's 30-frame left hold,
+  `I p2.left` at `f=0x551` to the release at `f=0x56F`, with 30 mode-6 S rows carrying
+  `e2=0x2000`); the artifact is preserved as
+  `data/k11-captures/gp-u14-twop-win.failed`. R1 is
   terminal with the measured arcade damage race (AI 120 damage in each round vs the
   script's 25/92). The INT 8 tick item is done
   (record §E1.6/§E10): the install `0x66519..0x6652D` sets vector 8 to `0x6627E`, the PIT divisor
@@ -498,6 +520,13 @@ consolidation gate).
   section's first key-on, tolerance-free across ticks (sorted per-tick multisets for the
   declared intra-tick order model; the measured one-tick capture-label model; a skipped
   group must be empty and every port write matched once), skipping absent traces by name;
+  the audio replay's port script is generated with `gp_session.py port-script
+  --trust-bitmap` (the capture's recorded S bitmap), the one caller allowed to: the
+  capture-validation model stays injector-derived and fail-closed, and the two derivations
+  agree on every clean capture (0/5,820 S mismatches), so the flag restores only the
+  contaminated `gp-u6-moves` trace's `.dro` replay (Completion truth Task 1/5; the audio
+  summary now accounts for all 12 other k11 `.dro` files in 9 directories, `k11-lang`
+  and `gp-u14-twop-win` included);
   the selmo section is per-tick exact in 24 of the 26 music traces
   (`gp-u8-attract-start`'s tick-57 jitter and `gp-u23-u16-finisher`'s capture tick split;
   `gp-u22-diablo-ending`'s title is a separate label-slack/stop named gap). Live-truth
@@ -521,11 +550,21 @@ consolidation gate).
   played song's first key-on, so the S records prove the request and the section model
   cannot attribute it — live-truth §L11.3's "4 never requested" is corrected by
   final-truth record §F7.2; the played 1,200-tick section is grave+0x08's
-  `0x5A56E385`, whose S record precedes its first key-on), and **2 are never
+  `0x5A56E385`, whose S record precedes its first key-on). **R11 is terminal:** each start
+  is replaced before its first key-on and `86,371..90,424 ms` holds zero register writes
+  — the "tick-0 resets" are the port's `seq_start` pair — so the interval is empty and
+  no capture or model change can attribute a section. And **2 are never
   requested** — sound+0x7714 (three reaction callbacks `0x37640`/`0x37774`/`0x37898`
   request it behind the shared `+0x42` bit-5/`+0x43` bit-3 gate; t9-r5 reaches
   `r0=0x33` but the gate fails) and
-  konsd+0x1CCB0 (the `0x24508` handler) — and need new captures; the 10 rows are
+  konsd+0x1CCB0 (BLIZZARD's reaction-0x34 stream: `0xC92D8[1] = 0xE50D2`, whose
+  `D100 0x24508` at `0xE50E0` calls the `0x24508` handler → `sound_voice(0xEB)` at
+  `0x24559`). **R12 is terminal for `0xE4`:** it is requested only post-gate inside
+  R16's 99-frame window, which no shipped input reaches. **R39 is declared for
+  `0xEB`:** the call site is in the reaction-0x34 stream and the reaction-0x33
+  stream `0xC92B0[1] = 0xE5038` does not contain it; no capture carries
+  `r0/r1 = 0x32`/`0x34` (only `0x33`), so no shipped route requests it. No audio
+  section is claimed. The 10 rows are
   pinned in `TRACE_RESIDUE` with their first-diff tick (5..1,634 after the Driver Truth
   re-pin) and measured cause class
   (`voice-rotation`/`tail-lag`) in the `trace-residue` pin region; the unmatched
@@ -538,9 +577,28 @@ consolidation gate).
   runs; the title WAV is unchanged by Task 5 — `515b7c94…`/4,090 followed Task 3's
   voice-cursor correction from the Task 1 `df74acfb…`/3,402 baseline). The phase's required gate is **both**
   `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` **and** `make audio-render`.
-  Task 6 is declared, not taken (the optional service-menu language reload, the
-  coin-countdown capture the no-new-capture constraint forbids, and the proof-completion
-  housekeeping). The title/attract 9866-write oracle and every existing pin are unchanged.
+  Task 6's items are closed/terminal (Completion truth, design §2, R28/R37/R38): the
+  service-menu language reload is **R28 closed** (the `0x47370` loader and the
+  `k11-lang` capture), the coin countdown is **R37 terminal** (already gated by
+  R07/R08; the `CREDITS:<n>` drawing is inside the byte-exact title/front-end windows)
+  and the proof-completion housekeeping **R38 terminal** (the `closed_rows` figure is
+  asserted and the allowance-before-window-start guard is enforced; the remaining
+  Task 6 items are enumerated in R38; the ResourceWarnings stay named).
+  The title/attract 9866-write oracle and every existing pin are unchanged.
+- **The service-menu language reload is ported and captured** (Completion truth
+  Task 2, R28 `closed`). `game_string_table_load` (`/* 0x47370 ... */`,
+  `port/src/game/flow.c`) selects the raw's eight-dword name table `0xC9418`
+  (`english.txt` … `brazil.txt`, index 7 = index 0) through `host_read_file`,
+  checks the `0x33340001` magic and writes the `0x1E75C` handle/`DS_001082DC`/
+  `DS_001082D8`; `STRING_CAP` is `0x2200` (FRENCH 8,564 = `0x2174` is the largest
+  shipped file). Boot loads index 0 (`0x1C0B8`) and reloads the config's language
+  nibble (`0x20C72..0x20C7F`); `svc_config_options` reloads on a change
+  (`0x336AE`). `data/k11-captures/k11-lang` (460 frames, sha `5aeb8266…`; its checks were
+  green at capture time and `k11_capture.py` now persists them to `session.txt`) records field `0x29` `0x00142095 → 0x01142095` at ms 39,012
+  and the OPTIONS/MAIN menus redrawn from `FRENCH.TXT`; `tools/k11_lang.py` is in
+  `k11-oracle` (17/17 settled screens, 201/201 non-black, open END 408). Index 6
+  (`BRAZIL.TXT`) is absent: the raw exits `0x1D290`, the port keeps the last good
+  table (the declared difference at `flow.c`'s `0x47370`).
 - **The fought-match truth phase: the harness and two measurements, not the two claims** (plan
   `docs/superpowers/plans/2026-10-26-fought-match-truth.md`, record
   `2026-10-26-fought-match-truth-derivations.md` §F1–§F6; design
@@ -573,7 +631,7 @@ consolidation gate).
   stay outside `tools/audio_compare.py`'s 29-trace inventory (unattributed; no audio claim).
   The phase adds no oracle, no capture path and no
   measured pin (the nine `GP_U14_*` are empty);
-  `port_progress.py` stays `799 1203 66` / `759 759 100` and `make diff-verify` stays
+  `port_progress.py` stays `798 1203 66` / `759 759 100` and `make diff-verify` stays
   `1033/1033 functions VERIFIED; 14993/14993 mutants detected; 0 named gaps`. The phase's full
   gate stopped at the register-stream audio oracle under host load (`gp-u18-talon-ending`'s beach
   section, then `gp-u13-ending2`'s jungl section on a standalone retry: section-anchor frame/tick
@@ -592,7 +650,9 @@ consolidation gate).
   Option (b), moving R1's claim to the final, is rejected: its `b0c=1` appears with all seven final KOs
   poked (§E1.3), so it does not discriminate a fought KO. Final truth Task 3 records the split instead
   (record §F3): the match rule has no `b0c`, the final-only rule requires it, the two-human fought win
-  is game evidence in `gp-u14-twop-win.failed` (its port-script check failed), and R1 is terminal.
+  is **R03, closed by Completion truth Task 1** (`gp-u14-twop-win`: the model fix re-issued all
+  eleven checks on the unchanged bytes; `gp-u14-twop-win-oracle` and `gp_twop.py check --win`
+  pass), and R1 is terminal.
 - **The out-of-scope content mode `0x21` (volleyball) is now published by
   Volleyball truth Task 4 (register R05; record
   `docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §2); `0x25`
@@ -601,8 +661,11 @@ consolidation gate).
   captured** (state-coverage record
   `docs/superpowers/plans/2026-10-28-state-coverage-derivations.md` §D2; live-truth
   §L5/§L6). `DS_00104ABC =
-  (DS_00104B1F == 3) + 1` — written at `flow.c:1632` (`flow_player_join`) and `flow.c:2416`
-  (the round-end case-3 arm) — so `DS_00104ABC >= 2` iff `b1f == 3` (a two-human match), and both
+  (DS_00104B1F == 3) + 1` — every store recomputes it at the seven sites
+  `0x28DE7`/`0x25EC5`/`0x2955A`/`0x27DE6`/`0x28932`/`0x25B27`/`0x26B94`
+  (`flow.c:1676`/`:2460`/`:2603`/`:3070`/`:4016`/`:4168`/`:5833`), and the in-match join
+  only ORs `b1f` (`0x28D02..0x28D13`) then stores ABC — so `DS_00104ABC >= 2` iff `b1f == 3`
+  (a two-human match) at every store, and both
   in-match entries read it: `0x21` stores the mode at `0x4BD98` behind `fight_4b470`'s eighth-hit
   tail (`+0x1F > 7` = eight worshipper tramples of one effects entry, `fight.c:3084`;
   `DS_00104B1D` not 2/3, `DS_00104AFC`/`DS_001088C1`/`DS_001088C5`/`DS_00108864` clear,
@@ -645,12 +708,24 @@ consolidation gate).
   every 64 master ticks or on a press, and expires to mode `0x15` with `b25=0`.
   A poked 1P scenario cannot open `0x21`/`0x25` (no poke writes
   `b1f`/`DS_00104ABC`), so none is built (`0x21` and `0x25` were both reached by
-  real two-human input). The pre-L5 census rows
+  real two-human input). **R30 is terminal** (Completion truth final fix, record §4):
+  every `DS_00104ABC` store recomputes `(DS_00104B1F == 3) + 1` — the seven sites
+  `0x28DE7`, `0x25EC5`, `0x2955A`, `0x27DE6`, `0x28932`, `0x25B27`, `0x26B94`
+  (`flow.c:1676`, `:2460`, `:2603`, `:3070`, `:4016`, `:4168`, `:5833`) — and the
+  in-match join only ORs `b1f` (`0x28D02..0x28D13`) then stores ABC, so the 1P gate
+  state (`b1f != 3` with `DS_00104ABC = 2`) is inconsistent with the invariant at
+  every store; no in-match path clears `b1f` without recomputing it (the only clear
+  is the between-matches `0x24B7C` reset). The state suppresses `fighter.c:6501`'s
+  1P arm and moves the run-clock/audit slot (`config.c:703`/`743`); the gate
+  acceptance is unit-proven (`test_fight.c:3435`, `:29354` case 9) and no
+  distinct claim remains. The pre-L5 census rows
   `0x4BD98`/`0x4E11C`/`0x27A2C` were `NOT-HIT` (baseline l.696/714/255; the
   trample `0x4B470` is `HIT`); Task 12b re-measured them and Final truth
   Task 5's re-pin made `0x4E11C` `HIT`; Volleyball truth Task 4's re-pin made
   `0x4BD98` and its mode chain `HIT` (`HIT 684 / NOT-HIT 71 /
-  UNINSTRUMENTED 4`). The L5 expiry capture
+  UNINSTRUMENTED 4`; Completion truth Task 4's run re-measured the same split —
+  the `gp-u14-twop-win` replay adds the second round and match result, whose
+  rows were already HIT). The L5 expiry capture
   reaches `0x27A2C`/`0x278B0` but deliberately not the taken-continue `0x2791C`;
   Final truth Task 4's `gp-u29-continue-taken` later took the prompt (register
   R07) and improved `0x2791C`/`0x33B00` to HIT (record §F4.5).
@@ -712,13 +787,15 @@ consolidation gate).
   The match rule
   (`gp_win.live_match`) drops the `b0c` clause; the final-only rule (`gp_win.live_final`) keeps
   `b0c=1` at/after the mode-`0x0F` entry, and no scenario is in `FINAL_WIN`. The two-human
-  `gp-u14-twop-win` run reached the game's 2-0 win but failed its port-script check and stays
-  `.failed`; R1 is terminal. The earlier `b0c` reading's measured correction stands: the game-set
+  `gp-u14-twop-win` run reached the game's 2-0 win; Completion truth Task 1's port-script
+  model fix re-issued its checks on the unchanged bytes and promoted it (R03 `closed`), so
+  the former `.failed` statement is superseded; R1 is terminal. The earlier `b0c` reading's measured correction stands: the game-set
   `b0c` is **not universal** (BLIZZARD U13 and ARMADON U21 keep `b0c = 0`), and the U10
   game-set byte is on a poked final. The claim-coverage design's undefined **B2–B8 labels** are replaced by the census's
   measured NOT-HIT set (**71** addresses after Volleyball truth Task 4's
   re-pin, §D7.5, §D8.3 and live-truth §L12; Task 3's original pin
-  was 110) and the declared modes; the census baseline is a
+  was 110) and the modes that were declared then (all closed since: `0x21`
+  R05, `0x25` R06, `0x0E` R07/R08); the census baseline is a
   separate pin (its own `tools/coverage_baseline.txt`, not the `tools/pin_baseline.sha256`
   capture-pin tripwire). One `sprite_blit_aperture` (`0x51ED8`) pool mismatch was noted (three reruns
   green, not reproduced). No row, class or universe is widened and no capture or pin changed.
@@ -741,7 +818,10 @@ consolidation gate).
   675 / NOT-HIT 80`); record §F4.5/§F5.6; Volleyball truth Task 4 then improved
   the nine mode-`0x21` rows `0x13134`/`0x26540`/`0x43738`/`0x4BD98`/`0x4BF18`/
   `0x4C60C`/`0x4CB18`/`0x4CC0C`/`0x4CD98`, record
-  `docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §3).
+  `docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §3;
+  Completion truth Task 4's run re-measured the same **684/71/4** split — the
+  `gp-u14-twop-win` replay adds the second round and match result, whose rows
+  were already HIT, so no row moved).
   **The exhibits:** ENDURANCE's team end
   (`gp-u25-endurance-end`, `af1` `0 → 4`, stop mode `0x17`, 1,360 frames), the
   side-1 tour (`gp-u26-side1-ending`, `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F`
@@ -809,10 +889,11 @@ consolidation gate).
   post-script tail), trace/moves 6339, start 96, reach 3843, 17 missing classes
   and capture sha `96645e99…`/4,621 frames; every pin and the scan-out hash
   failed its mutation. The `.dro` stays outside the 29-trace audio inventory
-  (no measured section). The current inventory is **45 explicit capture paths,
-  44/45 present**, with only U14's fought live win declared absent
-  (`gp-u30-volleyball` was added by Volleyball truth Task 4; `gp-u29-continue-taken`
-  and `gp-bowling-2` by Final truth Tasks 4–5).
+  (no measured section). The current inventory is **47 explicit capture paths,
+  46/47 present**, with only U14's fought live win absent
+  (`data/k11-captures/gp-u14-win-live`; R04 terminal, `GATE_NAMED_GAPS` declares the
+  skip). `gp-u14-twop-win` and `k11-lang` were added by Completion truth Tasks 1–2;
+  `gp-u30-volleyball` by Volleyball truth Task 4.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
   `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
@@ -1010,8 +1091,8 @@ consolidation gate).
 - `docs/PROGRESS.md` is the running, per-task status narrative (what's ported,
   verified, and every named gap in the terminal claim register). Append a paragraph there, not to `README.md`,
   which stays a short pointer.
-- **Keep `README.md`'s title percentage current.** It reads
-  `— Reverse Engineering NN%`. Run `python3 tools/port_progress.py`: it prints
+- **Keep `README.md`'s title figure current.** It reads
+  `— 66% ported / 100% analysed`. Run `python3 tools/port_progress.py`: it prints
   `ported total percent`, counting only real functions (`symbols.h` `FN_`
   addresses) that have a column-0 `/* 0xADDR` header, an `fn_register` call, or
   a declared `PORT_PROGRESS_EXCEPTIONS` entry in `port/src` (the strict rule
@@ -1020,8 +1101,11 @@ consolidation gate).
   Update the README title and its `798 of 1,203 indexed functions (66%)`
   status line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure and the class breakdown; the
-  README title keeps the raw
-  percentage. As of 2026-10-28 (claim coverage Task 4) the lines read `798 1203 66`,
+  title states both the raw port share (66%) and the analysed figure (100%);
+  the exact identity is
+  `1,203 = 798 ported (759 portable + 39 runtime) + 41 host-owned + 12 deferred
+  + 37 replaced + 315 runtime` with 0 unclassified (design
+  `2026-11-02-completion-100-design.md` §1). As of 2026-10-28 (claim coverage Task 4) the lines read `798 1203 66`,
   `759 759 100` and `ported 798 (759 portable + 39 runtime) host-owned 41
   deferred 12 replaced 37 runtime 315` (the classification-truth phase removed
   the `0x62003` false positive and declared the `replaced` class; record §C4):

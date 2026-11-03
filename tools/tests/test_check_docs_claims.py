@@ -35,6 +35,26 @@ class TestCheckDocsClaims(unittest.TestCase):
         for rel, _ in cdc.CLAIMS:
             self.assertTrue(os.path.isfile(os.path.join(ROOT, rel)), rel)
 
+    def test_the_completion_truth_readme_guards_are_pinned(self):
+        # Completion truth Task 4 moved the README title, row count and capture
+        # inventory; the retired values must stay pinned as stale phrases.
+        for phrase in ('Reverse Engineering 66%', 'It has 36 rows',
+                       '45 explicit capture paths', '44/45 present',
+                       'the two-human 2-0 win is game evidence only',
+                       'U23 moves ratchet records'):
+            self.assertIn(('README.md', phrase), cdc.CLAIMS, phrase)
+
+    def test_the_final_fix_wave_guards_are_pinned(self):
+        # The P2-idle and 110/133 statements and the zero-declared wording were
+        # retired by the final fix wave; both files are pinned.
+        for rel, phrase in (('README.md', 'It has 38 rows'),
+                            ('README.md', 'No row is `declared`'),
+                            ('README.md', '110/133'),
+                            ('AGENTS.md', 'no row is `declared`'),
+                            ('AGENTS.md', '110/133'),
+                            ('AGENTS.md', 'P2 idle after the join')):
+            self.assertIn((rel, phrase), cdc.CLAIMS, (rel, phrase))
+
 
 if __name__ == '__main__':
     unittest.main()

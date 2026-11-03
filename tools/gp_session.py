@@ -1801,13 +1801,28 @@ def pad_arm(snap, keys):
     return dict(f=f, st=snap[f]['st'], mode=snap[f]['mode'])
 
 
-def port_script(name, lines, end=None, end_to_last_s=False):
+def port_script(name, lines, end=None, end_to_last_s=False, trust_bitmap=False):
     """poll.log v2 -> port script v2 (spec §4.1). Keys at their consumption
     frame (the H record paired FIFO with the I press, pinned by S(f-1) showing
-    the old head); bits at each change of S.raw, pinned by S(f-1). The key loop
-    0x24D08..0x24EE7 drains every queued word in one iteration, so the poller
-    writes one H record per consumed word and S(f) must show the head of the
-    last H record of frame f (record §G.4).
+    the old head); bits at each injector write: a press or release logged in the
+    spin of f changes the key-state table iteration f + 1 reads, so the bitmap
+    changes at S(f + 1) (the I record pins the frame even when a poller gap
+    missed that S). Every accepted S is cross-checked against the expected
+    bitmap; a mismatch is a real error (unscripted input), not a change to
+    replay. The key loop 0x24D08..0x24EE7 drains every queued word in one
+    iteration, so the poller writes one H record per consumed word and S(f)
+    must show the head of the last H record of frame f (record §G.4).
+
+    `trust_bitmap` emits the capture's own S-record bitmap instead (the
+    pre-2026-11-02 derivation) and skips the injector cross-check. It exists
+    only for `make audio-one`'s replay of a trace whose recorded input the
+    injector log cannot explain (`gp-u6-moves`'s 0xA52 `0x0200` bit, the known
+    unscripted contamination: completion truth Task 1 concern 3; the audio
+    oracle replays what the game saw). Every capture-validation path — the
+    `gp-capture` session checks, `gp-replay` and every `gp-*-oracle` replay —
+    uses the default fail-closed model. The flag changes no clean capture's
+    script: the two derivations agree on all 42 published captures (0/5,820 S
+    mismatches, completion truth Task 1).
 
     The script ends at the X record's frame by default. `end_to_last_s` lifts
     that guard to the capture's last S record instead, for a capture whose last
@@ -1860,13 +1875,81 @@ def port_script(name, lines, end=None, end_to_last_s=False):
             raise ScriptError('the first key (f=%s) is not the frame mode 0x27 appears (f=%X)'
                               % (keys[0][0] if keys else None, p27['f']))
     bits, prev_kb = [], 0
-    for f in sorted(snap):
-        if f < p27['f']:
-            continue
-        kb = raw_to_kb(snap[f]['raw'])
-        if kb != prev_kb:
-            if f - 1 not in snap:
-                raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)' % (f, f - 1))
+    if trust_bitmap:
+        # The capture's own S-record bitmap: the pre-2026-11-02 derivation.
+        # `make audio-one` replays the game's recorded input; a trace whose
+        # injector log cannot explain a bit (gp-u6-moves's 0xA52 0x0200, the
+        # known unscripted contamination) is still a valid audio trace.
+        for f in sorted(snap):
+            if f < p27['f']:
+                continue
+            kb = raw_to_kb(snap[f]['raw'])
+            if kb != prev_kb:
+                if f - 1 not in snap:
+                    raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)'
+                                      % (f, f - 1))
+                bits.append((f, kb))
+                prev_kb = kb
+    else:
+        # The bitmap is the injector's own write, not a game state: a press or
+        # release in the spin of f changes the key-state table iteration f + 1
+        # reads, so the bitmap changes at S(f + 1) (gp_capture.Injector.press /
+        # release_due). Derive the events from the I records and use every
+        # accepted S only as a cross-check; a poller gap over the change frame
+        # (the U14 two-human win's missed S(0xB18..0xB1A) after the release I at
+        # 0xB17) then no longer leaves the change unpinned. The scan->bit map is
+        # PAD's third column (gp_capture.SCAN_BIT's rule): a key whose scan is a
+        # pad's sets that pad's bit too, and two names can share a scan's bit, so
+        # a bit stays set while any of its scans is held.
+        scan_bit = {}
+        for _scan, _word, _bit in PAD.values():
+            scan_bit[_scan] = scan_bit.get(_scan, 0) | _bit
+        held_scan, by_frame = {}, {}
+        kb_now = 0
+        for r in recs:
+            if r['kind'] != 'I':
+                continue
+            if 'press' in r and r.get('scan') in scan_bit:
+                held_scan[r['lin']] = r['scan']
+                kb_now |= scan_bit[r['scan']]
+                by_frame[r['f'] + 1] = kb_now
+            elif 'release' in r and r['lin'] in held_scan:
+                # A bit can be shared by two names with different scans
+                # (p1.b0's 0x16 and p1.start's 0x3B are both 0x0100): recompute
+                # from the scans still held, so releasing one does not clear a
+                # bit the other still holds (Completion truth final review
+                # minor; the S cross-check below would otherwise raise on a
+                # legitimately held bit).
+                held_scan.pop(r['lin'])
+                kb_now = 0
+                for _scan in held_scan.values():
+                    kb_now |= scan_bit[_scan]
+                by_frame[r['f'] + 1] = kb_now
+        events = sorted(by_frame.items())
+        # Cross-check every accepted S: its bitmap is the last injector write at
+        # or before f (a press/release at spin f - 1 changes S(f)).
+        ev, want = 0, 0
+        for f in sorted(snap):
+            while ev < len(events) and events[ev][0] <= f:
+                want = events[ev][1]
+                ev += 1
+            got = raw_to_kb(snap[f]['raw'])
+            if want != got:
+                raise ScriptError('pad bitmap at f=%X is %04X but the injector wrote %04X'
+                                  % (f, got, want))
+        # A pad already held at the Enter/arm frame keeps its bit in the first
+        # scripted iteration (the S record of that frame may itself be missing).
+        for f, kb in events:
+            if f <= p27['f']:
+                prev_kb = kb
+        if prev_kb != 0:
+            bits.append((p27['f'], prev_kb))
+        for f, kb in events:
+            if f < p27['f']:
+                continue
+            if f == p27['f'] or kb == prev_kb:
+                prev_kb = kb
+                continue
             bits.append((f, kb))
             prev_kb = kb
     pokes = []
@@ -1926,6 +2009,11 @@ def main():
     ap.add_argument('--b')
     ap.add_argument('--end', type=int)
     ap.add_argument('--end-to-last-s', action='store_true')
+    ap.add_argument('--trust-bitmap', action='store_true',
+                    help='emit the capture\'s own S-record bitmap (the audio '
+                         'oracle\'s replay of a trace whose injector log cannot '
+                         'explain a bit); the default is injector-derived and '
+                         'fail-closed')
     a = ap.parse_args()
     if a.cmd == 'trace-diff':
         with open(os.path.join(a.a, 'poll.log')) as fa, open(os.path.join(a.b, 'poll.log')) as fb:
@@ -1938,7 +2026,8 @@ def main():
     with open(os.path.join(a.capture, 'poll.log')) as f:
         try:
             text = port_script(a.scenario, f.read().splitlines(), end=a.end,
-                               end_to_last_s=a.end_to_last_s)
+                               end_to_last_s=a.end_to_last_s,
+                               trust_bitmap=a.trust_bitmap)
         except ScriptError as e:
             print('gp_session: port-script: %s: %s' % (a.scenario, e))
             return 1

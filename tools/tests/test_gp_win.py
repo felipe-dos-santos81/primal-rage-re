@@ -823,10 +823,20 @@ class TestPath(unittest.TestCase):
         rows = gw.MILESTONES['gp-u14-win-live']
         self.assertEqual([r[:3] for r in rows], [r[:3] for r in gw._START + gw._MATCH1])
 
+    def test_the_two_human_win_uses_character_two_rows(self):
+        # Completion truth Task 1 (R03): the promoted gp-u14-twop-win capture's P1 is
+        # character 2 on character-select cell 1 (its S rows' c0 = 2), so the milestone
+        # list is start_char(2, 1) + _MATCH1 -- the same match rows, one character row.
+        rows = gw.MILESTONES['gp-u14-twop-win']
+        self.assertEqual([r[:3] for r in rows],
+                         [r[:3] for r in gw.start_char(2, 1) + gw._MATCH1])
+        self.assertIn('gp-u14-twop-win', gw.MATCH_WIN)
+        self.assertEqual(gw.MATCH_WINNER['gp-u14-twop-win'], 0)
+
     def test_rows_cover_all_scenarios_in_order(self):
         self.assertEqual(sorted(gw.MILESTONES),
-                         ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-win-live',
-                          'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
+                         ['gp-u10-ending', 'gp-u13-ending2', 'gp-u14-twop-win',
+                          'gp-u14-win-live', 'gp-u18-talon-ending', 'gp-u19-vertigo-ending',
                           'gp-u20-chaos-ending', 'gp-u21-armadon-ending',
                           'gp-u22-diablo-ending', 'gp-u26-side1-ending', 'gp-u9-win'])
         for name, rows in gw.MILESTONES.items():

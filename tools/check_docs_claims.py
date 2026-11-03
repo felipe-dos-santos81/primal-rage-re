@@ -58,9 +58,27 @@ CLAIMS = [
     # The audio prefix total moved with Driver Truth (74 sections / 29,656 ticks
     # -> 86 / 44,489; register R09/R29 and AGENTS.md); README's summary must
     # carry the measured value. The row count moved with Driver Truth's R35/R36
-    # (34 -> 36 rows; register §2).
+    # (34 -> 36 rows; register §2) and Completion truth's R37/R38 (36 -> 38).
+    # The capture inventory and the two-human win moved with Completion truth
+    # Task 4 (45/44/45 -> 47/46/47; R03 closed on the promoted capture), and the
+    # title states 66% ported / 100% analysed (design §1).
     ("README.md", "74 diff-allowed prefixes"),
     ("README.md", "It has 34 rows"),
+    ("README.md", "It has 36 rows"),
+    ("README.md", "45 explicit capture paths"),
+    ("README.md", "44/45 present"),
+    ("README.md", "Reverse Engineering 66%"),
+    ("README.md", "the two-human 2-0 win is game evidence only"),
+    ("README.md", "U23 moves ratchet records"),
+    # Completion truth's final fix wave: the P2 is not idle, R16's evidence is
+    # the t9-r5 capture (not the 110/133 latency reading), and the register has
+    # one declared row (R39), not zero.
+    ("README.md", "It has 38 rows"),
+    ("README.md", "No row is `declared`"),
+    ("README.md", "110/133"),
+    ("AGENTS.md", "no row is `declared`"),
+    ("AGENTS.md", "110/133"),
+    ("AGENTS.md", "P2 idle after the join"),
 ]
 
 

@@ -331,12 +331,17 @@ void game_title_dump_frame(void);
 void game_attract_dump_frame(void);
 
 /* PORT: the title's localisation reader, 0x47370 + 0x1C500 + 0x474E4 over the
- * ENGLISH.TXT table. `game_string_table_load(dir)` reads <dir>/ENGLISH.TXT once
- * into mem[] (idempotent); `game_string_get(id)` decodes string `id` into the
- * original's DS_00102760 buffer through the 0x1E75C/0x1E808 handle and returns
- * it (an empty string when the table is absent or the id is empty). Exposed for
- * a unit test; 0x121A0 uses it for string 0x15 ("THE FUTURE..."). */
-void game_string_table_load(const char *dir);
+ * language table. `game_string_table_load(dir, language)` reads the selected
+ * <dir>/<LANG>.TXT into mem[] through the host (the seven-name table at 0xC9418:
+ * english, french, german, italian, spanish, portugal, brazil; index 7 repeats
+ * index 0). Every call replaces the table: the boot calls it with 0 (0x1C0B8)
+ * and with the loaded config's language nibble (0x20C7F), and `0x336AE`'s
+ * reload uses `game_string_table_reload`. `game_string_get(id)` decodes string
+ * `id` into the original's DS_00102760 buffer through the 0x1E75C/0x1E808 handle
+ * and returns it (an empty string when the table is absent or the id is empty).
+ * Exposed for a unit test; 0x121A0 uses it for string 0x15 ("THE FUTURE..."). */
+void game_string_table_load(const char *dir, u32 language);
+void game_string_table_reload(u32 language);
 const u8 *game_string_get(u32 id);
 u32  string_lock(u32 handle);                    /* 0x1E75C */
 void string_unlock(u32 handle);                  /* 0x1E808 */

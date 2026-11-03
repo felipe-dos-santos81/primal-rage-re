@@ -343,11 +343,10 @@ u32 svc_config_options(u32 table)
         config_field_set(SVC_CFG_FIELD, now);               /* 0x3368E..0x33695 0x2DA0C */
     }
     if ((old & 0x7000000u) != (now & 0x7000000u)) {         /* 0x3369A..0x336A9 */
-        /* PORT: 0x336AE 0x47370(new >> 24) reloads the language file; the
-         * port's game_string_table_load is idempotent and English-only (host
-         * file I/O), so a changed language is stored in field 0x29 but not
-         * shown (named gap, record §K11.3). EAX would be 0x47370's result;
-         * the only caller, 0x2CACC through menu_run (0x2FD98), discards it. */
+        /* 0x336AB shr eax,0x18; 0x336AE 0x47370(EAX): the changed language
+         * reloads the localisation table. EAX would be 0x47370's result; the
+         * only caller, 0x2CACC through menu_run (0x2FD98), discards it. */
+        game_string_table_reload((now & 0x7000000u) >> 24);  /* 0x47370 */
     }
     return now & 0x7000000u;                                /* 0x336A2 */
 }

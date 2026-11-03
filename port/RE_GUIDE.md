@@ -306,9 +306,16 @@ true original, and ported the divergence. Two pieces:
   is `gp-u23-oracle` (§E2), captured under the **labelled poked-damage
   fallback** (P2's `0x10789E` poked to `0x77`, then a real hit to the KO
   `0x78`): `gp_twop.py check --finisher` runs without
-  `--allow-missing-reaction` and the capture reaches `r0=0x33`; its moves
-  ratchet records a measured port divergence, the replay leaving `r0=0x27`
-  where the capture advances to `0x33`. The poked captures claim the ending
+  `--allow-missing-reaction` and the capture reaches `r0=0x33`. **R16 is
+  terminal** (Completion truth final fix, record §4): `gp-u24-u16-state-t9-r5`
+  measures mode 9 at `f=0x1485`, the gate's 99 `s1_42=0x8830` rows
+  `f=0x149A..0x14FC`, the close `0x8030` at `f=0x14FD`, the first `r0=0x33` at
+  `f=0x155A` (93 frames after the close) and the `s1_42=0x8030→0x8014` phase
+  change at `f=0x15A1`; the three entries' presses are
+  `0x14E8`/`0x154C`/`0x15B0` (`f=0x1485` is the prior round's `p1.b2`/`p1.b3`
+  press), and the old port `r0=0x27` divergence is closed by the IVT fix
+  (`GP_U23_MOVES_MIN_FIRST` 6,050).
+  The poked captures claim the ending
   content and the finisher reaction, not the KO by hits or the six earlier won
   matches. **U14's fought live win (R1, §J6) is terminal** (Final truth Task 3, record §F3.7, register R04): the
   fought-match-truth phase's one authorized attempt (2026-10-26) lost (P1 KO'd
@@ -331,9 +338,11 @@ true original, and ported the divergence. Two pieces:
   `2026-10-30-final-truth-derivations.md` §F3): `gp_win.live_match` has no
   `b0c` clause (the setter is the final's `0x0C→0x0D` chain, not match 1),
   `gp_win.live_final` keeps `b0c=1` at/after mode `0x0F`, and the one
-  authorized two-human `gp-u14-twop-win` run reached the game's 2-0 win but
-  failed its port-script check (`f=0xB1B`, a missed `S(0xB1A)`) and stays
-  `.failed` with no oracle or pin.
+  authorized two-human `gp-u14-twop-win` run reached the game's 2-0 win; its only
+  failed check was the capture model's `S(f-1)` pin after a 3-snapshot gap, which
+  Completion truth Task 1 fixed (`port_script` now derives `bits` from the `I`
+  records), promoting the unchanged bytes to `data/k11-captures/gp-u14-twop-win`
+  with `gp-u14-twop-win-oracle` and `gp_twop.py check --win` (R03 `closed`).
    The two-human KO itself is now published by `gp-twop-ko-oracle` (live truth
    Task 3, record §L3): the no-`W`, no-poke capture reaches side 0's hand-dealt
    KO at `f=0x0B63`, with P2's `s1_5a` moving from live `0x73` to `0x78`, and
@@ -343,12 +352,30 @@ true original, and ported the divergence. Two pieces:
    is a fought win. U14's fought live win is the terminal gap (final
    truth Task 3, record §F3; the rule split and the failed two-human capture
    are below). The current
-   inventory is **45 explicit capture paths, 44/45 present**, with
-   only that U14 path absent (`gp-u30-volleyball` was added by Volleyball truth
-   Task 4; `gp-u29-continue-taken` and `gp-bowling-2` by Final truth Tasks 4–5). The failed U14 artifact is separately game
+   inventory is **47 explicit capture paths, 46/47 present**, with
+   only that U14 path absent (`gp-u14-twop-win` and `k11-lang` were added by
+   Completion truth Tasks 1–2; `gp-u30-volleyball` by Volleyball truth Task 4).
+   The failed U14 artifact is separately game
    evidence for a fought arcade KO, not a capture, oracle or pin (live truth
    Task 8, record §L8). Task 12a is docs-only; Task 12b re-pinned the census;
    Task 13 runs the full gate.
+- **The service-menu language reload is ported and captured** (Completion truth
+  Task 2, R28 `closed`): the raw's name table `0xC9418` holds eight dwords
+  (`english.txt`, `french.txt`, `german.txt`, `italian.txt`, `spanish.txt`,
+  `portugal.txt`, `brazil.txt`, then `english.txt` again for index 7); `0x47370`
+  selects one, `0x1C0B8` loads index 0 at boot, `0x20C72..0x20C7F` reloads the
+  config field `0x29`'s language nibble, and `0x336AE` reloads on a menu change.
+  The port's `game_string_table_load` (`/* 0x47370 ... */`, `port/src/game/flow.c`)
+  reads through `host_read_file` into a staging block, checks the `0x33340001`
+  magic and only then copies to the table and writes the
+  `0x1E75C` handle/`DS_001082DC`/`DS_001082D8`; `STRING_CAP` is `0x2200`
+  (FRENCH 8,564 = `0x2174`). `data/k11-captures/k11-lang` (460 frames, sha
+  `5aeb8266…`; its checks were green at capture time and `k11_capture.py` now
+  persists them to `session.txt`) records field `0x29`
+  `0x00142095 → 0x01142095` at ms 39,012 and the OPTIONS/MAIN menus redrawn from
+  `FRENCH.TXT`; `tools/k11_lang.py` is in `k11-oracle` (17/17 settled screens,
+  201/201 non-black, open END 408). Index 6 (`BRAZIL.TXT`) is absent: the raw
+  exits `0x1D290`, the port keeps the last good table.
 - The differential audit (proof-completion phase, record
   `2026-10-24-proof-completion-derivations.md` §P5–§P8; the state-coverage
   proof-debt declaration §D7): `make diff-verify`
@@ -475,7 +502,9 @@ true original, and ported the divergence. Two pieces:
   mode-`0x21` rows (`0x13134`/`0x26540`/`0x43738`/`0x4BD98`/`0x4BF18`/`0x4C60C`/
   `0x4CB18`/`0x4CC0C`/`0x4CD98`; record
   `../docs/superpowers/plans/2026-11-01-volleyball-truth-derivations.md` §3), so
-  the measured split is 684/71/4.
+  the measured split is 684/71/4; Completion truth Task 4's `make coverage` run
+  re-measured the same split (the `gp-u14-twop-win` replay adds the second round
+  and match result, whose rows were already HIT).
   The exhibits: ENDURANCE's team end (`gp-u25-endurance-end`, `af1` `0 → 4`,
   stop mode `0x17`, 1,360 frames), the side-1 tour (`gp-u26-side1-ending`,
   `ad4=1`/`b1f=2`/`c1=4`, **268 mode-`0x1F` frames byte-identical to

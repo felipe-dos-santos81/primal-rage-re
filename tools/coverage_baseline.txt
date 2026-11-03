@@ -1,4 +1,4 @@
-# reason: volleyball truth: gp-u30-volleyball hits the mode-0x21 chain (the 8-trample entry, the court/clock/score/return); re-pinned from the measured run
+# reason: completion truth: gp-u14-twop-win adds the two-human match-1 win/result path; re-pinned from the measured run
 0x10D70 HIT
 0x10DB0 HIT
 0x10E18 HIT

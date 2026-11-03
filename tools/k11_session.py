@@ -88,10 +88,25 @@ WALK = tuple((
 # re-save, so it is mounted read-only and sends nothing after the Enter.
 SAVE_RELOAD_KEYS = tuple('enter enter down down esc down enter enter right esc esc'.split())
 
+# k11-lang (Completion truth Task 2, R28): the walk's eight-key prefix enters
+# CONFIG OPTIONS, then five Downs select record 5 (string 0x1FD "Language",
+# shift 24, six values), Right changes 0 -> 1 ("français") and Enter returns the
+# bits, so 0x336AE calls 0x47370(1) and FRENCH.TXT replaces ENGLISH.TXT. The
+# OPTIONS MENU redraws in French when its callback returns (menu_run's `old =
+# -2` before the Enter's callback), and the first Esc makes the MAIN MENU redraw
+# from the reloaded table; the second leaves it. No pokes: the field is edited
+# by real keys.
+K11_LANG = tuple((
+    'enter enter down down esc down enter enter '            # MAIN -> CONFIG OPTIONS
+    'down down down down down right enter '                  # record 5, Right, Enter
+    'esc esc'                                                # the French redraws, leave
+).split())
+
 SCENARIOS = {
     'walk': dict(keys=WALK, pokes=(), time_limit=75),
     'idle': dict(keys=('enter',), pokes=(), time_limit=90),
     'menuesc': dict(keys=('enter', ',', ',', 'esc'), pokes=(), time_limit=60),
+    'k11-lang': dict(keys=K11_LANG, pokes=(), time_limit=60),
     'diags': dict(keys=tuple('enter down enter down down down down down down enter , , , esc esc'.split()),
                   pokes=(('ds_or', 0x107410, 0x10),), time_limit=55),
     'de': dict(keys=tuple('enter down enter down enter , , , esc esc esc esc esc esc'.split()),

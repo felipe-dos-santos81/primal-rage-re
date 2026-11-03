@@ -1195,6 +1195,16 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_s
     if start is None:
         out("gp_compare: %s: frames: window empty: no capture frame exhibits the port's first frame" % name)
         return 1, None, 0, 0
+    # Music truth Task 6 housekeeping (Completion truth final review Important 5):
+    # a named allowance before the window start is never examined by the loop
+    # below, so it would silently do nothing; fail it by name.
+    for _kind, _table in (('band', bands), ('scan-out', scan3), ('overlay', overlay)):
+        _early = sorted(k for k in _table if k < start)
+        if _early:
+            out('gp_compare: %s: frames: FAIL: %s allowance capture %s is before the '
+                'window start %d' % (name, _kind,
+                                     ', '.join(str(k) for k in _early[:5]), start))
+            return 1, None, 0, 0
     p, counts, black, unexpl, seen = 0, collections.Counter(), 0, [], set()
     allow_bad = 0
     j = start

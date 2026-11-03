@@ -195,6 +195,17 @@
       "reason": "U14 R1 fought win not authorized (design approval); the one attempt is preserved as gp-u14-win-live.failed (record 2026-10-26-fought-match-truth-derivations \u00a7F2)"
     },
     {
+      "path": "data/k11-captures/gp-u14-twop-win",
+      "kind": "k11",
+      "poll_log_sha256": "a96ca6f5de662159f43d61ae939c65be64d01dbed5441b324a12e8bfcfe728d9",
+      "frame_count": 5074,
+      "dro": [
+        "prage_000.dro"
+      ],
+      "first_s_frame": 5,
+      "last_s_frame": 5839
+    },
+    {
       "path": "data/k11-captures/gp-u15-join",
       "kind": "k11",
       "poll_log_sha256": "5f7ab1d72c7893e6fd66e8db143b615e6d3b385122ae0a93b9037ad1ffe3664c",
@@ -409,6 +420,16 @@
       "frame_count": 766,
       "dro": [
         "prage_000.dro"
+      ]
+    },
+    {
+      "path": "data/k11-captures/k11-lang",
+      "kind": "k11",
+      "poll_log_sha256": "5aeb8266fe48fa0039f67e43e70d893a418a35dc770c1b0720103438a893b96e",
+      "frame_count": 460,
+      "dro": [
+        "prage_000.dro",
+        "prage_001.dro"
       ]
     },
     {

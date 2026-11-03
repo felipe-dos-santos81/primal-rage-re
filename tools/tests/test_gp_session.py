@@ -444,11 +444,35 @@ def _log(extra_after=()):
     L.append('I ms=3 f=0125 step=1 press=p1.up scan=1F lin=00010093 old=FF bios=1F73 ring=1 late=0')
     L.append('H ms=4 f=0126 head=0022')
     L += [_s(0x126, head=0x22, raw=0x80000000), _s(0x127, head=0x22, raw=0x80000000)]
-    # 0x12A: a pad change with no BIOS word (a --no-pad-bios press): bits only
+    L.append('I ms=4 f=0127 step=1 release=p1.up lin=00010093')
+    # 0x129/0x12A: a pad press/release with no BIOS word (--no-pad-bios): bits only.
+    L.append('I ms=5 f=0129 step=2 press=p2.b0 scan=47 lin=000100BB old=FF bios=- ring=- late=0')
+    L.append('I ms=5 f=012A step=2 release=p2.b0 lin=000100BB')
     L += [_s(f, head=0x22, raw=0x100 if f == 0x12A else 0) for f in range(0x128, 0x131)]
     L += list(extra_after)
-    L.append('X ms=5 f=0130 step=2 end')
-    L.append('E ms=6 reason=time-limit rc=0')
+    L.append('X ms=6 f=0130 step=3 end')
+    L.append('E ms=7 reason=time-limit rc=0')
+    return L
+
+
+def _same_bit_two_names_log():
+    """p1.b0 (scan 0x16) and p1.start (scan 0x3B) share kb bit 0x0100: press
+    both, release one at 0x125 and the other at 0x127. The S rows keep the bit
+    set through 0x127 (the raw key-state byte 0x2D9 = 1)."""
+    L = ['B ms=0 base=00266000 ptr=0000FE20']
+    L += [_s(f, mode=3) for f in range(0x118, 0x11E)]
+    L.append('I ms=1 f=011D step=0 press=enter scan=1C lin=00010090 old=FF bios=1C0D ring=1 late=0')
+    L += [_s(0x11E, mode=3), _s(0x11F, mode=3)]
+    L.append('H ms=2 f=0120 head=0020')
+    L.append('I ms=2 f=0121 step=1 press=p1.b0 scan=16 lin=0001008A old=FF bios=- ring=- late=0')
+    L.append('I ms=2 f=0123 step=1 press=p1.start scan=3B lin=000100AF old=FF bios=- ring=- late=0')
+    L.append('I ms=3 f=0125 step=1 release=p1.b0 lin=0001008A')
+    L.append('I ms=3 f=0127 step=1 release=p1.start lin=000100AF')
+    for f in range(0x120, 0x131):
+        raw = 0x01000000 if 0x122 <= f <= 0x127 else 0
+        L.append(_s(f, head=0x20, raw=raw))
+    L.append('X ms=4 f=0130 step=2 end')
+    L.append('E ms=5 reason=time-limit rc=0')
     return L
 
 
@@ -459,7 +483,7 @@ class TestPortScript(unittest.TestCase):
     def tearDown(self):
         gs.SCENARIOS.pop('_t', None)
 
-    def test_script_keys_by_consumption_and_bits_by_raw(self):
+    def test_script_keys_by_consumption_and_bits_by_injector(self):
         text = gs.port_script('_t', _log())
         lines = [l for l in text.splitlines() if not l.startswith('#')]
         self.assertEqual(lines, ['enter_frame 288', 'enter_state 0000',
@@ -472,10 +496,47 @@ class TestPortScript(unittest.TestCase):
         with self.assertRaises(gs.ScriptError):
             gs.port_script('_t', L)
 
-    def test_bits_need_the_previous_snapshot(self):
-        L = [l for l in _log() if not (l.startswith('S ') and gs.parse(l)['f'] == 0x129)]
+    def test_bits_follow_the_injector_across_a_poller_gap(self):
+        # The U14 two-human win's shape: the release I at f pins the change at
+        # f + 1 even when the poller missed S(f + 1) (there, S(0xB18..0xB1A)
+        # after the release at 0xB17); it must not demand S(f).
+        L = [l for l in _log() if not (l.startswith('S ') and gs.parse(l)['f'] in (0x129, 0x12A))]
+        lines = [l for l in gs.port_script('_t', L).splitlines() if not l.startswith('#')]
+        self.assertIn('bits 298 0001', lines)
+
+    def test_an_unexplained_bitmap_change_is_an_error(self):
+        # A bitmap change with no I record is unscripted input, not a change to
+        # replay: S(0x12A) reads 0x100 but no press wrote it.
+        L = [l for l in _log() if not (l.startswith('I ') and gs.parse(l)['f'] == 0x129)]
         with self.assertRaises(gs.ScriptError):
             gs.port_script('_t', L)
+
+    def test_trust_bitmap_replays_the_capture_bitmap(self):
+        # `make audio-one`'s opt-in: the capture's own S bitmap is replayed even
+        # when the injector log cannot explain a bit (gp-u6-moves's known
+        # unscripted 0xA52 0x0200). The default stays fail-closed (above).
+        L = [l for l in _log() if not (l.startswith('I ') and gs.parse(l)['f'] == 0x129)]
+        lines = [l for l in gs.port_script('_t', L, trust_bitmap=True).splitlines()
+                 if not l.startswith('#')]
+        self.assertIn('bits 298 0001', lines)
+
+    def test_trust_bitmap_is_identical_on_a_clean_capture(self):
+        # The audio oracle's flag cannot change a published capture's script:
+        # the two derivations agree on every clean capture (completion truth
+        # Task 1: 0/5,820 S mismatches).
+        self.assertEqual(gs.port_script('_t', _log(), trust_bitmap=True),
+                         gs.port_script('_t', _log()))
+
+    def test_a_bit_shared_by_two_names_stays_set_until_both_release(self):
+        # Completion truth final review minor: p1.b0 (scan 0x16) and p1.start
+        # (scan 0x3B) share kb bit 0x0100. Releasing p1.b0 at 0x125 must not
+        # clear the bit while p1.start is held (the S rows show it set through
+        # 0x127); the bit clears at S(0x128), after the second release.
+        lines = [l for l in gs.port_script('_t', _same_bit_two_names_log()).splitlines()
+                 if not l.startswith('#')]
+        self.assertIn('bits 290 0100', lines)     # S(0x122), the first press
+        self.assertNotIn('bits 294 0000', lines)  # S(0x126) is still held
+        self.assertIn('bits 296 0000', lines)     # S(0x128), both released
 
     def test_enter_frame_must_be_the_first_key(self):
         L = [l.replace('mode=0027', 'mode=0003') if l.startswith('S ') and gs.parse(l)['f'] == 0x120 else l

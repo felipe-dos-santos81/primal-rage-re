@@ -790,7 +790,9 @@ The scenario is `gp_session.SCENARIOS['gp-u14-twop-win']` (added; also in
 `STOP_AT_END`): gp-twop-ko's start and 140-attempt 1A/1B round, then the same
 140-attempt round anchored to the second mode-6 entry, `extra=WIN_EXTRA`,
 `skip_on_mode=(0x07,0x08,0x09)`, `stop_mode=0x12`, `stop_delay=0`,
-`time_limit=240`. No poke; the route is the two-human one (P2 idle). The one
+`time_limit=240`. No poke; the route is the two-human one (the P2's only
+in-fight input is the scenario's 30-frame left hold at `f=0x551..0x56F`; the
+earlier "P2 idle" reading is superseded). The one
 authorized run (`make gp-capture scenario=gp-u14-twop-win`, 2026-10-30) ran
 118.8 s and logged 5,820 S records, f 5..0x16CF, 15 snapshots missed by the
 capture model, 5,074 frames. Ten of the eleven session checks passed; one

@@ -1,4 +1,4 @@
-# Primal Rage (DOS, 1995) — Reverse Engineering 66%
+# Primal Rage (DOS, 1995) — 66% ported / 100% analysed
 
 ![Primal Rage](docs/intro.jpg)
 
@@ -31,21 +31,32 @@ only its own directories under `data/`.
 
 The port covers the whole game: boot, title, attract cycles, front end, service
 menu, character select, one- and two-player matches, the win path, all seven
-endings, and the game-over/high-score flows. The measured claims:
+endings, and the game-over/high-score flows. **100% analysed** means every
+indexed function is accounted for (the identity below), not that all runtime
+code is ported: 315 WATCOM/DOS4GW/AIL runtime functions are declared
+non-targets (the AIL set is named unreproducible) and 8 portable functions
+remain `UNROWED` in the differential harness. The index boundary is declared:
+1,207 decomp rows = 1,203 `FN_` + 3 mnemonic + 1 data artifact (the 145
+`.image` rows are analysis noise); the span census's 388 span-writer entries and
+the 4 unindexed call targets are triaged outside it. The measured claims:
 
 - **Port:** 798 of 1,203 indexed functions (**66%** raw); **759/759 portable
-  (100%)**. The 405 not ported are 53 classified host-owned/deferred (41
+  (100%)** — the game's own code is fully analysed. The 405 not ported are 53
+  classified host-owned/deferred (41
   host-owned + 12 deferred; `tools/port_classification.txt`), 37 replaced
   clean-room runtime and 315 WATCOM/DOS4GW/AIL runtime functions served by the
-  host (`tools/port_progress.py`).
+  host (`tools/port_progress.py`). The identity is exact and measured:
+  **1,203 = 798 ported (759 portable + 39 runtime) + 41 host-owned + 12 deferred
+  + 37 replaced + 315 runtime**, 0 unclassified (Completion truth, design §1).
 - **Differential:** `make diff-verify` runs the original's bytes against the
   port's C functions: **1033/1033 functions**, **14993/14993 mutants**, **0 named
   gaps**; **825/845** callee rows closed, **810/845** full; **20 terminal rows**
   (19 addresses), **12 `WEAKER`**, **8 `UNROWED`**.
-- **Oracles:** **45 explicit capture paths**, **44/45 present** (only the
-  declared U14 gap); the Smacker logo, title/attract, front end, demo, K11
-  service menu and the gameplay replays are compared against the original's
-  frames. These are bounded-missing claims, not complete coverage.
+- **Oracles:** **47 explicit capture paths**, **46/47 present** (only the
+  U14 arcade gap declared absent); the Smacker logo, title/attract, front end,
+  demo, K11 service menu (including the service-menu language reload) and the
+  gameplay replays are compared against the original's frames. These are
+  bounded-missing claims, not complete coverage.
 - **Span census:** the independent census has 417 slots / 386 writer targets /
   26 code-shape classes proved (385/386 writer targets); E2 reads 736 candidates
   (732 by U0's rule), 388 span-writer.
@@ -58,26 +69,32 @@ endings, and the game-over/high-score flows. The measured claims:
   game-owned claim is the register stream.
 - **Endgame:** all seven endings and the U16 finisher reaction are pinned under
   poked win paths. The claim is the ending content and finisher reaction, not
-  the KO by hits; the U23 moves ratchet records the port's `r0=0x27` vs the
-  capture's `0x33`.
+  the KO by hits; the U16 gate is terminal (a measured 99-row `s1_42` window —
+  the finisher reaction lands after it, record Completion truth §4) and the old
+  U23 `r0=0x27`-vs-`0x33` divergence is closed by the IVT fix.
 
 The single source of truth for every remaining gap is the **terminal claim
 register**:
 [`docs/superpowers/specs/2026-10-30-final-claims.md`](docs/superpowers/specs/2026-10-30-final-claims.md).
-It has 36 rows (R01–R36: 9 closed, 1 gated, 19 terminal, 7 declared), each
+It has 39 rows (R01–R39: 11 closed, 1 gated, 26 terminal, 1 declared), each
 with its address, file:line or capture. Named there: U14's fought arcade win
-(R1) is **terminal**
-(the two-human 2-0 win is game evidence only in
-`gp-u14-twop-win.failed`); `0x21` volleyball is **closed** (the real-input
+(R1) is **terminal**, while the game's own 2-0 two-human win is **closed** on
+the real-input `gp-u14-twop-win` capture
+(`gp-u14-twop-win-oracle`, `gp_twop.py check --win`); `0x21` volleyball is
+**closed** (the real-input
 `gp-u30-volleyball` capture reaches the eighth trample, the mode entry, a real
-point and the return to mode 6); the 5120 band is
+point and the return to mode 6); the service-menu language reload is **closed**
+(`k11-lang`); the 5120 band is
 **PASS-A terminal** (the content is the port's; the old blue is the
 capture/present-side class); the 20 terminal differential rows, the 12 `WEAKER`
 and 8 `UNROWED`, the 4 `UNINSTRUMENTED` census addresses, the storage items,
 the zero-payload movie audio (R33), the 53/37/315 classification, and the
-oracle window/model limits. `0x21` volleyball, `0x25` bowling and the taken
-continue are **closed** (gated captures), and `0x2CADC`'s boot-defaults
-omission is **fixed**.
+oracle window/model limits. **One row is `declared`** (R39, the `0xEB` audio
+route: its call site is in BLIZZARD's reaction-0x34 stream and no shipped route
+exhibits it); the remaining rows are
+closed (the two-human win, `0x21` volleyball, `0x25` bowling, the taken continue
+and the language reload), gated (the 12 audio banks) or terminal with a measured
+reason, and `0x2CADC`'s boot-defaults omission is **fixed**.
 
 The full gate is two consecutive
 `PR_DIFF_FULLSCAN=1 GATE_STRICT=1 PR_PINS_EXACT=1 make verify` runs plus
@@ -131,8 +148,8 @@ make gate-check        # capture inventory, manifest, pin baseline, preflight
 pixel/ratchet oracles, the register-stream audio oracle and `audio-render`, the
 differential harness, the E2 triage, the tool unit tests (including the
 final-claims register guard) and `symbols.h` idempotence. `make gate-check`
-inventories the 45 explicit capture paths first; the full checkout is 44/45
-with only the declared U14 gap. `GATE_STRICT=1` (the default) fails an
+inventories the 47 explicit capture paths first; the full checkout is 46/47
+with only the U14 arcade gap declared absent. `GATE_STRICT=1` (the default) fails an
 undeclared absence; `PR_PINS_EXACT` is strict by default, so an improvement
 requires a re-pin.
 
