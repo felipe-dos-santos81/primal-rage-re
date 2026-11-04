@@ -1,8 +1,6 @@
 # Primal Rage (DOS, 1995) — fully playable SDL3 port
 
-![Primal Rage](docs/intro.jpg)
-
-![20 seconds of gameplay in the port](docs/gameplay.gif)
+![Primal Rage](docs/gameplay.gif)
 
 TALON vs CHAOS, a two-player round through the KO, rendered from the port's
 replay of a DOSBox-X capture ([full 60 Hz clip](docs/gameplay.mp4)).
