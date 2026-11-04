@@ -17,9 +17,8 @@ scores, saves, music and all seven endings.
 
 ## Quick start
 
-The game files are **not included**. Get them (e.g. from
-[myabandonware](https://www.myabandonware.com/game/primal-rage-2vr)) and put
-`PRAGE.EXE`, `INDEX`, `S16*.GRA` and the sound drivers in `data/game/C/`.
+The game files are **not included**. Put your own copy's `PRAGE.EXE`,
+`INDEX`, `S16*.GRA` and the sound drivers in `data/game/C/`.
 
 ```bash
 make deps      # check the toolchain and game files
