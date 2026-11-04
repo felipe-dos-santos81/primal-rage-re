@@ -2,6 +2,10 @@
 
 ![Primal Rage](docs/intro.jpg)
 
+[20 seconds of gameplay in the port](docs/gameplay.mp4) (TALON vs CHAOS, a
+two-player round through the KO; rendered from the port's replay of a
+DOSBox-X capture at the game's 60 Hz).
+
 A reverse engineering of **Primal Rage**'s PC/DOS release (Time Warner
 Interactive / Probe Software, 1995) and a native **SDL3 port** that runs the
 original game data. The port reimplements `PRAGE.EXE`'s engine in C over a flat
