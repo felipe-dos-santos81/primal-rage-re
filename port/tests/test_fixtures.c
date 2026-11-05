@@ -205,7 +205,12 @@ void tf_menu_press(u32 bits)
     for (u32 i = 0; i < 16u; i++) any |= DSB(MT_LAYOUT + 0x2DEu + i);
     if (any == 0u)
         for (u32 i = 0; i < 16u; i++) DSB(MT_LAYOUT + 0x2DEu + i) = k_neutral_slots[i];
-    host_set_key_bits_override((u16)((((bits >> 24) & 0xFFu) << 8) | ((bits >> 8) & 0xFFu)), 1);
+    /* The seam is released when nothing is held, so no later test inherits it;
+     * the neutral slots stay in MT_LAYOUT, which every user re-fills. */
+    {
+        const u16 word = (u16)((((bits >> 24) & 0xFFu) << 8) | ((bits >> 8) & 0xFFu));
+        host_set_key_bits_override(word, word != 0u);
+    }
 }
 
 /* ---- record k7-k12 §4: the K12 voice-site runner ---- */

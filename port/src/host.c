@@ -185,7 +185,6 @@ static u16 g_key_bits_override;
  * drive Player 1. Off by default, so the original's binding stands. */
 static int g_arrows_p1;
 
-int host_arrows_p1(void) { return g_arrows_p1; }
 
 u16 host_apply_arrows_p1(u16 bits, const u8 *scans, u8 held)
 {
@@ -676,10 +675,8 @@ static void drain_events(void)
             /* PORT: F12 toggles the arrows-for-Player-1 option (host.h),
              * remembered in the per-user directory; the title shows it. */
             if (e.key.scancode == SDL_SCANCODE_F12 && !e.key.repeat) {
-                char path[1100];
                 host_set_arrows_p1(!g_arrows_p1);
-                if (host_pref_file("arrows-p1", path, sizeof path))
-                    host_write_file(path, (const u8 *)(g_arrows_p1 ? "1\n" : "0\n"), 2);
+                host_arrows_p1_save();
                 break;
             }
             if (translate_key(&e.key, &scan, &ascii)) input_push(scan, ascii);
@@ -688,6 +685,22 @@ static void drain_events(void)
         default: break;
         }
     }
+}
+
+/* The option's per-user file "arrows-p1": "1" on, "0" off. */
+void host_arrows_p1_load(void)
+{
+    char path[1100], v[8];
+    if (host_pref_file("arrows-p1", path, sizeof path) &&
+        host_game_dir_load(path, v, sizeof v))     /* a trimmed one-line file */
+        host_set_arrows_p1(v[0] == '1');
+}
+
+void host_arrows_p1_save(void)
+{
+    char path[1100];
+    if (host_pref_file("arrows-p1", path, sizeof path))
+        host_write_file(path, (const u8 *)(g_arrows_p1 ? "1\n" : "0\n"), 2);
 }
 
 void host_set_arrows_p1(int on)

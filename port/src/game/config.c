@@ -942,16 +942,13 @@ void config_screen_wait(s32 n)
              * the word it calls the input sampler 0x1BBAC (0x1BE1C), so a key
              * held inside a menu wait reaches the bitmap +0x2D8/+0x2D9 that
              * MODIFY CONTROLS and the option menus poll.
-             * PORT: the host fills the key-state table and the axis words the
-             * sampler reads first, as the master loop's tick does (flow.c
-             * game_loop); without them the bitmap stayed frozen at the last
+             * PORT: game_isr_input (flow.c) is the step the master loop's tick
+             * runs too; without it the bitmap stayed frozen at the last
              * master-loop iteration and every held-key menu ignored input. */
             if (DSB(CFG_ISR_GATE) != 1u) {
                 DSD(DS_00101508)++;
                 DSD(CFG_TICK_ISR)++;
-                host_input_fill_keyboard();
-                host_input_fill_axes();
-                input_sampler();                            /* 0x1BE1C 0x1BBAC */
+                game_isr_input();                           /* 0x1BE1C 0x1BBAC */
                 DSW(CFG_FRAME_WORD) = (u16)(DSW(CFG_FRAME_WORD) + 1u);
                 config_isr_tick();                          /* 0x1BE28 0x2D62C */
             }

@@ -5903,7 +5903,7 @@ int test_host_game_dir_file(void)
     return g_failures - before;
 }
 
-/* The host's optional arrows-for-Player-1 binding (F11; off by default, so the
+/* The host's optional arrows-for-Player-1 binding (F12; off by default, so the
  * original's P2 arrows stand). Under the default slots: the held arrows set P1's
  * Up/Down/Left/Right bits (the S X Z C slots' 0x8000/0x4000/0x2000/0x1000) and
  * drop the bits of any P2 slot bound to an arrow; other bits are kept. */

@@ -7351,6 +7351,18 @@ void game_isr_ticks(u32 n)
     DSD(DS_00105D88) += n;                                 /* 0x1BE28 0x2D62C (config_isr_tick), n times */
 }
 
+/* PORT: the timer ISR's input step (0x1BDF4's call 0x1BBAC at 0x1BE1C): the
+ * host fills the key-state table and the axis words the sampler reads, then
+ * the sampler builds both players' key bytes (+0x2D8/+0x2D9). Shared by the
+ * master loop and the menu wait's modelled tick (config.c 0x2EA78), so the two
+ * ISR models cannot drift apart. */
+void game_isr_input(void)
+{
+    host_input_fill_keyboard();
+    host_input_fill_axes();
+    input_sampler();
+}
+
 /* 0x5D808 — record named-gaps-b §B.11. `mov word [0xEF6DE],0; ret`: clears
  * the word the timer ISR increments (0x1BE21), which 0x2EA78's key wait
  * compares (config.c). Its one caller is 0x20C10's tail (0x20CEB). */
@@ -7401,9 +7413,7 @@ void game_loop(void)
              * default device 0/0 path the sampler's keyboard arms reproduce the
              * direct write this replaced byte for byte (record 2026-10-21-host-
              * input-truth §H4); the 0x4F644 update stays in game_frame (0x24C6E). */
-            host_input_fill_keyboard();
-            host_input_fill_axes();
-            input_sampler();                 /* 0x1BBAC (0x1BE1C) */
+            game_isr_input();                /* 0x1BBAC (0x1BE1C) */
         }
         input_pump();                        /* 0x500C4 */
         /* 0x255F3: the per-bit scene tick runs unconditionally; the two

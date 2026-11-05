@@ -143,7 +143,8 @@ int  host_game_dir_save(const char *file, const char *dir);
  * Left and Right arrows; they set P1's first four slots' bits, and any P2 slot
  * bound to an arrow loses its bit. */
 void host_set_arrows_p1(int on);
-int  host_arrows_p1(void);
+void host_arrows_p1_load(void);
+void host_arrows_p1_save(void);
 u16  host_apply_arrows_p1(u16 bits, const u8 *scans, u8 held);
 
 /* Opens the default playback device for `channels`-channel s16 frames at `rate`

@@ -961,6 +961,29 @@ int test_sequencer(void)
                     CHECK(ticks >= c[k].lo && ticks <= c[k].hi, "FOR/NEXT pass count");
                 }
             }
+            /* Every start frees the four slots (0x6A79B 0x69250). Restarting a
+             * FOR 3 song four times inside its second pass (one NEXT taken, the
+             * slot's count 2) would otherwise leave all four slots busy at 2,
+             * so the fifth start's FOR is ignored (0x68D0A) and the innermost
+             * stale slot ends the loop after 2 passes, not 3. */
+            {
+                const u8 ev[] = { 0xB0, 0x74, 0x03, 0x0A, 0xB0, 0x75, 0x7F, 0xFF, 0x2F, 0x00 };
+                int ticks = 0;
+                opl_reset();
+                len = build_xmi(bank, ev, sizeof ev);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                for (int r = 0; r < 4; r++) {
+                    seq_start();
+                    for (int t = 0; t < 15; t++) seq_tick();   /* past the first NEXT */
+                }
+                seq_start();
+                while (seq_playing() && ticks < 1000) {
+                    seq_tick();
+                    ticks++;
+                }
+                CHECK_EQ_INT(seq_playing(), 0);
+                CHECK(ticks >= 30 && ticks <= 39, "a restart frees the FOR/NEXT slots");
+            }
             seq_stop();
         }
 
