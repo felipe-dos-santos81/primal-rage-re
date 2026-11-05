@@ -29,14 +29,15 @@ static void usage(const char *argv0)
  * (it never reaches run_windowed). A failed open leaves host_audio_rate() 0 and
  * the flow tick-runs the sequencer without rendering. */
 /* PORT: the release's game-folder check (plan 2026-11-05-github-release):
- * res_dir_check plus the PRAGE.EXE fingerprint. On failure `msg` holds the
- * player-facing reason. */
-static int game_dir_ok(const char *dir, char *msg, size_t n)
+ * res_dir_resolve (the folder, or its C subfolder in a DOSBox bundle) plus the
+ * PRAGE.EXE fingerprint. On success `dir` is rewritten to the folder that
+ * passed; on failure `msg` holds the player-facing reason. */
+static int game_dir_ok(char *dir, size_t dir_n, char *msg, size_t n)
 {
-    char name[64], exe[1100];
+    char name[64], found[1100], exe[1200];
     u32 size = 0, crc = 0;
 
-    switch (res_dir_check(dir, name, sizeof name)) {
+    switch (res_dir_resolve(dir, found, sizeof found, name, sizeof name)) {
     case RES_DIR_OK:
         break;
     case RES_DIR_WRONG_CASE:
@@ -44,14 +45,19 @@ static int game_dir_ok(const char *dir, char *msg, size_t n)
         return 0;
     default:
         snprintf(msg, n, "%s does not contain the Primal Rage game files (%s is missing). "
-                 "Choose the folder where Primal Rage is installed; if you only have the CD, "
-                 "copy the CD's RAGE.S16 folder contents into it.",
+                 "Choose the folder where Primal Rage is installed. If you only have the CD, "
+                 "copy the contents of the CD's RAGE.S16 folder, and FAT.OPL from its "
+                 "RAGE.SND folder, into one folder and choose that.",
                  dir, name[0] ? name : "PRAGE.EXE or INDEX");
         return 0;
     }
-    snprintf(exe, sizeof exe, "%s/PRAGE.EXE", dir);
+    snprintf(exe, sizeof exe, "%s/PRAGE.EXE", found);
     if (!host_file_crc32(exe, &size, &crc) || size != PRAGE_EXE_SIZE || crc != PRAGE_EXE_CRC32) {
         snprintf(msg, n, "This PRAGE.EXE is not the supported version of Primal Rage.");
+        return 0;
+    }
+    if ((size_t)snprintf(dir, dir_n, "%s", found) >= dir_n) {
+        snprintf(msg, n, "The folder path is too long.");
         return 0;
     }
     return 1;
@@ -71,12 +77,11 @@ static int resolve_game_dir(const char *cli_dir, char *buf, size_t n)
         return 1;
     }
     int have_saved = host_pref_file("game-dir.txt", saved, sizeof saved);
-    if (have_saved && host_game_dir_load(saved, buf, n) && game_dir_ok(buf, msg, sizeof msg))
+    if (have_saved && host_game_dir_load(saved, buf, n) && game_dir_ok(buf, n, msg, sizeof msg))
         return 1;
-    if (game_dir_ok("data/game/C", msg, sizeof msg)) {
-        snprintf(buf, n, "%s", "data/game/C");
+    snprintf(buf, n, "%s", "data/game/C");
+    if (game_dir_ok(buf, n, msg, sizeof msg))
         return 1;
-    }
     for (;;) {
         int r = host_pick_folder(buf, n);
         if (r == 0) return 0;
@@ -85,7 +90,7 @@ static int resolve_game_dir(const char *cli_dir, char *buf, size_t n)
                          "Run prageport --game-dir <folder> instead.");
             return -1;
         }
-        if (game_dir_ok(buf, msg, sizeof msg)) {
+        if (game_dir_ok(buf, n, msg, sizeof msg)) {
             if (have_saved && !host_game_dir_save(saved, buf))
                 fprintf(stderr, "prageport: could not remember the game folder in %s\n", saved);
             return 1;

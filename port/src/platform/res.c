@@ -422,3 +422,20 @@ int res_dir_check(const char *game_dir, char *name, size_t n)
     }
     return RES_DIR_OK;
 }
+
+int res_dir_resolve(const char *picked, char *out, size_t out_n, char *name, size_t n)
+{
+    char sub[512];
+    int rc = res_dir_check(picked, name, n);
+
+    if (rc != RES_DIR_OK && (size_t)snprintf(sub, sizeof sub, "%s/C", picked) < sizeof sub) {
+        char sub_name[64];
+        if (res_dir_check(sub, sub_name, sizeof sub_name) == RES_DIR_OK) {
+            snprintf(out, out_n, "%s", sub);
+            res_dir_name(name, n, "", 0);
+            return RES_DIR_OK;
+        }
+    }
+    snprintf(out, out_n, "%s", picked);
+    return rc;
+}

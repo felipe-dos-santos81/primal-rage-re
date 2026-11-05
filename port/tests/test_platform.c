@@ -10,6 +10,7 @@
 #include "test_fixtures.h"
 #include "platform/res.h"
 #include "platform/prage_exe.h"
+#include "compat.h"
 #include "platform/gfx.h"
 #include "game/flow.h"
 #include "platform/gra.h"
@@ -5788,6 +5789,35 @@ int test_res_dir_check(void)
     CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_NO_INDEX);
     rdc_rm(dir, "INDEX");
     CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_NO_INDEX);
+
+    /* A DOSBox bundle keeps the game in <picked>/C: res_dir_resolve finds it
+     * there, and a folder that holds the game itself is used as picked. */
+    {
+        char top[420], sub[440], out[460];
+        rdc_put(dir, "INDEX", 0x28u);          /* the rows above deleted it */
+        strcpy(out, "XXXX");
+        CHECK_EQ_INT(res_dir_resolve(dir, out, sizeof out, name, sizeof name), RES_DIR_OK);
+        CHECK(strcmp(out, dir) == 0, "a folder holding the game resolves to itself");
+        snprintf(top, sizeof top, "%s/bundle", dir);
+        snprintf(sub, sizeof sub, "%s/C", top);
+        CHECK_EQ_INT(pr_mkdir(top, 0700), 0);
+        CHECK_EQ_INT(pr_mkdir(sub, 0700), 0);
+        rdc_put(sub, "INDEX", 0x28u);
+        for (size_t i = 0; i < sizeof k_files / sizeof k_files[0]; i++) rdc_put(sub, k_files[i], 4u);
+        strcpy(out, "XXXX");
+        CHECK_EQ_INT(res_dir_resolve(top, out, sizeof out, name, sizeof name), RES_DIR_OK);
+        CHECK(strcmp(out, sub) == 0, "a DOSBox bundle resolves to its C folder");
+        rdc_rm(sub, "TWG.SMK");
+        strcpy(out, "XXXX");
+        CHECK_EQ_INT(res_dir_resolve(top, out, sizeof out, name, sizeof name), RES_DIR_NO_EXE);
+        CHECK(strcmp(out, top) == 0, "a failing bundle reports the picked folder's own result");
+        rdc_rm(sub, "INDEX");
+        rdc_rm(sub, "a.gra");
+        for (size_t i = 0; i < sizeof k_files / sizeof k_files[0]; i++) rdc_rm(sub, k_files[i]);
+        rmdir(sub);
+        rmdir(top);
+        rdc_rm(dir, "INDEX");
+    }
 
     rdc_rm(dir, "a.gra");
     for (size_t i = 0; i < sizeof k_files / sizeof k_files[0]; i++) rdc_rm(dir, k_files[i]);
