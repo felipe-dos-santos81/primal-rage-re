@@ -209,6 +209,8 @@ times and 117 17 times (every bank with a 117 — `S16BEACH`, `S16CAVES`,
 `S16SELMO`, `S16SND2`, `S16SOUND`, `S16STONE` — also has a 116). Recorded as a
 `PORT:` named gap at the controller dispatch.
 
+**Superseded 2026-11-05:** the FOR/NEXT named gap of this section is closed. `0x68AB0`'s 116 arm (`0x68CF3`) and 117 arm (`0x68D24`) are modelled with `0x69250`'s slot reset (`0x69287..0x69293`) in `sequencer.c`; the stage and menu banks now loop and the title bank still plays once (`docs/PROGRESS.md`, "Menu input, music loops").
+
 ### §15 `sequencer.h:22` — the MDI driver's `+0x2E` rate — resolved-as-is
 
 `SBPRO2.MDI`'s header `+0x2E` is `0` in the file, and the driver's only store

@@ -7354,7 +7354,7 @@ void game_isr_ticks(u32 n)
 /* PORT: the timer ISR's input step (0x1BDF4's call 0x1BBAC at 0x1BE1C): the
  * host fills the key-state table and the axis words the sampler reads, then
  * the sampler builds both players' key bytes (+0x2D8/+0x2D9). The master loop
- * runs it once per iteration, game_isr_tick once per modelled tick. */
+ * runs it once per iteration, game_isr_tick_full once per modelled tick. */
 void game_isr_input(void)
 {
     host_input_fill_keyboard();
@@ -7366,7 +7366,7 @@ void game_isr_input(void)
  * DS_00104B22 is 1 (0x1BDF8..0x1BE00), the counter pair (0x1BE0E..0x1BE16),
  * the input step (0x1BE1C), the word DS_000EF6DE (0x1BE21) and 0x2D62C
  * (0x1BE28). The menu wait (config.c, 0x2EA78) runs one per retrace. */
-void game_isr_tick(void)
+void game_isr_tick_full(void)
 {
     if (DSB(DS_00104B22) == 1u) return;
     DSD(DS_00101508)++;

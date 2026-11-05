@@ -934,10 +934,10 @@ void config_screen_wait(s32 n)
         while (DSW(CFG_FRAME_WORD) == seen) {               /* 0x2EAFB..0x2EB03 */
             game_audio_service();                           /* 0x2EB05 0x1CF20 */
             /* PORT: the timer ISR 0x1BDF4 is modelled as one whole tick per
-             * retrace (flow.c game_isr_tick), its input sampler included, so a
+             * retrace (flow.c game_isr_tick_full), its input sampler included, so a
              * key held inside a menu wait reaches the bitmap MODIFY CONTROLS
              * and the option menus poll. */
-            game_isr_tick();
+            game_isr_tick_full();
             host_wait_vblank();
         }
         (void)input_pump();                                 /* 0x2EB0C 0x500C4 */

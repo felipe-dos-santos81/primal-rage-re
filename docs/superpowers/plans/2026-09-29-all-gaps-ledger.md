@@ -554,7 +554,7 @@ row here.
 | `ail.c` / `ail.h` (`AIL_set_sequence_volume`, `0x5DECA`) | the 500 ms sequence-volume fade | **closed** (named-gaps-f, 2026-09-30): ported (`0x6A8D0`, `0x69320`, `0x69952..0x699C0`) | record `2026-09-30-named-gaps-f-derivations.md` §F.3 |
 | `movie.c` (`movie_play` header) | the entry skip tests `0x1C752..0x1C766` | **closed** (named-gaps-f, 2026-09-30): ported (`kbhit` and the quit flag) | record `2026-09-30-named-gaps-f-derivations.md` §F.2 |
 | `sequencer.c` (ctrl 64 / ctrl 121) | MDI sustain release `0x3B1E` | named gap §C-13 (carried) | record todo-verify §13 |
-| `sequencer.c` (loop controllers 116/117) | XMIDI FOR/NEXT `0x68AB0` | named gap §C-14 (carried) | record todo-verify §14 |
+| `sequencer.c` (loop controllers 116/117) | XMIDI FOR/NEXT `0x68AB0` | named gap §C-14 (carried); **closed 2026-11-05**: modelled from `0x68AB0`/`0x69250` (`docs/PROGRESS.md`, "Menu input, music loops") | record todo-verify §14 |
 | `flow.c` (`game_isr_ticks`) | the ISR's `DS_00104B22` gate | closed: host-owned tick model (todo-verify §1, §K9.5); the ISR `0x1BDF4` is host-owned | `0x2D62C` row in `tools/port_classification.txt` |
 | `flow.c` (`0x2598F`, stage pick) | the `k = -2` read of a leftover stack byte `[esp-2]` | re-scoped: unpinnable (the value is uninitialised stack memory, like §E-17's residue); the port takes the raw's no-match exit `0x259C3`. Reached only with `DS_00104AD4 = -1` (stored at `0x25A0E`, `0x27C3D`) and no free or unmatched stage | `flow.c` `PORT:` note |
 | `res.c` (`0x1B5C2`) | the `0x40000000` force-load arm | closed: unreachable, no store of `0x40000000` to an entry's `+0xC` in the code object | `res.c` `PORT:` note |
