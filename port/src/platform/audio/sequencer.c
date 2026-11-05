@@ -541,7 +541,7 @@ static void seq_fade_step(void)
     if ((S.svc & 7u) == 0u) seq_resend_volume();            /* 0x699B4 0x699BB */
 }
 
-/* 0x69250's loop slots (0x69287..0x69293): every reset frees all four. */
+/* The sequence reset 0x69250 frees all four loop slots (0x69287..0x69293). */
 static void loops_reset(void)
 {
     for (int i = 0; i < 4; i++) {
@@ -550,7 +550,7 @@ static void loops_reset(void)
     }
 }
 
-/* 0x68CF3: FOR takes the first free slot (none free: ignored, 0x68D0A) and
+/* FOR (0x68AB0's 116 arm, 0x68CF3) takes the first free slot (none free: ignored, 0x68D0A) and
  * keeps the count and the position after this event (+0x14, 0x68D17). */
 static void loop_for(u8 count)
 {
@@ -563,7 +563,7 @@ static void loop_for(u8 count)
     }
 }
 
-/* 0x68D24: NEXT below 0x40 is ignored (`cmp edi,0x40; jl`). Otherwise the
+/* NEXT (the 117 arm, 0x68D24) below 0x40 is ignored (`cmp edi,0x40; jl`). Otherwise the
  * innermost busy slot (3 down to 0): count 0 jumps back forever (0x68D60);
  * else the count drops by one and jumps back while non-zero (0x68D79), and at
  * zero the slot is freed and play continues past the NEXT (0x68D85). */
