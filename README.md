@@ -17,9 +17,11 @@ scores, saves, music and all seven endings.
 
 ## Download and play
 
-Builds for Windows (x64), Linux (x64) and macOS (Apple Silicon and Intel) are on
-the [Releases](https://github.com/felipe-dos-santos81/primal-rage-re/releases)
-page. They contain no game files: on first launch the port asks for the folder
+[![Latest release](https://img.shields.io/github/v/release/felipe-dos-santos81/primal-rage-re)](https://github.com/felipe-dos-santos81/primal-rage-re/releases/latest)
+
+**[Download the latest release](https://github.com/felipe-dos-santos81/primal-rage-re/releases/latest)**
+for Windows (x64), Linux (x64) or macOS (Apple Silicon and Intel). The
+downloads contain no game files: on first launch the port asks for the folder
 where your own copy of Primal Rage is installed, checks it, and remembers it.
 Each download's `README.txt` covers the unsigned-app warnings and where saves
 live.
