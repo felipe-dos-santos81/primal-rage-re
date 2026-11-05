@@ -27,13 +27,24 @@ PRAGE.EXE is not the version this port supports.
 
 Controls
 --------
-The original game's keyboard layout:
-  Player 1:  S X Z C (up, down, left, right), U I (punch/bite), N M (kick/tail)
-  Player 2:  the arrow keys, Home PgUp (punch/bite), End PgDn (kick/tail)
-  Enter starts/selects, Esc goes back; F1/F2 are the start buttons.
+The original game's keyboard layout, under the names its MODIFY CONTROLS
+screen gives the eight controls:
+
+               Player 1   Player 2
+  UP           S          Up arrow
+  DOWN         X          Down arrow
+  LEFT         Z          Left arrow
+  RIGHT        C          Right arrow
+  HI QUICK     U          Home
+  HI FIERCE    I          Page Up
+  LO QUICK     N          End
+  LO FIERCE    M          Page Down
+
+F1 and F2 work as Player 1's and Player 2's HI QUICK. In the menus, Enter
+selects and Esc backs out.
 Press F12 to let the arrow keys move Player 1 instead (the window title says
 "arrows: Player 1"); press F12 again to go back. The choice is remembered.
-Keys can be changed on the MODIFY CONTROLS screen of the OPTIONS menu.
+Keys can be changed on the MODIFY CONTROLS screen of the OPTIONS MENU.
 
 Warnings on first launch (the app is not signed)
 ------------------------------------------------

@@ -5921,3 +5921,28 @@ int test_host_arrows_p1(void)
     CHECK_EQ_INT(host_apply_arrows_p1(0x0040u | 0x0002u, tf_default_slots, 0x0u), 0x0002u);
     return g_failures - before;
 }
+
+/* One physical key bound to two slots has one key-state entry (the int 9
+ * handler stores one byte per scan), so it is a make when any slot bound to it
+ * is pressed: P1 Up rebound to the Up arrow while P2's Up slot keeps it, with
+ * only P1's bit set (the arrows option drops P2's), must stay a make. */
+int test_host_fill_shared_scan(void)
+{
+    int before = g_failures;
+    const u32 kb = 0x3000000u;
+    const u32 s_base = DSD(DS_00101514);
+    mem_fill(kb, 0, 0x400u);
+    DSD(DS_00101514) = kb;
+    for (u32 i = 0; i < 16u; i++) DSB(kb + 0x2DEu + i) = tf_default_slots[i];
+    DSB(kb + 0x2DEu) = 0x48u;                         /* P1 Up -> the Up arrow */
+    DSB(kb + 0x254u + 0x48u) = 0x5Au;                 /* sentinel: neither make nor break */
+    host_set_key_bits_override(0x8000u, 1);           /* P1 Up only */
+    host_input_fill_keyboard();
+    CHECK_EQ_INT((int)DSB(kb + 0x254u + 0x48u), 0x48);   /* make */
+    host_set_key_bits_override(0x0000u, 1);           /* released */
+    host_input_fill_keyboard();
+    CHECK_EQ_INT((int)DSB(kb + 0x254u + 0x48u), 0xC8);   /* break */
+    host_set_key_bits_override(0u, 0);
+    DSD(DS_00101514) = s_base;
+    return g_failures - before;
+}

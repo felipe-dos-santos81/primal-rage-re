@@ -946,12 +946,18 @@ int test_sequencer(void)
          *     at 0x68D24). Each body is FOR(count) on channel 0, a 10-tick
          *     wait, NEXT(value), end of track: count 0 loops forever, count n
          *     plays n passes, a NEXT below 0x40 is ignored (0x68D24 `cmp
-         *     edi,0x40; jl`), so the end of track halts after one pass. */
+         *     edi,0x40; jl`), so the end of track halts after one pass.
+         *     The exact service call each halts on is AIL's: every call
+         *     decrements the interval +0x2C and runs events only once it is
+         *     0 or below (0x6948D..0x69496), an interval byte sets it
+         *     (0x698E5..0x698FB) and the reset zeroes it (0x692B4). So the FOR
+         *     runs on call 1, each NEXT 10 calls later: count 3 ends on its
+         *     third NEXT (call 31), an ignored NEXT on its first (call 11). */
         {
-            static const struct { u8 count, next; int forever, lo, hi; } c[] = {
-                { 0x00u, 0x7Fu, 1, 0, 0 },
-                { 0x03u, 0x7Fu, 0, 30, 39 },
-                { 0x00u, 0x3Fu, 0, 10, 19 },
+            static const struct { u8 count, next; int forever, halt_call; } c[] = {
+                { 0x00u, 0x7Fu, 1, 0 },
+                { 0x03u, 0x7Fu, 0, 31 },
+                { 0x00u, 0x3Fu, 0, 11 },
             };
             for (size_t k = 0; k < sizeof c / sizeof c[0]; k++) {
                 const u8 ev[] = { 0xB0, 0x74, c[k].count, 0x0A, 0xB0, 0x75, c[k].next,
@@ -965,14 +971,14 @@ int test_sequencer(void)
                     CHECK_EQ_INT(seq_playing(), 1);
                 } else {
                     CHECK_EQ_INT(seq_playing(), 0);
-                    CHECK(ticks >= c[k].lo && ticks <= c[k].hi, "FOR/NEXT pass count");
+                    CHECK_EQ_INT(ticks, c[k].halt_call);
                 }
             }
             /* Every start frees the four slots (0x6A79B 0x69250). Restarting a
              * FOR 3 song four times inside its second pass (one NEXT taken, the
              * slot's count 2) would otherwise leave all four slots busy at 2,
              * so the fifth start's FOR is ignored (0x68D0A) and the innermost
-             * stale slot ends the loop after 2 passes, not 3. */
+             * stale slot ends the loop after 2 passes (call 21), not 3 (31). */
             {
                 const u8 ev[] = { 0xB0, 0x74, 0x03, 0x0A, 0xB0, 0x75, 0x7F, 0xFF, 0x2F, 0x00 };
                 opl_reset();
@@ -985,7 +991,7 @@ int test_sequencer(void)
                 seq_start();
                 const int ticks = run_to_halt();
                 CHECK_EQ_INT(seq_playing(), 0);
-                CHECK(ticks >= 30 && ticks <= 39, "a restart frees the FOR/NEXT slots");
+                CHECK_EQ_INT(ticks, 31);                 /* a restart frees the slots */
             }
             seq_stop();
         }

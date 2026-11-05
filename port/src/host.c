@@ -259,19 +259,20 @@ void host_input_fill_keyboard(void)
     if (scans == NULL) return;
     u8 *const tbl = mem + base + 0x254u;
     const u16 bits = host_key_bits();
-    /* 0x1B850/0x1B870 read the fixed entries +0x28F/+0x290 (= +0x254+0x3B/0x3C). */
-    host_key_state_store(tbl, 0x3Bu, (bits & 0x0100u) != 0u);
-    host_key_state_store(tbl, 0x3Cu, (bits & 0x0001u) != 0u);
-    for (u32 i = 0u; i < 16u; i++) {
-        const u8 scan = scans[i];
-        if (scan == 0u) continue;                     /* an unbound slot */
-        int down = (bits & k_cfg_bit[i]) != 0u;
-        /* One table entry can serve two readers: a slot bound to F1/F2 is the
-         * entry 0x1B850/0x1B870 reads, so either source makes it. */
-        if (scan == 0x3Bu) down |= (bits & 0x0100u) != 0u;
-        if (scan == 0x3Cu) down |= (bits & 0x0001u) != 0u;
-        host_key_state_store(tbl, scan, down);
-    }
+    /* One entry per physical key, as the int 9 handler keeps it: an entry is a
+     * make when any reader of it is pressed -- a slot bound to that scan, or
+     * 0x1B850/0x1B870's fixed F1/F2 entries +0x28F/+0x290 (= +0x254+0x3B/0x3C).
+     * So every entry is first written as a break, then the pressed ones as
+     * makes; written slot by slot, a second slot on the same key (P2's Up
+     * arrow under the arrows option) overwrote the first one's make. */
+    host_key_state_store(tbl, 0x3Bu, 0);
+    host_key_state_store(tbl, 0x3Cu, 0);
+    for (u32 i = 0u; i < 16u; i++)
+        if (scans[i] != 0u) host_key_state_store(tbl, scans[i], 0);   /* 0: an unbound slot */
+    if (bits & 0x0100u) host_key_state_store(tbl, 0x3Bu, 1);
+    if (bits & 0x0001u) host_key_state_store(tbl, 0x3Cu, 1);
+    for (u32 i = 0u; i < 16u; i++)
+        if (scans[i] != 0u && (bits & k_cfg_bit[i]) != 0u) host_key_state_store(tbl, scans[i], 1);
 }
 
 /* PORT: the game port's button byte (record §H3). The PC game port reads its
