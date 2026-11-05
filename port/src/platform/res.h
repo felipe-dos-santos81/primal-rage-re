@@ -5,6 +5,7 @@
 #define PR_RES_H
 
 #include "types.h"
+#include <stddef.h>
 
 /* The loader read-stall rate: payload bytes read per timer tick, derived from
  * the DOSBox-X live-RAM poll (record §9.6 as corrected by §45-A: 7297097 bytes
@@ -59,5 +60,20 @@ void *res_resolve(u32 handle);
  * a lazy resolve's presentation, right after the text is on the aperture
  * (gfx_aperture()); NULL (the default) disables it. */
 void res_set_screen_hook(void (*hook)(void));
+
+/* PORT: the release's game-folder check (plan 2026-11-05-github-release),
+ * no original counterpart. Checks that game_dir holds every file the port
+ * loads at boot, in this order: PRAGE.EXE and INDEX with the exact case
+ * game_init opens them; each INDEX record's name, matched as res_load_index
+ * matches it; FAT.OPL, TWI5.SMK and TWG.SMK, matched as res_load_file matches
+ * them; english.txt, upper case then lower case, as game_string_table_load
+ * opens it. Reads nothing into mem[]. `name` (n > 0) is always NUL-terminated:
+ * the missing or wrong-case name, "" for the other results. */
+#define RES_DIR_OK          0
+#define RES_DIR_NO_EXE      1  /* <dir>/PRAGE.EXE does not open in any case */
+#define RES_DIR_NO_INDEX    2  /* <dir>/INDEX does not open in any case, or its size is 0 or not a multiple of 0x14 */
+#define RES_DIR_WRONG_CASE  3  /* PRAGE.EXE or INDEX exists only in another case; `name` = the on-disk name */
+#define RES_DIR_MISSING     4  /* a required file is absent; `name` = the first missing name */
+int res_dir_check(const char *game_dir, char *name, size_t n);
 
 #endif /* PR_RES_H */

@@ -337,3 +337,88 @@ void *res_resolve(u32 handle)
     }
     return mem + data + (handle & 0x7FFFFFu);
 }
+
+/* PORT: the release's game-folder check (res.h), no original counterpart. */
+static int res_dir_has(const char *game_dir, const char *fname)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%.*s/%s", 400, game_dir, fname);
+    FILE *f = fopen(path, "rb");
+    if (f) fclose(f);
+    return f != NULL;
+}
+
+static void res_dir_name(char *name, size_t n, const char *s, size_t len)
+{
+    if (n == 0) return;
+    if (len >= n) len = n - 1;
+    memcpy(name, s, len);
+    name[len] = '\0';
+}
+
+/* The exact-case file game_init opens; on a miss, the case-insensitive scan
+ * tells a wrong-case file (RES_DIR_WRONG_CASE, its on-disk name) from none. */
+static int res_dir_exact(const char *game_dir, const char *fname, int absent,
+                         char *name, size_t n)
+{
+    if (res_dir_has(game_dir, fname)) return RES_DIR_OK;
+    DIR *d = opendir(game_dir);
+    struct dirent *ent;
+    int rc = absent;
+    while (d && (ent = readdir(d)) != NULL) {
+        if (strcasecmp(ent->d_name, fname) == 0) {
+            res_dir_name(name, n, ent->d_name, strlen(ent->d_name));
+            rc = RES_DIR_WRONG_CASE;
+            break;
+        }
+    }
+    if (d) closedir(d);
+    return rc;
+}
+
+int res_dir_check(const char *game_dir, char *name, size_t n)
+{
+    static const char *const k_extra[] = { "FAT.OPL", "TWI5.SMK", "TWG.SMK" };
+    static u8 index[RES_MAX * RES_REC];
+    char path[512];
+    int rc;
+
+    res_dir_name(name, n, "", 0);
+    if ((rc = res_dir_exact(game_dir, "PRAGE.EXE", RES_DIR_NO_EXE, name, n)) != RES_DIR_OK)
+        return rc;
+    if ((rc = res_dir_exact(game_dir, "INDEX", RES_DIR_NO_INDEX, name, n)) != RES_DIR_OK)
+        return rc;
+
+    snprintf(path, sizeof path, "%.*s/INDEX", 400, game_dir);
+    FILE *f = fopen(path, "rb");
+    if (!f) return RES_DIR_NO_INDEX;
+    size_t got = fread(index, 1, sizeof index, f);
+    int more = fgetc(f) != EOF;
+    fclose(f);
+    if (got == 0 || got % RES_REC || more) return RES_DIR_NO_INDEX;
+
+    for (size_t r = 0; r < got / RES_REC; r++) {
+        const char *rname = (const char *)index + r * RES_REC;
+        size_t nlen = 0;
+        while (nlen < 12 && rname[nlen]) nlen++;
+        FILE *rf = res_open_name(game_dir, rname, nlen);
+        if (!rf) {
+            res_dir_name(name, n, rname, nlen);
+            return RES_DIR_MISSING;
+        }
+        fclose(rf);
+    }
+    for (size_t i = 0; i < sizeof k_extra / sizeof k_extra[0]; i++) {
+        FILE *rf = res_open_name(game_dir, k_extra[i], strlen(k_extra[i]));
+        if (!rf) {
+            res_dir_name(name, n, k_extra[i], strlen(k_extra[i]));
+            return RES_DIR_MISSING;
+        }
+        fclose(rf);
+    }
+    if (!res_dir_has(game_dir, "ENGLISH.TXT") && !res_dir_has(game_dir, "english.txt")) {
+        res_dir_name(name, n, "english.txt", 11);
+        return RES_DIR_MISSING;
+    }
+    return RES_DIR_OK;
+}

@@ -35,7 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat.h"
 
 /* ---- port-local scratch and constants ---------------------------------- */
 
@@ -139,6 +139,9 @@ static u32 int10h_query(void)
 static void game_fatal(const char *what)
 {
     fprintf(stderr, "Primal Rage: fatal init error: %s\n", what);
+    /* PORT: a windowed run launched from a file manager has no terminal, so the
+     * error is also shown in a message box; headless runs are unchanged. */
+    host_fatal_message(what);
     exit(1);
 }
 
@@ -4525,8 +4528,8 @@ static void game_dump_frame(const char *dir, const char *sub, int n)
     palette_dump_frame_marker(n);
     char subdir[1200];
     snprintf(subdir, sizeof subdir, "%s/%s", dir, sub);
-    mkdir(dir, 0777);       /* ignore EEXIST; the same pattern main.c uses */
-    mkdir(subdir, 0777);
+    pr_mkdir(dir, 0777);       /* ignore EEXIST; the same pattern main.c uses */
+    pr_mkdir(subdir, 0777);
     char path[1300];
     snprintf(path, sizeof path, "%s/frame_%04d.raw", subdir, n);
     FILE *f = fopen(path, "wb");

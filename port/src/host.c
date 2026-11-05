@@ -904,6 +904,106 @@ int host_save_write(const u8 *src, u32 len)
     return s_save_path[0] ? host_write_file(s_save_path, src, len) : 0;
 }
 
+int host_file_crc32(const char *path, u32 *size, u32 *crc)
+{
+    u8 buf[0x4000];
+    u32 total = 0, c = 0;
+    size_t got;
+    FILE *f = fopen(path, "rb");
+
+    if (!f) return 0;
+    while ((got = fread(buf, 1, sizeof buf, f)) > 0) {
+        c = SDL_crc32(c, buf, got);
+        total += (u32)got;
+    }
+    int bad = ferror(f);
+    fclose(f);
+    if (bad) return 0;
+    *size = total;
+    *crc = c;
+    return 1;
+}
+
+/* PORT: the release's first-run game-folder flow (plan 2026-11-05-github-release),
+ * no original counterpart: the original found its files on the CD drive
+ * (0x10C30), the port asks the player once and remembers the answer. */
+struct pick_state {
+    SDL_AtomicInt done;
+    int result;             /* 1 picked, 0 cancelled, -1 error */
+    char path[1024];
+};
+
+/* SDL may call this on another thread; the list is freed when it returns. */
+static void SDLCALL host_pick_cb(void *userdata, const char *const *filelist, int filter)
+{
+    struct pick_state *st = userdata;
+    (void)filter;
+    if (filelist == NULL) {
+        st->result = -1;
+    } else if (filelist[0] == NULL) {
+        st->result = 0;
+    } else if (SDL_strlcpy(st->path, filelist[0], sizeof st->path) >= sizeof st->path) {
+        st->result = -1;    /* a path too long to hold is not a path to load */
+    } else {
+        st->result = 1;
+    }
+    SDL_SetAtomicInt(&st->done, 1);
+}
+
+int host_pick_folder(char *out, size_t n)
+{
+    static struct pick_state st;
+    st.result = -1;
+    st.path[0] = '\0';
+    SDL_SetAtomicInt(&st.done, 0);
+    SDL_ShowOpenFolderDialog(host_pick_cb, &st, g_window, NULL, false);
+    while (!SDL_GetAtomicInt(&st.done)) {
+        SDL_PumpEvents();   /* Linux's portal dialog answers through the event loop */
+        SDL_Delay(10);
+    }
+    if (st.result == 1 && SDL_strlcpy(out, st.path, n) >= n) return -1;
+    return st.result;
+}
+
+void host_message(const char *title, const char *text)
+{
+    if (!SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text, g_window))
+        fprintf(stderr, "%s: %s\n", title, text);
+}
+
+void host_fatal_message(const char *text)
+{
+    if (host_has_window()) host_message("Primal Rage", text);
+}
+
+int host_pref_file(const char *name, char *out, size_t n)
+{
+    char *pref = SDL_GetPrefPath(NULL, "primal-rage");   /* ends with a separator */
+    int ok = pref != NULL && (size_t)snprintf(out, n, "%s%s", pref, name) < n;
+    SDL_free(pref);
+    return ok;
+}
+
+int host_game_dir_load(const char *file, char *out, size_t n)
+{
+    u32 len = 0;
+    if (n == 0) return 0;
+    out[0] = '\0';
+    if (n < 2 || !host_read_file(file, (u8 *)out, (u32)(n - 1), &len)) return 0;
+    out[len] = '\0';
+    while (len > 0 && (out[len - 1] == '\r' || out[len - 1] == '\n' ||
+                       out[len - 1] == ' ' || out[len - 1] == '\t'))
+        out[--len] = '\0';
+    return len > 0;
+}
+
+int host_game_dir_save(const char *file, const char *dir)
+{
+    char line[1100];
+    int len = snprintf(line, sizeof line, "%s\n", dir);
+    return len > 0 && (size_t)len < sizeof line && host_write_file(file, (const u8 *)line, (u32)len);
+}
+
 /* Audio seam. This is the only place SDL's audio device exists; game-side audio
  * modules hand mixed stereo frames to host_audio_submit() and never see SDL.
  * The stream pulls from SDL's own queue (no callback), so host.c has no

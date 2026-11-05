@@ -1092,6 +1092,11 @@ consolidation gate).
 
 ## Workflow and docs
 
+- **Releases are tag-driven** (`.github/workflows/release.yml`; design
+  `docs/superpowers/specs/2026-11-05-github-release-design.md`): run the full
+  `make verify` locally first (CI has no game files and only smoke-tests the
+  binaries), then push `vX.Y.Z` (or `vX.Y.Z-rc1` for a pre-release). Never put a
+  game file in a release, a cache or an artifact.
 - Sub-project specs, plans, derivation records and reports live in
   `docs/superpowers/`. A derivation record (`*-derivations.md`) is the
   authoritative raw-byte source for the tasks that implement from it.

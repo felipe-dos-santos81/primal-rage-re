@@ -1,12 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat.h"
+
+/* PORT: SDL3 maps main() to the platform entry point (WinMain on Windows); a
+ * no-op on macOS and Linux. */
+#include <SDL3/SDL_main.h>
 
 #include "host.h"
 #include "mem.h"
 #include "symbols.h"
 #include "platform/gfx.h"
+#include "platform/prage_exe.h"
+#include "platform/res.h"
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
 #include "game/flow.h"
@@ -22,18 +28,91 @@ static void usage(const char *argv0)
  * device is opened here, with the window, so --check stays genuinely headless
  * (it never reaches run_windowed). A failed open leaves host_audio_rate() 0 and
  * the flow tick-runs the sequencer without rendering. */
-static int run_windowed(const char *game_dir, const char *cmos_path)
+/* PORT: the release's game-folder check (plan 2026-11-05-github-release):
+ * res_dir_check plus the PRAGE.EXE fingerprint. On failure `msg` holds the
+ * player-facing reason. */
+static int game_dir_ok(const char *dir, char *msg, size_t n)
 {
+    char name[64], exe[1100];
+    u32 size = 0, crc = 0;
+
+    switch (res_dir_check(dir, name, sizeof name)) {
+    case RES_DIR_OK:
+        break;
+    case RES_DIR_WRONG_CASE:
+        snprintf(msg, n, "Rename %s to upper case (PRAGE.EXE, INDEX) and choose the folder again.", name);
+        return 0;
+    default:
+        snprintf(msg, n, "%s does not contain the Primal Rage game files (%s is missing). "
+                 "Choose the folder where Primal Rage is installed; if you only have the CD, "
+                 "copy the CD's RAGE.S16 folder contents into it.",
+                 dir, name[0] ? name : "PRAGE.EXE or INDEX");
+        return 0;
+    }
+    snprintf(exe, sizeof exe, "%s/PRAGE.EXE", dir);
+    if (!host_file_crc32(exe, &size, &crc) || size != PRAGE_EXE_SIZE || crc != PRAGE_EXE_CRC32) {
+        snprintf(msg, n, "This PRAGE.EXE is not the supported version of Primal Rage.");
+        return 0;
+    }
+    return 1;
+}
+
+/* PORT: the windowed run's game folder: --game-dir as given (unchecked, as
+ * before), else the remembered folder, else the dev default data/game/C, each
+ * only if game_dir_ok; else the folder picker until the player picks a valid
+ * folder (remembered) or cancels. Returns 1 with the folder in buf, 0 when the
+ * player cancelled, -1 when the picker could not open. */
+static int resolve_game_dir(const char *cli_dir, char *buf, size_t n)
+{
+    char saved[1100], msg[1400];
+
+    if (cli_dir) {
+        snprintf(buf, n, "%s", cli_dir);
+        return 1;
+    }
+    int have_saved = host_pref_file("game-dir.txt", saved, sizeof saved);
+    if (have_saved && host_game_dir_load(saved, buf, n) && game_dir_ok(buf, msg, sizeof msg))
+        return 1;
+    if (game_dir_ok("data/game/C", msg, sizeof msg)) {
+        snprintf(buf, n, "%s", "data/game/C");
+        return 1;
+    }
+    for (;;) {
+        int r = host_pick_folder(buf, n);
+        if (r == 0) return 0;
+        if (r < 0) {
+            host_message("Primal Rage", "Could not open the folder chooser. "
+                         "Run prageport --game-dir <folder> instead.");
+            return -1;
+        }
+        if (game_dir_ok(buf, msg, sizeof msg)) {
+            if (have_saved && !host_game_dir_save(saved, buf))
+                fprintf(stderr, "prageport: could not remember the game folder in %s\n", saved);
+            return 1;
+        }
+        host_message("Primal Rage", msg);
+    }
+}
+
+static int run_windowed(const char *cli_dir, const char *cmos_path)
+{
+    static char game_dir[1100];
+
     if (!host_init("Primal Rage", 320, 200)) {
         fprintf(stderr, "prageport: no window/display available\n");
         return 1;
+    }
+    int found = resolve_game_dir(cli_dir, game_dir, sizeof game_dir);
+    if (found <= 0) {
+        host_shutdown();
+        return found < 0 ? 1 : 0;
     }
     if (host_audio_open(MIXER_OPL_RATE, 2))
         printf("prageport: audio device open at %u Hz\n", host_audio_rate());
     else
         printf("prageport: audio unavailable (%s); running silent\n",
                host_audio_error());
-    printf("prageport 0.0.1 game-dir=%s\n", game_dir);
+    printf("prageport " PRAGE_VERSION " game-dir=%s\n", game_dir);
     game_set_game_dir(game_dir);
     /* PORT: the windowed run alone keeps a save file; --check and the test
      * drivers read the game dir's cmos and drop the writes, as the captures did. */
@@ -186,7 +265,7 @@ static int write_misslog(const char *path)
  * iterations and returns the accumulated failed-assertion count. */
 static int run_check(const char *game_dir, int frames)
 {
-    mkdir("frames", 0755);             /* ignore EEXIST; capture_frame needs it */
+    pr_mkdir("frames", 0755);             /* ignore EEXIST; capture_frame needs it */
     game_set_game_dir(game_dir);
     int fail = 0, distinct = 0;
     int title_entry = 0, title_frames = 0, probed = 0;
@@ -309,7 +388,7 @@ static int run_check(const char *game_dir, int frames)
 
 int main(int argc, char **argv)
 {
-    const char *game_dir = "data/game/C";
+    const char *game_dir = NULL;   /* --check defaults to data/game/C; the windowed run resolves it */
     const char *cmos_path = NULL;
     int check_frames = 0;
     int have_check = 0;
@@ -330,12 +409,13 @@ int main(int argc, char **argv)
         }
     }
     if (have_check) {
+        if (!game_dir) game_dir = "data/game/C";
         if (check_frames < 1) {
             fprintf(stderr, "prageport: --check needs a frame count >= 1\n");
             usage(argv[0]);
             return 2;
         }
-        printf("prageport 0.0.1 game-dir=%s --check %d (headless)\n",
+        printf("prageport " PRAGE_VERSION " game-dir=%s --check %d (headless)\n",
                game_dir, check_frames);
         int failures = run_check(game_dir, check_frames);
         if (failures)

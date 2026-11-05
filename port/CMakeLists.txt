@@ -6,7 +6,12 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
-add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
+endif()
+
+# The version prageport prints; the release workflow passes the tag's.
+set(PRAGE_VERSION "0.0.1" CACHE STRING "prageport version string")
 
 # PORT: the coverage census instrument (record state-coverage §D1.9). When ON,
 # prageport and run_tests link a PR_COVERAGE-compiled core whose seam macros and
@@ -54,7 +59,16 @@ add_executable(prageport src/main.c)
 if(PR_COVERAGE)
   target_compile_definitions(prageport PRIVATE PR_COVERAGE)
 endif()
-target_link_libraries(prageport PRIVATE ${PRAGE_APP_CORE})
+target_link_libraries(prageport PRIVATE ${PRAGE_APP_CORE} SDL3::SDL3)
+target_compile_definitions(prageport PRIVATE PRAGE_VERSION="${PRAGE_VERSION}")
+if(WIN32)
+  # The release build: a GUI-subsystem exe (no console window) with the
+  # UTF-8 code-page manifest, the GCC and winpthread runtimes linked in. The test suite and
+  # diffrun need POSIX (fork, sys/wait.h) and are not built on Windows.
+  set_target_properties(prageport PROPERTIES WIN32_EXECUTABLE TRUE)
+  target_sources(prageport PRIVATE win/prageport.rc)
+  target_link_options(prageport PRIVATE -static)
+endif()
 
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h
@@ -72,6 +86,7 @@ if(PR_COVERAGE)
   add_dependencies(prage_core_cov symbols)
 endif()
 
+if(NOT WIN32)
 enable_testing()
 # The registry lives in tests/test.h (TEST_CASES/TEST_DRIVERS); CONFIGURE_DEPENDS
 # re-globs at build time, so a new tests/test_*.c needs no edit here.
@@ -89,3 +104,4 @@ add_test(NAME unit COMMAND run_tests WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")
 # tests/test_*.c glob above, so run_tests does not link it.
 add_executable(diffrun tests/diff_runner.c)
 target_link_libraries(diffrun PRIVATE prage_core)
+endif()

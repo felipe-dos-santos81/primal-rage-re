@@ -3,13 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat.h"
 
-/* PORT: aligned(0x4000). The original has no such object; this caps the
+/* PORT: aligned(0x4000) (PR_MEM_ALIGN; 0x1000 on Windows, compat.h). The
+ * original has no such object; this caps the
  * linker's requested alignment. A 64 MB array makes the compiler ask for
  * 0x8000, which exceeds macOS's __DATA,__common maximum and makes ld warn.
  * 0x4000 still exceeds every access width used here. */
-u8 mem[MEM_SIZE] __attribute__((aligned(0x4000)));
+u8 mem[MEM_SIZE] __attribute__((aligned(PR_MEM_ALIGN)));
 
 /* The registration table is port infrastructure, not game state: game state
  * lives in mem[] at its original offsets, but the mapping from original code
@@ -176,7 +177,7 @@ int fn_hit_report_file(const char *tag, const char *who)
 {
     char path[64];
     snprintf(path, sizeof path, "coverage/%s.hits", tag);
-    mkdir("coverage", 0755);           /* ignore EEXIST; Task 3 git-ignores it */
+    pr_mkdir("coverage", 0755);           /* ignore EEXIST; Task 3 git-ignores it */
     FILE *f = fopen(path, "w");
     if (!f) {
         fprintf(stderr, "%s could not write %s\n", who, path);
