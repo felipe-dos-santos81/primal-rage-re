@@ -9,6 +9,7 @@
 #include "test.h"
 #include "test_fixtures.h"
 #include "platform/res.h"
+#include "platform/prage_exe.h"
 #include "platform/gfx.h"
 #include "game/flow.h"
 #include "platform/gra.h"
@@ -5683,5 +5684,156 @@ int test_host_save(void)
 
     host_save_set_path(NULL);
     host_save_set_fallback(NULL);
+    return g_failures - before;
+}
+
+/* ---- the release's game-folder check (plan 2026-11-05-github-release Task 2) ---- */
+
+static void rdc_put(const char *dir, const char *name, u32 len)
+{
+    char path[600];
+    u8 buf[0x28] = {0};
+    snprintf(path, sizeof path, "%s/%s", dir, name);
+    if (len == 0x28u) {             /* the two-record INDEX: a.gra, b.gra */
+        memcpy(buf, "a.gra", 5);
+        memcpy(buf + 0x14, "b.gra", 5);
+    }
+    host_write_file(path, buf, len);
+}
+
+static void rdc_mv(const char *dir, const char *from, const char *to)
+{
+    char a[600], b[600];
+    snprintf(a, sizeof a, "%s/%s", dir, from);
+    snprintf(b, sizeof b, "%s/%s", dir, to);
+    rename(a, b);
+}
+
+static void rdc_rm(const char *dir, const char *name)
+{
+    char path[600];
+    snprintf(path, sizeof path, "%s/%s", dir, name);
+    remove(path);
+}
+
+/* 1 when `dir` tells `probe` from `PROBE` (macOS's default APFS does not). */
+static int rdc_case_sensitive(const char *dir)
+{
+    char path[600];
+    rdc_put(dir, "probe", 1);
+    snprintf(path, sizeof path, "%s/PROBE", dir);
+    FILE *f = fopen(path, "rb");
+    rdc_rm(dir, "probe");
+    if (f) fclose(f);
+    return f == NULL;
+}
+
+int test_res_dir_check(void)
+{
+    int before = g_failures;
+    const char *base = getenv("PR_CASE_TMP");
+    char dir[400], slash[410], name[32];
+    static const char *const k_files[] = {
+        "PRAGE.EXE", "A.GRA", "b.gra", "FAT.OPL", "TWI5.SMK", "TWG.SMK", "ENGLISH.TXT"
+    };
+
+    snprintf(dir, sizeof dir, "%s/pr dir \xc3\xa9 XXXXXX", base && base[0] ? base : "/tmp");
+    CHECK(mkdtemp(dir) != NULL, "res_dir_check scratch dir");
+    snprintf(slash, sizeof slash, "%s/", dir);
+    rdc_put(dir, "INDEX", 0x28u);
+    for (size_t i = 0; i < sizeof k_files / sizeof k_files[0]; i++) rdc_put(dir, k_files[i], 4u);
+
+    strcpy(name, "XXXX");
+    CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_OK);
+    CHECK(strcmp(name, "") == 0, "OK leaves an empty name");
+    strcpy(name, "XXXX");
+    CHECK_EQ_INT(res_dir_check(slash, name, sizeof name), RES_DIR_OK);   /* a trailing separator */
+
+    rdc_rm(dir, "b.gra");
+    strcpy(name, "XXXX");
+    CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_MISSING);
+    CHECK(strcmp(name, "b.gra") == 0, "the INDEX-listed name that is missing");
+    rdc_put(dir, "b.gra", 4u);
+
+    rdc_rm(dir, "TWG.SMK");
+    strcpy(name, "XXXX");
+    CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_MISSING);
+    CHECK(strcmp(name, "TWG.SMK") == 0, "a movie that is missing");
+    rdc_put(dir, "TWG.SMK", 4u);
+
+    if (rdc_case_sensitive(dir)) {
+        rdc_mv(dir, "ENGLISH.TXT", "English.txt");
+        strcpy(name, "XXXX");
+        CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_MISSING);
+        CHECK(strcmp(name, "english.txt") == 0, "a mixed-case string table the game would not open");
+        rdc_mv(dir, "English.txt", "ENGLISH.TXT");
+
+        rdc_mv(dir, "PRAGE.EXE", "prage.exe");
+        strcpy(name, "XXXX");
+        CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_WRONG_CASE);
+        CHECK(strcmp(name, "prage.exe") == 0, "the on-disk name of the wrong-case PRAGE.EXE");
+        rdc_mv(dir, "prage.exe", "PRAGE.EXE");
+    } else {
+        printf("SKIP res_dir_check case rows (case-insensitive %s; set PR_CASE_TMP to a "
+               "case-sensitive volume)\n", base && base[0] ? base : "/tmp");
+    }
+
+    rdc_rm(dir, "PRAGE.EXE");
+    strcpy(name, "XXXX");
+    CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_NO_EXE);
+    CHECK(strcmp(name, "") == 0, "NO_EXE leaves an empty name");
+    rdc_put(dir, "PRAGE.EXE", 4u);
+
+    rdc_put(dir, "INDEX", 0x13u);
+    CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_NO_INDEX);
+    rdc_rm(dir, "INDEX");
+    CHECK_EQ_INT(res_dir_check(dir, name, sizeof name), RES_DIR_NO_INDEX);
+
+    rdc_rm(dir, "a.gra");
+    for (size_t i = 0; i < sizeof k_files / sizeof k_files[0]; i++) rdc_rm(dir, k_files[i]);
+    rmdir(dir);
+
+    /* The real folder passes and its PRAGE.EXE is the fingerprinted build. */
+    {
+        const char *gdir = getenv("PR_GAME_DIR");
+        char idx[600], exe[600];
+        if (!gdir || !gdir[0]) gdir = "data/game/C";
+        snprintf(idx, sizeof idx, "%s/INDEX", gdir);
+        snprintf(exe, sizeof exe, "%s/PRAGE.EXE", gdir);
+        FILE *f = fopen(idx, "rb");
+        if (!f && getenv("PR_ORACLE_REQUIRED")) {
+            CHECK(0, "PR_ORACLE_REQUIRED=1 but the game folder is missing");
+        } else if (!f) {
+            printf("SKIP res_dir_check on the game folder (%s absent)\n", gdir);
+        } else {
+            u32 size = 0xEEEEEEEEu, crc = 0xEEEEEEEEu;
+            fclose(f);
+            CHECK_EQ_INT(res_dir_check(gdir, name, sizeof name), RES_DIR_OK);
+            CHECK_EQ_INT(host_file_crc32(exe, &size, &crc), 1);
+            CHECK_EQ_INT(size, PRAGE_EXE_SIZE);
+            CHECK_EQ_INT(crc, PRAGE_EXE_CRC32);
+        }
+    }
+    return g_failures - before;
+}
+
+int test_host_file_crc32(void)
+{
+    int before = g_failures;
+    char path[] = "/tmp/pr_crc_XXXXXX";
+    u32 size = 0xEEEEEEEEu, crc = 0xEEEEEEEEu;
+    int fd = mkstemp(path);
+    CHECK(fd >= 0, "crc scratch file");
+    close(fd);
+    CHECK_EQ_INT(host_write_file(path, (const u8 *)"123456789", 9), 1);
+    CHECK_EQ_INT(host_file_crc32(path, &size, &crc), 1);
+    CHECK_EQ_INT(size, 9);
+    CHECK_EQ_INT(crc, 0xCBF43926u);      /* the CRC-32 check value */
+    remove(path);
+    size = 0xEEEEEEEEu;
+    crc = 0xEEEEEEEEu;
+    CHECK_EQ_INT(host_file_crc32(path, &size, &crc), 0);
+    CHECK_EQ_INT(size, 0xEEEEEEEEu);
+    CHECK_EQ_INT(crc, 0xEEEEEEEEu);
     return g_failures - before;
 }

@@ -111,6 +111,12 @@ int  host_save_writable(void);
  * written, else 0 (no save path included). */
 int  host_save_write(const u8 *src, u32 len);
 
+/* PORT: the release's PRAGE.EXE fingerprint (plan 2026-11-05-github-release),
+ * no original counterpart. Reads `path` whole: returns 1 with its byte count in
+ * *size and its CRC-32 (SDL_crc32 from 0) in *crc, or 0 with both untouched
+ * when the file cannot be opened or read. */
+int  host_file_crc32(const char *path, u32 *size, u32 *crc);
+
 /* Opens the default playback device for `channels`-channel s16 frames at `rate`
  * Hz, matching opl_render()'s stereo-interleaved output. Returns 1 on success,
  * 0 on failure (non-positive rate/channels, or no audio device); never aborts,

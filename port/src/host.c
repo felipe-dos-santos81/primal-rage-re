@@ -904,6 +904,26 @@ int host_save_write(const u8 *src, u32 len)
     return s_save_path[0] ? host_write_file(s_save_path, src, len) : 0;
 }
 
+int host_file_crc32(const char *path, u32 *size, u32 *crc)
+{
+    u8 buf[0x4000];
+    u32 total = 0, c = 0;
+    size_t got;
+    FILE *f = fopen(path, "rb");
+
+    if (!f) return 0;
+    while ((got = fread(buf, 1, sizeof buf, f)) > 0) {
+        c = SDL_crc32(c, buf, got);
+        total += (u32)got;
+    }
+    int bad = ferror(f);
+    fclose(f);
+    if (bad) return 0;
+    *size = total;
+    *crc = c;
+    return 1;
+}
+
 /* Audio seam. This is the only place SDL's audio device exists; game-side audio
  * modules hand mixed stereo frames to host_audio_submit() and never see SDL.
  * The stream pulls from SDL's own queue (no callback), so host.c has no
