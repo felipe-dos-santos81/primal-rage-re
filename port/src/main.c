@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat.h"
+
+/* PORT: SDL3 maps main() to the platform entry point (WinMain on Windows); a
+ * no-op on macOS and Linux. */
+#include <SDL3/SDL_main.h>
 
 #include "host.h"
 #include "mem.h"
@@ -33,7 +37,7 @@ static int run_windowed(const char *game_dir, const char *cmos_path)
     else
         printf("prageport: audio unavailable (%s); running silent\n",
                host_audio_error());
-    printf("prageport 0.0.1 game-dir=%s\n", game_dir);
+    printf("prageport " PRAGE_VERSION " game-dir=%s\n", game_dir);
     game_set_game_dir(game_dir);
     /* PORT: the windowed run alone keeps a save file; --check and the test
      * drivers read the game dir's cmos and drop the writes, as the captures did. */
@@ -186,7 +190,7 @@ static int write_misslog(const char *path)
  * iterations and returns the accumulated failed-assertion count. */
 static int run_check(const char *game_dir, int frames)
 {
-    mkdir("frames", 0755);             /* ignore EEXIST; capture_frame needs it */
+    pr_mkdir("frames", 0755);             /* ignore EEXIST; capture_frame needs it */
     game_set_game_dir(game_dir);
     int fail = 0, distinct = 0;
     int title_entry = 0, title_frames = 0, probed = 0;
@@ -335,7 +339,7 @@ int main(int argc, char **argv)
             usage(argv[0]);
             return 2;
         }
-        printf("prageport 0.0.1 game-dir=%s --check %d (headless)\n",
+        printf("prageport " PRAGE_VERSION " game-dir=%s --check %d (headless)\n",
                game_dir, check_frames);
         int failures = run_check(game_dir, check_frames);
         if (failures)
