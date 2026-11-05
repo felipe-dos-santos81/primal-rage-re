@@ -1,0 +1,200 @@
+# Builds prageport for Windows x64, Linux x64 and macOS (universal) and, on a
+# version tag, publishes a GitHub Release with the three archives and
+# SHA256SUMS. A manual run (workflow_dispatch) builds and uploads the archives
+# as workflow artifacts only. No game file is ever downloaded, cached or
+# packaged: CI only builds the port and smoke-tests that it starts.
+# Design: docs/superpowers/specs/2026-11-05-github-release-design.md
+name: release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SDL_VERSION: 3.4.20
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04   # the oldest supported runner keeps the glibc floor low
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        run: echo "VER=$(if [ "$GITHUB_REF_TYPE" = tag ]; then echo "${GITHUB_REF_NAME#v}"; else echo 0.0.0-dev; fi)" >> "$GITHUB_ENV"
+      - name: SDL3 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev libdecor-0-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libgl1-mesa-dev libdrm-dev libgbm-dev libdbus-1-dev libibus-1.0-dev libudev-dev
+      - name: Build SDL3
+        run: |
+          git clone --depth 1 --branch "release-$SDL_VERSION" https://github.com/libsdl-org/SDL.git sdl
+          cmake -S sdl -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/sdl-prefix" -DCMAKE_INSTALL_LIBDIR=lib \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build sdl-build
+          cmake --install sdl-build
+      - name: Build prageport
+        run: |
+          # shellcheck disable=SC2016 # $ORIGIN is literal: the loader expands it
+          cmake -S port -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRAGE_VERSION="$VER" \
+            -DCMAKE_PREFIX_PATH="$PWD/sdl-prefix" \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH='$ORIGIN'
+          cmake --build build --target prageport
+      - name: Package
+        run: |
+          D="primal-rage-port-$VER-linux-x64"
+          mkdir -p "$D" dist
+          cp build/prageport sdl-prefix/lib/libSDL3.so.0 tools/release/README.txt LICENSE "$D/"
+          cp port/src/platform/audio/opl/LICENSE.opal.txt "$D/"
+          cp sdl/LICENSE.txt "$D/LICENSE.SDL3.txt"
+          # shellcheck disable=SC2016 # $ORIGIN is literal
+          readelf -d "$D/prageport" | grep -E 'R(UN)?PATH.*\$ORIGIN'
+          echo "STAGE=$D" >> "$GITHUB_ENV"
+      - name: Smoke test
+        run: tools/release/smoke.sh "$STAGE/prageport"
+      - name: Archive
+        run: tar czf "dist/$STAGE.tar.gz" "$STAGE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  macos:
+    runs-on: macos-14
+    env:
+      ARCHS: arm64;x86_64
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        run: echo "VER=$(if [ "$GITHUB_REF_TYPE" = tag ]; then echo "${GITHUB_REF_NAME#v}"; else echo 0.0.0-dev; fi)" >> "$GITHUB_ENV"
+      - name: Build SDL3 (universal)
+        run: |
+          git clone --depth 1 --branch "release-$SDL_VERSION" https://github.com/libsdl-org/SDL.git sdl
+          cmake -S sdl -B sdl-build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/sdl-prefix" -DCMAKE_OSX_ARCHITECTURES="$ARCHS" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build sdl-build -j 4
+          cmake --install sdl-build
+      - name: Build prageport (universal)
+        run: |
+          cmake -S port -B build -DCMAKE_BUILD_TYPE=Release -DPRAGE_VERSION="$VER" \
+            -DCMAKE_PREFIX_PATH="$PWD/sdl-prefix" -DCMAKE_OSX_ARCHITECTURES="$ARCHS" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH=@executable_path/../Frameworks
+          cmake --build build --target prageport -j 4
+      - name: Package
+        run: |
+          D="primal-rage-port-$VER-macos-universal"
+          APP="$D/Primal Rage.app/Contents"
+          mkdir -p "$APP/MacOS" "$APP/Frameworks" dist
+          cp build/prageport "$APP/MacOS/"
+          cp sdl-prefix/lib/libSDL3.0.dylib "$APP/Frameworks/"
+          sed "s/@VERSION@/$VER/g" tools/release/Info.plist > "$APP/Info.plist"
+          cp tools/release/README.txt LICENSE port/src/platform/audio/opl/LICENSE.opal.txt "$D/"
+          cp sdl/LICENSE.txt "$D/LICENSE.SDL3.txt"
+          for f in "$APP/MacOS/prageport" "$APP/Frameworks/libSDL3.0.dylib"; do
+            lipo -archs "$f" | grep -q x86_64 && lipo -archs "$f" | grep -q arm64
+          done
+          otool -L "$APP/MacOS/prageport" | grep -q '@rpath/libSDL3.0.dylib'
+          # Ad-hoc signature only (not Developer ID): Apple Silicon refuses
+          # arm64 code with no signature at all. Inner code first.
+          codesign --force --sign - "$APP/Frameworks/libSDL3.0.dylib"
+          codesign --force --sign - "$D/Primal Rage.app"
+          echo "STAGE=$D" >> "$GITHUB_ENV"
+      - name: Smoke test
+        run: tools/release/smoke.sh "$STAGE/Primal Rage.app/Contents/MacOS/prageport"
+      - name: Archive
+        run: ditto -c -k --keepParent "$STAGE" "dist/$STAGE.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-python zip unzip
+      - name: Version
+        run: echo "VER=$(if [ "$GITHUB_REF_TYPE" = tag ]; then echo "${GITHUB_REF_NAME#v}"; else echo 0.0.0-dev; fi)" >> "$GITHUB_ENV"
+      - name: SDL3 (official MinGW development release)
+        run: |
+          curl -sSfL -o sdl.tgz "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VERSION/SDL3-devel-$SDL_VERSION-mingw.tar.gz"
+          tar xzf sdl.tgz
+          echo "SDLROOT=$PWD/SDL3-$SDL_VERSION" >> "$GITHUB_ENV"
+      - name: Build prageport
+        run: |
+          cmake -S port -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRAGE_VERSION="$VER" \
+            -DSDL3_DIR="$SDLROOT/x86_64-w64-mingw32/lib/cmake/SDL3"
+          cmake --build build --target prageport
+      - name: Package
+        run: |
+          D="primal-rage-port-$VER-windows-x64"
+          mkdir -p "$D" dist
+          cp build/prageport.exe "$SDLROOT/x86_64-w64-mingw32/bin/SDL3.dll" "$D/"
+          cp tools/release/README.txt LICENSE port/src/platform/audio/opl/LICENSE.opal.txt "$D/"
+          cp "$SDLROOT/LICENSE.txt" "$D/LICENSE.SDL3.txt"
+          # Only SDL3.dll and Windows system DLLs: the GCC runtime is linked in.
+          ! objdump -p "$D/prageport.exe" | grep 'DLL Name' | grep -v -i -e api-ms-win-crt -e kernel32 -e SDL3.dll
+          echo "STAGE=$D" >> "$GITHUB_ENV"
+      - name: Smoke test
+        run: tools/release/smoke.sh "$STAGE/prageport.exe"
+      - name: Archive
+        run: zip -r "dist/$STAGE.zip" "$STAGE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  publish:
+    needs: [linux, macos, windows]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: No game files in any archive
+        run: |
+          cd dist
+          { for z in *.zip; do unzip -Z1 "$z"; done; for t in *.tar.gz; do tar tzf "$t"; done; } > contents.txt
+          cat contents.txt
+          if grep -Ei '(prage\.exe|(^|/)index$|\.gra$|\.smk$|\.opl$|cmos|ghidra_data|\.iso$)' contents.txt; then
+            echo "::error::a game file is in a release archive"; exit 1
+          fi
+          rm contents.txt
+      - name: Checksums
+        run: cd dist && sha256sum -- *.zip *.tar.gz > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            --notes-file tools/release/README.txt $pre dist/*

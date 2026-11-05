@@ -15,6 +15,15 @@ menus and service menu, character select, one- and two-player matches, every
 game mode (including the volleyball and bowling secrets), continues, high
 scores, saves, music and all seven endings.
 
+## Download and play
+
+Builds for Windows (x64), Linux (x64) and macOS (Apple Silicon and Intel) are on
+the [Releases](https://github.com/felipe-dos-santos81/primal-rage-re/releases)
+page. They contain no game files: on first launch the port asks for the folder
+where your own copy of Primal Rage is installed, checks it, and remembers it.
+Each download's `README.txt` covers the unsigned-app warnings and where saves
+live.
+
 ## Quick start
 
 The game files are **not included**. Put your own copy's `PRAGE.EXE`,
