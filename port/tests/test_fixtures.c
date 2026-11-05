@@ -9,6 +9,7 @@
 #include "platform/gfx.h"
 #include "platform/res.h"
 #include "mem.h"
+#include "host.h"
 #include "symbols.h"
 #include "test.h"
 #include <stdio.h>
@@ -191,6 +192,20 @@ void tf_menu_press(u32 bits)
     DSD(DS_000E1C30) = bits;
     DSB(MT_LAYOUT + 0x2D8u) = (u8)(bits >> 24);
     DSB(MT_LAYOUT + 0x2D9u) = (u8)(bits >> 8);
+    /* The ISR's sampler 0x1BBAC (0x1BE1C) rebuilds that bitmap from the
+     * key-state table on every tick 0x2EA78 models, so the press is also held
+     * where the sampler reads it: the host's key bits. An empty layout gets 16
+     * distinct scans no scripted key uses (F3..F10, 0x59..0x5E, F11, F12), so
+     * each slot has its own key-state entry and 0x2EBF0's arrow arms still
+     * find no bound slot -- the unbound layout these menu tests were written
+     * against. */
+    static const u8 k_neutral_slots[16] = { 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44,
+                                            0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x57, 0x58 };
+    u8 any = 0u;
+    for (u32 i = 0; i < 16u; i++) any |= DSB(MT_LAYOUT + 0x2DEu + i);
+    if (any == 0u)
+        for (u32 i = 0; i < 16u; i++) DSB(MT_LAYOUT + 0x2DEu + i) = k_neutral_slots[i];
+    host_set_key_bits_override((u16)((((bits >> 24) & 0xFFu) << 8) | ((bits >> 8) & 0xFFu)), 1);
 }
 
 /* ---- record k7-k12 §4: the K12 voice-site runner ---- */

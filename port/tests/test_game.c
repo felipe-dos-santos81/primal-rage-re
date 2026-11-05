@@ -9171,6 +9171,28 @@ static void ch_check_screen_wait(void)
     CHECK_EQ_INT((int)DSD(DS_00101508), (int)(isr0 + 1u));
     CHECK(!input_has_key(), "the queue was drained");
 
+    /* The ISR 0x1BDF4 calls the input sampler 0x1BBAC (0x1BE1C) on each tick it
+     * runs, so a key held during a menu wait reaches the bitmap +0x2D8/+0x2D9
+     * (the level MODIFY CONTROLS polls). Default binding, device 0/0: P1 Down
+     * (X, bit 0x40 of +0x2D8) and P2 Down (the arrow, bit 0x40 of +0x2D9). */
+    {
+        static const u8 slots[16] = { 0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32,
+                                      0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51 };
+        const u32 kb = 0x3000000u;
+        const u32 s_base = DSD(DS_00101514);
+        mem_fill(kb, 0, 0x400u);
+        DSD(DS_00101514) = kb;
+        for (u32 i = 0; i < 16u; i++) DSB(kb + 0x2DEu + i) = slots[i];
+        DSB(kb + 0x2D8u) = 0xA5u;
+        DSB(kb + 0x2D9u) = 0x5Au;
+        host_set_key_bits_override(0x4040u, 1);
+        config_screen_wait(-2);
+        CHECK_EQ_INT((int)DSB(kb + 0x2D8u), 0x40);
+        CHECK_EQ_INT((int)DSB(kb + 0x2D9u), 0x40);
+        host_set_key_bits_override(0u, 0);
+        DSD(DS_00101514) = s_base;
+    }
+
     /* n == 0: two passes (0x2EB6E..0x2EB74 loops once more for ecx = -1), so
      * two ticks; a key in the queue is stamped at the first. */
     input_push(0x1E, 'a');
