@@ -70,6 +70,9 @@ if(WIN32)
   set_target_properties(prageport PROPERTIES WIN32_EXECUTABLE TRUE)
   target_sources(prageport PRIVATE win/prageport.rc)
   target_link_options(prageport PRIVATE -static)
+  # clock_gettime (host.c) lives in winpthreads: GCC links it implicitly,
+  # clang (the arm64 toolchain) does not. Static under -static, so no DLL.
+  target_link_libraries(prageport PRIVATE pthread)
 endif()
 
 add_custom_command(
