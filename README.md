@@ -17,7 +17,7 @@ scores, saves, music and all seven endings.
 
 ## Download and play
 
-Builds for Windows (x64), Linux (x64) and macOS (Apple Silicon and Intel) are on
+Builds for Windows (x64), Linux (x64 and arm64) and macOS (Apple Silicon and Intel) are on
 the [Releases](https://github.com/felipe-dos-santos81/primal-rage-re/releases)
 page. They contain no game files: on first launch the port asks for the folder
 where your own copy of Primal Rage is installed, checks it, and remembers it.

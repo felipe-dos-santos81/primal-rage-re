@@ -7,7 +7,9 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-  add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
+  # -fsigned-char: plain char is signed on x86 and Apple arm64, where the port
+  # is verified, but unsigned on ARM Linux; pin it so every target agrees.
+  add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -fsigned-char)
 endif()
 
 # The version prageport prints; the release workflow passes the tag's.
