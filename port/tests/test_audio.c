@@ -931,6 +931,39 @@ int test_sequencer(void)
             }
         }
 
+        /* 0f. AIL's FOR/NEXT loop controllers (0x68AB0: 116 at 0x68CF3, 117
+         *     at 0x68D24). Each body is FOR(count) on channel 0, a 10-tick
+         *     wait, NEXT(value), end of track: count 0 loops forever, count n
+         *     plays n passes, a NEXT below 0x40 is ignored (0x68D24 `cmp
+         *     edi,0x40; jl`), so the end of track halts after one pass. */
+        {
+            static const struct { u8 count, next; int forever, lo, hi; } c[] = {
+                { 0x00u, 0x7Fu, 1, 0, 0 },
+                { 0x03u, 0x7Fu, 0, 30, 39 },
+                { 0x00u, 0x3Fu, 0, 10, 19 },
+            };
+            for (size_t k = 0; k < sizeof c / sizeof c[0]; k++) {
+                const u8 ev[] = { 0xB0, 0x74, c[k].count, 0x0A, 0xB0, 0x75, c[k].next,
+                                  0xFF, 0x2F, 0x00 };
+                int ticks = 0;
+                opl_reset();
+                len = build_xmi(bank, ev, sizeof ev);
+                CHECK_EQ_INT(seq_load(bank, len), 1);
+                seq_start();
+                while (seq_playing() && ticks < 1000) {
+                    seq_tick();
+                    ticks++;
+                }
+                if (c[k].forever) {
+                    CHECK_EQ_INT(seq_playing(), 1);
+                } else {
+                    CHECK_EQ_INT(seq_playing(), 0);
+                    CHECK(ticks >= c[k].lo && ticks <= c[k].hi, "FOR/NEXT pass count");
+                }
+            }
+            seq_stop();
+        }
+
         /* 0b. An unknown status byte after a note keys off. */
         {
             static const u8 ev[] = { 0x90, 0x30, 0x40, 0x7f, 0x05, 0xf1 };

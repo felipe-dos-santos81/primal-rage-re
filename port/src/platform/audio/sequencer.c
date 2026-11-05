@@ -99,6 +99,11 @@ static struct {
     s32 vol_acc;
     s32 vol_step;
     u32 svc;
+    /* The AIL sequence record's FOR/NEXT stack (0x68AB0): four slots, the
+     * count at +0x80 + i*4 (-1 = free; 0 = forever) and the EVNT position
+     * after the FOR at +0x70 + i*4. */
+    s32 loop_count[4];
+    u32 loop_pos[4];
     u8 cc7_log[SEQ_MIDI_CHANNELS];
     u16 cc7_logged;
     seq_voice voice[SEQ_OPL_CHANNELS];
@@ -536,6 +541,48 @@ static void seq_fade_step(void)
     if ((S.svc & 7u) == 0u) seq_resend_volume();            /* 0x699B4 0x699BB */
 }
 
+/* 0x69250's loop slots (0x69287..0x69293): every reset frees all four. */
+static void loops_reset(void)
+{
+    for (int i = 0; i < 4; i++) {
+        S.loop_count[i] = -1;
+        S.loop_pos[i] = 0;
+    }
+}
+
+/* 0x68CF3: FOR takes the first free slot (none free: ignored, 0x68D0A) and
+ * keeps the count and the position after this event (+0x14, 0x68D17). */
+static void loop_for(u8 count)
+{
+    for (int i = 0; i < 4; i++) {
+        if (S.loop_count[i] == -1) {
+            S.loop_count[i] = count;
+            S.loop_pos[i] = S.pos;
+            return;
+        }
+    }
+}
+
+/* 0x68D24: NEXT below 0x40 is ignored (`cmp edi,0x40; jl`). Otherwise the
+ * innermost busy slot (3 down to 0): count 0 jumps back forever (0x68D60);
+ * else the count drops by one and jumps back while non-zero (0x68D79), and at
+ * zero the slot is freed and play continues past the NEXT (0x68D85). */
+static void loop_next(u8 value)
+{
+    if (value < 0x40u) return;
+    for (int i = 3; i >= 0; i--) {
+        if (S.loop_count[i] == -1) continue;
+        if (S.loop_count[i] == 0) {
+            S.pos = S.loop_pos[i];
+        } else if (--S.loop_count[i] != 0) {
+            S.pos = S.loop_pos[i];
+        } else {
+            S.loop_count[i] = -1;
+        }
+        return;
+    }
+}
+
 /* The single halt path. Every exit from the parser that stops playback routes
  * here, so no path can stop the stream while leaving OPL channels keyed on. */
 static void halt(void)
@@ -607,17 +654,19 @@ static void process(void)
                 if (S.evnt_len - S.pos < 2) { halt(); return; }
                 c = S.evnt[S.pos++];
                 val = S.evnt[S.pos++];
-                /* ctrl 0 is the AIL-layer bank select, not a 0x3b54 handler;
-                 * every other controller goes to the driver's dispatch.
-                 * PORT: named gap, record §14 of
-                 * 2026-09-29-todo-verify-derivations.md: AIL's own FOR/NEXT
-                 * loop controllers 116/117 (0x68AB0: a four-deep stack of
-                 * count and stream position; NEXT at 0x40 or more jumps back,
-                 * count 0 forever) are not modelled and fall through to the
-                 * driver's no-op default. The title bank sends one 116 and no
-                 * 117, so it never loops; the stage banks send both. */
+                /* ctrl 0 is the AIL-layer bank select, not a 0x3b54 handler.
+                 * AIL's own FOR/NEXT loop controllers 116/117 (0x68AB0's 0x74
+                 * and 0x75 arms) return before the driver dispatch at 0x68C44,
+                 * so the driver never sees them. Every other controller goes
+                 * to the driver's dispatch. The title bank sends one 116 and
+                 * no 117, so it plays once; the stage and menu banks send both
+                 * with count 0 and loop forever. */
                 if (c == 0 && ch < SEQ_MIDI_CHANNELS)
                     S.bank[ch] = val;
+                else if (c == 116)
+                    loop_for(val);
+                else if (c == 117)
+                    loop_next(val);
                 else
                     midi_control(b, c, val);
             } else if (hi == 0xC0) {
@@ -708,6 +757,7 @@ int seq_load(const u8 *data, u32 len)
     S.loaded = 1;
     S.svc = 0;                          /* 0x6A578 0x69250: +0x30, the CC7 log */
     S.cc7_logged = 0;
+    loops_reset();                      /* 0x6A578 0x69250: the FOR/NEXT slots */
     /* PORT: the loaded-bank seam above (FNV-1a of the bytes this load accepted). */
     S.bank_hash = 2166136261u;
     for (u32 k = 0; k < len; k++) {
@@ -776,6 +826,7 @@ void seq_start(void)
      * restore it with seq_driver_reset(). */
     S.svc = 0;                       /* 0x6A79B 0x69250: +0x30, the CC7 log */
     S.cc7_logged = 0;
+    loops_reset();                   /* 0x6A79B 0x69250: the FOR/NEXT slots */
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
         S.voice[v].note = SEQ_NOTE_FREE;
         S.voice[v].midi = 0;
