@@ -11,8 +11,6 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-*'
-    branches:
-      - release-pipeline   # TEMPORARY dry run before merge; publish stays tag-only
   workflow_dispatch:
 
 permissions:
@@ -72,7 +70,7 @@ jobs:
           path: dist/*
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-latest   # macos-14 is retired (measured: "not supported", 2026-11-05)
     env:
       ARCHS: arm64;x86_64
       MACOSX_DEPLOYMENT_TARGET: '11.0'
@@ -107,7 +105,8 @@ jobs:
           cp tools/release/README.txt LICENSE port/src/platform/audio/opl/LICENSE.opal.txt "$D/"
           cp sdl/LICENSE.txt "$D/LICENSE.SDL3.txt"
           for f in "$APP/MacOS/prageport" "$APP/Frameworks/libSDL3.0.dylib"; do
-            lipo -archs "$f" | grep -q x86_64 && lipo -archs "$f" | grep -q arm64
+            lipo "$f" -verify_arch x86_64
+            lipo "$f" -verify_arch arm64
           done
           otool -L "$APP/MacOS/prageport" | grep -q '@rpath/libSDL3.0.dylib'
           # Ad-hoc signature only (not Developer ID): Apple Silicon refuses
@@ -158,7 +157,12 @@ jobs:
           cp tools/release/README.txt LICENSE port/src/platform/audio/opl/LICENSE.opal.txt "$D/"
           cp "$SDLROOT/LICENSE.txt" "$D/LICENSE.SDL3.txt"
           # Only SDL3.dll and Windows system DLLs: the GCC runtime is linked in.
-          ! objdump -p "$D/prageport.exe" | grep 'DLL Name' | grep -v -i -e api-ms-win-crt -e kernel32 -e SDL3.dll
+          if objdump -p "$D/prageport.exe" | grep 'DLL Name' | grep -v -i -e api-ms-win-crt -e kernel32 -e SDL3.dll; then
+            echo "::error::unexpected DLL import"; exit 1
+          fi
+          # Exactly one manifest, the UTF-8 code-page one (non-ASCII folder paths).
+          test "$(grep -a -c '<assembly xmlns' "$D/prageport.exe")" -eq 1
+          grep -a -q '<activeCodePage[^>]*>UTF-8<' "$D/prageport.exe"
           echo "STAGE=$D" >> "$GITHUB_ENV"
       - name: Smoke test
         run: tools/release/smoke.sh "$STAGE/prageport.exe"
@@ -198,5 +202,7 @@ jobs:
         run: |
           pre=""
           case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          # The player README as a preformatted block: as Markdown it loses <folder>.
+          { echo '```text'; cat tools/release/README.txt; echo '```'; } > notes.md
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
-            --notes-file tools/release/README.txt $pre dist/*
+            --notes-file notes.md $pre dist/*

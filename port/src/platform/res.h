@@ -75,5 +75,9 @@ void res_set_screen_hook(void (*hook)(void));
 #define RES_DIR_WRONG_CASE  3  /* PRAGE.EXE or INDEX exists only in another case; `name` = the on-disk name */
 #define RES_DIR_MISSING     4  /* a required file is absent; `name` = the first missing name */
 int res_dir_check(const char *game_dir, char *name, size_t n);
+/* res_dir_check on `picked`, then on picked/C (where a DOSBox bundle keeps the
+ * game). Returns RES_DIR_OK with the folder that passed in `out`, else
+ * `picked`'s own result (and `name`) with `out` = picked. */
+int res_dir_resolve(const char *picked, char *out, size_t out_n, char *name, size_t n);
 
 #endif /* PR_RES_H */

@@ -13,9 +13,11 @@ How to play
      Linux:    ./prageport
 3. The first time, a folder chooser opens. Choose the folder where
    Primal Rage is installed (the one that holds PRAGE.EXE).
+   If your copy is a DOSBox bundle, choosing the bundle's folder is
+   fine: the game's C folder inside it is found.
    If you only have the CD, copy the contents of the CD's RAGE.S16
-   folder into the install folder first, or install the game once
-   under DOSBox and choose that folder.
+   folder, and FAT.OPL from its RAGE.SND folder, into one folder and
+   choose that.
 4. The folder is remembered; next time the game starts straight away.
    If the folder moves, the chooser opens again.
 
@@ -25,8 +27,10 @@ PRAGE.EXE is not the version this port supports.
 
 Warnings on first launch (the app is not signed)
 ------------------------------------------------
-macOS:    right-click "Primal Rage.app" and choose Open, then Open again.
-          Or run: xattr -dr com.apple.quarantine "Primal Rage.app"
+macOS:    open "Primal Rage.app" once; when macOS blocks it, go to
+          System Settings > Privacy & Security and click "Open Anyway".
+          (macOS 14 and earlier: right-click the app and choose Open.)
+          Or, in Terminal: xattr -dr com.apple.quarantine "Primal Rage.app"
 Windows:  if SmartScreen appears, click "More info", then "Run anyway".
 
 Saves and settings
