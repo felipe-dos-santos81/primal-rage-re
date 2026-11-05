@@ -181,6 +181,9 @@ void tf_frontend_restore_list(const u8 *saved)
 
 /* ---- test_platform.c: the menu fixtures ---- */
 
+const u8 tf_default_slots[16] = { 0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32,
+                                   0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51 };
+
 void tf_menu_press(u32 bits)
 {
     DSD(DS_000E1C34) = bits;          /* the level the pad reports */

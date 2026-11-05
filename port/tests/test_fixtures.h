@@ -28,6 +28,9 @@ void tf_frontend_restore_list(const u8 *saved);
 /* ---- test_platform.c: the menu fixtures ---- */
 #define MT_LAYOUT 0x3E2D000u   /* the key layout block DS_00101514 points at */
 void tf_menu_press(u32 bits);
+/* The default key binding, the 16 slot scans of the record at 0xA2C62:
+ * P1 S X Z C / U I N M, P2 the arrows / Home PgUp End PgDn. */
+extern const u8 tf_default_slots[16];
 
 /* ---- record k7-k12 §4: the K12 voice-site runner ---- */
 /* Record k7-k12 §4: one row per wired 0x2C3FC call site (derivations §0.4

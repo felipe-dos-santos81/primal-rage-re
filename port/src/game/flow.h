@@ -226,6 +226,8 @@ void sound_sample_start(u32 slot);
 void game_isr_ticks(u32 n);
 /* The timer ISR's input step: host key/axis fill, then the sampler 0x1BBAC. */
 void game_isr_input(void);
+/* One whole tick of the timer ISR 0x1BDF4 (gate, counters, input, word, 0x2D62C). */
+void game_isr_tick(void);
 
 /* 0x5D808: DS_000EF6DE = 0, the ISR's frame word (0x20C10's tail). */
 void game_isr_word_reset(void);

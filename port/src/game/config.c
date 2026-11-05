@@ -874,7 +874,6 @@ void audit_characters(u32 c0, u32 c1)
 #define CFG_KEY_TIME     0x00105F2Cu   /* 0x2EB57: 0x500BB's tick at that key */
 #define CFG_KEY_LATCH    0x00105F30u   /* 0x2EB66: ascii, or the scan code */
 #define CFG_TICK_ISR     0x00101500u   /* 0x500BB `mov eax,[0x101500]` */
-#define CFG_ISR_GATE     0x00104B22u   /* 0x1BDF8: the ISR runs unless this is 1 */
 #define CFG_FRAME_WORD   0x000EF6DEu   /* 0x2EAF2: the word the ISR increments */
 #define CFG_IDLE_FLAG    0x00107414u   /* 0x2EBA8 */
 #define CFG_CODE_BASE    0x00107450u   /* 0x30608: the code-entry record */
@@ -934,24 +933,11 @@ void config_screen_wait(s32 n)
         u16 seen = DSW(CFG_FRAME_WORD);                     /* 0x2EAF2 */
         while (DSW(CFG_FRAME_WORD) == seen) {               /* 0x2EAFB..0x2EB03 */
             game_audio_service();                           /* 0x2EB05 0x1CF20 */
-            /* PORT: the timer ISR 0x1BDF4 is modelled as one tick per
-             * retrace, as the master loop's spin does: when the gate byte is
-             * not 1 (0x1BDF8..0x1BE00) it adds 1 to DS_00101508 and
-             * DS_00101500 (0x1BE0E..0x1BE16) and to the word DS_000EF6DE
-             * (0x1BE21), and calls 0x2D62C (0x1BE28). Between the counters and
-             * the word it calls the input sampler 0x1BBAC (0x1BE1C), so a key
-             * held inside a menu wait reaches the bitmap +0x2D8/+0x2D9 that
-             * MODIFY CONTROLS and the option menus poll.
-             * PORT: game_isr_input (flow.c) is the step the master loop's tick
-             * runs too; without it the bitmap stayed frozen at the last
-             * master-loop iteration and every held-key menu ignored input. */
-            if (DSB(CFG_ISR_GATE) != 1u) {
-                DSD(DS_00101508)++;
-                DSD(CFG_TICK_ISR)++;
-                game_isr_input();                           /* 0x1BE1C 0x1BBAC */
-                DSW(CFG_FRAME_WORD) = (u16)(DSW(CFG_FRAME_WORD) + 1u);
-                config_isr_tick();                          /* 0x1BE28 0x2D62C */
-            }
+            /* PORT: the timer ISR 0x1BDF4 is modelled as one whole tick per
+             * retrace (flow.c game_isr_tick), its input sampler included, so a
+             * key held inside a menu wait reaches the bitmap MODIFY CONTROLS
+             * and the option menus poll. */
+            game_isr_tick();
             host_wait_vblank();
         }
         (void)input_pump();                                 /* 0x2EB0C 0x500C4 */

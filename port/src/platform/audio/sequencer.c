@@ -541,13 +541,16 @@ static void seq_fade_step(void)
     if ((S.svc & 7u) == 0u) seq_resend_volume();            /* 0x699B4 0x699BB */
 }
 
-/* The sequence reset 0x69250 frees all four loop slots (0x69287..0x69293). */
-static void loops_reset(void)
+/* The sequence reset 0x69250's writes the port models: +0x30 the service
+ * count, the CC7 log, and the four FOR/NEXT counts (0x69287..0x69293; the
+ * positions are not touched, a free slot's is never read). AIL calls it from
+ * AIL_init_sequence (0x6A578) and AIL_start_sequence (0x6A79B). */
+static void seq_record_reset(void)
 {
-    for (int i = 0; i < 4; i++) {
+    S.svc = 0;
+    S.cc7_logged = 0;
+    for (int i = 0; i < 4; i++)
         S.loop_count[i] = -1;
-        S.loop_pos[i] = 0;
-    }
 }
 
 /* FOR (0x68AB0's 116 arm, 0x68CF3) takes the first free slot (none free: ignored, 0x68D0A) and
@@ -572,13 +575,10 @@ static void loop_next(u8 value)
     if (value < 0x40u) return;
     for (int i = 3; i >= 0; i--) {
         if (S.loop_count[i] == -1) continue;
-        if (S.loop_count[i] == 0) {
-            S.pos = S.loop_pos[i];
-        } else if (--S.loop_count[i] != 0) {
-            S.pos = S.loop_pos[i];
-        } else {
-            S.loop_count[i] = -1;
-        }
+        if (S.loop_count[i] == 0 || --S.loop_count[i] != 0)
+            S.pos = S.loop_pos[i];              /* 0x68D60 / 0x68D79 */
+        else
+            S.loop_count[i] = -1;               /* 0x68D85 */
         return;
     }
 }
@@ -755,9 +755,7 @@ int seq_load(const u8 *data, u32 len)
     S.pos = 0;
     S.wait = 0;
     S.loaded = 1;
-    S.svc = 0;                          /* 0x6A578 0x69250: +0x30, the CC7 log */
-    S.cc7_logged = 0;
-    loops_reset();                      /* 0x6A578 0x69250: the FOR/NEXT slots */
+    seq_record_reset();                 /* 0x6A578 0x69250 */
     /* PORT: the loaded-bank seam above (FNV-1a of the bytes this load accepted). */
     S.bank_hash = 2166136261u;
     for (u32 k = 0; k < len; k++) {
@@ -824,9 +822,7 @@ void seq_start(void)
      * after the title bank's four notes took channels 0..3 (record §M3). The
      * module's static initialiser is that install state; the unit oracles
      * restore it with seq_driver_reset(). */
-    S.svc = 0;                       /* 0x6A79B 0x69250: +0x30, the CC7 log */
-    S.cc7_logged = 0;
-    loops_reset();                   /* 0x6A79B 0x69250: the FOR/NEXT slots */
+    seq_record_reset();              /* 0x6A79B 0x69250 */
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
         S.voice[v].note = SEQ_NOTE_FREE;
         S.voice[v].midi = 0;

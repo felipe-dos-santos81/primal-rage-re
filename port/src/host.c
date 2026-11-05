@@ -184,14 +184,17 @@ static u16 g_key_bits_override;
 /* PORT: a host option with no original counterpart (host.h): the arrow keys
  * drive Player 1. Off by default, so the original's binding stands. */
 static int g_arrows_p1;
+static void host_set_arrows_p1(int on);
+static void host_arrows_p1_save(void);
 
+/* The arrow keys are the default record's P2 Up Down Left Right slots. */
+static const u8 *const k_arrow_scan = k_default_scan + 8;
 
 u16 host_apply_arrows_p1(u16 bits, const u8 *scans, u8 held)
 {
-    static const u8 k_arrow[4] = { 0x48, 0x50, 0x4B, 0x4D };   /* Up Down Left Right */
     for (u32 i = 8u; i < 16u; i++)                  /* P2's slots ignore the arrows */
         for (u32 a = 0u; a < 4u; a++)
-            if (scans[i] == k_arrow[a]) bits &= (u16)~k_cfg_bit[i];
+            if (scans[i] == k_arrow_scan[a]) bits &= (u16)~k_cfg_bit[i];
     for (u32 a = 0u; a < 4u; a++)                   /* P1's Up Down Left Right slots */
         if (held & (1u << a)) bits |= k_cfg_bit[a];
     return bits;
@@ -221,12 +224,12 @@ u16 host_key_bits(void)
         const SDL_Scancode key = k_scan_sdl[scan];
         if (key != SDL_SCANCODE_UNKNOWN && st[key]) bits |= k_cfg_bit[i];
     }
-    if (g_arrows_p1)
-        bits = host_apply_arrows_p1(bits, scans,
-                                    (u8)((st[SDL_SCANCODE_UP] ? 1u : 0u) |
-                                         (st[SDL_SCANCODE_DOWN] ? 2u : 0u) |
-                                         (st[SDL_SCANCODE_LEFT] ? 4u : 0u) |
-                                         (st[SDL_SCANCODE_RIGHT] ? 8u : 0u)));
+    if (g_arrows_p1) {
+        u8 held = 0u;
+        for (u32 a = 0u; a < 4u; a++)
+            if (st[k_scan_sdl[k_arrow_scan[a]]]) held |= (u8)(1u << a);
+        bits = host_apply_arrows_p1(bits, scans, held);
+    }
     if (st[SDL_SCANCODE_F1]) bits |= 0x0100u;         /* 0x1B850 */
     if (st[SDL_SCANCODE_F2]) bits |= 0x0001u;         /* 0x1B870 */
     return bits;
@@ -696,14 +699,14 @@ void host_arrows_p1_load(void)
         host_set_arrows_p1(v[0] == '1');
 }
 
-void host_arrows_p1_save(void)
+static void host_arrows_p1_save(void)
 {
     char path[1100];
     if (host_pref_file("arrows-p1", path, sizeof path))
-        host_write_file(path, (const u8 *)(g_arrows_p1 ? "1\n" : "0\n"), 2);
+        host_game_dir_save(path, g_arrows_p1 ? "1" : "0");   /* the same one-line file */
 }
 
-void host_set_arrows_p1(int on)
+static void host_set_arrows_p1(int on)
 {
     g_arrows_p1 = on != 0;
     if (g_window)

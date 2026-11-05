@@ -562,6 +562,17 @@ static u32 wr_be32(u8 *p, u32 v)
     return 4;
 }
 
+/* Ticks a started sequence until it halts (at most 1000 ticks); the count. */
+static int run_to_halt(void)
+{
+    int ticks = 0;
+    while (seq_playing() && ticks < 1000) {
+        seq_tick();
+        ticks++;
+    }
+    return ticks;
+}
+
 static u32 build_xmi(u8 *buf, const u8 *ev, u32 n)
 {
     u32 chunk = 8 + n + (n & 1u);
@@ -945,15 +956,11 @@ int test_sequencer(void)
             for (size_t k = 0; k < sizeof c / sizeof c[0]; k++) {
                 const u8 ev[] = { 0xB0, 0x74, c[k].count, 0x0A, 0xB0, 0x75, c[k].next,
                                   0xFF, 0x2F, 0x00 };
-                int ticks = 0;
                 opl_reset();
                 len = build_xmi(bank, ev, sizeof ev);
                 CHECK_EQ_INT(seq_load(bank, len), 1);
                 seq_start();
-                while (seq_playing() && ticks < 1000) {
-                    seq_tick();
-                    ticks++;
-                }
+                const int ticks = run_to_halt();
                 if (c[k].forever) {
                     CHECK_EQ_INT(seq_playing(), 1);
                 } else {
@@ -968,7 +975,6 @@ int test_sequencer(void)
              * stale slot ends the loop after 2 passes, not 3. */
             {
                 const u8 ev[] = { 0xB0, 0x74, 0x03, 0x0A, 0xB0, 0x75, 0x7F, 0xFF, 0x2F, 0x00 };
-                int ticks = 0;
                 opl_reset();
                 len = build_xmi(bank, ev, sizeof ev);
                 CHECK_EQ_INT(seq_load(bank, len), 1);
@@ -977,10 +983,7 @@ int test_sequencer(void)
                     for (int t = 0; t < 15; t++) seq_tick();   /* past the first NEXT */
                 }
                 seq_start();
-                while (seq_playing() && ticks < 1000) {
-                    seq_tick();
-                    ticks++;
-                }
+                const int ticks = run_to_halt();
                 CHECK_EQ_INT(seq_playing(), 0);
                 CHECK(ticks >= 30 && ticks <= 39, "a restart frees the FOR/NEXT slots");
             }

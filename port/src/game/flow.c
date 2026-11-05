@@ -7353,14 +7353,27 @@ void game_isr_ticks(u32 n)
 
 /* PORT: the timer ISR's input step (0x1BDF4's call 0x1BBAC at 0x1BE1C): the
  * host fills the key-state table and the axis words the sampler reads, then
- * the sampler builds both players' key bytes (+0x2D8/+0x2D9). Shared by the
- * master loop and the menu wait's modelled tick (config.c 0x2EA78), so the two
- * ISR models cannot drift apart. */
+ * the sampler builds both players' key bytes (+0x2D8/+0x2D9). The master loop
+ * runs it once per iteration, game_isr_tick once per modelled tick. */
 void game_isr_input(void)
 {
     host_input_fill_keyboard();
     host_input_fill_axes();
     input_sampler();
+}
+
+/* PORT: one whole tick of the timer ISR 0x1BDF4: unless the gate byte
+ * DS_00104B22 is 1 (0x1BDF8..0x1BE00), the counter pair (0x1BE0E..0x1BE16),
+ * the input step (0x1BE1C), the word DS_000EF6DE (0x1BE21) and 0x2D62C
+ * (0x1BE28). The menu wait (config.c, 0x2EA78) runs one per retrace. */
+void game_isr_tick(void)
+{
+    if (DSB(DS_00104B22) == 1u) return;
+    DSD(DS_00101508)++;
+    DSD(DS_00101500)++;
+    game_isr_input();
+    DSW(DS_000EF6DE) = (u16)(DSW(DS_000EF6DE) + 1u);
+    config_isr_tick();
 }
 
 /* 0x5D808 — record named-gaps-b §B.11. `mov word [0xEF6DE],0; ret`: clears
