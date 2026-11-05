@@ -181,6 +181,23 @@ u16 host_kb_bit(u8 scan)
 static int g_key_bits_override_on;
 static u16 g_key_bits_override;
 
+/* PORT: a host option with no original counterpart (host.h): the arrow keys
+ * drive Player 1. Off by default, so the original's binding stands. */
+static int g_arrows_p1;
+
+int host_arrows_p1(void) { return g_arrows_p1; }
+
+u16 host_apply_arrows_p1(u16 bits, const u8 *scans, u8 held)
+{
+    static const u8 k_arrow[4] = { 0x48, 0x50, 0x4B, 0x4D };   /* Up Down Left Right */
+    for (u32 i = 8u; i < 16u; i++)                  /* P2's slots ignore the arrows */
+        for (u32 a = 0u; a < 4u; a++)
+            if (scans[i] == k_arrow[a]) bits &= (u16)~k_cfg_bit[i];
+    for (u32 a = 0u; a < 4u; a++)                   /* P1's Up Down Left Right slots */
+        if (held & (1u << a)) bits |= k_cfg_bit[a];
+    return bits;
+}
+
 void host_set_key_bits_override(u16 bits, int on)
 {
     g_key_bits_override = bits;
@@ -205,6 +222,12 @@ u16 host_key_bits(void)
         const SDL_Scancode key = k_scan_sdl[scan];
         if (key != SDL_SCANCODE_UNKNOWN && st[key]) bits |= k_cfg_bit[i];
     }
+    if (g_arrows_p1)
+        bits = host_apply_arrows_p1(bits, scans,
+                                    (u8)((st[SDL_SCANCODE_UP] ? 1u : 0u) |
+                                         (st[SDL_SCANCODE_DOWN] ? 2u : 0u) |
+                                         (st[SDL_SCANCODE_LEFT] ? 4u : 0u) |
+                                         (st[SDL_SCANCODE_RIGHT] ? 8u : 0u)));
     if (st[SDL_SCANCODE_F1]) bits |= 0x0100u;         /* 0x1B850 */
     if (st[SDL_SCANCODE_F2]) bits |= 0x0001u;         /* 0x1B870 */
     return bits;
@@ -650,12 +673,28 @@ static void drain_events(void)
             break;
         case SDL_EVENT_KEY_DOWN: {
             u8 scan, ascii;
+            /* PORT: F12 toggles the arrows-for-Player-1 option (host.h),
+             * remembered in the per-user directory; the title shows it. */
+            if (e.key.scancode == SDL_SCANCODE_F12 && !e.key.repeat) {
+                char path[1100];
+                host_set_arrows_p1(!g_arrows_p1);
+                if (host_pref_file("arrows-p1", path, sizeof path))
+                    host_write_file(path, (const u8 *)(g_arrows_p1 ? "1\n" : "0\n"), 2);
+                break;
+            }
             if (translate_key(&e.key, &scan, &ascii)) input_push(scan, ascii);
             break;
         }
         default: break;
         }
     }
+}
+
+void host_set_arrows_p1(int on)
+{
+    g_arrows_p1 = on != 0;
+    if (g_window)
+        SDL_SetWindowTitle(g_window, g_arrows_p1 ? "Primal Rage - arrows: Player 1" : "Primal Rage");
 }
 
 static void present_pending(void)

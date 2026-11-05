@@ -135,6 +135,17 @@ int  host_pref_file(const char *name, char *out, size_t n);
 int  host_game_dir_load(const char *file, char *out, size_t n);
 int  host_game_dir_save(const char *file, const char *dir);
 
+/* PORT: a host option with no original counterpart: the arrow keys drive
+ * Player 1 (the original binds them to Player 2; S X Z C stay P1's). Off by
+ * default; F12 toggles it in the windowed run and the choice is kept in the
+ * per-user file "arrows-p1" ("1" or "0"). While it is on, host_key_bits passes
+ * its bits through host_apply_arrows_p1: `held` bits 0..3 are the Up, Down,
+ * Left and Right arrows; they set P1's first four slots' bits, and any P2 slot
+ * bound to an arrow loses its bit. */
+void host_set_arrows_p1(int on);
+int  host_arrows_p1(void);
+u16  host_apply_arrows_p1(u16 bits, const u8 *scans, u8 held);
+
 /* Opens the default playback device for `channels`-channel s16 frames at `rate`
  * Hz, matching opl_render()'s stereo-interleaved output. Returns 1 on success,
  * 0 on failure (non-positive rate/channels, or no audio device); never aborts,

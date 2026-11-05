@@ -107,6 +107,14 @@ static int run_windowed(const char *cli_dir, const char *cmos_path)
         fprintf(stderr, "prageport: no window/display available\n");
         return 1;
     }
+    {
+        /* PORT: the remembered arrows-for-Player-1 option (host.h; F12). */
+        char path[1100], v[8];
+        if (host_pref_file("arrows-p1", path, sizeof path) &&
+            host_game_dir_load(path, v, sizeof v) && v[0] == '1') {
+            host_set_arrows_p1(1);
+        }
+    }
     int found = resolve_game_dir(cli_dir, game_dir, sizeof game_dir);
     if (found <= 0) {
         host_shutdown();

@@ -5902,3 +5902,24 @@ int test_host_game_dir_file(void)
     rmdir(dir);
     return g_failures - before;
 }
+
+/* The host's optional arrows-for-Player-1 binding (F11; off by default, so the
+ * original's P2 arrows stand). Under the default slots: the held arrows set P1's
+ * Up/Down/Left/Right bits (the S X Z C slots' 0x8000/0x4000/0x2000/0x1000) and
+ * drop the bits of any P2 slot bound to an arrow; other bits are kept. */
+int test_host_arrows_p1(void)
+{
+    int before = g_failures;
+    static const u8 slots[16] = { 0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32,
+                                  0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51 };
+    /* Held: Up and Right (mask bits 0 and 3); the sampled bits had P2 Up and
+     * P2 Right (0x0080, 0x0010) from the arrows, P1 punch (0x0100), P2 Home
+     * (0x0001). */
+    CHECK_EQ_INT(host_apply_arrows_p1(0x0080u | 0x0010u | 0x0100u | 0x0001u, slots, 0x9u),
+                 0x8000u | 0x1000u | 0x0100u | 0x0001u);
+    /* Down alone: one direction, so a swapped arrow order cannot pass. */
+    CHECK_EQ_INT(host_apply_arrows_p1(0x0040u, slots, 0x2u), 0x4000u);
+    /* No arrow held: only the arrow-bound P2 bits are dropped. */
+    CHECK_EQ_INT(host_apply_arrows_p1(0x0040u | 0x0002u, slots, 0x0u), 0x0002u);
+    return g_failures - before;
+}

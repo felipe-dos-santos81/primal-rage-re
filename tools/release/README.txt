@@ -25,6 +25,16 @@ The chooser checks the folder. It tells you if a game file is missing,
 if PRAGE.EXE and INDEX need renaming to upper case, or if your
 PRAGE.EXE is not the version this port supports.
 
+Controls
+--------
+The original game's keyboard layout:
+  Player 1:  S X Z C (up, down, left, right), U I (punch/bite), N M (kick/tail)
+  Player 2:  the arrow keys, Home PgUp (punch/bite), End PgDn (kick/tail)
+  Enter starts/selects, Esc goes back; F1/F2 are the start buttons.
+Press F12 to let the arrow keys move Player 1 instead (the window title says
+"arrows: Player 1"); press F12 again to go back. The choice is remembered.
+Keys can be changed in OPTIONS > CONFIG OPTIONS > MODIFY CONTROLS.
+
 Warnings on first launch (the app is not signed)
 ------------------------------------------------
 macOS:    open "Primal Rage.app" once; when macOS blocks it, go to
