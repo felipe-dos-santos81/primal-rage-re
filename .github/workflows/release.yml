@@ -129,7 +129,12 @@ jobs:
           path: dist/*
 
   windows:
-    runs-on: windows-2022
+    strategy:
+      matrix:
+        include:
+          - { runner: windows-2022, arch: x64, msystem: UCRT64, pkg: mingw-w64-ucrt-x86_64 }
+          - { runner: windows-11-arm, arch: arm64, msystem: CLANGARM64, pkg: mingw-w64-clang-aarch64 }
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
         shell: msys2 {0}
@@ -137,32 +142,38 @@ jobs:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: UCRT64
+          msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-python zip unzip
+            ${{ matrix.pkg }}-toolchain ${{ matrix.pkg }}-cmake
+            ${{ matrix.pkg }}-ninja ${{ matrix.pkg }}-python git zip unzip
       - name: Version
         run: echo "VER=$(if [ "$GITHUB_REF_TYPE" = tag ]; then echo "${GITHUB_REF_NAME#v}"; else echo 0.0.0-dev; fi)" >> "$GITHUB_ENV"
-      - name: SDL3 (official MinGW development release)
+      - name: Build SDL3
+        # From source at the pinned tag: SDL's MinGW release archive has no arm64 build.
         run: |
-          curl -sSfL -o sdl.tgz "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VERSION/SDL3-devel-$SDL_VERSION-mingw.tar.gz"
-          tar xzf sdl.tgz
-          echo "SDLROOT=$PWD/SDL3-$SDL_VERSION" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "release-$SDL_VERSION" https://github.com/libsdl-org/SDL.git sdl
+          cmake -S sdl -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/sdl-prefix" \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build sdl-build
+          cmake --install sdl-build
       - name: Build prageport
         run: |
           cmake -S port -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRAGE_VERSION="$VER" \
-            -DSDL3_DIR="$SDLROOT/x86_64-w64-mingw32/lib/cmake/SDL3"
+            -DCMAKE_PREFIX_PATH="$PWD/sdl-prefix"
           cmake --build build --target prageport
       - name: Package
         run: |
-          D="primal-rage-port-$VER-windows-x64"
+          D="primal-rage-port-$VER-windows-${{ matrix.arch }}"
           mkdir -p "$D" dist
-          cp build/prageport.exe "$SDLROOT/x86_64-w64-mingw32/bin/SDL3.dll" "$D/"
+          cp build/prageport.exe sdl-prefix/bin/SDL3.dll "$D/"
           cp tools/release/README.txt LICENSE port/src/platform/audio/opl/LICENSE.opal.txt "$D/"
-          cp "$SDLROOT/LICENSE.txt" "$D/LICENSE.SDL3.txt"
-          # Only SDL3.dll and Windows system DLLs: the GCC runtime is linked in.
-          if objdump -p "$D/prageport.exe" | grep 'DLL Name' | grep -v -i -e api-ms-win-crt -e kernel32 -e SDL3.dll; then
+          cp sdl/LICENSE.txt "$D/LICENSE.SDL3.txt"
+          # Only SDL3.dll and Windows system DLLs: the compiler runtime is linked in.
+          OBJDUMP=$(command -v objdump || command -v llvm-objdump)
+          "$OBJDUMP" -p "$D/prageport.exe" | grep 'DLL Name'
+          if "$OBJDUMP" -p "$D/prageport.exe" | grep 'DLL Name' | grep -v -i -e api-ms-win-crt -e kernel32 -e SDL3.dll; then
             echo "::error::unexpected DLL import"; exit 1
           fi
           # Exactly one manifest, the UTF-8 code-page one (non-ASCII folder paths).
@@ -175,7 +186,7 @@ jobs:
         run: zip -r "dist/$STAGE.zip" "$STAGE"
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: windows-${{ matrix.arch }}
           path: dist/*
 
   publish:
