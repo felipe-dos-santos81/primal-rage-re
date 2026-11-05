@@ -21,7 +21,12 @@ env:
 
 jobs:
   linux:
-    runs-on: ubuntu-22.04   # the oldest supported runner keeps the glibc floor low
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, arch: x64 }
+          - { runner: ubuntu-22.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}   # the oldest supported image keeps the glibc floor low
     steps:
       - uses: actions/checkout@v4
       - name: Version
@@ -52,7 +57,7 @@ jobs:
           cmake --build build --target prageport
       - name: Package
         run: |
-          D="primal-rage-port-$VER-linux-x64"
+          D="primal-rage-port-$VER-linux-${{ matrix.arch }}"
           mkdir -p "$D" dist
           cp build/prageport sdl-prefix/lib/libSDL3.so.0 tools/release/README.txt LICENSE "$D/"
           cp port/src/platform/audio/opl/LICENSE.opal.txt "$D/"
@@ -66,7 +71,7 @@ jobs:
         run: tar czf "dist/$STAGE.tar.gz" "$STAGE"
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: linux-${{ matrix.arch }}
           path: dist/*
 
   macos:

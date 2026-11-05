@@ -94,7 +94,8 @@ folder and it just runs"*, through *"a folder picker that remembers it"*.
 
 - Code signing or notarization (macOS or Windows) — unsigned is accepted for now.
 - Installers, auto-update, Homebrew/Flathub/winget packages.
-- ARM Linux, ARM Windows, 32-bit anything.
+- ARM Windows, 32-bit anything. (ARM Linux was a non-goal here; the owner
+  added it on 2026-11-05: `linux-arm64` on the `ubuntu-22.04-arm` runner.)
 - Running `make verify` or any oracle in CI (they need the game's own bytes,
   which never go to CI).
 - Building `run_tests` or `diffrun` on Windows (see Constraints).
