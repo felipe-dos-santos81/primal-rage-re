@@ -33,7 +33,7 @@ The original game's keyboard layout:
   Enter starts/selects, Esc goes back; F1/F2 are the start buttons.
 Press F12 to let the arrow keys move Player 1 instead (the window title says
 "arrows: Player 1"); press F12 again to go back. The choice is remembered.
-Keys can be changed in OPTIONS > CONFIG OPTIONS > MODIFY CONTROLS.
+Keys can be changed on the MODIFY CONTROLS screen of the OPTIONS menu.
 
 Warnings on first launch (the app is not signed)
 ------------------------------------------------
