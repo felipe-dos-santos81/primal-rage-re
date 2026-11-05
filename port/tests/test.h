@@ -40,6 +40,7 @@ extern int g_failures;
     X(test_host_save)   \
     X(test_res_dir_check) \
     X(test_host_file_crc32) \
+    X(test_host_game_dir_file) \
     X(test_gra)         \
     X(test_gfx)         \
     X(test_input)       \

@@ -5837,3 +5837,38 @@ int test_host_file_crc32(void)
     CHECK_EQ_INT(crc, 0xEEEEEEEEu);
     return g_failures - before;
 }
+
+int test_host_game_dir_file(void)
+{
+    int before = g_failures;
+    char dir[] = "/tmp/pr_gdir_XXXXXX";
+    char file[300], nodir[300], out[64];
+
+    CHECK(mkdtemp(dir) != NULL, "game-dir scratch dir");
+    snprintf(file, sizeof file, "%s/game-dir.txt", dir);
+    snprintf(nodir, sizeof nodir, "%s/absent/game-dir.txt", dir);
+
+    CHECK_EQ_INT(host_game_dir_save(file, "/a b/\xc3\xa9"), 1);
+    strcpy(out, "ZZZZ");
+    CHECK_EQ_INT(host_game_dir_load(file, out, sizeof out), 1);
+    CHECK(strcmp(out, "/a b/\xc3\xa9") == 0, "a saved folder loads back unchanged");
+
+    CHECK_EQ_INT(host_write_file(file, (const u8 *)"C:\\PRAGE \r\n", 11), 1);
+    strcpy(out, "ZZZZ");
+    CHECK_EQ_INT(host_game_dir_load(file, out, sizeof out), 1);
+    CHECK(strcmp(out, "C:\\PRAGE") == 0, "a hand-edited CRLF line is trimmed");
+
+    CHECK_EQ_INT(host_write_file(file, (const u8 *)"\r\n", 2), 1);
+    strcpy(out, "ZZZZ");
+    CHECK_EQ_INT(host_game_dir_load(file, out, sizeof out), 0);
+    CHECK(strcmp(out, "") == 0, "a blank file loads as no folder");
+
+    remove(file);
+    strcpy(out, "ZZZZ");
+    CHECK_EQ_INT(host_game_dir_load(file, out, sizeof out), 0);
+    CHECK(strcmp(out, "") == 0, "a missing file loads as no folder");
+
+    CHECK_EQ_INT(host_game_dir_save(nodir, "/x"), 0);
+    rmdir(dir);
+    return g_failures - before;
+}

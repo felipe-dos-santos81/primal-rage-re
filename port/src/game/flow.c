@@ -139,6 +139,9 @@ static u32 int10h_query(void)
 static void game_fatal(const char *what)
 {
     fprintf(stderr, "Primal Rage: fatal init error: %s\n", what);
+    /* PORT: a windowed run launched from a file manager has no terminal, so the
+     * error is also shown in a message box; headless runs are unchanged. */
+    host_fatal_message(what);
     exit(1);
 }
 

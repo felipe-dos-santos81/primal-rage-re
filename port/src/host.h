@@ -6,6 +6,7 @@
 #define PR_HOST_H
 
 #include "types.h"
+#include <stddef.h>
 
 /* PORT: a host stall (resume from sleep, NTP step, debugger pause) must not
  * cost one loop iteration per missed interval. Beyond this many intervals the
@@ -116,6 +117,23 @@ int  host_save_write(const u8 *src, u32 len);
  * *size and its CRC-32 (SDL_crc32 from 0) in *crc, or 0 with both untouched
  * when the file cannot be opened or read. */
 int  host_file_crc32(const char *path, u32 *size, u32 *crc);
+
+/* PORT: the release's first-run game-folder flow (plan 2026-11-05-github-release),
+ * no original counterpart. host_pick_folder() needs host_init(): it opens SDL's
+ * folder dialog over the window and waits, pumping events, for the answer:
+ * 1 picked (the UTF-8 path in out), 0 cancelled, -1 dialog error or a path that
+ * does not fit. host_message() shows a modal error box (stderr if that fails);
+ * host_fatal_message() does so only while a window is open, so headless runs
+ * stay on stderr. host_pref_file() is <the per-user save directory><name>
+ * (0 on failure). host_game_dir_load() reads a saved folder, trailing CR, LF,
+ * space and tab removed: 1 when non-empty, else 0 with out = "".
+ * host_game_dir_save() writes dir and a newline: 1 on success. */
+int  host_pick_folder(char *out, size_t n);
+void host_message(const char *title, const char *text);
+void host_fatal_message(const char *text);
+int  host_pref_file(const char *name, char *out, size_t n);
+int  host_game_dir_load(const char *file, char *out, size_t n);
+int  host_game_dir_save(const char *file, const char *dir);
 
 /* Opens the default playback device for `channels`-channel s16 frames at `rate`
  * Hz, matching opl_render()'s stereo-interleaved output. Returns 1 on success,
