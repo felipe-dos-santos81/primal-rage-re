@@ -18,6 +18,7 @@ scores, saves, music and all seven endings.
 ## Download and play
 
 [![Latest release](https://img.shields.io/github/v/release/felipe-dos-santos81/primal-rage-re)](https://github.com/felipe-dos-santos81/primal-rage-re/releases/latest)
+[![Listed on PlayPorted](https://playported.com/badge.svg)](https://playported.com/ports/1254-primal-rage/)
 
 **[Download the latest release](https://github.com/felipe-dos-santos81/primal-rage-re/releases/latest)**
 for Windows (x64 and arm64), Linux (x64 and arm64) or macOS (Apple Silicon and
